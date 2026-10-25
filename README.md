@@ -38,6 +38,8 @@ corresponding public APIs are stabilized.
 ## Sandboxed development
 
 Temiya uses [Izanagi](https://github.com/ieee0824/izanagi) with Docker on macOS.
+The development image pins its base to `izanagi-vm:0.2.4` so an Izanagi update
+cannot silently change the base OS or libc.
 The project is mounted read-only, and Cargo artifacts are written to the
 container's temporary filesystem. No host credentials or user directories are
 mounted. Docker networking remains available because Izanagi uses a forwarded

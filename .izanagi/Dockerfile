@@ -5,7 +5,7 @@ FROM rust:1.93-alpine AS rust-toolchain
 
 FROM node:22-alpine AS node-toolchain
 
-FROM izanagi-vm:latest
+FROM izanagi-vm:0.2.4
 
 COPY --from=rust-toolchain /usr/local/cargo /usr/local/cargo
 COPY --from=rust-toolchain /usr/local/rustup /usr/local/rustup

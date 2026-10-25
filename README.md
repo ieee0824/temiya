@@ -65,6 +65,20 @@ scripts/sandbox logs
 scripts/sandbox down
 ```
 
+To use the host's existing Codex login in the running sandbox, copy only its
+credential file after startup:
+
+```sh
+scripts/sandbox codex-auth
+scripts/sandbox shell
+codex login status
+```
+
+This grants processes in that sandbox the same Codex account authority as the
+host. The credential is copied into the ephemeral container, never into the
+image or repository, and disappears when the container stops. Run
+`scripts/sandbox codex-auth` again after starting a new sandbox.
+
 The Izanagi configuration is stored outside the shared project directory under
 `~/.izanagi/settings/`. This prevents sandboxed processes from reading or
 modifying their own security policy.

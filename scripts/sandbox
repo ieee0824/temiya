@@ -36,11 +36,35 @@ case "$command_name" in
     shell)
         exec izanagi shell
         ;;
+    codex-auth)
+        auth_file="${CODEX_HOME:-${HOME}/.codex}/auth.json"
+        if [ ! -f "$auth_file" ]; then
+            echo "Codex credentials not found: $auth_file" >&2
+            exit 1
+        fi
+
+        container_ids="$(docker ps --filter 'name=izanagi-' --format '{{.ID}}')"
+        set -- $container_ids
+        if [ "$#" -ne 1 ]; then
+            echo "expected exactly one running Izanagi container; found $#" >&2
+            exit 1
+        fi
+        container_id="$1"
+
+        docker exec --user root "$container_id" \
+            install -d -m 700 -o izanagi -g izanagi /home/izanagi/.codex
+        docker cp "$auth_file" "$container_id":/home/izanagi/.codex/auth.json
+        docker exec --user root "$container_id" \
+            chown izanagi:izanagi /home/izanagi/.codex/auth.json
+        docker exec --user root "$container_id" \
+            chmod 600 /home/izanagi/.codex/auth.json
+        echo "Copied Codex credentials into the running sandbox."
+        ;;
     logs)
         exec izanagi logs --suspicious
         ;;
     *)
-        echo "usage: $0 {build|up|down|test|build-check|shell|logs}" >&2
+        echo "usage: $0 {build|up|down|test|build-check|shell|codex-auth|logs}" >&2
         exit 2
         ;;
 esac

@@ -42,9 +42,9 @@ The project is mounted read-only, and Cargo artifacts are written to the
 container's temporary filesystem. No host credentials or user directories are
 mounted. Docker networking remains available because Izanagi uses a forwarded
 port to communicate with its agent; do not treat this setup as network-isolated.
-The image includes pinned Codex CLI and Claude Code installations. Authenticate
-them at runtime; credentials are deliberately not baked into the image or
-mounted from the host.
+The image includes pinned Codex CLI and Claude Code installations, plus GitHub
+CLI. Authenticate them at runtime; credentials are deliberately not baked into
+the image or mounted from the host.
 
 Build the local development image once:
 
@@ -78,6 +78,15 @@ This grants processes in that sandbox the same Codex account authority as the
 host. The credential is copied into the ephemeral container, never into the
 image or repository, and disappears when the container stops. Run
 `scripts/sandbox codex-auth` again after starting a new sandbox.
+
+GitHub CLI can authenticate independently with its device flow. Configure Git
+to reuse that login over HTTPS, avoiding the need to share an SSH key:
+
+```sh
+scripts/sandbox shell
+gh auth login --web --git-protocol https
+gh auth setup-git
+```
 
 The Izanagi configuration is stored outside the shared project directory under
 `~/.izanagi/settings/`. This prevents sandboxed processes from reading or

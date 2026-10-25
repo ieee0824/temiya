@@ -1,9 +1,9 @@
 # syntax=docker/dockerfile:1
 
 # Reuse official toolchain images and keep the final runtime self-contained.
-FROM rust:1.93-slim AS rust-toolchain
+FROM rust:1.93-alpine AS rust-toolchain
 
-FROM node:22-bookworm-slim AS node-toolchain
+FROM node:22-alpine AS node-toolchain
 
 FROM izanagi-vm:latest
 
@@ -15,18 +15,13 @@ ENV CARGO_HOME=/usr/local/cargo \
     RUSTUP_HOME=/usr/local/rustup \
     PATH=/usr/local/cargo/bin:${PATH}
 
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
-        build-essential curl git pkg-config ripgrep \
-    && rm -rf /var/lib/apt/lists/*
+RUN apk add --no-cache \
+        build-base curl github-cli git pkgconf ripgrep
 
 RUN npm install --global \
         @openai/codex@0.164.0 \
         @anthropic-ai/claude-code@2.1.310 \
-    && ln -s /usr/local/bin/node /usr/bin/node \
-    && ln -s /usr/local/bin/codex /usr/bin/codex \
-    && ln -s /usr/local/bin/claude /usr/bin/claude \
     && codex --version \
     && claude --version
 
-RUN rustc --version && cargo --version
+RUN rustc --version && cargo --version && gh --version

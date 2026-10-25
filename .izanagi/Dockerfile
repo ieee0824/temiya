@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
 # Reuse official toolchain images and keep the final runtime self-contained.
-FROM rust:1.93-alpine AS rust-toolchain
+FROM rust:1.99.1-alpine AS rust-toolchain
 
 FROM node:22-alpine AS node-toolchain
 

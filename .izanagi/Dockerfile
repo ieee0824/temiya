@@ -22,6 +22,13 @@ RUN npm install --global \
         @openai/codex@0.164.0 \
         @anthropic-ai/claude-code@2.1.310 \
     && codex --version \
-    && claude --version
+    && claude --version \
+    && mv /usr/local/bin/codex /usr/local/bin/codex-daemon
 
-RUN rustc --version && cargo --version && gh --version
+COPY .izanagi/codex-wrapper /usr/local/bin/codex
+
+RUN chmod +x /usr/local/bin/codex \
+    && codex --version \
+    && rustc --version \
+    && cargo --version \
+    && gh --version

@@ -1,0 +1,8 @@
+#!/bin/sh
+set -eu
+
+# The shared app-server daemon exits during PID startup under the Izanagi
+# container process model. Each sandbox is ephemeral, so use Codex's supported
+# foreground mode by default. The original entry point remains available as
+# `codex-daemon` for diagnostics.
+exec /usr/local/bin/codex-daemon --no-daemon "$@"

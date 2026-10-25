@@ -48,6 +48,10 @@ The image includes pinned Codex CLI and Claude Code installations, plus GitHub
 CLI. Authenticate them at runtime; credentials are deliberately not baked into
 the image or mounted from the host.
 
+`codex` runs with `--no-daemon` inside the sandbox because the shared app-server
+cannot retain its PID-managed background process under the container process
+model. The unwrapped entry point is available as `codex-daemon` for diagnostics.
+
 Build the local development image once:
 
 ```sh

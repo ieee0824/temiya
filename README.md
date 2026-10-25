@@ -34,3 +34,37 @@ cargo build --locked
 
 Design decisions and compatibility scope will be documented before the
 corresponding public APIs are stabilized.
+
+## Sandboxed development
+
+Temiya uses [Izanagi](https://github.com/ieee0824/izanagi) with Docker on macOS.
+The project is mounted read-only, and Cargo artifacts are written to the
+container's temporary filesystem. No host credentials or user directories are
+mounted. Docker networking remains available because Izanagi uses a forwarded
+port to communicate with its agent; do not treat this setup as network-isolated.
+The image includes pinned Codex CLI and Claude Code installations. Authenticate
+them at runtime; credentials are deliberately not baked into the image or
+mounted from the host.
+
+Build the local development image once:
+
+```sh
+scripts/sandbox build
+```
+
+Run `izanagi init`, then apply the values from
+`.izanagi/izanagi.toml.example` to the generated project-specific config. Keep
+the active config outside this read-only shared workspace.
+
+Start Izanagi in one terminal, then run checks from another:
+
+```sh
+scripts/sandbox up
+scripts/sandbox test
+scripts/sandbox logs
+scripts/sandbox down
+```
+
+The Izanagi configuration is stored outside the shared project directory under
+`~/.izanagi/settings/`. This prevents sandboxed processes from reading or
+modifying their own security policy.

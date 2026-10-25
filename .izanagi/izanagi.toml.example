@@ -1,0 +1,35 @@
+# Copy these values into the project-specific configuration created by
+# `izanagi init`. Do not place the active config inside the shared workspace.
+
+[sandbox]
+backend = "apple-container"
+tracer = "none"
+require_auth = true
+
+[sandbox.apple_container]
+runtime = "docker"
+image = "temiya-dev:latest"
+
+[share]
+paths = ["."]
+mount_point = "/workspace"
+read_only = true
+
+[monitor]
+syscalls = ["file", "network", "process", "env"]
+
+[detect]
+suspicious_paths = [
+    "/etc/passwd",
+    "/etc/shadow",
+    "~/.ssh/*",
+    "~/.aws/*",
+    "~/.gnupg/*",
+    "~/.config/gh/*",
+]
+allowed_hosts = []
+known_processes = ["env", "cargo", "rustc", "rustdoc", "cc", "ld"]
+
+[dns_proxy]
+enabled = false
+listen = "127.0.0.1:15353"

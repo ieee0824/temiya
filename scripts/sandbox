@@ -1,0 +1,46 @@
+#!/bin/sh
+set -eu
+
+command_name="${1:-}"
+
+case "$command_name" in
+    build)
+        docker build --tag temiya-dev --file .izanagi/Dockerfile .
+        ;;
+    up)
+        mkdir -p "${HOME}/.izanagi/tmp"
+        chmod 700 "${HOME}/.izanagi/tmp"
+        TMPDIR="${HOME}/.izanagi/tmp" exec izanagi up
+        ;;
+    down)
+        exec izanagi down
+        ;;
+    test)
+        exec izanagi exec -- env \
+            CARGO_HOME=/tmp/temiya-cargo-home \
+            CARGO_TARGET_DIR=/tmp/temiya-target \
+            RUSTC=/usr/local/cargo/bin/rustc \
+            RUSTDOC=/usr/local/cargo/bin/rustdoc \
+            RUSTUP_HOME=/usr/local/rustup \
+            /usr/local/cargo/bin/cargo test --locked
+        ;;
+    build-check)
+        exec izanagi exec -- env \
+            CARGO_HOME=/tmp/temiya-cargo-home \
+            CARGO_TARGET_DIR=/tmp/temiya-target \
+            RUSTC=/usr/local/cargo/bin/rustc \
+            RUSTDOC=/usr/local/cargo/bin/rustdoc \
+            RUSTUP_HOME=/usr/local/rustup \
+            /usr/local/cargo/bin/cargo build --locked
+        ;;
+    shell)
+        exec izanagi shell
+        ;;
+    logs)
+        exec izanagi logs --suspicious
+        ;;
+    *)
+        echo "usage: $0 {build|up|down|test|build-check|shell|logs}" >&2
+        exit 2
+        ;;
+esac

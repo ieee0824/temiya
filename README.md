@@ -41,10 +41,11 @@ Temiya uses [Izanagi](https://github.com/ieee0824/izanagi) with Docker on macOS.
 The development image uses Debian Trixie and pins its base to
 `izanagi-vm-debian:0.2.4` so an Izanagi update cannot silently change the base
 OS or libc. Its glibc agent is built from the matching Izanagi source revision.
-The project is mounted read-only, and Cargo artifacts are written to the
-container's temporary filesystem. No host credentials or user directories are
-mounted. Docker networking remains available because Izanagi uses a forwarded
-port to communicate with its agent; do not treat this setup as network-isolated.
+The project is mounted read-write so sandboxed development agents can edit the
+working tree. Cargo artifacts are written to the container's temporary
+filesystem. No host user directories are mounted. Docker networking remains
+available because Izanagi uses a forwarded port to communicate with its agent;
+do not treat this setup as network-isolated.
 The image includes pinned Codex CLI and Claude Code installations, plus GitHub
 CLI. Authenticate them at runtime; credentials are deliberately not baked into
 the image or mounted from the host.
@@ -52,6 +53,8 @@ the image or mounted from the host.
 `codex` runs with `--no-daemon` inside the sandbox because the shared app-server
 cannot retain its PID-managed background process under the container process
 model. The unwrapped entry point is available as `codex-daemon` for diagnostics.
+`cargo` and `rustc` wrappers restore the pinned toolchain environment because
+Izanagi deliberately starts commands with a minimal environment.
 
 Build the version-matched Debian base and local development image once. The
 Izanagi source is expected at `../izanagi`; set `IZANAGI_SOURCE` to override it:

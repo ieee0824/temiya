@@ -28,8 +28,10 @@ RUN npm install --global \
     && mv /usr/local/bin/codex /usr/local/bin/codex-daemon
 
 COPY .izanagi/codex-wrapper /usr/local/bin/codex
+COPY .izanagi/cargo-wrapper /usr/local/bin/cargo
+COPY .izanagi/rustc-wrapper /usr/local/bin/rustc
 
-RUN chmod +x /usr/local/bin/codex \
+RUN chmod +x /usr/local/bin/codex /usr/local/bin/cargo /usr/local/bin/rustc \
     && codex --version \
     && rustc --version \
     && cargo --version \

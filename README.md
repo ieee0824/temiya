@@ -38,8 +38,9 @@ corresponding public APIs are stabilized.
 ## Sandboxed development
 
 Temiya uses [Izanagi](https://github.com/ieee0824/izanagi) with Docker on macOS.
-The development image pins its base to `izanagi-vm:0.2.4` so an Izanagi update
-cannot silently change the base OS or libc.
+The development image uses Debian Trixie and pins its base to
+`izanagi-vm-debian:0.2.4` so an Izanagi update cannot silently change the base
+OS or libc. Its glibc agent is built from the matching Izanagi source revision.
 The project is mounted read-only, and Cargo artifacts are written to the
 container's temporary filesystem. No host credentials or user directories are
 mounted. Docker networking remains available because Izanagi uses a forwarded
@@ -52,9 +53,11 @@ the image or mounted from the host.
 cannot retain its PID-managed background process under the container process
 model. The unwrapped entry point is available as `codex-daemon` for diagnostics.
 
-Build the local development image once:
+Build the version-matched Debian base and local development image once. The
+Izanagi source is expected at `../izanagi`; set `IZANAGI_SOURCE` to override it:
 
 ```sh
+scripts/sandbox build-base
 scripts/sandbox build
 ```
 

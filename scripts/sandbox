@@ -4,6 +4,16 @@ set -eu
 command_name="${1:-}"
 
 case "$command_name" in
+    build-base)
+        izanagi_source="${IZANAGI_SOURCE:-../izanagi}"
+        if [ ! -f "$izanagi_source/Makefile" ]; then
+            echo "Izanagi source not found: $izanagi_source" >&2
+            exit 1
+        fi
+        exec make -C "$izanagi_source" image \
+            IMAGE_NAME=izanagi-vm-debian:0.2.4 \
+            RUNTIME=docker
+        ;;
     build)
         docker build --tag temiya-dev --file .izanagi/Dockerfile .
         ;;
@@ -64,7 +74,7 @@ case "$command_name" in
         exec izanagi logs --suspicious
         ;;
     *)
-        echo "usage: $0 {build|up|down|test|build-check|shell|codex-auth|logs}" >&2
+        echo "usage: $0 {build-base|build|up|down|test|build-check|shell|codex-auth|logs}" >&2
         exit 2
         ;;
 esac

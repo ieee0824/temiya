@@ -1,11 +1,11 @@
 # syntax=docker/dockerfile:1
 
 # Reuse official toolchain images and keep the final runtime self-contained.
-FROM rust:1.99.1-alpine AS rust-toolchain
+FROM rust:1.99.1-slim AS rust-toolchain
 
-FROM node:22-alpine AS node-toolchain
+FROM node:22-bookworm-slim AS node-toolchain
 
-FROM izanagi-vm:0.2.4
+FROM izanagi-vm-debian:0.2.4
 
 COPY --from=rust-toolchain /usr/local/cargo /usr/local/cargo
 COPY --from=rust-toolchain /usr/local/rustup /usr/local/rustup
@@ -15,8 +15,10 @@ ENV CARGO_HOME=/usr/local/cargo \
     RUSTUP_HOME=/usr/local/rustup \
     PATH=/usr/local/cargo/bin:${PATH}
 
-RUN apk add --no-cache \
-        build-base curl github-cli git pkgconf ripgrep
+RUN apt-get update \
+    && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        build-essential curl gh git pkg-config ripgrep \
+    && rm -rf /var/lib/apt/lists/*
 
 RUN npm install --global \
         @openai/codex@0.164.0 \

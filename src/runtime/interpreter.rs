@@ -642,7 +642,7 @@ impl ExpressionEvaluator {
                         for (index, unit) in string.code_units().iter().enumerate() {
                             source.create_data_property(
                                 index_key(index as u32),
-                                Value::String(JsString::from_code_units(vec![*unit])),
+                                Value::String(JsString::from_code_units_slice(&[*unit])),
                             )?;
                         }
                         source
@@ -730,7 +730,7 @@ fn get_property(
                 .array_index()
                 .and_then(|index| string.code_units().get(index as usize))
             {
-                return Ok(Value::String(JsString::from_code_units(vec![*unit])));
+                return Ok(Value::String(JsString::from_code_units_slice(&[*unit])));
             }
             primitive_prototype.map_or(Ok(Value::Undefined), |prototype| {
                 prototype.get_with_receiver(key, base.clone())
@@ -761,7 +761,7 @@ fn member_name(expression: &Expr) -> RuntimeResult<JsString> {
             Ok(JsString::from(name.as_str()))
         }
         ExprKind::Literal(Literal::String { value, .. }) => {
-            Ok(JsString::from_code_units(value.clone()))
+            Ok(JsString::from_code_units_slice(value))
         }
         ExprKind::Literal(Literal::Number { raw, .. }) => Ok(JsString::from(raw.as_str())),
         _ => Err(RuntimeError::syntax_error(
@@ -780,9 +780,7 @@ fn literal_value(literal: &Literal, strict: bool) -> RuntimeResult<Value> {
         } if strict && *legacy_escape => Err(RuntimeError::syntax_error(
             "legacy string escape in strict code",
         )),
-        Literal::String { value, .. } => {
-            Ok(Value::String(JsString::from_code_units(value.clone())))
-        }
+        Literal::String { value, .. } => Ok(Value::String(JsString::from_code_units_slice(value))),
         Literal::RegExp(_) => unreachable!("RegExp literals require a Realm"),
         Literal::Number { raw, kind } => parse_numeric_literal(raw, *kind),
     }
@@ -1064,7 +1062,7 @@ fn array_like_values(value: &Value) -> RuntimeResult<Vec<Value>> {
         Value::String(string) => Ok(string
             .code_units()
             .iter()
-            .map(|unit| Value::String(JsString::from_code_units(vec![*unit])))
+            .map(|unit| Value::String(JsString::from_code_units_slice(&[*unit])))
             .collect()),
         Value::Object(object) => {
             let length = object

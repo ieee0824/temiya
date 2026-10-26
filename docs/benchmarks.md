@@ -311,3 +311,83 @@ or speedup. This change reduces allocation and unobservable retention; it does
 not integrate tracing GC. The ownership probe still retains self-cycle,
 two-object-cycle and escaped-prototype cases. Full GC and SpiderMonkey/application
 comparisons remain separate outstanding requirements.
+
+### Matched Temiya regression comparisons
+
+To compare a runtime optimization against its measured predecessor, freeze the
+predecessor worker **before** rebuilding. The helper checks its hash against the
+prior comparison report and refuses to overwrite either destination:
+
+```sh
+node scripts/freeze-temiya-worker.mjs before-report.json \
+    /tmp/before-target/release/examples/measure_workload \
+    /tmp/frozen-before-worker /tmp/frozen-before-info.json
+```
+
+After building the changed Engine with the same Rust compiler, features and
+release profile, use the original pinned workload directory:
+
+```sh
+TEMIYA_REVISION=$(git rev-parse HEAD) node scripts/compare-omoikane-workloads.mjs \
+    --temiya-baseline /tmp/omoikane-inputs \
+    /tmp/after-target/release/examples/measure_workload \
+    /tmp/frozen-before-info.json 15 3 > after-before-report.json
+```
+
+This explicit mode validates both workers as Temiya and labels them before/after.
+It keeps the same serial alternating order, per-pass numeric oracle validation,
+watchdogs, timing boundary and median/MAD policy as the Boa comparison. The
+`after_to_before_ratio` and `all_eleven_workloads_after_faster_beyond_threshold`
+fields are Temiya regression evidence; they are not Boa superiority evidence.
+Use the default mode separately for the application Boa target. Both modes
+retain failures and exit 2 if any workload is invalid; low-sample diagnostics
+cannot satisfy either mode's speed gate. A wrong hash or compiler is rejected
+before executing the baseline.
+
+
+#### Compact string storage results
+
+The standalone [allocation observation](../benchmarks/compact-string-allocations.json)
+compares the former Vec construction/clone operations with the public JsString
+operations. In 10000 iterations after warmup, constructing and cloning the
+10-unit name charCodeAt and cloning an 80-unit value require zero allocations.
+The old operations respectively request 30000, 10000 and 10000 allocations
+(including reallocations). New long construction still requires 20000 requests
+for its Vec buffer and Arc header; it is not allocation-free. This probe records
+requested bytes, not RSS or time, and is not linked into the timing worker.
+Stable/MSRV produce identical observations. JsString remains 24 bytes and Value
+32 bytes on the measured ARM64 target.
+
+Two separate repeated comparisons use release Rust 1.99.1 and the original eleven
+omoikane workloads with 15 timed samples, one checked warmup and three pairs:
+[Temiya before/after](../benchmarks/compact-string-beforeafter.json) compares the
+frozen predecessor `292a3760deb3f9d3208050350feb733c4aaf66fa` against
+changed runtime `b9ddd75e7fef485db84d06b64f5bc793ba120020`;
+[Temiya/Boa](../benchmarks/compact-string-boa.json) compares the changed runtime
+against the same pinned actual application embedding. Each mode retains 66 runs
+and 33 pairs and uses the unchanged 512 MiB/180-second guards. The modes run
+serially, with engine order alternating within each mode.
+The before/after mode validates 1056 results; the Boa mode validates 1056.
+
+| Workload | Changed / prior Temiya time | Changed Temiya / Boa time |
+| --- | ---: | ---: |
+| arith | 0.88–0.91× | 4.21–4.39× |
+| prop-mono | 0.78–0.87× | 2.37–2.39× |
+| prop-mega | 0.88–0.94× | 2.33–2.49× |
+| call | 0.77–0.81× | 2.53–2.57× |
+| closure-alloc | 0.86–0.92× | 1.66–1.78× |
+| object-alloc | 0.84–0.94× | 1.71–1.78× |
+| string-concat | 0.61–0.67× | 3.78–3.91× |
+| array | 0.79–0.87× | 2.27–2.41× |
+| primitive-string-property | 0.82–0.87× | 2.76–2.80× |
+| primitive-string-method | 0.81–0.94× | 1.61–2.07× |
+| proto-method | 0.84–0.88× | 1.85–2.48× |
+
+Twenty-two before/after pairs improve beyond the existing threshold; eleven are
+within the threshold. No pair regresses beyond it. All 33 Boa pairs find Temiya
+slower beyond the threshold. A before/after improvement establishes a change
+against the prior Temiya worker; it cannot satisfy the Boa objective.
+The recorded Boa speed gate is false.
+These eleven microbenchmarks do not establish full application compatibility or
+SpiderMonkey superiority. Identifier atoms, ropes and real Engine GC remain
+outstanding; this change only replaces immutable leaf string storage.

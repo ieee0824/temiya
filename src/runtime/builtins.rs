@@ -620,7 +620,7 @@ fn install_function(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {
         let target = callable_value(&this)?;
         let bound_this = arguments.first().cloned().unwrap_or(Value::Undefined);
         let prefix = arguments.get(1..).unwrap_or_default().to_vec();
-        Ok(Value::Object(bound_function(target, bound_this, prefix)))
+        bound_function(target, bound_this, prefix).map(Value::Object)
     })
 }
 
@@ -737,7 +737,8 @@ fn method(
     )
 }
 
-fn bound_function(target: Object, bound_this: Value, prefix: Vec<Value>) -> Object {
+fn bound_function(target: Object, bound_this: Value, prefix: Vec<Value>) -> RuntimeResult<Object> {
+    let prototype = target.try_prototype()?;
     let call_target = target.clone();
     let call_prefix = prefix.clone();
     let call = move |_: Value, suffix: &[Value]| {
@@ -745,26 +746,35 @@ fn bound_function(target: Object, bound_this: Value, prefix: Vec<Value>) -> Obje
         arguments.extend_from_slice(suffix);
         call_target.call(bound_this.clone(), &arguments)
     };
-    if target.is_constructor() {
-        let slot = Rc::new(RefCell::new(None::<Object>));
+    let function = if target.is_constructor() {
+        let slot = Rc::new(RefCell::new(None::<super::WeakObject>));
         let construct_slot = slot.clone();
         let construct_target = target.clone();
         let construct_prefix = prefix;
         let function = Object::native_callable_constructor(call, move |suffix, new_target| {
             let mut arguments = construct_prefix.clone();
             arguments.extend_from_slice(suffix);
-            let actual_new_target = if construct_slot.borrow().as_ref() == Some(&new_target) {
+            let actual_new_target = if construct_slot
+                .borrow()
+                .as_ref()
+                .and_then(super::WeakObject::upgrade)
+                .as_ref()
+                == Some(&new_target)
+            {
                 construct_target.clone()
             } else {
                 new_target
             };
             construct_target.construct(&arguments, actual_new_target)
         });
-        *slot.borrow_mut() = Some(function.clone());
+        *slot.borrow_mut() = Some(function.downgrade());
         function
     } else {
         Object::native_function(call)
-    }
+    };
+    function.initialize_prototype(prototype);
+    function.0.state.borrow_mut().bound_target = Some(target);
+    Ok(function)
 }
 
 fn define_properties(target: &Object, descriptors: &Object) -> RuntimeResult<()> {
@@ -872,4 +882,36 @@ fn array_value(values: Vec<Value>) -> RuntimeResult<Value> {
         PropertyDescriptor::data(Value::Number(length as f64), true, false, false),
     )?;
     Ok(Value::Object(array))
+}
+
+pub(super) fn install_has_instance(
+    intrinsics: &IntrinsicRegistry,
+    symbols: &super::WellKnownSymbols,
+) -> RuntimeResult<()> {
+    let prototype = intrinsics.get(IntrinsicId::FunctionPrototype);
+    let key: PropertyKey = symbols.get(super::WellKnownSymbol::HasInstance).into();
+    let call_key = key.clone();
+    let method = Object::native_function(move |this, arguments| {
+        super::operators::ordinary_has_instance(this, value_arg(arguments.first()), &call_key)
+            .map(Value::Boolean)
+    });
+    method.set_prototype(Some(prototype.clone()));
+    method.define_own_property(
+        "name".into(),
+        PropertyDescriptor::data(
+            Value::String("[Symbol.hasInstance]".into()),
+            false,
+            false,
+            true,
+        ),
+    )?;
+    method.define_own_property(
+        "length".into(),
+        PropertyDescriptor::data(Value::Number(1.0), false, false, true),
+    )?;
+    prototype.define_own_property(
+        key,
+        PropertyDescriptor::data(Value::Object(method), false, false, false),
+    )?;
+    Ok(())
 }

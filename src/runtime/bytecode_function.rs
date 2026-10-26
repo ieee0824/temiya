@@ -67,7 +67,7 @@ pub(crate) fn create(
                     .realm
                     .intrinsic(IntrinsicId::ObjectPrototype),
             };
-            instance.set_prototype(Some(prototype));
+            instance.initialize_prototype(Some(prototype));
             let value = construct_closure
                 .call(
                     function,
@@ -83,7 +83,7 @@ pub(crate) fn create(
         })
     };
     *slot.borrow_mut() = Some(function.downgrade());
-    function.set_prototype(Some(realm.intrinsic(IntrinsicId::FunctionPrototype)));
+    function.initialize_prototype(Some(realm.intrinsic(IntrinsicId::FunctionPrototype)));
     for (name, value) in [
         (
             "length",

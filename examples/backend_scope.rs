@@ -77,6 +77,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "((a,b)=>a+b)(20,22);",
         "let numeric=41;++numeric;",
         "-(~41);",
+        "let compound=21; compound <<= 1; compound;",
+        "let logical=null; logical ??= 42; logical ||= 99; logical;",
+        "9007199254740993n > 9007199254740992 ? 42 : 0;",
     ] {
         let calls = BytecodeCompiler::compile(source)?;
         assert!(matches!(

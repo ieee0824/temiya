@@ -32,9 +32,10 @@ BigInt/numeric results, signed zero/NaN/infinity, typeof/TDZ, strict string writ
 const/Symbol/throw failures, and computed-key release/reentry. Fixed original
 Test262 follow-up results are recorded separately from normal tests.
 
-#287 remains open: the remaining binary and compound-assignment lowering,
-short-circuit combinations and their full coercion audit, complete fixed upstream
-gates, latest x86/security checks and fresh performance evidence are unfinished.
+#287 remains open. Binary/compound lowering and short-circuit combinations are
+continued in [binary operators](bytecode-binary.md); their full coercion audit,
+complete fixed upstream gates, latest x86/security checks and fresh performance
+evidence are unfinished.
 Unsupported source fails compilation explicitly; no AST fallback is used. Engine
 still uses AST. Reference layout and shared numeric hot paths change, so prior
 #470 measurements do not establish this version's performance. No speed gain or

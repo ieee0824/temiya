@@ -119,3 +119,42 @@ scope semantics needed by future bytecode integration; it does not establish a
 speedup on omoikane or satisfy the Boa speed gate.
 
 Global declaration checks follow [GlobalDeclarationInstantiation](https://tc39.es/ecma262/2026/multipage/ecmascript-language-scripts-and-modules.html#sec-globaldeclarationinstantiation) for the supported var/lexical subset. Function declarations, Annex B rules and exhaustive exotic-global behavior remain separate work.
+
+
+## Hosted x86_64 Engine comparison after scope support
+
+[Run 40388707981](https://github.com/ieee0824/temiya/actions/runs/40388707981)
+completed on Ubuntu 24.04, four logical CPUs. The
+[provenance record](../benchmarks/bytecode-scopes-hosted-provenance.json) retains
+build identity and the original artifact reference. Both
+[before/after](../benchmarks/bytecode-scopes-hosted-beforeafter.json) and
+[Boa](../benchmarks/bytecode-scopes-hosted-boa.json) use the original eleven
+workloads, 15 timed samples, one checked warmup and three alternating pairs.
+Each mode has 66 successful runs and 1056 validated values. They run serially
+after all builds, with the same compiler and existing 512 MiB/180-second guards.
+
+The measured revision is `7b6955b4c76ef3eab4a302199e339ac0cb8c6b57`;
+the baseline is `d161a8d4c0d100faa1954a99396ea79d39f02d6c`. The measured
+runtime is identical to code revision `7b6955b4c76ef3eab4a302199e339ac0cb8c6b57`.
+Later result-only commits do not modify executable source, worker scripts,
+dependencies or the measurement workflow. Architectures are reported separately.
+
+| Workload | Changed / prior Temiya time | Changed Temiya / Boa time |
+| --- | ---: | ---: |
+| arith | 0.97–1.01× | 3.49–3.60× |
+| prop-mono | 0.98–1.00× | 2.73–2.75× |
+| prop-mega | 1.00–1.04× | 2.45–2.48× |
+| call | 0.97–0.98× | 2.30–2.40× |
+| closure-alloc | 0.98–1.02× | 1.73–1.90× |
+| object-alloc | 0.97–1.00× | 1.85–1.88× |
+| string-concat | 0.96–0.99× | 3.12–3.25× |
+| array | 1.01–1.02× | 2.31–2.33× |
+| primitive-string-property | 0.99–1.01× | 2.89–2.96× |
+| primitive-string-method | 0.98–0.99× | 2.16–2.18× |
+| proto-method | 0.97–0.99× | 2.28–2.30× |
+
+All 33 before/after pairs remain within the noise threshold; no throughput
+speedup or regression beyond that threshold is established on this runner.
+All 33 Boa pairs still find Temiya slower beyond the threshold. Both all-eleven
+speed gates remain false. Bytecode scope support does not satisfy the Boa goal
+or complete #307/#427.

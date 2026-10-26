@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::ast::Program;
 
-use super::{Environment, Object, RuntimeError, RuntimeResult, Value};
+use super::{Environment, JobQueue, Object, RuntimeError, RuntimeResult, Value};
 
 /// An ECMAScript Realm with its global object and Global Environment Record.
 #[derive(Clone)]
@@ -16,6 +16,7 @@ struct RealmData {
     id: u64,
     global_object: Object,
     global_environment: Environment,
+    job_queue: JobQueue,
 }
 
 impl Realm {
@@ -28,6 +29,7 @@ impl Realm {
             id: next_id(&NEXT_ID, "Realm"),
             global_object,
             global_environment,
+            job_queue: JobQueue::new(),
         }))
     }
 
@@ -54,6 +56,12 @@ impl Realm {
     #[must_use]
     pub fn global_environment(&self) -> Environment {
         self.0.global_environment.clone()
+    }
+
+    /// Returns the Realm's Promise Job Queue.
+    #[must_use]
+    pub fn job_queue(&self) -> JobQueue {
+        self.0.job_queue.clone()
     }
 }
 

@@ -20,6 +20,18 @@ pub struct Token<'a> {
 }
 
 impl<'a> Token<'a> {
+    /// Decodes a string literal to UTF-16 code units, preserving lone surrogates.
+    ///
+    /// Returns `None` for non-string or malformed manually constructed tokens.
+    /// Legacy escapes are accepted and marked by [`TokenKind::LegacyString`].
+    pub fn string_value(&self) -> Option<Vec<u16>> {
+        if !matches!(self.kind, TokenKind::String | TokenKind::LegacyString) {
+            return None;
+        }
+        let (end, value, _) = scan_string(self.text, 0).ok()?;
+        (end == self.text.len()).then_some(value)
+    }
+
     /// Returns the decoded IdentifierName for identifier and keyword tokens.
     ///
     /// Unescaped names borrow their spelling; escaped names are decoded without
@@ -49,6 +61,9 @@ pub enum TokenKind {
     /// A legacy leading-zero decimal literal; forbidden in strict code.
     LegacyDecimalNumber,
     String,
+    /// A string containing legacy octal or non-octal decimal escapes.
+    /// A parser must reject this token in strict code.
+    LegacyString,
     /// A regular-expression literal, including delimiters and flags.
     RegularExpression,
     Keyword,
@@ -79,6 +94,111 @@ impl std::error::Error for LexError {}
 
 fn is_line_terminator(c: char) -> bool {
     matches!(c, '\n' | '\r' | '\u{2028}' | '\u{2029}')
+}
+
+fn string_error(start: usize, end: usize, message: &'static str) -> LexError {
+    LexError {
+        span: Span { start, end },
+        message,
+    }
+}
+
+fn push_code_point(value: &mut Vec<u16>, code: u32) {
+    if code <= 0xffff {
+        value.push(code as u16);
+    } else {
+        value.push(0xd800 + ((code - 0x10000) >> 10) as u16);
+        value.push(0xdc00 + ((code - 0x10000) & 0x3ff) as u16);
+    }
+}
+
+fn scan_string(source: &str, start: usize) -> Result<(usize, Vec<u16>, bool), LexError> {
+    let Some(quote @ ('\'' | '"')) = source[start..].chars().next() else {
+        return Err(string_error(start, start, "expected string literal"));
+    };
+    let mut pos = start + 1;
+    let mut value = Vec::new();
+    let mut legacy = false;
+    while let Some(c) = source[pos..].chars().next() {
+        if c == quote {
+            return Ok((pos + 1, value, legacy));
+        }
+        if matches!(c, '\r' | '\n') {
+            return Err(string_error(pos, pos + 1, "unescaped newline in string"));
+        }
+        if c == '\\' {
+            let (end, cooked, old_escape) = scan_string_escape(source, pos)?;
+            pos = end;
+            value.extend(cooked);
+            legacy |= old_escape;
+        } else {
+            push_code_point(&mut value, c as u32);
+            pos += c.len_utf8();
+        }
+    }
+    Err(string_error(start, pos, "unterminated string"))
+}
+
+fn scan_string_escape(source: &str, start: usize) -> Result<(usize, Vec<u16>, bool), LexError> {
+    let mut pos = start + 1;
+    let Some(c) = source[pos..].chars().next() else {
+        return Err(string_error(start, pos, "unterminated string escape"));
+    };
+    pos += c.len_utf8();
+    if is_line_terminator(c) {
+        if c == '\r' && source.as_bytes().get(pos) == Some(&b'\n') {
+            pos += 1;
+        }
+        return Ok((pos, Vec::new(), false));
+    }
+    let mut legacy = false;
+    let code = match c {
+        'b' => 8,
+        'f' => 12,
+        'n' => 10,
+        'r' => 13,
+        't' => 9,
+        'v' => 11,
+        'x' => {
+            let mut code = 0;
+            for _ in 0..2 {
+                let digit = source
+                    .as_bytes()
+                    .get(pos)
+                    .and_then(|b| (*b as char).to_digit(16))
+                    .ok_or_else(|| string_error(start, pos, "invalid hexadecimal string escape"))?;
+                code = code * 16 + digit;
+                pos += 1;
+            }
+            code
+        }
+        'u' => {
+            let (end, code) = unicode_escape(source, start)?;
+            pos = end;
+            code
+        }
+        '0'..='7' => {
+            legacy = c != '0' || source.as_bytes().get(pos).is_some_and(u8::is_ascii_digit);
+            let mut code = c as u32 - '0' as u32;
+            let limit = if c <= '3' { 2 } else { 1 };
+            for _ in 0..limit {
+                let Some(b @ b'0'..=b'7') = source.as_bytes().get(pos) else {
+                    break;
+                };
+                code = code * 8 + (b - b'0') as u32;
+                pos += 1;
+            }
+            code
+        }
+        '8' | '9' => {
+            legacy = true;
+            c as u32
+        }
+        _ => c as u32,
+    };
+    let mut value = Vec::new();
+    push_code_point(&mut value, code);
+    Ok((pos, value, legacy))
 }
 
 fn numeric_error(start: usize, end: usize) -> LexError {
@@ -185,11 +305,11 @@ fn is_identifier_part(c: char) -> bool {
     unicode_id_start::is_id_continue(c) || matches!(c, '$' | '\u{200c}' | '\u{200d}')
 }
 
-fn identifier_escape(source: &str, start: usize) -> Result<(usize, char), LexError> {
+fn unicode_escape(source: &str, start: usize) -> Result<(usize, u32), LexError> {
     let mut pos = start + 1;
     let invalid = |end| LexError {
         span: Span { start, end },
-        message: "invalid identifier Unicode escape",
+        message: "invalid Unicode escape",
     };
     if source.as_bytes().get(pos) != Some(&b'u') {
         return Err(invalid(pos));
@@ -223,8 +343,7 @@ fn identifier_escape(source: &str, start: usize) -> Result<(usize, char), LexErr
     } else if pos - digits != 4 {
         return Err(invalid(pos));
     }
-    let c = char::from_u32(value).ok_or_else(|| invalid(pos))?;
-    Ok((pos, c))
+    Ok((pos, value))
 }
 
 fn scan_identifier(
@@ -236,7 +355,12 @@ fn scan_identifier(
     while let Some(c) = source[pos..].chars().next() {
         let escaped = c == '\\';
         let (end, c) = if escaped {
-            identifier_escape(source, pos)?
+            let (end, code) = unicode_escape(source, pos)?;
+            let c = char::from_u32(code).ok_or(LexError {
+                span: Span { start: pos, end },
+                message: "invalid character in identifier",
+            })?;
+            (end, c)
         } else {
             (pos + c.len_utf8(), c)
         };
@@ -472,30 +596,13 @@ fn scan_token(
             pos = end;
             kind
         } else if matches!(c, '\'' | '"') {
-            let quote = c;
-            pos += 1;
-            loop {
-                let Some(c) = source[pos..].chars().next() else {
-                    return Err(LexError {
-                        span: Span { start, end: pos },
-                        message: "unterminated string",
-                    });
-                };
-                if matches!(c, '\n' | '\r' | '\u{2028}' | '\u{2029}' | '\\') {
-                    return Err(LexError {
-                        span: Span {
-                            start: pos,
-                            end: pos + c.len_utf8(),
-                        },
-                        message: "string escapes and line terminators are not supported",
-                    });
-                }
-                pos += c.len_utf8();
-                if c == quote {
-                    break;
-                }
+            let (end, _, legacy) = scan_string(source, pos)?;
+            pos = end;
+            if legacy {
+                TokenKind::LegacyString
+            } else {
+                TokenKind::String
             }
-            TokenKind::String
         } else {
             // Longest spelling wins. Slash is handled by the lexical goal above.
             let punct = [
@@ -624,7 +731,6 @@ mod tests {
             "'abc",
             "1e+",
             "123abc",
-            "'a\\n'",
             "'a\nb'",
             "`template`",
             "/regex/",

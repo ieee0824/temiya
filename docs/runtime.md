@@ -210,4 +210,4 @@ variants passed; 43 files failed and their later 43 variants were unexecuted. Ex
 builtin/prototype/harness failures are failures, not skips or passing tests;
 each file stops at its first failing variant, so later variants remain unrun.
 This is not full String conformance: search, padding, case conversion, iteration,
-RegExp integration and the legacy Annex B `substr` are separate work.
+RegExp integration are separate work; legacy Annex B `substr` is tracked in #454.

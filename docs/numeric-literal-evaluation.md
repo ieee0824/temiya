@@ -53,3 +53,42 @@ ratios are 0.97, 0.95 and 0.92. Process CPU includes setup, warmup and reporting
 and does not replace timed medians. This focused run has a 180-second timeout
 but no RSS watchdog; it cannot establish an all-eleven speedup or the absence
 of regression. The full hosted comparison must be considered separately.
+
+
+## Hosted x86_64 numeric-normalization comparison
+
+[Run 40378506633](https://github.com/ieee0824/temiya/actions/runs/40378506633)
+completed on Ubuntu 24.04, four logical CPUs. The
+[provenance record](../benchmarks/numeric-normalization-hosted-provenance.json) retains
+build identity and the original artifact reference. Both
+[before/after](../benchmarks/numeric-normalization-hosted-beforeafter.json) and
+[Boa](../benchmarks/numeric-normalization-hosted-boa.json) use the original eleven
+workloads, 15 timed samples, one checked warmup and three alternating pairs.
+Each mode has 66 successful runs and 1056 validated values. They run serially
+after all builds, with the same compiler and existing 512 MiB/180-second guards.
+
+The measured revision is `b2793d825fab8485e518106409515409b7f54553`;
+the baseline is `2ba4d0b82a63069978b5d7b047ce4e7121f8ba2f`. The measured
+runtime is identical to code revision `3bae87f905f172f9dbc742a1acccb3fdeb72ee57`.
+Later ARM64 data commits do not modify executable source, worker scripts,
+dependencies or the measurement workflow. Architectures are reported separately.
+
+| Workload | Changed / prior Temiya time | Changed Temiya / Boa time |
+| --- | ---: | ---: |
+| arith | 0.95–0.97× | 3.53–3.63× |
+| prop-mono | 1.01–1.02× | 2.72–2.77× |
+| prop-mega | 0.98–0.99× | 2.42–2.46× |
+| call | 0.97–0.98× | 2.37–2.41× |
+| closure-alloc | 0.96–0.98× | 1.83–1.93× |
+| object-alloc | 0.95–0.97× | 1.79–1.80× |
+| string-concat | 0.98–0.98× | 3.16–3.19× |
+| array | 0.98–0.99× | 2.37–2.40× |
+| primitive-string-property | 0.96–0.99× | 2.91–2.92× |
+| primitive-string-method | 0.94–0.96× | 2.19–2.21× |
+| proto-method | 0.98–1.02× | 2.28–2.33× |
+
+All 33 before/after pairs remain within the noise threshold; no throughput
+speedup or regression beyond that threshold is established on this runner.
+All 33 Boa pairs still find Temiya slower beyond the threshold. Both all-eleven
+speed gates remain false. Allocation reductions do not satisfy the Boa goal
+or complete #412/#427.

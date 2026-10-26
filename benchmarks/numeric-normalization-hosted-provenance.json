@@ -1,0 +1,80 @@
+{
+  "recorded_at": "2026-10-26T19:24:10.494Z",
+  "run_id": 40378506633,
+  "run_url": "https://github.com/ieee0824/temiya/actions/runs/40378506633",
+  "artifact_id": 12679668428,
+  "artifact_name": "omoikane-comparison-40378506633-1",
+  "measured_revision": "b2793d825fab8485e518106409515409b7f54553",
+  "baseline_revision": "2ba4d0b82a63069978b5d7b047ce4e7121f8ba2f",
+  "runtime_code_revision": "3bae87f905f172f9dbc742a1acccb3fdeb72ee57",
+  "equivalence_checked_through": "66512bb416fd2bc6ddfa7738981a8d3235c18a9e",
+  "equivalence_scope": [
+    "src",
+    "examples",
+    "scripts",
+    "Cargo.toml",
+    "Cargo.lock",
+    ".github/workflows/omoikane-benchmark.yml"
+  ],
+  "compiler": "rustc 1.99.1 (58cf8f9c3 2026-10-13)\nbinary: rustc\ncommit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67\ncommit-date: 2026-10-13\nhost: x86_64-unknown-linux-gnu\nrelease: 1.99.1\nLLVM version: 23.1.1",
+  "manifest_sha256": "003147323f8fca044bafdf341e2fba09abec1c15d93396cbd87453fb89d54e8a",
+  "baseline_build": {
+    "name": "Temiya",
+    "engine": "Temiya",
+    "mode": "AST interpreter",
+    "profile": "release",
+    "features": [],
+    "revision": "2ba4d0b82a63069978b5d7b047ce4e7121f8ba2f",
+    "executable": "/home/runner/work/_temp/temiya-baseline-target/release/examples/measure_workload",
+    "executable_sha256": "08d74b5a0b3169d6d0204edb2e3d72c032eee121f53cb511e369098ef02695b6",
+    "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)\nbinary: rustc\ncommit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67\ncommit-date: 2026-10-13\nhost: x86_64-unknown-linux-gnu\nrelease: 1.99.1\nLLVM version: 23.1.1"
+  },
+  "boa_build": {
+    "recorded_at": "2026-10-26T18:37:28.859Z",
+    "omoikane_revision": "007556adccb8fb4329236932ca8175f8e8d119d2",
+    "checkout_clean": true,
+    "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)\nbinary: rustc\ncommit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67\ncommit-date: 2026-10-13\nhost: x86_64-unknown-linux-gnu\nrelease: 1.99.1\nLLVM version: 23.1.1",
+    "cargo": "cargo 1.99.1 (5f94df478 2026-08-27)",
+    "profile": "release",
+    "cargo_args": [
+      "build",
+      "--locked",
+      "--release"
+    ],
+    "rustflags": "",
+    "features": {
+      "omoikane": [],
+      "boa_engine": [
+        "annex-b",
+        "default",
+        "experimental",
+        "float16",
+        "intl",
+        "intl_bundled",
+        "temporal",
+        "xsum"
+      ],
+      "regress": [
+        "backend-pikevm",
+        "default",
+        "std",
+        "utf16"
+      ]
+    },
+    "original_lock_sha256": "f3988c4d9b0ecc28560df18df1cae7760c7c55a016318ea3e31f3ebbfcaea211",
+    "adapter_lock_sha256": "6b4debb1e4368b52de4586b7b30c3d4b6b8882a1bd4ee87d78aa488a252517e7",
+    "worker_source_sha256": "efba2d69a8c594a14c508ee3c9bf97a1799de98a438f14d449fe9be07f351a06",
+    "executable": "/home/runner/work/_temp/omoikane-worker-target/release/omoikane-workload-worker",
+    "executable_sha256": "6c88090d88cc5cc6726c43b65c79fe0cbfac3f7f1135c065951f6ad06501db37",
+    "execution_mode": "interpreter; baseline-jit feature absent"
+  },
+  "observations": {
+    "beforeafter": {
+      "within noise threshold": 33
+    },
+    "boa": {
+      "Temiya slower beyond threshold": 33
+    }
+  },
+  "scope": "Full eleven-workload repeated comparison on one hosted x86_64 runner. Success means validated measurements, not a passing speed gate."
+}

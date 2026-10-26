@@ -279,6 +279,7 @@ pub(super) struct ObjectState {
     pub(super) view: Option<super::indexed::ViewSlot>,
     pub(super) string_data: Option<JsString>,
     pub(super) regexp: Option<super::regexp::RegExpSlot>,
+    pub(super) numeric_data: Option<Value>,
 }
 
 pub(super) fn ordinary_state() -> ObjectState {
@@ -301,6 +302,10 @@ impl Object {
         callback: impl Fn(&[Value], Object) -> RuntimeResult<Object> + 'static,
     ) {
         self.0.state.borrow_mut().construct = Some(Rc::new(callback));
+    }
+
+    pub(crate) fn clear_native_construct(&self) {
+        self.0.state.borrow_mut().construct = None;
     }
 
     /// Allocates a callable object backed by a native Rust closure.

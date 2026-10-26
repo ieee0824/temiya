@@ -76,6 +76,26 @@ decimal digit is a normal escape. Unterminated strings and malformed hex or
 Unicode escapes produce byte-range errors. See
 [ECMAScript string literals](https://tc39.es/ecma262/multipage/ecmascript-language-lexical-grammar.html#sec-literals-string-literals).
 
+## Template literals
+
+An opening backtick produces `Template` (no substitutions) or `TemplateHead`
+(ending in `${`) under any goal. While scanning a substitution's expression,
+the caller uses the ordinary division/regexp goals and tracks nested braces and
+templates. At the matching `}`, it chooses `TemplateTail` or
+`RegExpOrTemplateTail` to obtain a `TemplateMiddle` (ending in `${`) or
+`TemplateTail` token (ending in a backtick). The former goal interprets slash as
+division; the latter interprets slash as a regexp. The lexer does not infer
+which closing brace ends a substitution.
+
+`Token::template_value()` returns delimiter-free raw and cooked UTF-16 values.
+Both normalize literal CR/CRLF to LF. Raw values preserve escape spelling;
+cooked values decode escapes and omit line continuations. Invalid escapes
+produce `cooked: None`, allowing a future parser to accept tagged templates and
+reject untagged templates. Legacy string escapes are invalid template escapes.
+Unterminated components are lexical errors. Raw token text and byte spans are
+always unchanged, including CRLF. See the
+[ECMAScript template lexical components](https://tc39.es/ecma262/multipage/ecmascript-language-lexical-grammar.html#sec-template-literal-lexical-components).
+
 ## Lexical goals
 
 `Lexer::new(source)` and `next_token(LexicalGoal)` provide incremental scanning.
@@ -84,6 +104,8 @@ The caller chooses a goal for each token based on its syntactic context:
 - `LexicalGoal::Div` recognizes `/` and `/=` as punctuators.
 - `LexicalGoal::RegExp` recognizes a complete regular-expression literal,
   including delimiters and flags, as `TokenKind::RegularExpression`.
+- `LexicalGoal::TemplateTail` and `RegExpOrTemplateTail` additionally recognize
+  template continuations at `}` as described above.
 
 Both goals skip comments before scanning a token. In particular, `//` is a
 line comment, not an empty regular expression; use `/(?:)/` for that spelling.
@@ -108,13 +130,14 @@ line-terminator flag.
 The existing `tokenize(source)` API preserves its previous behavior and still
 rejects slash outside comments. It does not guess goals from preceding tokens.
 Callers needing division or regular expressions should migrate to `Lexer` and
-select the goal for every `next_token` call. Template-tail goals are deferred to
-template-literal support.
+select the goal for every `next_token` call. In particular, template
+substitutions require the incremental API; `tokenize` does not select template
+tail goals automatically.
 
 ## Remaining limitations
 
 This is a bootstrap subset, not a conforming ECMAScript lexer. Private
-identifiers, templates, hashbangs, and optional chaining are not supported.
+identifiers, hashbangs, and optional chaining are not supported.
 Unsupported sequences can sometimes be
 split into individually valid tokens; tokenization does not validate grammar.
 A future parser must use the line-terminator metadata to implement restricted

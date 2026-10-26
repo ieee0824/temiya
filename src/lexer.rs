@@ -20,6 +20,23 @@ pub struct Token<'a> {
 }
 
 impl<'a> Token<'a> {
+    /// Returns raw and cooked UTF-16 values for a template component.
+    ///
+    /// Delimiters are excluded and CR/CRLF are normalized to LF in raw values.
+    /// Invalid escapes yield an absent cooked value, allowing tagged templates;
+    /// a parser must reject them in untagged templates.
+    pub fn template_value(&self) -> Option<TemplateValue> {
+        let tail = matches!(
+            self.kind,
+            TokenKind::TemplateMiddle | TokenKind::TemplateTail
+        );
+        if !tail && !matches!(self.kind, TokenKind::Template | TokenKind::TemplateHead) {
+            return None;
+        }
+        let (end, _, value) = scan_template(self.text, 0, tail).ok()?;
+        (end == self.text.len()).then_some(value)
+    }
+
     /// Decodes a string literal to UTF-16 code units, preserving lone surrogates.
     ///
     /// Returns `None` for non-string or malformed manually constructed tokens.
@@ -64,6 +81,14 @@ pub enum TokenKind {
     /// A string containing legacy octal or non-octal decimal escapes.
     /// A parser must reject this token in strict code.
     LegacyString,
+    /// A complete template literal without substitutions.
+    Template,
+    /// A template's opening component, ending in `${`.
+    TemplateHead,
+    /// A component between substitutions, starting in `}` and ending in `${`.
+    TemplateMiddle,
+    /// A template's closing component, starting in `}` and ending in a backtick.
+    TemplateTail,
     /// A regular-expression literal, including delimiters and flags.
     RegularExpression,
     Keyword,
@@ -72,6 +97,15 @@ pub enum TokenKind {
     EscapedKeyword,
     Punctuator,
     End,
+}
+
+/// Raw and cooked values of a template component without its delimiters.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TemplateValue {
+    /// Raw UTF-16 code units, with CR and CRLF normalized to LF.
+    pub raw: Vec<u16>,
+    /// Cooked UTF-16 code units, or `None` if an escape is invalid.
+    pub cooked: Option<Vec<u16>>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -110,6 +144,89 @@ fn push_code_point(value: &mut Vec<u16>, code: u32) {
         value.push(0xd800 + ((code - 0x10000) >> 10) as u16);
         value.push(0xdc00 + ((code - 0x10000) & 0x3ff) as u16);
     }
+}
+
+fn normalized_template_raw(raw: &str) -> Vec<u16> {
+    let mut value = Vec::new();
+    let mut chars = raw.chars().peekable();
+    while let Some(c) = chars.next() {
+        let c = if c == '\r' {
+            if chars.peek() == Some(&'\n') {
+                chars.next();
+            }
+            '\n'
+        } else {
+            c
+        };
+        push_code_point(&mut value, c as u32);
+    }
+    value
+}
+
+fn scan_template(
+    source: &str,
+    start: usize,
+    tail: bool,
+) -> Result<(usize, TokenKind, TemplateValue), LexError> {
+    let expected = if tail { b'}' } else { b'`' };
+    if source.as_bytes().get(start) != Some(&expected) {
+        return Err(string_error(start, start, "expected template component"));
+    }
+    let mut pos = start + 1;
+    let mut cooked = Some(Vec::new());
+    while let Some(c) = source[pos..].chars().next() {
+        let substitution = source[pos..].starts_with("${");
+        if c == '`' || substitution {
+            let kind = match (tail, substitution) {
+                (false, false) => TokenKind::Template,
+                (false, true) => TokenKind::TemplateHead,
+                (true, false) => TokenKind::TemplateTail,
+                (true, true) => TokenKind::TemplateMiddle,
+            };
+            return Ok((
+                pos + if substitution { 2 } else { 1 },
+                kind,
+                TemplateValue {
+                    raw: normalized_template_raw(&source[start + 1..pos]),
+                    cooked,
+                },
+            ));
+        }
+        if c == '\\' {
+            match scan_string_escape(source, pos) {
+                Ok((end, value, legacy)) => {
+                    if legacy {
+                        cooked = None;
+                    }
+                    if let Some(cooked) = &mut cooked {
+                        cooked.extend(value);
+                    }
+                    pos = end;
+                }
+                Err(_) => {
+                    cooked = None;
+                    pos += 1;
+                    if let Some(c) = source[pos..].chars().next() {
+                        pos += c.len_utf8();
+                    }
+                }
+            }
+        } else {
+            pos += c.len_utf8();
+            let code = if c == '\r' {
+                if source.as_bytes().get(pos) == Some(&b'\n') {
+                    pos += 1;
+                }
+                '\n' as u32
+            } else {
+                c as u32
+            };
+            if let Some(cooked) = &mut cooked {
+                push_code_point(cooked, code);
+            }
+        }
+    }
+    Err(string_error(start, pos, "unterminated template component"))
 }
 
 fn scan_string(source: &str, start: usize) -> Result<(usize, Vec<u16>, bool), LexError> {
@@ -445,13 +562,17 @@ fn scan_regexp(source: &str, start: usize) -> Result<usize, LexError> {
     })
 }
 
-/// Selects how a slash outside comments is interpreted for the next token.
+/// Selects slash interpretation and template continuations for the next token.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum LexicalGoal {
     /// Recognize division and division assignment (InputElementDiv subset).
     Div,
     /// Recognize a regular-expression literal (InputElementRegExp subset).
     RegExp,
+    /// Recognize division or a template continuation beginning with `}`.
+    TemplateTail,
+    /// Recognize regular expressions or a template continuation at `}`.
+    RegExpOrTemplateTail,
 }
 
 /// An incremental lexer whose caller selects a lexical goal for every token.
@@ -565,8 +686,17 @@ fn scan_token(
             pos += end + 4;
             continue;
         }
-        let kind = if c == '/' && goal.is_some() {
-            if goal == Some(LexicalGoal::Div) {
+        let kind = if c == '`'
+            || (c == '}'
+                && matches!(
+                    goal,
+                    Some(LexicalGoal::TemplateTail | LexicalGoal::RegExpOrTemplateTail)
+                )) {
+            let (end, kind, _) = scan_template(source, pos, c == '}')?;
+            pos = end;
+            kind
+        } else if c == '/' && goal.is_some() {
+            if matches!(goal, Some(LexicalGoal::Div | LexicalGoal::TemplateTail)) {
                 pos += if source[pos..].starts_with("/=") {
                     2
                 } else {
@@ -726,16 +856,7 @@ mod tests {
 
     #[test]
     fn reports_incomplete_and_unsupported_input() {
-        for source in [
-            "/*",
-            "'abc",
-            "1e+",
-            "123abc",
-            "'a\nb'",
-            "`template`",
-            "/regex/",
-            "a / b",
-        ] {
+        for source in ["/*", "'abc", "1e+", "123abc", "'a\nb'", "/regex/", "a / b"] {
             assert!(tokenize(source).is_err(), "{source:?}");
         }
     }

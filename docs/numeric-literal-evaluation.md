@@ -9,7 +9,7 @@ the owned AST, numeric representation, or public API.
 The separate `numeric_allocation_probe` parses its fixtures once and repeatedly
 evaluates them through the public `ExpressionEvaluator`. It compares allocator
 requests with the preceding normalization/parse algorithm, warms each operation
-128 times, and excludes parsing, Realm setup and report construction. Results
+128 times, and excludes parsing, Realm setup and report construction. The [recorded observations](../benchmarks/numeric-normalization-allocations.json)
 are allocation requests/bytes, not throughput, retained memory or RSS. Timing
 workers do not link the counting allocator.
 
@@ -40,3 +40,16 @@ omoikane inputs and the existing result/noise/resource guards. Reducing an
 allocator count does not establish a speedup against Boa or complete #427.
 Immutable compile artifacts and function-code sharing remain separate work in
 #412; this change only avoids a transient normalization buffer.
+
+The [initial eleven-workload diagnostic](../benchmarks/numeric-normalization-diagnostic.json)
+uses three samples and one pair, validates 88 results in 22 runs, and remains
+diagnostic only. Some raw ratios are slower, including arithmetic at 1.18 and
+closure allocation at 1.24. These observations are retained.
+
+A [focused arithmetic followup](../benchmarks/numeric-normalization-arith-followup.json)
+uses the same binaries and input with 15 samples and three alternating pairs.
+Whole-process user+system CPU ratios are 0.96, 0.96 and 0.93; timed wall-median
+ratios are 0.97, 0.95 and 0.92. Process CPU includes setup, warmup and reporting,
+and does not replace timed medians. This focused run has a 180-second timeout
+but no RSS watchdog; it cannot establish an all-eleven speedup or the absence
+of regression. The full hosted comparison must be considered separately.

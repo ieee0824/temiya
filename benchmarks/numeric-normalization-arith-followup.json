@@ -1,0 +1,321 @@
+{
+  "recorded_at": "2026-10-26T18:39:22.597Z",
+  "scope": "Supplemental focused diagnostic. Bash process user+system CPU totals include startup, setup, warmup, all timed passes and final reporting. They do not replace timed wall medians or satisfy the all-eleven speed gate.",
+  "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)\nbinary: rustc\ncommit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67\ncommit-date: 2026-10-13\nhost: aarch64-unknown-linux-gnu\nrelease: 1.99.1\nLLVM version: 23.1.1",
+  "workers": [
+    {
+      "name": "Temiya after",
+      "engine": "Temiya",
+      "executable": "/tmp/temiya-numeric-worker-3bae87f",
+      "revision": "3bae87f905f172f9dbc742a1acccb3fdeb72ee57",
+      "mode": "AST interpreter",
+      "executable_sha256": "b64ac41e0c52f5a1a22af12656228b3cf0f0955af62a3a3cc03007732b68fa7b",
+      "features": [],
+      "profile": "release"
+    },
+    {
+      "name": "Temiya before",
+      "engine": "Temiya",
+      "executable": "/tmp/temiya-addition-final-worker-52fb8b1",
+      "revision": "52fb8b159ad038d446880b55cf97f48d6e61a6e5",
+      "mode": "AST interpreter",
+      "executable_sha256": "9902a0ad4e722152f9edf1d6d484431902a6bdb3cd8b67b5ab98f088c3731296",
+      "features": [],
+      "profile": "release",
+      "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)\nbinary: rustc\ncommit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67\ncommit-date: 2026-10-13\nhost: aarch64-unknown-linux-gnu\nrelease: 1.99.1\nLLVM version: 23.1.1",
+      "source_report": "/tmp/temiya-addition-hot-diagnostic.json"
+    }
+  ],
+  "workload": {
+    "name": "arith",
+    "iterations": 2000000,
+    "expected": 64,
+    "body_sha256": "faeedc595cc9e0e6e538fb38b8e37c6a398ef2839f1ec74752cb73336fd6a30f",
+    "setup_sha256": "ae6dd05803b8a5872b5dda134efd00a0e4a9535885bf43bf2a6748d75f5c1534",
+    "invocation_sha256": "6b1ee5c02c443ecac20be8d7ec68e56c394ac46ed1193ea2fd8689830c9f38dd"
+  },
+  "samples": 15,
+  "pairs": 3,
+  "limits": {
+    "timeout_ms": 180000,
+    "rss_watchdog": false
+  },
+  "all_eleven_workloads_after_faster_beyond_threshold": false,
+  "runs": [
+    {
+      "pair": 0,
+      "worker": "Temiya after",
+      "command": [
+        "/tmp/temiya-numeric-worker-3bae87f",
+        "/tmp/temiya-omoikane-workloads-v2/arith.json",
+        "15"
+      ],
+      "measurement": {
+        "architecture": "aarch64",
+        "engine": "Temiya",
+        "expected": 64,
+        "mode": "AST interpreter",
+        "profile": "release",
+        "samples_ns": [
+          1550330190,
+          1381288484,
+          1462111273,
+          1387917094,
+          1382372546,
+          1473952040,
+          1492807982,
+          1483881849,
+          1459042203,
+          1493671448,
+          1480469188,
+          1495942543,
+          1500724615,
+          1485468826,
+          1489367721
+        ],
+        "sandbox": null,
+        "scope": "parse+evaluate invocation; function setup excluded",
+        "setup_ns": 160210,
+        "startup_ns": 86251,
+        "validated_passes": 16,
+        "warmup_ns": 1403518546
+      },
+      "process_user_seconds": 23.375,
+      "process_system_seconds": 0.041,
+      "process_wall_seconds": 23.424,
+      "process_cpu_seconds": 23.416
+    },
+    {
+      "pair": 0,
+      "worker": "Temiya before",
+      "command": [
+        "/tmp/temiya-addition-final-worker-52fb8b1",
+        "/tmp/temiya-omoikane-workloads-v2/arith.json",
+        "15"
+      ],
+      "measurement": {
+        "architecture": "aarch64",
+        "engine": "Temiya",
+        "expected": 64,
+        "mode": "AST interpreter",
+        "profile": "release",
+        "samples_ns": [
+          1506261775,
+          1537566600,
+          1536235350,
+          1493720546,
+          1532404167,
+          1535911760,
+          1496044283,
+          1508218933,
+          1450135172,
+          1536667741,
+          1534410521,
+          1543217508,
+          1511790129,
+          1536704421,
+          1522797864
+        ],
+        "sandbox": null,
+        "scope": "parse+evaluate invocation; function setup excluded",
+        "setup_ns": 156835,
+        "startup_ns": 98627,
+        "validated_passes": 16,
+        "warmup_ns": 1484012672
+      },
+      "process_user_seconds": 24.266,
+      "process_system_seconds": 0.001,
+      "process_wall_seconds": 24.267,
+      "process_cpu_seconds": 24.267
+    },
+    {
+      "pair": 1,
+      "worker": "Temiya before",
+      "command": [
+        "/tmp/temiya-addition-final-worker-52fb8b1",
+        "/tmp/temiya-omoikane-workloads-v2/arith.json",
+        "15"
+      ],
+      "measurement": {
+        "architecture": "aarch64",
+        "engine": "Temiya",
+        "expected": 64,
+        "mode": "AST interpreter",
+        "profile": "release",
+        "samples_ns": [
+          1492300139,
+          1465528025,
+          1495121368,
+          1505989462,
+          1497958764,
+          1490430947,
+          1455684832,
+          1404282285,
+          1490781335,
+          1498402266,
+          1499644590,
+          1496691655,
+          1503886044,
+          1494372913,
+          1481153579
+        ],
+        "sandbox": null,
+        "scope": "parse+evaluate invocation; function setup excluded",
+        "setup_ns": 162377,
+        "startup_ns": 84959,
+        "validated_passes": 16,
+        "warmup_ns": 1471690103
+      },
+      "process_user_seconds": 23.705,
+      "process_system_seconds": 0.036,
+      "process_wall_seconds": 23.745,
+      "process_cpu_seconds": 23.741
+    },
+    {
+      "pair": 1,
+      "worker": "Temiya after",
+      "command": [
+        "/tmp/temiya-numeric-worker-3bae87f",
+        "/tmp/temiya-omoikane-workloads-v2/arith.json",
+        "15"
+      ],
+      "measurement": {
+        "architecture": "aarch64",
+        "engine": "Temiya",
+        "expected": 64,
+        "mode": "AST interpreter",
+        "profile": "release",
+        "samples_ns": [
+          1377084365,
+          1415724803,
+          1427459572,
+          1413630569,
+          1454247939,
+          1427532424,
+          1420459823,
+          1427804048,
+          1425997798,
+          1402537358,
+          1439593816,
+          1596961841,
+          1452775492,
+          1401761634,
+          1366311156
+        ],
+        "sandbox": null,
+        "scope": "parse+evaluate invocation; function setup excluded",
+        "setup_ns": 135960,
+        "startup_ns": 59959,
+        "validated_passes": 16,
+        "warmup_ns": 1332727361
+      },
+      "process_user_seconds": 22.625,
+      "process_system_seconds": 0.059,
+      "process_wall_seconds": 22.784,
+      "process_cpu_seconds": 22.684
+    },
+    {
+      "pair": 2,
+      "worker": "Temiya after",
+      "command": [
+        "/tmp/temiya-numeric-worker-3bae87f",
+        "/tmp/temiya-omoikane-workloads-v2/arith.json",
+        "15"
+      ],
+      "measurement": {
+        "architecture": "aarch64",
+        "engine": "Temiya",
+        "expected": 64,
+        "mode": "AST interpreter",
+        "profile": "release",
+        "samples_ns": [
+          1427438717,
+          1396969833,
+          1419258962,
+          1425663136,
+          1427562590,
+          1407521235,
+          1414977625,
+          1411496567,
+          1401079064,
+          1417614380,
+          1405095939,
+          1409798591,
+          1343284838,
+          1332571459,
+          1386302496
+        ],
+        "sandbox": null,
+        "scope": "parse+evaluate invocation; function setup excluded",
+        "setup_ns": 152627,
+        "startup_ns": 65459,
+        "validated_passes": 16,
+        "warmup_ns": 1478942784
+      },
+      "process_user_seconds": 22.506,
+      "process_system_seconds": 0,
+      "process_wall_seconds": 22.507,
+      "process_cpu_seconds": 22.506
+    },
+    {
+      "pair": 2,
+      "worker": "Temiya before",
+      "command": [
+        "/tmp/temiya-addition-final-worker-52fb8b1",
+        "/tmp/temiya-omoikane-workloads-v2/arith.json",
+        "15"
+      ],
+      "measurement": {
+        "architecture": "aarch64",
+        "engine": "Temiya",
+        "expected": 64,
+        "mode": "AST interpreter",
+        "profile": "release",
+        "samples_ns": [
+          1458575118,
+          1508962575,
+          1516089542,
+          1434122218,
+          1515576616,
+          1533701447,
+          1527815819,
+          1537381729,
+          1539496767,
+          1544349044,
+          1523108385,
+          1536541876,
+          1533531029,
+          1530446392,
+          1539707045
+        ],
+        "sandbox": null,
+        "scope": "parse+evaluate invocation; function setup excluded",
+        "setup_ns": 153710,
+        "startup_ns": 70667,
+        "validated_passes": 16,
+        "warmup_ns": 1515474980
+      },
+      "process_user_seconds": 24.295,
+      "process_system_seconds": 0,
+      "process_wall_seconds": 24.296,
+      "process_cpu_seconds": 24.295
+    }
+  ],
+  "comparisons": [
+    {
+      "pair": 0,
+      "after_to_before_cpu_total": 0.9649318003873574,
+      "after_to_before_timed_wall_median": 0.9683358222034906
+    },
+    {
+      "pair": 1,
+      "after_to_before_cpu_total": 0.9554778652963228,
+      "after_to_before_timed_wall_median": 0.9542449448827771
+    },
+    {
+      "pair": 2,
+      "after_to_before_cpu_total": 0.926363449269397,
+      "after_to_before_timed_wall_median": 0.9211682280211485
+    }
+  ]
+}

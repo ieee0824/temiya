@@ -1,0 +1,83 @@
+{
+  "engine_revision": "b9ddd75e7fef485db84d06b64f5bc793ba120020",
+  "probe_revision": "89c956a6af6fd2378bc8cb52a8c8825264e60291",
+  "profile": "release",
+  "toolchains": [
+    "Rust 1.99.1",
+    "Rust 1.85.0"
+  ],
+  "command": "cargo run --locked --release --example string_allocation_probe",
+  "report": {
+    "cases": [
+      {
+        "case": "tiny",
+        "compact_clone": {
+          "allocation_requests": 0,
+          "requested_bytes": 0
+        },
+        "compact_construct": {
+          "allocation_requests": 0,
+          "requested_bytes": 0
+        },
+        "utf16_length": 3,
+        "vec_clone": {
+          "allocation_requests": 10000,
+          "requested_bytes": 60000
+        },
+        "vec_construct": {
+          "allocation_requests": 10000,
+          "requested_bytes": 80000
+        }
+      },
+      {
+        "case": "short",
+        "compact_clone": {
+          "allocation_requests": 0,
+          "requested_bytes": 0
+        },
+        "compact_construct": {
+          "allocation_requests": 0,
+          "requested_bytes": 0
+        },
+        "utf16_length": 10,
+        "vec_clone": {
+          "allocation_requests": 10000,
+          "requested_bytes": 200000
+        },
+        "vec_construct": {
+          "allocation_requests": 30000,
+          "requested_bytes": 560000
+        }
+      },
+      {
+        "case": "long",
+        "compact_clone": {
+          "allocation_requests": 0,
+          "requested_bytes": 0
+        },
+        "compact_construct": {
+          "allocation_requests": 20000,
+          "requested_bytes": 2000000
+        },
+        "utf16_length": 80,
+        "vec_clone": {
+          "allocation_requests": 10000,
+          "requested_bytes": 1600000
+        },
+        "vec_construct": {
+          "allocation_requests": 30000,
+          "requested_bytes": 3920000
+        }
+      }
+    ],
+    "iterations": 10000,
+    "js_string_bytes": 24,
+    "pointer_width": 64,
+    "scope": "single-thread standalone allocation requests, including realloc; not Engine throughput or RSS",
+    "timing_instrumentation": false,
+    "value_bytes": 32,
+    "vec_bytes": 24,
+    "warmup_iterations": 128
+  },
+  "note": "Reference Vec operations reproduce the former string construction and clone algorithms. Allocation requests include reallocations and are counted after warmup. This is not Engine elapsed time or RSS; timing workers are uninstrumented."
+}

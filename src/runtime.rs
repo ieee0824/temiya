@@ -11,6 +11,10 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use num_bigint::BigInt;
 
+mod object;
+
+pub use object::{PropertyDescriptor, PropertyKey, is_compatible_property_descriptor};
+
 /// A JavaScript String value represented as an exact sequence of UTF-16 code units.
 #[derive(Clone, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct JsString(Vec<u16>);
@@ -192,6 +196,7 @@ struct ObjectConversion {
 struct ObjectData {
     id: u64,
     conversion: RefCell<ObjectConversion>,
+    state: RefCell<object::ObjectState>,
 }
 
 /// An identity-bearing ordinary object with configurable primitive-conversion hooks.
@@ -209,6 +214,7 @@ impl Object {
         Self(Rc::new(ObjectData {
             id,
             conversion: RefCell::new(ObjectConversion::default()),
+            state: RefCell::new(object::ordinary_state()),
         }))
     }
 

@@ -5,6 +5,7 @@
 //! independently testable stages.
 
 pub mod ast;
+pub mod differential;
 pub mod gc;
 pub mod lexer;
 pub mod parser;

@@ -29,6 +29,11 @@ decoded scalar is valid in that position. Surrogates, out-of-range code points,
 malformed escapes, and escapes of invalid identifier characters are rejected.
 No Unicode normalization is applied.
 
+Private identifiers produce `PrivateIdentifier` tokens including the `#` in
+raw text and source spans. `identifier_name()` returns their decoded name
+without `#`; private-name declaration and reference rules belong to the parser
+and static semantics.
+
 `Token::identifier_name()` returns the decoded spelling as `Cow<str>` (borrowed
 for unescaped names). `Token::text` and byte spans always retain raw spelling.
 Unconditionally reserved words are `Keyword`; escaped spellings of those words
@@ -151,8 +156,7 @@ the delimiters remain ordinary punctuators for a parser to interpret or reject.
 They are never recognized inside strings, templates, or regular expressions.
 See [ECMAScript HTML-like comments](https://tc39.es/ecma262/multipage/additional-ecmascript-features-for-web-browsers.html#sec-html-like-comments).
 
-This is a bootstrap subset, not a conforming ECMAScript lexer. Private
-identifiers are not supported.
+These APIs remain experimental and do not claim complete ECMAScript conformance.
 Unsupported sequences can sometimes be
 split into individually valid tokens; tokenization does not validate grammar.
 A future parser must use the line-terminator metadata to implement restricted

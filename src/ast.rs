@@ -2,6 +2,9 @@
 
 use crate::{lexer::Span, source::SourceText};
 
+mod functions;
+pub use functions::{Class, ClassElement, ClassElementKind, Function, FunctionBody, MethodKind};
+
 /// An owned expression with a half-open UTF-8 byte span in its original source.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Expr {
@@ -17,6 +20,37 @@ pub struct Expr {
 pub enum ExprKind {
     /// A decoded identifier name (without Unicode normalization).
     Identifier(String),
+    /// A decoded private identifier, excluding the leading `#`.
+    PrivateIdentifier(String),
+    /// A function expression.
+    Function(Box<Function>),
+    /// An arrow function, with lexical this/super semantics.
+    Arrow(Box<Function>),
+    /// A class expression.
+    Class(Box<Class>),
+    /// An object method or accessor, used as a property value syntax node.
+    Method {
+        /// Method code.
+        function: Box<Function>,
+        /// Method category.
+        kind: MethodKind,
+    },
+    /// A super reference, valid only as a property/call base.
+    Super,
+    /// A grammar-defined meta-property such as `new.target`.
+    MetaProperty {
+        /// Meta-property prefix.
+        meta: String,
+        /// Property name.
+        property: String,
+    },
+    /// A generator yield expression.
+    Yield {
+        /// Optional yielded expression.
+        argument: Option<Box<Expr>>,
+        /// Whether this is `yield*`.
+        delegate: bool,
+    },
     /// A literal with an owned value or raw numeric/regexp spelling.
     Literal(Literal),
     /// The `this` primary expression.
@@ -217,7 +251,17 @@ impl Expr {
 
     fn children(&self) -> Vec<&Expr> {
         match &self.kind {
-            ExprKind::Identifier(_) | ExprKind::Literal(_) | ExprKind::This => vec![],
+            ExprKind::Identifier(_)
+            | ExprKind::PrivateIdentifier(_)
+            | ExprKind::Literal(_)
+            | ExprKind::This
+            | ExprKind::Super
+            | ExprKind::MetaProperty { .. } => vec![],
+            ExprKind::Function(function)
+            | ExprKind::Arrow(function)
+            | ExprKind::Method { function, .. } => function.expressions(),
+            ExprKind::Class(class) => class.expressions(),
+            ExprKind::Yield { argument, .. } => argument.iter().map(Box::as_ref).collect(),
             ExprKind::Parenthesized(e)
             | ExprKind::Spread(e)
             | ExprKind::Unary { argument: e, .. }
@@ -260,6 +304,13 @@ impl Expr {
     /// operator semantics. The source must be the text this tree was built for.
     pub fn validate(&self, source: &SourceText<'_>) -> Result<(), AstError> {
         self.check_span(source, self.span)?;
+        match &self.kind {
+            ExprKind::Function(function)
+            | ExprKind::Arrow(function)
+            | ExprKind::Method { function, .. } => function.validate(source, self.span)?,
+            ExprKind::Class(class) => class.validate(source, self.span)?,
+            _ => {}
+        }
         for child in self.children() {
             self.check_span(source, child.span)?;
             child.validate(source)?;
@@ -336,6 +387,10 @@ pub struct Stmt {
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum StmtKind {
+    /// A function declaration.
+    FunctionDeclaration(Box<Function>),
+    /// A class declaration.
+    ClassDeclaration(Box<Class>),
     /// An explicit empty statement.
     Empty,
     /// An expression statement.
@@ -567,6 +622,8 @@ impl Stmt {
         let expression = |expr: &Expr| validate_expr(source, self.span, expr);
         let statement = |stmt: &Stmt| validate_stmt(source, self.span, stmt);
         match &self.kind {
+            StmtKind::FunctionDeclaration(function) => function.validate(source, self.span)?,
+            StmtKind::ClassDeclaration(class) => class.validate(source, self.span)?,
             StmtKind::Empty | StmtKind::Break(_) | StmtKind::Continue(_) | StmtKind::Debugger => {}
             StmtKind::Expression(expr) | StmtKind::Throw(expr) => expression(expr)?,
             StmtKind::Return(value) => {

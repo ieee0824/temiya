@@ -38,7 +38,8 @@ if/else, while/do-while, three-clause for, for-in/of/await-of, labels,
 break/continue, return, throw, switch, try/catch/finally, debugger, and non-strict
 with. Basic var/let/const identifier declarations support loop headers and
 statement lists. Lexical declarations cannot occur in single-statement slots.
-Destructuring bindings and function/class declarations are added separately.
+Destructuring bindings and function/class declarations are also supported as
+described below.
 Every statement, declarator, switch case, and catch clause has a source range;
 `Program::validate` recursively checks ranges and containment.
 
@@ -56,9 +57,38 @@ Legacy escapes in earlier directives are checked retrospectively. A string in
 an ordinary nested block does not activate strict mode. Full declaration/scope
 early-error validation remains separate work.
 
-This is not yet a complete ECMAScript frontend. Function/class/arrow and module
-syntax, binding/destructuring patterns, private
-names, `super`, `new.target`, async/yield contexts, method definitions, and full
-early-error validation are separate roadmap work. Regexp pattern validation and
+## Declarations, functions, and classes
+
+Variable declarations and parameters accept nested array/object binding patterns,
+defaults, holes, and rest bindings. Rest must be last and cannot have a trailing
+comma or default. Function declarations/expressions, arrows, generators, async
+functions and async generators retain their parameters, body, flags, and strict
+mode in owned AST nodes. Arrow heads use speculative parsing on a cloned parser;
+the committed parser advances only when an arrow is recognized. Arrow bodies
+inherit lexical super/new.target access, while ordinary functions establish a
+new context. Labels and loop/switch targets never cross function boundaries.
+
+Object/class methods, getters and setters enforce arity and unique parameters.
+Normal functions allow duplicate simple parameters only in non-strict code;
+defaults or patterns make parameters non-simple. Strict directives with non-simple
+parameters are rejected. Await/yield are interpreted in their respective function
+contexts and rejected in formal parameters. Module source reserves await in
+nested code as well. `new.target` is limited to function/initializer contexts.
+
+Classes support heritage, public/private methods, async/generator methods,
+constructors, fields, computed keys, and static blocks. Class code is strict.
+Constructors cannot be special methods or duplicated; super calls are permitted
+only in derived constructors and their arrows. Methods and initializers can
+reference super properties, but nested ordinary functions cannot. Private
+constructor names, duplicate private definitions (except matching getter/setter
+pairs), static prototype names, invalid constructor fields, and private deletion
+are rejected. Field initializers and static blocks reject arguments references
+and super calls; static blocks also disallow return and await expressions.
+
+See [ECMAScript functions and classes](https://tc39.es/ecma262/multipage/ecmascript-language-functions-and-classes.html).
+This is not yet a complete ECMAScript frontend. Module syntax, cover-initialized
+object assignment patterns, Annex B function declarations in single-statement
+slots, declaration/scope analysis, undeclared private references, and full
+early-error validation remain roadmap work. Regexp pattern validation and
 runtime evaluation are also separate. The recursion limit bounds nested parser
 calls, not arbitrary manually built AST depth or total source length.

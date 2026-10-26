@@ -49,13 +49,19 @@ impl<'a> Token<'a> {
         (end == self.text.len()).then_some(value)
     }
 
-    /// Returns the decoded IdentifierName for identifier and keyword tokens.
+    /// Returns a decoded name for identifiers, private identifiers, and keywords.
+    /// Private names exclude their leading `#` in this result.
     ///
     /// Unescaped names borrow their spelling; escaped names are decoded without
     /// Unicode normalization. Returns `None` for other kinds or malformed
     /// manually constructed tokens. Escaped keywords remain distinguishable
     /// through [`TokenKind::EscapedKeyword`].
     pub fn identifier_name(&self) -> Option<std::borrow::Cow<'a, str>> {
+        if self.kind == TokenKind::PrivateIdentifier {
+            let text = self.text.strip_prefix('#')?;
+            let (end, name) = scan_identifier(text, 0).ok()?;
+            return (end == text.len()).then_some(name);
+        }
         if !matches!(
             self.kind,
             TokenKind::Identifier | TokenKind::Keyword | TokenKind::EscapedKeyword
@@ -70,6 +76,8 @@ impl<'a> Token<'a> {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TokenKind {
     Identifier,
+    /// A private identifier, including `#` in raw text and spans.
+    PrivateIdentifier,
     Number,
     /// An integer literal with the BigInt suffix.
     BigInt,
@@ -740,12 +748,17 @@ fn scan_token(
             pos += end + 4;
             continue;
         }
-        let kind = if c == '`'
+        let kind = if c == '#' {
+            let (end, _) = scan_identifier(source, pos + 1)?;
+            pos = end;
+            TokenKind::PrivateIdentifier
+        } else if c == '`'
             || (c == '}'
                 && matches!(
                     goal,
                     Some(LexicalGoal::TemplateTail | LexicalGoal::RegExpOrTemplateTail)
-                )) {
+                ))
+        {
             let (end, kind, _) = scan_template(source, pos, c == '}')?;
             pos = end;
             kind

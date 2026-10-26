@@ -19,6 +19,25 @@ pub struct Token<'a> {
     pub has_line_terminator_before: bool,
 }
 
+impl<'a> Token<'a> {
+    /// Returns the decoded IdentifierName for identifier and keyword tokens.
+    ///
+    /// Unescaped names borrow their spelling; escaped names are decoded without
+    /// Unicode normalization. Returns `None` for other kinds or malformed
+    /// manually constructed tokens. Escaped keywords remain distinguishable
+    /// through [`TokenKind::EscapedKeyword`].
+    pub fn identifier_name(&self) -> Option<std::borrow::Cow<'a, str>> {
+        if !matches!(
+            self.kind,
+            TokenKind::Identifier | TokenKind::Keyword | TokenKind::EscapedKeyword
+        ) {
+            return None;
+        }
+        let (end, name) = scan_identifier(self.text, 0).ok()?;
+        (end == self.text.len()).then_some(name)
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TokenKind {
     Identifier,
@@ -27,6 +46,9 @@ pub enum TokenKind {
     /// A regular-expression literal, including delimiters and flags.
     RegularExpression,
     Keyword,
+    /// An escaped IdentifierName whose decoded spelling is always reserved.
+    /// A parser may accept it as a property name but not as a binding name.
+    EscapedKeyword,
     Punctuator,
     End,
 }
@@ -51,6 +73,105 @@ impl std::error::Error for LexError {}
 
 fn is_line_terminator(c: char) -> bool {
     matches!(c, '\n' | '\r' | '\u{2028}' | '\u{2029}')
+}
+
+fn is_identifier_start(c: char) -> bool {
+    unicode_id_start::is_id_start(c) || matches!(c, '$' | '_')
+}
+
+fn is_identifier_part(c: char) -> bool {
+    unicode_id_start::is_id_continue(c) || matches!(c, '$' | '\u{200c}' | '\u{200d}')
+}
+
+fn identifier_escape(source: &str, start: usize) -> Result<(usize, char), LexError> {
+    let mut pos = start + 1;
+    let invalid = |end| LexError {
+        span: Span { start, end },
+        message: "invalid identifier Unicode escape",
+    };
+    if source.as_bytes().get(pos) != Some(&b'u') {
+        return Err(invalid(pos));
+    }
+    pos += 1;
+    let braced = source.as_bytes().get(pos) == Some(&b'{');
+    if braced {
+        pos += 1;
+    }
+    let digits = pos;
+    let mut value = 0u32;
+    while let Some(c) = source[pos..].chars().next() {
+        let Some(digit) = c.to_digit(16) else {
+            break;
+        };
+        value = value
+            .checked_mul(16)
+            .and_then(|v| v.checked_add(digit))
+            .filter(|v| *v <= 0x10ffff)
+            .ok_or_else(|| invalid(pos + c.len_utf8()))?;
+        pos += c.len_utf8();
+        if !braced && pos - digits == 4 {
+            break;
+        }
+    }
+    if braced {
+        if pos == digits || source.as_bytes().get(pos) != Some(&b'}') {
+            return Err(invalid(pos));
+        }
+        pos += 1;
+    } else if pos - digits != 4 {
+        return Err(invalid(pos));
+    }
+    let c = char::from_u32(value).ok_or_else(|| invalid(pos))?;
+    Ok((pos, c))
+}
+
+fn scan_identifier(
+    source: &str,
+    start: usize,
+) -> Result<(usize, std::borrow::Cow<'_, str>), LexError> {
+    let mut pos = start;
+    let mut decoded: Option<String> = None;
+    while let Some(c) = source[pos..].chars().next() {
+        let escaped = c == '\\';
+        let (end, c) = if escaped {
+            identifier_escape(source, pos)?
+        } else {
+            (pos + c.len_utf8(), c)
+        };
+        let valid = if pos == start {
+            is_identifier_start(c)
+        } else {
+            is_identifier_part(c)
+        };
+        if !valid {
+            if escaped || pos == start {
+                return Err(LexError {
+                    span: Span { start: pos, end },
+                    message: "invalid character in identifier",
+                });
+            }
+            break;
+        }
+        if escaped {
+            decoded.get_or_insert_with(|| source[start..pos].to_owned());
+        }
+        if let Some(name) = &mut decoded {
+            name.push(c);
+        }
+        pos = end;
+    }
+    if pos == start {
+        return Err(LexError {
+            span: Span { start, end: pos },
+            message: "expected identifier",
+        });
+    }
+    Ok((
+        pos,
+        decoded
+            .map(std::borrow::Cow::Owned)
+            .unwrap_or_else(|| std::borrow::Cow::Borrowed(&source[start..pos])),
+    ))
 }
 
 fn scan_regexp(source: &str, start: usize) -> Result<usize, LexError> {
@@ -78,9 +199,7 @@ fn scan_regexp(source: &str, start: usize) -> Result<usize, LexError> {
             ']' if in_class => in_class = false,
             '/' if !in_class => {
                 while let Some(c) = source[pos..].chars().next() {
-                    if !(unicode_id_start::is_id_continue(c)
-                        || matches!(c, '$' | '\u{200c}' | '\u{200d}'))
-                    {
+                    if !is_identifier_part(c) {
                         break;
                     }
                     pos += c.len_utf8();
@@ -232,52 +351,15 @@ fn scan_token(
                 pos = scan_regexp(source, pos)?;
                 TokenKind::RegularExpression
             }
-        } else if c.is_ascii_alphabetic() || matches!(c, '_' | '$') {
-            pos += 1;
-            while pos < bytes.len()
-                && (bytes[pos].is_ascii_alphanumeric() || matches!(bytes[pos], b'_' | b'$'))
-            {
-                pos += 1;
-            }
-            if matches!(
-                &source[start..pos],
-                "break"
-                    | "case"
-                    | "catch"
-                    | "class"
-                    | "const"
-                    | "continue"
-                    | "debugger"
-                    | "default"
-                    | "delete"
-                    | "do"
-                    | "else"
-                    | "export"
-                    | "extends"
-                    | "false"
-                    | "finally"
-                    | "for"
-                    | "function"
-                    | "if"
-                    | "import"
-                    | "in"
-                    | "instanceof"
-                    | "new"
-                    | "null"
-                    | "return"
-                    | "super"
-                    | "switch"
-                    | "this"
-                    | "throw"
-                    | "true"
-                    | "try"
-                    | "typeof"
-                    | "var"
-                    | "void"
-                    | "while"
-                    | "with"
-            ) {
-                TokenKind::Keyword
+        } else if is_identifier_start(c) || c == '\\' {
+            let (end, name) = scan_identifier(source, pos)?;
+            pos = end;
+            if is_keyword(&name) {
+                if matches!(name, std::borrow::Cow::Owned(_)) {
+                    TokenKind::EscapedKeyword
+                } else {
+                    TokenKind::Keyword
+                }
             } else {
                 TokenKind::Identifier
             }
@@ -383,6 +465,48 @@ fn scan_token(
     })
 }
 
+fn is_keyword(name: &str) -> bool {
+    matches!(
+        name,
+        "break"
+            | "case"
+            | "catch"
+            | "class"
+            | "const"
+            | "continue"
+            | "debugger"
+            | "default"
+            | "delete"
+            | "do"
+            | "else"
+            | "enum"
+            | "export"
+            | "extends"
+            | "false"
+            | "finally"
+            | "for"
+            | "function"
+            | "if"
+            | "import"
+            | "in"
+            | "instanceof"
+            | "new"
+            | "null"
+            | "return"
+            | "super"
+            | "switch"
+            | "this"
+            | "throw"
+            | "true"
+            | "try"
+            | "typeof"
+            | "var"
+            | "void"
+            | "while"
+            | "with"
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -433,7 +557,6 @@ mod tests {
             "'a\\n'",
             "'a\nb'",
             "`template`",
-            "名前",
             "/regex/",
             "a / b",
         ] {

@@ -14,11 +14,29 @@ only whitespace and comments records any line terminator on the end token.
 The flag resets after every token, so a newline affects only the next token.
 Token text and byte spans exclude preceding whitespace and comments.
 
-This first implementation supports ASCII identifiers, a core keyword set,
+This implementation supports Unicode identifiers, a core keyword set,
 decimal numbers (including fractions and exponents), quoted strings without
 escapes, common operators and delimiters, line comments, and block comments.
 Contextual words such as `let`, `async`, and `await` remain identifiers for a
 future parser to interpret.
+
+## Identifier names
+
+Identifier starts use Unicode `ID_Start` plus `$` and `_`; subsequent characters
+use `ID_Continue` plus `$`, ZWNJ, and ZWJ. Unicode tables come from
+`unicode-id-start`. Both `\uXXXX` and `\u{...}` escapes are accepted when their
+decoded scalar is valid in that position. Surrogates, out-of-range code points,
+malformed escapes, and escapes of invalid identifier characters are rejected.
+No Unicode normalization is applied.
+
+`Token::identifier_name()` returns the decoded spelling as `Cow<str>` (borrowed
+for unescaped names). `Token::text` and byte spans always retain raw spelling.
+Unconditionally reserved words are `Keyword`; escaped spellings of those words
+are `EscapedKeyword`, so a parser can accept them as property IdentifierNames
+while rejecting them as bindings or literal keyword syntax. Contextual and
+strict-mode reserved words remain `Identifier`; a parser must check both the
+decoded name and whether the raw text contains an escape in the current context.
+See the [ECMAScript names and keywords grammar](https://tc39.es/ecma262/multipage/ecmascript-language-lexical-grammar.html#sec-names-and-keywords).
 
 ## Lexical goals
 
@@ -57,8 +75,8 @@ template-literal support.
 
 ## Remaining limitations
 
-This is a bootstrap subset, not a conforming ECMAScript lexer. Unicode
-identifiers, identifier escapes, string escapes, non-decimal numbers, numeric
+This is a bootstrap subset, not a conforming ECMAScript lexer. Private
+identifiers, string escapes, non-decimal numbers, numeric
 separators, BigInt, templates, hashbangs, and optional chaining are not supported.
 Unsupported sequences can sometimes be
 split into individually valid tokens; tokenization does not validate grammar.

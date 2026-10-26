@@ -88,12 +88,21 @@ fn flags_follow_identifier_part_characters_without_semantic_validation() {
         assert_eq!(token.text, literal);
         assert_eq!(lexer.next_token(LexicalGoal::Div).unwrap().text, "+");
     }
-    // Flags cannot contain identifier escapes, and emoji is not IdentifierPart.
-    for source in [r"/x/\u0067", "/x/😀"] {
-        let mut lexer = Lexer::new(source);
-        assert_eq!(lexer.next_token(LexicalGoal::RegExp).unwrap().text, "/x/");
-        assert!(lexer.next_token(LexicalGoal::Div).is_err());
-    }
+    // Identifier escapes are separate tokens rather than part of flags.
+    // A future parser rejects their adjacency to a regexp literal.
+    let mut lexer = Lexer::new(r"/x/\u0067");
+    assert_eq!(lexer.next_token(LexicalGoal::RegExp).unwrap().text, "/x/");
+    assert_eq!(
+        lexer
+            .next_token(LexicalGoal::Div)
+            .unwrap()
+            .identifier_name()
+            .as_deref(),
+        Some("g")
+    );
+    let mut lexer = Lexer::new("/x/😀");
+    assert_eq!(lexer.next_token(LexicalGoal::RegExp).unwrap().text, "/x/");
+    assert!(lexer.next_token(LexicalGoal::Div).is_err());
 }
 
 #[test]

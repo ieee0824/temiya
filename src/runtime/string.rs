@@ -19,6 +19,19 @@ struct Rope {
     flat: OnceLock<Vec<u16>>,
 }
 
+impl Rope {
+    // Keep cache initialization out of the hot inline-string access path.
+    #[inline(never)]
+    fn code_units(&self) -> &[u16] {
+        self.flat.get_or_init(|| {
+            let mut units = Vec::with_capacity(self.len);
+            self.left.append_to(&mut units);
+            self.right.append_to(&mut units);
+            units
+        })
+    }
+}
+
 #[derive(Clone)]
 enum Storage {
     Inline {
@@ -77,6 +90,7 @@ impl JsString {
 
     /// Returns the number of UTF-16 code units without flattening concatenations.
     #[must_use]
+    #[inline]
     pub fn len(&self) -> usize {
         match &self.0 {
             Storage::Inline { len, .. } => usize::from(*len),
@@ -135,16 +149,12 @@ impl JsString {
 
     /// Returns the string's UTF-16 code units.
     #[must_use]
+    #[inline]
     pub fn code_units(&self) -> &[u16] {
         match &self.0 {
             Storage::Inline { len, units } => &units[..usize::from(*len)],
             Storage::Shared(units) => units,
-            Storage::Rope(rope) => rope.flat.get_or_init(|| {
-                let mut units = Vec::with_capacity(rope.len);
-                rope.left.append_to(&mut units);
-                rope.right.append_to(&mut units);
-                units
-            }),
+            Storage::Rope(rope) => rope.code_units(),
         }
     }
 

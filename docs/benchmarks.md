@@ -108,3 +108,22 @@ the driver cannot recover build flags from an executable. Sampled process
 memory is diagnostic and does not establish that all reference cycles are
 collected. These are Temiya before/after measurements, not measurements of the
 vendored Boa embedding or SpiderMonkey.
+
+[The array storage comparison](../benchmarks/array-elements-comparison.json)
+records three alternating pairs of 15 timed passes per revision, each preceded
+by a validated warmup. On the recorded ARM64 machine, the freshly built
+baseline medians were 3.31–3.37 seconds and packed/holey/sparse storage medians
+were 0.985–1.035 seconds: a 68.8–70.2% reduction (3.21–3.36× speedup) on this
+specific workload. Each pair exceeded the documented noise threshold. These
+paired baseline runs, rather than the earlier 7.46-second standalone record,
+are the evidence for improvement. All 96 executions produced the expected
+124999750000 result. Sampled process high-water marks were 3,788–3,812 KiB
+before and 3,544 KiB after; these observations are not a general memory bound.
+
+The [internal regression diagnostic](../benchmarks/array-elements-internal.json)
+also retains three alternating pairs for parsing, parse-plus-interpreter,
+standalone GC, and ordinary object properties (15 samples, 1,000 iterations).
+None crossed the regression policy threshold. Some medians increased, including
+the interpreter macro by 3.5–13.2%; noise thresholds were 10.2–26.0% for those
+pairs. This is limited evidence against a large regression, not an equivalence
+claim or a whole-engine speedup.

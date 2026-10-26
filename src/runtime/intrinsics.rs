@@ -183,6 +183,29 @@ impl IntrinsicRegistry {
         for id in IntrinsicId::ALL {
             let object = if id == IntrinsicId::FunctionPrototype {
                 Object::native_function(|_, _| Ok(Value::Undefined))
+            } else if id == IntrinsicId::Object {
+                let prototype = objects
+                    .get(&IntrinsicId::ObjectPrototype)
+                    .cloned()
+                    .ok_or_else(|| {
+                        RuntimeError::internal_error("intrinsic prototype was not allocated")
+                    })?;
+                let construct_prototype = prototype.clone();
+                Object::native_callable_constructor(
+                    move |_, arguments| match arguments.first() {
+                        Some(Value::Object(object)) => Ok(Value::Object(object.clone())),
+                        _ => {
+                            let object = Object::new();
+                            object.set_prototype(Some(prototype.clone()));
+                            Ok(Value::Object(object))
+                        }
+                    },
+                    move |_, _| {
+                        let object = Object::new();
+                        object.set_prototype(Some(construct_prototype.clone()));
+                        Ok(object)
+                    },
+                )
             } else if let Some((prototype_id, _)) = id.pair() {
                 let prototype = objects.get(&prototype_id).cloned().ok_or_else(|| {
                     RuntimeError::internal_error("intrinsic prototype was not allocated")
@@ -204,6 +227,7 @@ impl IntrinsicRegistry {
         }
         let registry = Self(objects);
         registry.wire_graph()?;
+        super::builtins::initialize(&registry)?;
         registry.install_globals(global)?;
         Ok(registry)
     }

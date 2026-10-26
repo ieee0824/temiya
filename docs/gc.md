@@ -14,3 +14,11 @@ Types stored in the heap implement `Trace` and report every strong outgoing
 handle through `Tracer::mark`. They do not trace weak edges and must not retain
 the tracer. The current storage is non-moving, but no public API exposes an
 address, leaving moving and non-moving collectors as compatible implementations.
+
+`Heap::collect` is a stop-the-world tracing collector. It marks the complete
+graph reachable from registered roots and sweeps unreachable slots, including
+cycles. Reused slots receive a new generation so stale handles resolve to
+`None`. `HeapOptions` controls the automatic allocation threshold and an
+optional live-allocation limit. `try_allocate` runs collection before reporting
+`OutOfMemory`, making both threshold and failure behavior deterministic in
+embedders and tests.

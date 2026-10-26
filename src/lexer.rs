@@ -130,6 +130,14 @@ fn is_line_terminator(c: char) -> bool {
     matches!(c, '\n' | '\r' | '\u{2028}' | '\u{2029}')
 }
 
+fn is_whitespace(c: char) -> bool {
+    matches!(
+        c,
+        '\t' | '\u{000b}' | '\u{000c}' | ' ' | '\u{00a0}' | '\u{1680}' | '\u{2000}'
+            ..='\u{200a}' | '\u{202f}' | '\u{205f}' | '\u{3000}' | '\u{feff}'
+    )
+}
+
 fn string_error(start: usize, end: usize, message: &'static str) -> LexError {
     LexError {
         span: Span { start, end },
@@ -575,6 +583,26 @@ pub enum LexicalGoal {
     RegExpOrTemplateTail,
 }
 
+/// The syntactic source goal used for goal-sensitive comment extensions.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum SourceGoal {
+    /// Script source; HTML-like comments may be enabled explicitly.
+    #[default]
+    Script,
+    /// Module source; HTML-like comments are never recognized.
+    Module,
+}
+
+/// Lexer configuration independent of the per-token lexical goal.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct LexerOptions {
+    /// Selects Script or Module source. Defaults to Script.
+    pub source_goal: SourceGoal,
+    /// Enables Annex B HTML-like comments in Script source only.
+    /// Disabled by default; ignored in Module source.
+    pub html_comments: bool,
+}
+
 /// An incremental lexer whose caller selects a lexical goal for every token.
 ///
 /// Tokens borrow the source. An error leaves the cursor unchanged, so the
@@ -593,13 +621,27 @@ pub enum LexicalGoal {
 pub struct Lexer<'a> {
     source: &'a str,
     pos: usize,
+    options: LexerOptions,
+    at_line_start: bool,
 }
 
 impl<'a> Lexer<'a> {
     /// Creates a lexer at the beginning of the source.
     #[must_use]
     pub fn new(source: &'a str) -> Self {
-        Self { source, pos: 0 }
+        Self::with_options(source, LexerOptions::default())
+    }
+
+    /// Creates a lexer with an explicit source goal and comment policy.
+    /// Hashbangs are accepted only at byte zero in both Script and Module.
+    #[must_use]
+    pub fn with_options(source: &'a str, options: LexerOptions) -> Self {
+        Self {
+            source,
+            pos: 0,
+            options,
+            at_line_start: true,
+        }
     }
 
     /// Reads the next token using the supplied goal after skipping comments.
@@ -610,8 +652,15 @@ impl<'a> Lexer<'a> {
     }
 
     fn read(&mut self, goal: Option<LexicalGoal>) -> Result<Token<'a>, LexError> {
-        let token = scan_token(self.source, self.pos, goal)?;
+        let token = scan_token(
+            self.source,
+            self.pos,
+            goal,
+            self.options,
+            self.at_line_start,
+        )?;
         self.pos = token.span.end;
+        self.at_line_start = false;
         Ok(token)
     }
 }
@@ -637,30 +686,33 @@ fn scan_token(
     source: &str,
     mut pos: usize,
     goal: Option<LexicalGoal>,
+    options: LexerOptions,
+    mut at_line_start: bool,
 ) -> Result<Token<'_>, LexError> {
     let bytes = source.as_bytes();
     let mut has_line_terminator_before = false;
     while pos < bytes.len() {
         let start = pos;
         let c = source[pos..].chars().next().unwrap();
-        if matches!(
-            c,
-            ' ' | '\t'
-                | '\u{000b}'
-                | '\u{000c}'
-                | '\n'
-                | '\r'
-                | '\u{00a0}'
-                | '\u{feff}'
-                | '\u{2028}'
-                | '\u{2029}'
-        ) {
+        if is_whitespace(c) || is_line_terminator(c) {
             has_line_terminator_before |= is_line_terminator(c);
+            at_line_start |= is_line_terminator(c);
             pos += c.len_utf8();
             continue;
         }
-        if source[pos..].starts_with("//") {
-            pos += 2;
+        let html = options.html_comments && options.source_goal == SourceGoal::Script;
+        let line_comment_prefix =
+            if source[pos..].starts_with("//") || (pos == 0 && source[pos..].starts_with("#!")) {
+                Some(2)
+            } else if html && source[pos..].starts_with("<!--") {
+                Some(4)
+            } else if html && at_line_start && source[pos..].starts_with("-->") {
+                Some(3)
+            } else {
+                None
+            };
+        if let Some(prefix) = line_comment_prefix {
+            pos += prefix;
             while pos < bytes.len() {
                 let c = source[pos..].chars().next().unwrap();
                 if is_line_terminator(c) {
@@ -680,9 +732,11 @@ fn scan_token(
                     message: "unterminated block comment",
                 });
             };
-            has_line_terminator_before |= source[pos + 2..pos + 2 + end]
+            let newline = source[pos + 2..pos + 2 + end]
                 .chars()
                 .any(is_line_terminator);
+            has_line_terminator_before |= newline;
+            at_line_start |= newline;
             pos += end + 4;
             continue;
         }

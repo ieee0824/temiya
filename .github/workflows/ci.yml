@@ -85,3 +85,7 @@ jobs:
         env:
           TEST262_DIR: target/test262
         run: cargo +${{ matrix.toolchain }} test --locked --test array_stack pinned_test262_array_elements --all-features -- --ignored --nocapture
+      - name: Run upstream string method regressions
+        env:
+          TEST262_DIR: target/test262
+        run: cargo +${{ matrix.toolchain }} test --locked --test string_methods pinned_test262_string_methods --all-features -- --ignored --nocapture

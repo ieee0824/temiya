@@ -54,6 +54,7 @@ pub struct Reference {
     name: ReferencedName,
     strict: bool,
     this_value: Option<Value>,
+    primitive_prototype: Option<Object>,
 }
 
 impl Reference {
@@ -65,6 +66,7 @@ impl Reference {
             name: ReferencedName::PropertyKey(PropertyKey::String(name)),
             strict,
             this_value: None,
+            primitive_prototype: None,
         }
     }
 
@@ -81,6 +83,7 @@ impl Reference {
             name,
             strict,
             this_value,
+            primitive_prototype: None,
         }
     }
 
@@ -92,6 +95,7 @@ impl Reference {
             name: ReferencedName::PropertyKey(PropertyKey::String(name)),
             strict,
             this_value: None,
+            primitive_prototype: None,
         }
     }
 
@@ -131,7 +135,11 @@ impl Reference {
                 "{} is not defined",
                 self.name.binding_name()?.to_string_lossy()
             ))),
-            ReferenceBase::Property(base) => get_property(base, &self.name.property_key()?),
+            ReferenceBase::Property(base) => get_property(
+                base,
+                &self.name.property_key()?,
+                self.primitive_prototype.as_ref(),
+            ),
         }
     }
 
@@ -425,12 +433,18 @@ impl ExpressionEvaluator {
         } else {
             ReferencedName::PropertyKey(PropertyKey::String(member_name(property)?))
         };
-        Ok(Evaluation::Reference(Reference::property(
-            base,
-            name,
-            self.strict,
-            None,
-        )))
+        let prototype_id = match &base {
+            Value::String(_) => Some(super::IntrinsicId::StringPrototype),
+            Value::Number(_) => Some(super::IntrinsicId::NumberPrototype),
+            Value::Boolean(_) => Some(super::IntrinsicId::BooleanPrototype),
+            Value::BigInt(_) => Some(super::IntrinsicId::BigIntPrototype),
+            Value::Symbol(_) => Some(super::IntrinsicId::SymbolPrototype),
+            _ => None,
+        };
+        let primitive_prototype = prototype_id.map(|id| self.realm.intrinsic(id));
+        let mut reference = Reference::property(base, name, self.strict, None);
+        reference.primitive_prototype = primitive_prototype;
+        Ok(Evaluation::Reference(reference))
     }
 
     fn call(&self, callee: &Expr, arguments: &[Expr], optional: bool) -> RuntimeResult<Evaluation> {
@@ -700,27 +714,34 @@ impl ExpressionEvaluator {
     }
 }
 
-fn get_property(base: &Value, key: &PropertyKey) -> RuntimeResult<Value> {
+fn get_property(
+    base: &Value,
+    key: &PropertyKey,
+    primitive_prototype: Option<&Object>,
+) -> RuntimeResult<Value> {
     match base {
         Value::Object(object) => object.get_with_receiver(key, base.clone()),
-        Value::String(string) => match key {
-            PropertyKey::String(name) if name == &JsString::from("length") => {
-                Ok(Value::Number(string.code_units().len() as f64))
+        Value::String(string) => {
+            if matches!(key, PropertyKey::String(name) if name.code_units().iter().copied().eq("length".encode_utf16()))
+            {
+                return Ok(Value::Number(string.code_units().len() as f64));
             }
-            PropertyKey::String(name) => name
-                .to_string_lossy()
-                .parse::<usize>()
-                .ok()
-                .and_then(|index| string.code_units().get(index))
-                .map_or(Ok(Value::Undefined), |unit| {
-                    Ok(Value::String(JsString::from_code_units(vec![*unit])))
-                }),
-            PropertyKey::Symbol(_) => Ok(Value::Undefined),
-        },
+            if let Some(unit) = key
+                .array_index()
+                .and_then(|index| string.code_units().get(index as usize))
+            {
+                return Ok(Value::String(JsString::from_code_units(vec![*unit])));
+            }
+            primitive_prototype.map_or(Ok(Value::Undefined), |prototype| {
+                prototype.get_with_receiver(key, base.clone())
+            })
+        }
         Value::Undefined | Value::Null => Err(RuntimeError::type_error(
             "cannot access a property of null or undefined",
         )),
-        _ => Ok(Value::Undefined),
+        _ => primitive_prototype.map_or(Ok(Value::Undefined), |prototype| {
+            prototype.get_with_receiver(key, base.clone())
+        }),
     }
 }
 

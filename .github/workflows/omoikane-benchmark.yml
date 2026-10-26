@@ -1,0 +1,124 @@
+name: Omoikane benchmark measurements
+
+on:
+  workflow_dispatch:
+    inputs:
+      baseline_revision:
+        description: Temiya revision to compare against
+        default: main
+        type: string
+  pull_request:
+    types: [labeled]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: omoikane-benchmark-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  measure:
+    if: github.event_name == 'workflow_dispatch' || github.event.label.name == 'benchmark-omoikane'
+    name: Record comparisons (speed gates reported separately)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    defaults:
+      run:
+        working-directory: temiya
+        shell: bash
+    env:
+      CARGO_BUILD_JOBS: 2
+    steps:
+      - name: Check out measured revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          path: temiya
+          persist-credentials: false
+      - name: Check out baseline revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.baseline_revision || github.event.pull_request.base.sha || 'main' }}
+          path: temiya-baseline
+          persist-credentials: false
+      - name: Check out pinned application
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ieee0824/omoikane
+          ref: 007556adccb8fb4329236932ca8175f8e8d119d2
+          path: omoikane
+          persist-credentials: false
+      - name: Prepare compiler and output directory
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          mkdir "$RUNNER_TEMP/comparison-output"
+          git rev-parse HEAD > "$RUNNER_TEMP/comparison-output/measured-revision.txt"
+          git -C ../temiya-baseline rev-parse HEAD > "$RUNNER_TEMP/comparison-output/baseline-revision.txt"
+          rustc -Vv > "$RUNNER_TEMP/comparison-output/compiler.txt"
+      - name: Build both Temiya workers with isolated targets
+        run: |
+          cargo build --locked --release --no-default-features --example measure_workload --target-dir "$RUNNER_TEMP/temiya-current-target"
+          cargo build --manifest-path ../temiya-baseline/Cargo.toml --locked --release --no-default-features --example measure_workload --target-dir "$RUNNER_TEMP/temiya-baseline-target"
+          node <<'JS'
+          const fs = require('node:fs');
+          const { execFileSync } = require('node:child_process');
+          const { createHash } = require('node:crypto');
+          const path = require('node:path');
+          const checkout = path.resolve('../temiya-baseline');
+          const executable = path.join(process.env.RUNNER_TEMP, 'temiya-baseline-target/release/examples/measure_workload');
+          const git = args => execFileSync('git', ['-C', checkout, ...args], { encoding: 'utf8' }).trim();
+          if (git(['status', '--porcelain']) !== '') throw Error('baseline checkout changed');
+          const info = {
+            name: 'Temiya', engine: 'Temiya', mode: 'AST interpreter', profile: 'release', features: [],
+            revision: git(['rev-parse', 'HEAD']), executable,
+            executable_sha256: createHash('sha256').update(fs.readFileSync(executable)).digest('hex'),
+            rustc: execFileSync('rustc', ['-Vv'], { encoding: 'utf8' }).trim(),
+          };
+          fs.writeFileSync(path.join(process.env.RUNNER_TEMP, 'comparison-output/baseline-build-info.json'), JSON.stringify(info, null, 2) + '\n');
+          JS
+      - name: Build actual pinned omoikane embedding
+        run: |
+          node scripts/build-omoikane-worker.mjs "$GITHUB_WORKSPACE/omoikane" "$RUNNER_TEMP/omoikane-worker-build" "$RUNNER_TEMP/omoikane-worker-target"
+          cp "$RUNNER_TEMP/omoikane-worker-build/build-info.json" "$RUNNER_TEMP/comparison-output/boa-build-info.json"
+      - name: Extract original eleven workloads
+        run: |
+          node scripts/extract-omoikane-workloads.mjs "$GITHUB_WORKSPACE/omoikane" "$RUNNER_TEMP/omoikane-workloads"
+          cp "$RUNNER_TEMP/omoikane-workloads/manifest.json" "$RUNNER_TEMP/comparison-output/manifest.json"
+      - name: Measure baseline and changed Temiya serially
+        run: |
+          export TEMIYA_REVISION="$(git rev-parse HEAD)"
+          export BENCH_NOTES='GitHub hosted runner; same compiler, isolated build targets, all builds completed before timing; original eleven inputs, 15 samples and three alternating pairs. Job success means validated measurements, not a passing speed gate.'
+          node scripts/compare-omoikane-workloads.mjs --temiya-baseline "$RUNNER_TEMP/omoikane-workloads" "$RUNNER_TEMP/temiya-current-target/release/examples/measure_workload" "$RUNNER_TEMP/comparison-output/baseline-build-info.json" 15 3 > "$RUNNER_TEMP/comparison-output/beforeafter.json" 2> "$RUNNER_TEMP/comparison-output/beforeafter.progress"
+      - name: Measure changed Temiya and actual Boa serially
+        run: |
+          export TEMIYA_REVISION="$(git rev-parse HEAD)"
+          export BENCH_NOTES='GitHub hosted runner; same compiler and original pinned public application embedding; no builds during measurements. Job success means validated measurements, not a passing speed gate.'
+          node scripts/compare-omoikane-workloads.mjs "$RUNNER_TEMP/omoikane-workloads" "$RUNNER_TEMP/temiya-current-target/release/examples/measure_workload" "$RUNNER_TEMP/comparison-output/boa-build-info.json" 15 3 > "$RUNNER_TEMP/comparison-output/boa.json" 2> "$RUNNER_TEMP/comparison-output/boa.progress"
+      - name: Summarize validity and speed gates separately
+        if: always()
+        run: |
+          node <<'JS'
+          const fs = require('node:fs');
+          const path = require('node:path');
+          const lines = ['## Measurement results', '', 'A successful job records correct benchmark outputs; it does not mean Temiya is faster.', ''];
+          for (const name of ['beforeafter', 'boa']) {
+            try {
+              const r = JSON.parse(fs.readFileSync(path.join(process.env.RUNNER_TEMP, 'comparison-output', `${name}.json`)));
+              const field = name === 'boa' ? 'all_eleven_workloads_faster_beyond_threshold' : 'all_eleven_workloads_after_faster_beyond_threshold';
+              lines.push(`- ${name}: correct outputs = ${r.all_workloads_valid}; all-eleven speed gate = ${r[field]}`);
+            } catch {
+              lines.push(`- ${name}: no complete measurement report; inspect logs and artifacts.`);
+            }
+          }
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, lines.join('\n') + '\n');
+          JS
+      - name: Retain raw observations and provenance
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: omoikane-comparison-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/comparison-output
+          if-no-files-found: error
+          retention-days: 30

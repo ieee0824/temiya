@@ -51,6 +51,8 @@ The stable thread-confined Rust boundary is described in the
 [embedding API](docs/embedding.md).
 The portable instruction format and mandatory verifier are documented in
 [bytecode](docs/bytecode.md).
+Future optimizing-tier, deoptimization, OSR, GC, and debugger invariants are
+specified in the [tiering design](docs/tiering.md).
 
 ## Development
 

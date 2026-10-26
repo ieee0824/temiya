@@ -19,6 +19,7 @@ pub mod runtime;
 pub mod semantics;
 pub mod source;
 pub mod test262;
+pub mod tiering;
 pub use embedding::{Engine, EngineBuilder, EngineOptions};
 
 #[cfg(test)]

@@ -42,6 +42,12 @@ impl<'a> Token<'a> {
 pub enum TokenKind {
     Identifier,
     Number,
+    /// An integer literal with the BigInt suffix.
+    BigInt,
+    /// A legacy leading-zero octal integer; forbidden in strict code.
+    LegacyOctalNumber,
+    /// A legacy leading-zero decimal literal; forbidden in strict code.
+    LegacyDecimalNumber,
     String,
     /// A regular-expression literal, including delimiters and flags.
     RegularExpression,
@@ -73,6 +79,102 @@ impl std::error::Error for LexError {}
 
 fn is_line_terminator(c: char) -> bool {
     matches!(c, '\n' | '\r' | '\u{2028}' | '\u{2029}')
+}
+
+fn numeric_error(start: usize, end: usize) -> LexError {
+    LexError {
+        span: Span { start, end },
+        message: "invalid numeric literal",
+    }
+}
+
+fn scan_digits(
+    source: &str,
+    mut pos: usize,
+    radix: u32,
+    separators: bool,
+) -> Result<usize, LexError> {
+    let start = pos;
+    let bytes = source.as_bytes();
+    let digit = |b: u8| (b as char).is_digit(radix);
+    while let Some(&b) = bytes.get(pos) {
+        if digit(b) {
+            pos += 1;
+        } else if b == b'_' {
+            if !separators || pos == start || !bytes.get(pos + 1).is_some_and(|b| digit(*b)) {
+                return Err(numeric_error(pos, pos + 1));
+            }
+            pos += 1;
+        } else {
+            break;
+        }
+    }
+    Ok(pos)
+}
+
+fn scan_number(source: &str, start: usize) -> Result<(usize, TokenKind), LexError> {
+    let bytes = source.as_bytes();
+    let mut pos = start;
+    let mut kind = TokenKind::Number;
+    let mut integer = true;
+    let radix = if bytes.get(start) == Some(&b'0') {
+        match bytes.get(start + 1) {
+            Some(b'b' | b'B') => 2,
+            Some(b'o' | b'O') => 8,
+            Some(b'x' | b'X') => 16,
+            _ => 10,
+        }
+    } else {
+        10
+    };
+    if radix != 10 {
+        pos = scan_digits(source, start + 2, radix, true)?;
+        if pos == start + 2 {
+            return Err(numeric_error(start, pos));
+        }
+    } else {
+        if bytes[pos] != b'.' {
+            pos = scan_digits(source, pos, 10, true)?;
+            if bytes[start] == b'0' && pos > start + 1 {
+                if source[start..pos].contains('_') {
+                    return Err(numeric_error(start, pos));
+                }
+                kind = if bytes[start..pos].iter().all(|b| *b <= b'7') {
+                    TokenKind::LegacyOctalNumber
+                } else {
+                    TokenKind::LegacyDecimalNumber
+                };
+            }
+        }
+        if kind != TokenKind::LegacyOctalNumber {
+            if bytes.get(pos) == Some(&b'.') {
+                integer = false;
+                pos = scan_digits(source, pos + 1, 10, kind == TokenKind::Number)?;
+            }
+            if matches!(bytes.get(pos), Some(b'e' | b'E')) {
+                integer = false;
+                pos += 1;
+                if matches!(bytes.get(pos), Some(b'+' | b'-')) {
+                    pos += 1;
+                }
+                let digits = pos;
+                pos = scan_digits(source, pos, 10, kind == TokenKind::Number)?;
+                if digits == pos {
+                    return Err(numeric_error(start, pos));
+                }
+            }
+        }
+    }
+    if bytes.get(pos) == Some(&b'n') && integer && kind == TokenKind::Number {
+        pos += 1;
+        kind = TokenKind::BigInt;
+    }
+    if let Some(c) = source[pos..].chars().next() {
+        if is_identifier_start(c) || c.is_ascii_digit() || c == '\\' {
+            return Err(numeric_error(start, pos + c.len_utf8()));
+        }
+    }
+    Ok((pos, kind))
 }
 
 fn is_identifier_start(c: char) -> bool {
@@ -366,40 +468,9 @@ fn scan_token(
         } else if c.is_ascii_digit()
             || (c == '.' && bytes.get(pos + 1).is_some_and(u8::is_ascii_digit))
         {
-            while pos < bytes.len() && bytes[pos].is_ascii_digit() {
-                pos += 1;
-            }
-            if bytes.get(pos) == Some(&b'.') {
-                pos += 1;
-                while pos < bytes.len() && bytes[pos].is_ascii_digit() {
-                    pos += 1;
-                }
-            }
-            if matches!(bytes.get(pos), Some(b'e' | b'E')) {
-                pos += 1;
-                if matches!(bytes.get(pos), Some(b'+' | b'-')) {
-                    pos += 1;
-                }
-                let exponent = pos;
-                while pos < bytes.len() && bytes[pos].is_ascii_digit() {
-                    pos += 1;
-                }
-                if pos == exponent {
-                    return Err(LexError {
-                        span: Span { start, end: pos },
-                        message: "expected exponent digits",
-                    });
-                }
-            }
-            if bytes.get(pos).is_some_and(|c| {
-                c.is_ascii_alphabetic() || matches!(c, b'_' | b'$' | b'\\') || !c.is_ascii()
-            }) {
-                return Err(LexError {
-                    span: Span { start, end: pos },
-                    message: "unsupported or invalid numeric literal",
-                });
-            }
-            TokenKind::Number
+            let (end, kind) = scan_number(source, pos)?;
+            pos = end;
+            kind
         } else if matches!(c, '\'' | '"') {
             let quote = c;
             pos += 1;
@@ -552,7 +623,6 @@ mod tests {
             "/*",
             "'abc",
             "1e+",
-            "0xff",
             "123abc",
             "'a\\n'",
             "'a\nb'",

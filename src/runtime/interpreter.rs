@@ -513,9 +513,7 @@ impl ExpressionEvaluator {
                 Numeric::Number(value) => Ok(Value::Number(f64::from(!to_i32(value)))),
                 Numeric::BigInt(value) => Ok(Value::BigInt(!value)),
             },
-            "await" => Err(RuntimeError::internal_error(
-                "await evaluation is implemented by milestone #28",
-            )),
+            "await" => super::promise::await_value(value),
             _ => Err(RuntimeError::syntax_error("unknown unary operator")),
         }
     }

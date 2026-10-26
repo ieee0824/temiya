@@ -27,7 +27,8 @@ Temiya is at the bootstrap stage and does not execute JavaScript yet.
 An initial lexer is available as `temiya::lexer::tokenize`; its supported subset
 and next steps are documented in [docs/lexer.md](docs/lexer.md).
 Owned expression and statement parsers are available as
-`temiya::parser::parse_expression` and `temiya::parser::parse_script`;
+`temiya::parser::parse_expression`, `temiya::parser::parse_script`, and
+`temiya::parser::parse_module`;
 see [parser scope](docs/parser.md), [AST ownership](docs/ast.md), and
 [source position conversion](docs/source.md).
 

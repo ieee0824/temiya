@@ -10,6 +10,8 @@ use crate::lexer::{
 
 mod classes;
 mod functions;
+mod modules;
+pub use modules::parse_module;
 mod statements;
 pub use statements::{parse_async_function_body, parse_function_body, parse_program, parse_script};
 
@@ -481,6 +483,9 @@ impl<'a> Parser<'a> {
                     ));
                 }
                 let callee = self.expression(20)?;
+                if matches!(callee.kind, ExprKind::ImportCall { .. }) {
+                    return Err(error(callee.span, "dynamic import cannot be a constructor"));
+                }
                 if optional_chain(&callee) {
                     return Err(error(callee.span, "optional chain cannot be a constructor"));
                 }
@@ -495,6 +500,38 @@ impl<'a> Parser<'a> {
                 }
             }
             "this" => ExprKind::This,
+            "import" => {
+                if self.at(".")? {
+                    self.expect(".")?;
+                    let property = self.expect("meta")?;
+                    if self.options.lexer.source_goal != SourceGoal::Module {
+                        return Err(error(property.span, "import.meta requires Module source"));
+                    }
+                    ExprKind::MetaProperty {
+                        meta: "import".to_owned(),
+                        property: "meta".to_owned(),
+                    }
+                } else {
+                    self.expect("(")?;
+                    let specifier = Box::new(self.expression_with_in(2, true)?);
+                    let options = if self.at(",")? {
+                        self.expect(",")?;
+                        if self.at(")")? {
+                            None
+                        } else {
+                            let options = Some(Box::new(self.expression_with_in(2, true)?));
+                            if self.at(",")? {
+                                self.expect(",")?;
+                            }
+                            options
+                        }
+                    } else {
+                        None
+                    };
+                    self.expect(")")?;
+                    ExprKind::ImportCall { specifier, options }
+                }
+            }
             "null" => ExprKind::Literal(Literal::Null),
             "true" | "false" => ExprKind::Literal(Literal::Boolean(token.text == "true")),
             _ => return self.literal_or_identifier(token),

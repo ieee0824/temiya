@@ -48,7 +48,7 @@ fn body(
     let mut directives = true;
     let mut legacy_directives = vec![];
     while parser.peek(LexicalGoal::RegExp)?.kind != TokenKind::End {
-        let stmt = parser.statement_list_item()?;
+        let stmt = parser.module_item()?;
         if directives {
             if let StmtKind::Expression(Expr {
                 span,

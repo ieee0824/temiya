@@ -49,6 +49,8 @@ The selected ECMAScript edition, Annex B, proposals, and host boundaries are
 tracked in the [specification support matrix](docs/spec-support.md).
 The stable thread-confined Rust boundary is described in the
 [embedding API](docs/embedding.md).
+The portable instruction format and mandatory verifier are documented in
+[bytecode](docs/bytecode.md).
 
 ## Development
 

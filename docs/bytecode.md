@@ -14,6 +14,10 @@ native addresses, and platform-sized operands are intentionally excluded.
 | `GetProperty {strict}` | `-1` | base/key and active scope |
 | `ResolveProperty {strict}` | `-2` | base/key; retain Reference |
 | `DeleteReference` | `+1` | retained Reference |
+| `BeginCall`, `BeginConstruct` | `-1` | capture callee in pending invocation |
+| `BeginReferenceCall` | `0` | consume Reference; capture GetValue and receiver |
+| `AppendArgument` | `-1` | exactly one value above invocation baseline |
+| `Invoke` | `+1` | balanced invocation at baseline |
 | `LoadThis` | `+1` | active lexical this context |
 | `JumpIfNullish(target)` | `-1` | one input and valid target |
 | `LoadLocal(i)` | `+1` | `i < local_count` |
@@ -87,7 +91,8 @@ legacy unscoped manually constructed IR keeps its original raw-local execution.
 Function Environment. The caller owns the real function object, outer chain,
 `this`, parameters and arguments. Existing var bindings in that frame are
 preserved; body lexical bindings occupy a separate block. Fallthrough returns
-undefined. Parameters, async/generators, call/frame creation, closure capture
+undefined. The in-progress call lowering described below does not create
+bytecode-backed function objects. Parameters, async/generators, closure capture
 lowering and Engine backend selection remain work in #291/#292/#307. Supplying
 a global or declarative record as a function frame fails explicitly.
 
@@ -168,3 +173,31 @@ or complete #307/#427.
 Property Reference execution and its current upstream frontend gaps are described
 in [property-reference.md](property-reference.md). #288 remains open until the
 original upstream programs can be validated through the complete bytecode path.
+
+## Invocation work in progress (#291)
+
+Ordinary calls, computed and parenthesized method calls, and construction now
+lower to pending invocation frames. A frame captures the callee and receiver
+before evaluating arguments, appends each argument in order, then dispatches the
+existing Object call/construct API. Construction uses the captured constructor
+as newTarget. Callability is checked after argument evaluation in both AST and
+VM paths. Native callbacks and existing AST-backed JavaScript function objects
+are callable; function declarations/expressions are still not lowered by this
+compiler. Engine continues to use the AST backend.
+
+Pending frames own their argument and receiver roots separately from operand
+storage. Verification tracks frame entry identity and operand baseline across
+joins, rejects missing/unbalanced frames, and prevents instructions from consuming
+values below a pending invocation's baseline. Runtime errors drop all frames;
+nested VM runs use separate storage. Object call and construct share a per-thread
+limit of 32 nested callbacks, including AST functions and reentry. Exceeding this
+conservative Rust-stack limit returns RangeError and releases the nesting budget
+on unwind. This is an observable current implementation limit, not a claim of
+unbounded JavaScript recursion or an iterative VM function stack.
+
+Optional calls/contiguous optional call chains and spread arguments remain
+explicit compile errors. The required original Test262 call/construct suite has
+not yet been run for this work; local integration tests do not satisfy that gate.
+Issue #291 remains incomplete. The added shared Object-call guard changes the AST
+hot path and requires fresh comparative performance evidence before merge; #469's
+measurement does not include this work. No speed improvement is claimed.

@@ -303,6 +303,12 @@ impl Compiler {
                 self.load_name(name)?;
                 Ok(())
             }
+            ExprKind::Call {
+                callee,
+                arguments,
+                optional: false,
+            } => self.invocation(callee, arguments, false),
+            ExprKind::New { callee, arguments } => self.invocation(callee, arguments, true),
             ExprKind::This => {
                 self.code.push(Instruction::LoadThis);
                 Ok(())
@@ -419,6 +425,59 @@ impl Compiler {
             }
             _ => Err(self.unsupported("expression", expression.span)),
         }
+    }
+
+    fn invocation(
+        &mut self,
+        callee: &Expr,
+        arguments: &[Expr],
+        construct: bool,
+    ) -> Result<(), CompileError> {
+        if construct {
+            self.expression(callee)?;
+            self.code.push(Instruction::BeginConstruct);
+        } else {
+            let callee = unparenthesized(callee);
+            match &callee.kind {
+                ExprKind::Member {
+                    object,
+                    property,
+                    computed,
+                    optional: false,
+                } => {
+                    if contains_optional_chain(object) {
+                        return Err(self.unsupported("optional call chain", callee.span));
+                    }
+                    self.expression(object)?;
+                    self.property_key(property, *computed)?;
+                    self.code.push(Instruction::ResolveProperty {
+                        strict: self.strict,
+                    });
+                    self.code.push(Instruction::BeginReferenceCall);
+                }
+                ExprKind::Identifier(name) => {
+                    let name = self.pool(Constant::String(name.as_str().into()))?;
+                    self.code.push(Instruction::ResolveName {
+                        name,
+                        strict: self.strict,
+                    });
+                    self.code.push(Instruction::BeginReferenceCall);
+                }
+                _ => {
+                    if contains_optional_chain(callee) {
+                        return Err(self.unsupported("optional call chain", callee.span));
+                    }
+                    self.expression(callee)?;
+                    self.code.push(Instruction::BeginCall);
+                }
+            }
+        }
+        for argument in arguments {
+            self.expression(argument)?;
+            self.code.push(Instruction::AppendArgument);
+        }
+        self.code.push(Instruction::Invoke);
+        Ok(())
     }
 
     fn property_key(&mut self, property: &Expr, computed: bool) -> Result<(), CompileError> {
@@ -670,4 +729,17 @@ fn unparenthesized(mut expression: &Expr) -> &Expr {
         expression = inner;
     }
     expression
+}
+
+fn contains_optional_chain(expression: &Expr) -> bool {
+    match &expression.kind {
+        ExprKind::Member {
+            optional, object, ..
+        } => *optional || contains_optional_chain(object),
+        ExprKind::Call {
+            optional, callee, ..
+        } => *optional || contains_optional_chain(callee),
+        // Parentheses terminate a contiguous optional chain.
+        _ => false,
+    }
 }

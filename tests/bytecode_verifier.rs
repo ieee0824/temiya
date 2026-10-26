@@ -335,3 +335,52 @@ fn property_instructions_validate_operands_scopes_and_references() {
         VerifyErrorKind::JumpOutOfBounds
     );
 }
+
+#[test]
+fn pending_invocations_require_balanced_frames_and_argument_boundaries() {
+    use Instruction::*;
+    for code in [
+        vec![Invoke, Return],
+        vec![LoadConstant(0), AppendArgument, Return],
+        vec![BeginReferenceCall, Invoke, Return],
+        vec![LoadConstant(0), BeginCall, LoadConstant(1), Return],
+        vec![LoadConstant(0), BeginCall, LoadConstant(1), Invoke, Return],
+        vec![
+            LoadConstant(0),
+            LoadConstant(1),
+            BeginCall,
+            Pop,
+            LoadConstant(0),
+            Invoke,
+            Return,
+        ],
+    ] {
+        assert!(verify(code).is_err());
+    }
+    assert_eq!(
+        verify(vec![
+            LoadConstant(0),
+            BeginCall,
+            LoadConstant(1),
+            AppendArgument,
+            Invoke,
+            Return
+        ]),
+        Ok(1)
+    );
+    // Equal operand depths do not make different invocation identities joinable.
+    assert_eq!(
+        verify(vec![
+            LoadConstant(0),
+            JumpIfFalse(5),
+            LoadConstant(0),
+            BeginCall,
+            Jump(7),
+            LoadConstant(0),
+            BeginCall,
+            Invoke,
+            Return
+        ]),
+        Err(VerifyErrorKind::ScopeMismatch)
+    );
+}

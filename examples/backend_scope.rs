@@ -64,6 +64,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     check_jit()?;
 
     println!("AST and bytecode examples and rejection cases passed");
+    let calls = BytecodeCompiler::compile("Math.abs(0 - 42);")?;
+    assert!(matches!(
+        VirtualMachine::execute_in_realm(&calls, &bytecode_realm)?,
+        Completion::Normal(Some(Value::Number(42.0)))
+    ));
     Ok(())
 }
 

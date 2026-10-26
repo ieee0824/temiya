@@ -95,6 +95,16 @@ pub enum Instruction {
     ResolveProperty { strict: bool },
     /// Consume a retained Reference and push the deletion result.
     DeleteReference,
+    /// Capture a value callee before evaluating its arguments.
+    BeginCall,
+    /// Consume a Reference, capturing its value and receiver before arguments.
+    BeginReferenceCall,
+    /// Capture a constructor value and its newTarget before arguments.
+    BeginConstruct,
+    /// Append one evaluated value to the innermost pending invocation.
+    AppendArgument,
+    /// Invoke the innermost captured callee and push its result.
+    Invoke,
     /// Push the current lexical this binding.
     LoadThis,
     /// Pop a condition and jump if null or undefined.
@@ -136,7 +146,8 @@ pub enum Instruction {
 impl Instruction {
     fn required_stack(self) -> usize {
         match self {
-            Self::LoadThis => 0,
+            Self::BeginReferenceCall | Self::Invoke | Self::LoadThis => 0,
+            Self::BeginCall | Self::BeginConstruct | Self::AppendArgument => 1,
             Self::GetProperty { .. } | Self::ResolveProperty { .. } => 2,
             Self::DeleteReference => 0,
             Self::JumpIfNullish(_) => 1,
@@ -161,7 +172,9 @@ impl Instruction {
 
     fn stack_delta(self) -> isize {
         match self {
-            Self::LoadThis | Self::DeleteReference => 1,
+            Self::BeginReferenceCall => 0,
+            Self::BeginCall | Self::BeginConstruct | Self::AppendArgument => -1,
+            Self::Invoke | Self::LoadThis | Self::DeleteReference => 1,
             Self::GetProperty { .. } | Self::JumpIfNullish(_) => -1,
             Self::ResolveProperty { .. } => -2,
             Self::EnterScope(_) | Self::ExitScope | Self::ResolveName { .. } => 0,
@@ -304,6 +317,7 @@ struct FlowState {
     depth: usize,
     scopes: Vec<(u32, u32)>,
     references: Vec<u32>,
+    calls: Vec<(u32, usize)>,
 }
 
 fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
@@ -335,6 +349,7 @@ fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
             depth: 0,
             scopes: vec![],
             references: vec![],
+            calls: vec![],
         },
     )]);
     let mut max_stack = 0;
@@ -343,7 +358,10 @@ fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
             if previous.depth != state.depth {
                 return Err(VerifyError::at(VerifyErrorKind::StackDepthMismatch, offset));
             }
-            if previous.scopes != state.scopes || previous.references != state.references {
+            if previous.scopes != state.scopes
+                || previous.references != state.references
+                || previous.calls != state.calls
+            {
                 return Err(VerifyError::at(VerifyErrorKind::ScopeMismatch, offset));
             }
             continue;
@@ -426,6 +444,38 @@ fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
                     );
                 }
             }
+            Instruction::BeginCall
+            | Instruction::BeginConstruct
+            | Instruction::BeginReferenceCall => {
+                if matches!(instruction, Instruction::BeginReferenceCall) {
+                    state
+                        .references
+                        .pop()
+                        .ok_or_else(|| error(VerifyErrorKind::ScopeMismatch))?;
+                }
+                let baseline = state
+                    .depth
+                    .checked_sub(instruction.required_stack())
+                    .ok_or_else(|| error(VerifyErrorKind::StackUnderflow))?;
+                state.calls.push((
+                    u32::try_from(offset).map_err(|_| error(VerifyErrorKind::ScopeMismatch))?,
+                    baseline,
+                ));
+            }
+            Instruction::AppendArgument | Instruction::Invoke => {
+                let (_, baseline) = state
+                    .calls
+                    .last()
+                    .ok_or_else(|| error(VerifyErrorKind::ScopeMismatch))?;
+                let expected =
+                    baseline + usize::from(matches!(instruction, Instruction::AppendArgument));
+                if state.depth != expected {
+                    return Err(error(VerifyErrorKind::StackDepthMismatch));
+                }
+                if matches!(instruction, Instruction::Invoke) {
+                    state.calls.pop();
+                }
+            }
             Instruction::StoreReference | Instruction::DeleteReference => {
                 state
                     .references
@@ -454,6 +504,13 @@ fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
             }
             _ => {}
         }
+        if matches!(
+            instruction,
+            Instruction::Return | Instruction::Complete | Instruction::Throw
+        ) && !state.calls.is_empty()
+        {
+            return Err(error(VerifyErrorKind::ScopeMismatch));
+        }
         if state.depth < instruction.required_stack() {
             return Err(error(VerifyErrorKind::StackUnderflow));
         }
@@ -469,6 +526,13 @@ fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
             .depth
             .checked_add_signed(instruction.stack_delta())
             .expect("stack requirement prevents underflow");
+        if state
+            .calls
+            .iter()
+            .any(|(_, baseline)| state.depth < *baseline)
+        {
+            return Err(error(VerifyErrorKind::StackUnderflow));
+        }
         max_stack = max_stack.max(state.depth);
         match instruction {
             Instruction::Return | Instruction::Complete | Instruction::Throw => {}

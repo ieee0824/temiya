@@ -30,9 +30,15 @@ and next steps are documented in [docs/lexer.md](docs/lexer.md).
 ## Development
 
 ```sh
+cargo fmt --all --check
+cargo clippy --locked --all-targets -- -D warnings
 cargo test --locked
 cargo build --locked
 ```
+
+GitHub Actions runs formatting and Clippy checks on stable Rust, plus tests and
+builds on stable Rust and the minimum supported version, Rust 1.85.0. CI runs
+for pull requests, pushes to `main`, and manual dispatches.
 
 Design decisions and compatibility scope will be documented before the
 corresponding public APIs are stabilized.

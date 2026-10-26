@@ -39,3 +39,9 @@ weak target plus an independent held value. Collection discovers dead targets
 in registration order, sweeps them, and queues cleanup. The embedder invokes
 `run_cleanup_jobs` afterward, so callbacks cannot resurrect swept targets and
 no finalizer-at-process-exit guarantee is implied.
+
+`Heap::stress` deterministically performs collection before every allocation.
+`Heap::verify` checks root registrations, every traced edge, remembered owners,
+and reusable slots, reporting stale-generation and cross-heap edges immediately.
+`Heap::diagnostics` exposes live/root/free counts plus cumulative collections,
+reclamation, and peak live allocations for tests and leak investigations.

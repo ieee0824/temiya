@@ -254,6 +254,9 @@ pub struct Heap {
     remembered: HashSet<RawHandle>,
     ephemerons: Vec<(RawHandle, RawHandle)>,
     registries: Vec<Weak<dyn RegistrySweep>>,
+    collections: usize,
+    reclaimed_total: usize,
+    peak_live: usize,
 }
 
 /// Limits controlling automatic collection and allocation failure.
@@ -282,6 +285,48 @@ pub struct CollectionStats {
     /// Unreachable allocations reclaimed by this collection.
     pub reclaimed: usize,
 }
+
+/// A deterministic snapshot for heap diagnostics and leak investigation.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct HeapDiagnostics {
+    /// Currently live allocations.
+    pub live: usize,
+    /// Total slot capacity, including reusable slots.
+    pub slots: usize,
+    /// Slots available for reuse.
+    pub free: usize,
+    /// Distinct explicitly rooted allocations.
+    pub rooted: usize,
+    /// Old owners currently in the remembered set.
+    pub remembered: usize,
+    /// Collections completed by this heap.
+    pub collections: usize,
+    /// Allocations reclaimed over the heap lifetime.
+    pub reclaimed_total: usize,
+    /// Highest observed live-allocation count.
+    pub peak_live: usize,
+}
+
+/// Structural corruption detected by [`Heap::verify`].
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum HeapVerificationError {
+    /// A live value traces an edge that cannot be resolved.
+    DanglingEdge { owner: RawHandle, edge: RawHandle },
+    /// A root registration cannot be resolved.
+    DanglingRoot(RawHandle),
+    /// A remembered owner is not a live old allocation.
+    InvalidRememberedOwner(RawHandle),
+    /// The free list names a live, missing, or duplicated slot.
+    InvalidFreeSlot(usize),
+}
+
+impl fmt::Display for HeapVerificationError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(formatter, "heap verification failed: {self:?}")
+    }
+}
+
+impl std::error::Error for HeapVerificationError {}
 
 /// Allocation failure returned after collection cannot satisfy a heap limit.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -341,7 +386,19 @@ impl Heap {
             remembered: HashSet::new(),
             ephemerons: Vec::new(),
             registries: Vec::new(),
+            collections: 0,
+            reclaimed_total: 0,
+            peak_live: 0,
         }
+    }
+
+    /// Creates a heap that performs a full collection before every allocation.
+    #[must_use]
+    pub fn stress() -> Self {
+        Self::with_options(HeapOptions {
+            allocation_threshold: 0,
+            max_allocations: None,
+        })
     }
 
     /// Allocates and immediately roots a value.
@@ -392,6 +449,7 @@ impl Heap {
         self.slots[slot_index].value = Some(Box::new(value));
         self.slots[slot_index].old = false;
         self.allocations_since_collection += 1;
+        self.peak_live = self.peak_live.max(self.live_allocations());
         register_root(&self.roots, handle.raw);
         Ok(Root {
             handle,
@@ -583,6 +641,8 @@ impl Heap {
         self.ephemerons
             .retain(|(key, value)| marked.contains(key) && marked.contains(value));
         self.allocations_since_collection = 0;
+        self.collections += 1;
+        self.reclaimed_total += reclaimed;
         CollectionStats {
             retained: self.live_allocations(),
             reclaimed,
@@ -678,6 +738,8 @@ impl Heap {
         }
         self.remembered.clear();
         self.allocations_since_collection = 0;
+        self.collections += 1;
+        self.reclaimed_total += reclaimed;
         CollectionStats {
             retained: self.live_allocations(),
             reclaimed,
@@ -691,6 +753,66 @@ impl Heap {
             .iter()
             .filter(|slot| slot.value.is_some())
             .count()
+    }
+
+    /// Returns current and cumulative heap statistics without triggering collection.
+    #[must_use]
+    pub fn diagnostics(&self) -> HeapDiagnostics {
+        HeapDiagnostics {
+            live: self.live_allocations(),
+            slots: self.slots.len(),
+            free: self.free.len(),
+            rooted: self.roots.borrow().len(),
+            remembered: self.remembered.len(),
+            collections: self.collections,
+            reclaimed_total: self.reclaimed_total,
+            peak_live: self.peak_live,
+        }
+    }
+
+    /// Verifies roots, traced edges, remembered owners, and the free list.
+    pub fn verify(&self) -> Result<(), HeapVerificationError> {
+        for raw in self.roots.borrow().keys().copied() {
+            if self.raw_slot(raw).is_none() {
+                return Err(HeapVerificationError::DanglingRoot(raw));
+            }
+        }
+        for &raw in &self.remembered {
+            if !self.raw_slot(raw).is_some_and(|slot| slot.old) {
+                return Err(HeapVerificationError::InvalidRememberedOwner(raw));
+            }
+        }
+        let mut free = HashSet::new();
+        for &index in &self.free {
+            if !free.insert(index)
+                || self
+                    .slots
+                    .get(index)
+                    .is_none_or(|slot| slot.value.is_some())
+            {
+                return Err(HeapVerificationError::InvalidFreeSlot(index));
+            }
+        }
+        for (index, slot) in self.slots.iter().enumerate() {
+            let Some(value) = &slot.value else { continue };
+            let owner = RawHandle {
+                heap: self.id,
+                slot: index,
+                generation: slot.generation,
+            };
+            let mut dangling = None;
+            value.trace(&mut Tracer {
+                visit: &mut |edge| {
+                    if dangling.is_none() && self.raw_slot(edge).is_none() {
+                        dangling = Some(edge);
+                    }
+                },
+            });
+            if let Some(edge) = dangling {
+                return Err(HeapVerificationError::DanglingEdge { owner, edge });
+            }
+        }
+        Ok(())
     }
 
     fn is_young(&self, handle: RawHandle) -> bool {

@@ -564,6 +564,24 @@ impl ExpressionEvaluator {
             _ => {}
         }
         let right = self.evaluate(right)?;
+        self.apply_binary(operator, left, right)
+    }
+
+    fn apply_binary(&self, operator: &str, left: Value, right: Value) -> RuntimeResult<Value> {
+        // Primitive-only arithmetic does not need symbol lookup or JavaScript calls.
+        if operator == "+"
+            && (matches!(left, Value::Object(_)) || matches!(right, Value::Object(_)))
+        {
+            let key = self
+                .realm
+                .well_known_symbol(super::WellKnownSymbol::ToPrimitive)
+                .into();
+            let left =
+                super::coercion::primitive_with_hint(&left, &key, super::PrimitiveHint::Default)?;
+            let right =
+                super::coercion::primitive_with_hint(&right, &key, super::PrimitiveHint::Default)?;
+            return binary_values(operator, left, right);
+        }
         binary_values(operator, left, right)
     }
 
@@ -580,7 +598,7 @@ impl ExpressionEvaluator {
                 return Ok(left);
             }
             let right = self.evaluate(value)?;
-            binary_values(operator.strip_suffix('=').unwrap_or(operator), left, right)?
+            self.apply_binary(operator.strip_suffix('=').unwrap_or(operator), left, right)?
         };
         reference.put_value(assigned.clone())?;
         Ok(assigned)

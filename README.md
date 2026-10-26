@@ -88,12 +88,12 @@ codex login status
 ```
 
 This grants processes in that sandbox the same Codex account authority as the
-host. `CODEX_HOME` points to `.git/codex-sandbox`, so credentials, configuration,
-logs, and session history persist across container recreation without becoming
-tracked files. The credential is never baked into the image. Run
-`scripts/sandbox codex-auth` initially and again only when the host credential
-changes. Because this directory contains authentication material, do not copy
-it outside `.git` or expose the workspace to untrusted sandbox processes.
+host. `CODEX_HOME` points to `.git/codex-sandbox`, so configuration, logs, and
+session history persist across container recreation without becoming tracked
+files. The credential is never baked into the image: `scripts/sandbox up` and
+`scripts/sandbox down` remove `auth.json`, so run `scripts/sandbox codex-auth`
+after every startup. An abrupt host shutdown can bypass the normal cleanup, but
+the next `scripts/sandbox up` removes any stale credential before launch.
 
 GitHub CLI can authenticate independently with its device flow. Configure Git
 to reuse that login over HTTPS, avoiding the need to share an SSH key:

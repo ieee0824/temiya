@@ -1,13 +1,16 @@
 use std::{collections::HashMap, fmt};
 
 use crate::{
-    ast::{Expr, ExprKind, Literal, Program, Stmt, StmtKind},
+    ast::{Expr, ExprKind, Function, FunctionBody, Literal, Program, Stmt, StmtKind, VariableKind},
     lexer::Span,
     parser::parse_script,
     runtime::{JsString, Value, parse_numeric_literal},
 };
 
-use super::{Bytecode, Constant, Instruction, VerifiedBytecode, VerifyError};
+use super::{
+    BindingKind, Bytecode, Constant, Instruction, ScopeBinding, ScopeDescriptor, ScopeKind,
+    VerifiedBytecode, VerifyError,
+};
 
 /// AST-to-bytecode compiler for the portable baseline instruction set.
 #[derive(Debug, Default)]
@@ -19,6 +22,41 @@ impl BytecodeCompiler {
         let program =
             parse_script(source).map_err(|error| CompileError::new(error.to_string(), None))?;
         Self::compile_program(&program)
+    }
+
+    /// Compiles a function body for a caller-prepared function Environment.
+    /// Parameter instantiation, calls, async and generators are not lowered here.
+    pub fn compile_function_body(function: &Function) -> Result<VerifiedBytecode, CompileError> {
+        if !function.parameters.is_empty() || function.asynchronous || function.generator {
+            return Err(CompileError::new(
+                "unsupported function parameters, async or generator",
+                Some(function.span),
+            ));
+        }
+        let mut compiler = Compiler::empty(function.strict);
+        match &function.body {
+            FunctionBody::Block(body) => {
+                let StmtKind::Block(statements) = &body.kind else {
+                    return Err(CompileError::new(
+                        "expected function block",
+                        Some(body.span),
+                    ));
+                };
+                let vars = scope_bindings(statements, true, false)?;
+                compiler.enter_scope(ScopeKind::Function, vars)?;
+                let terminal = compiler.block(statements)?;
+                if !terminal {
+                    compiler.constant(Constant::Undefined)?;
+                    compiler.code.push(Instruction::Return);
+                }
+            }
+            FunctionBody::Expression(expression) => {
+                compiler.enter_scope(ScopeKind::Function, vec![])?;
+                compiler.expression(expression)?;
+                compiler.code.push(Instruction::Return);
+            }
+        }
+        compiler.finish()
     }
 
     /// Lowers an owned AST and verifies the resulting bytecode.
@@ -70,41 +108,96 @@ impl fmt::Display for CompileError {
 
 impl std::error::Error for CompileError {}
 
+struct CompileScope {
+    entry: u32,
+    bindings: HashMap<String, (u32, BindingKind)>,
+}
+
 struct Compiler {
     constants: Vec<Constant>,
     code: Vec<Instruction>,
-    locals: HashMap<String, u32>,
+    scopes: Vec<CompileScope>,
+    strict: bool,
     completion_local: u32,
 }
 
 impl Compiler {
-    fn new(program: &Program) -> Result<Self, CompileError> {
-        let mut locals = HashMap::new();
-        collect_bindings(&program.body, &mut locals)?;
-        let completion_local = u32::try_from(locals.len())
-            .map_err(|_| CompileError::new("too many local bindings", None))?;
-        Ok(Self {
+    fn empty(strict: bool) -> Self {
+        Self {
             constants: vec![],
             code: vec![],
-            locals,
-            completion_local,
-        })
+            scopes: vec![],
+            strict,
+            completion_local: 0,
+        }
+    }
+
+    fn new(program: &Program) -> Result<Self, CompileError> {
+        let mut compiler = Self::empty(program.strict);
+        compiler.enter_scope(
+            ScopeKind::Global,
+            scope_bindings(&program.body, true, true)?,
+        )?;
+        Ok(compiler)
     }
 
     fn compile(mut self, program: &Program) -> Result<VerifiedBytecode, CompileError> {
-        let terminated = self.statements(&program.body)?;
-        if !terminated {
+        if !self.statements(&program.body)? {
             self.code
                 .push(Instruction::LoadLocal(self.completion_local));
+            self.code.push(Instruction::ExitScope);
             self.code.push(Instruction::Complete);
         }
+        self.finish()
+    }
+
+    fn finish(self) -> Result<VerifiedBytecode, CompileError> {
         Bytecode {
             constants: self.constants,
             instructions: self.code,
-            local_count: self.completion_local + 1,
+            local_count: 1,
         }
         .verify()
         .map_err(|error: VerifyError| CompileError::new(error.to_string(), None))
+    }
+
+    fn enter_scope(
+        &mut self,
+        kind: ScopeKind,
+        bindings: Vec<ScopeBinding>,
+    ) -> Result<(), CompileError> {
+        let entry = self.offset()?;
+        let mut slots = HashMap::new();
+        for (index, binding) in bindings.iter().enumerate() {
+            let slot = u32::try_from(index)
+                .map_err(|_| CompileError::new("binding slot overflow", None))?;
+            slots.insert(binding.name.to_string_lossy(), (slot, binding.kind));
+        }
+        let index = self.pool(Constant::Scope(ScopeDescriptor {
+            kind,
+            strict: self.strict,
+            bindings,
+        }))?;
+        self.code.push(Instruction::EnterScope(index));
+        self.scopes.push(CompileScope {
+            entry,
+            bindings: slots,
+        });
+        Ok(())
+    }
+
+    fn block(&mut self, statements: &[Stmt]) -> Result<bool, CompileError> {
+        let bindings = scope_bindings(statements, false, true)?;
+        if bindings.is_empty() {
+            return self.statements(statements);
+        }
+        self.enter_scope(ScopeKind::Block, bindings)?;
+        let result = self.statements(statements);
+        self.scopes.pop();
+        if matches!(result, Ok(false)) {
+            self.code.push(Instruction::ExitScope);
+        }
+        result
     }
 
     fn statements(&mut self, statements: &[Stmt]) -> Result<bool, CompileError> {
@@ -125,23 +218,32 @@ impl Compiler {
                     .push(Instruction::StoreLocal(self.completion_local));
                 Ok(false)
             }
-            StmtKind::Variable { declarations, .. } => {
+            StmtKind::Variable { kind, declarations } => {
                 for declaration in declarations {
                     let ExprKind::Identifier(name) = &declaration.binding.kind else {
                         return Err(self.unsupported("binding pattern", declaration.binding.span));
                     };
                     if let Some(init) = &declaration.init {
                         self.expression(init)?;
+                    } else if *kind == VariableKind::Var {
+                        continue;
+                    } else if *kind == VariableKind::Const {
+                        return Err(self.unsupported("const without initializer", declaration.span));
                     } else {
                         self.constant(Constant::Undefined)?;
                     }
-                    self.code.push(Instruction::StoreLocal(
-                        self.local(name, declaration.binding.span)?,
-                    ));
+                    let (scope, slot, _) = self
+                        .binding(name)
+                        .expect("declaration collected before lowering");
+                    self.code.push(if *kind == VariableKind::Var {
+                        Instruction::StoreBinding { scope, slot }
+                    } else {
+                        Instruction::InitializeBinding { scope, slot }
+                    });
                 }
                 Ok(false)
             }
-            StmtKind::Block(body) => self.statements(body),
+            StmtKind::Block(body) => self.block(body),
             StmtKind::If {
                 test,
                 consequent,
@@ -198,8 +300,7 @@ impl Compiler {
         match &expression.kind {
             ExprKind::Literal(literal) => self.literal(literal, expression.span),
             ExprKind::Identifier(name) => {
-                self.code
-                    .push(Instruction::LoadLocal(self.local(name, expression.span)?));
+                self.load_name(name)?;
                 Ok(())
             }
             ExprKind::Parenthesized(inner) => self.expression(inner),
@@ -211,10 +312,21 @@ impl Compiler {
                 let ExprKind::Identifier(name) = &target.kind else {
                     return Err(self.unsupported("assignment target", target.span));
                 };
+                let binding = self.binding(name);
+                if binding.is_none() {
+                    let index = self.pool(Constant::String(name.as_str().into()))?;
+                    self.code.push(Instruction::ResolveName {
+                        name: index,
+                        strict: self.strict,
+                    });
+                }
                 self.expression(value)?;
                 self.code.push(Instruction::Duplicate);
-                self.code
-                    .push(Instruction::StoreLocal(self.local(name, target.span)?));
+                self.code.push(if let Some((scope, slot, _)) = binding {
+                    Instruction::StoreBinding { scope, slot }
+                } else {
+                    Instruction::StoreReference
+                });
                 Ok(())
             }
             ExprKind::Binary {
@@ -285,19 +397,36 @@ impl Compiler {
         self.constant(constant)
     }
 
-    fn constant(&mut self, constant: Constant) -> Result<(), CompileError> {
+    fn pool(&mut self, constant: Constant) -> Result<u32, CompileError> {
         let index = u32::try_from(self.constants.len())
             .map_err(|_| CompileError::new("constant pool overflow", None))?;
         self.constants.push(constant);
+        Ok(index)
+    }
+
+    fn constant(&mut self, constant: Constant) -> Result<(), CompileError> {
+        let index = self.pool(constant)?;
         self.code.push(Instruction::LoadConstant(index));
         Ok(())
     }
 
-    fn local(&self, name: &str, span: Span) -> Result<u32, CompileError> {
-        self.locals
-            .get(name)
-            .copied()
-            .ok_or_else(|| CompileError::new(format!("unbound local {name}"), Some(span)))
+    fn binding(&self, name: &str) -> Option<(u32, u32, BindingKind)> {
+        self.scopes.iter().rev().find_map(|scope| {
+            scope
+                .bindings
+                .get(name)
+                .map(|(slot, kind)| (scope.entry, *slot, *kind))
+        })
+    }
+
+    fn load_name(&mut self, name: &str) -> Result<(), CompileError> {
+        let instruction = if let Some((scope, slot, _)) = self.binding(name) {
+            Instruction::LoadBinding { scope, slot }
+        } else {
+            Instruction::LoadName(self.pool(Constant::String(name.into()))?)
+        };
+        self.code.push(instruction);
+        Ok(())
     }
 
     fn offset(&self) -> Result<u32, CompileError> {
@@ -322,13 +451,12 @@ impl Compiler {
     }
 }
 
-fn collect_bindings(
-    statements: &[Stmt],
-    locals: &mut HashMap<String, u32>,
-) -> Result<(), CompileError> {
+// Validate the supported statement tree even after terminal statements: var
+// declarations are instantiated before any reachable code executes.
+fn collect_vars(statements: &[Stmt], vars: &mut Vec<String>) -> Result<(), CompileError> {
     for statement in statements {
         match &statement.kind {
-            StmtKind::Variable { declarations, .. } => {
+            StmtKind::Variable { kind, declarations } => {
                 for declaration in declarations {
                     let ExprKind::Identifier(name) = &declaration.binding.kind else {
                         return Err(CompileError::new(
@@ -336,27 +464,85 @@ fn collect_bindings(
                             Some(declaration.binding.span),
                         ));
                     };
-                    if !locals.contains_key(name) {
-                        let index = u32::try_from(locals.len())
-                            .map_err(|_| CompileError::new("too many local bindings", None))?;
-                        locals.insert(name.clone(), index);
+                    if *kind == VariableKind::Var && !vars.contains(name) {
+                        vars.push(name.clone());
                     }
                 }
             }
-            StmtKind::Block(body) => collect_bindings(body, locals)?,
+            StmtKind::Block(body) => collect_vars(body, vars)?,
             StmtKind::If {
                 consequent,
                 alternate,
                 ..
             } => {
-                collect_bindings(std::slice::from_ref(consequent), locals)?;
+                collect_vars(std::slice::from_ref(consequent), vars)?;
                 if let Some(alternate) = alternate {
-                    collect_bindings(std::slice::from_ref(alternate), locals)?;
+                    collect_vars(std::slice::from_ref(alternate), vars)?;
                 }
             }
-            StmtKind::While { body, .. } => collect_bindings(std::slice::from_ref(body), locals)?,
-            _ => {}
+            StmtKind::While { body, .. } => collect_vars(std::slice::from_ref(body), vars)?,
+            StmtKind::Empty
+            | StmtKind::Debugger
+            | StmtKind::Expression(_)
+            | StmtKind::Return(_)
+            | StmtKind::Throw(_) => {}
+            _ => {
+                return Err(CompileError::new(
+                    "unsupported bytecode statement",
+                    Some(statement.span),
+                ));
+            }
         }
     }
     Ok(())
+}
+
+fn scope_bindings(
+    statements: &[Stmt],
+    include_vars: bool,
+    include_lexical: bool,
+) -> Result<Vec<ScopeBinding>, CompileError> {
+    let mut vars = vec![];
+    collect_vars(statements, &mut vars)?;
+    let mut lexical = vec![];
+    for statement in statements {
+        if let StmtKind::Variable { kind, declarations } = &statement.kind {
+            if *kind == VariableKind::Var {
+                continue;
+            }
+            for declaration in declarations {
+                let ExprKind::Identifier(name) = &declaration.binding.kind else {
+                    unreachable!("collect_vars checked patterns")
+                };
+                if vars.contains(name) || lexical.iter().any(|(previous, _)| previous == name) {
+                    return Err(CompileError::new(
+                        "duplicate lexical binding",
+                        Some(declaration.span),
+                    ));
+                }
+                lexical.push((
+                    name.clone(),
+                    if *kind == VariableKind::Let {
+                        BindingKind::Let
+                    } else {
+                        BindingKind::Const
+                    },
+                ));
+            }
+        }
+    }
+    let mut bindings = vec![];
+    if include_vars {
+        bindings.extend(vars.into_iter().map(|name| ScopeBinding {
+            name: name.as_str().into(),
+            kind: BindingKind::Var,
+        }));
+    }
+    if include_lexical {
+        bindings.extend(lexical.into_iter().map(|(name, kind)| ScopeBinding {
+            name: name.as_str().into(),
+            kind,
+        }));
+    }
+    Ok(bindings)
 }

@@ -4,6 +4,11 @@ use std::{collections::VecDeque, fmt};
 
 use crate::runtime::JsString;
 
+mod compiler;
+mod vm;
+pub use compiler::{BytecodeCompiler, CompileError};
+pub use vm::VirtualMachine;
+
 /// Pointer-free literal stored in a bytecode constant pool.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Constant {
@@ -34,14 +39,26 @@ pub enum Instruction {
     Pop,
     /// Pop two operands and push their numeric sum (`-1`).
     Add,
+    /// Pop two operands and push their numeric difference (`-1`).
+    Subtract,
+    /// Pop two operands and push their numeric product (`-1`).
+    Multiply,
+    /// Pop two operands and push their numeric quotient (`-1`).
+    Divide,
     /// Pop two operands and push strict equality (`-1`).
     StrictEqual,
+    /// Replace the stack top with its logical negation (`0`).
+    LogicalNot,
     /// Continue at absolute instruction `target` (`0`).
     Jump(u32),
     /// Pop a condition and jump when false (`-1`).
     JumpIfFalse(u32),
-    /// Pop and return one value (`-1`, terminal).
+    /// Pop and produce a function-return completion (`-1`, terminal).
     Return,
+    /// Pop and produce a normal program completion (`-1`, terminal).
+    Complete,
+    /// Pop and produce a throw completion (`-1`, terminal).
+    Throw,
 }
 
 impl Instruction {
@@ -52,17 +69,25 @@ impl Instruction {
             | Self::Duplicate
             | Self::Pop
             | Self::JumpIfFalse(_)
-            | Self::Return => 1,
-            Self::Add | Self::StrictEqual => 2,
+            | Self::LogicalNot
+            | Self::Return
+            | Self::Complete
+            | Self::Throw => 1,
+            Self::Add | Self::Subtract | Self::Multiply | Self::Divide | Self::StrictEqual => 2,
         }
     }
 
     fn stack_delta(self) -> isize {
         match self {
             Self::LoadConstant(_) | Self::LoadLocal(_) | Self::Duplicate => 1,
-            Self::StoreLocal(_) | Self::Pop | Self::JumpIfFalse(_) | Self::Return => -1,
-            Self::Add | Self::StrictEqual => -1,
-            Self::Jump(_) => 0,
+            Self::StoreLocal(_)
+            | Self::Pop
+            | Self::JumpIfFalse(_)
+            | Self::Return
+            | Self::Complete
+            | Self::Throw => -1,
+            Self::Add | Self::Subtract | Self::Multiply | Self::Divide | Self::StrictEqual => -1,
+            Self::Jump(_) | Self::LogicalNot => 0,
         }
     }
 }
@@ -220,7 +245,11 @@ fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
         if depth < instruction.required_stack() {
             return Err(VerifyError::at(VerifyErrorKind::StackUnderflow, offset));
         }
-        if instruction == Instruction::Return && depth != 1 {
+        if matches!(
+            instruction,
+            Instruction::Return | Instruction::Complete | Instruction::Throw
+        ) && depth != 1
+        {
             return Err(VerifyError::at(VerifyErrorKind::InvalidReturnDepth, offset));
         }
         let next_depth = depth
@@ -228,7 +257,7 @@ fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
             .expect("stack requirement prevents underflow");
         max_stack = max_stack.max(depth).max(next_depth);
         match instruction {
-            Instruction::Return => {}
+            Instruction::Return | Instruction::Complete | Instruction::Throw => {}
             Instruction::Jump(target) => work.push_back((target as usize, next_depth)),
             Instruction::JumpIfFalse(target) => {
                 work.push_back((target as usize, next_depth));

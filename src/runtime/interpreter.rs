@@ -761,7 +761,7 @@ fn literal_value(literal: &Literal, strict: bool) -> RuntimeResult<Value> {
     }
 }
 
-fn parse_numeric_literal(raw: &str, kind: NumberKind) -> RuntimeResult<Value> {
+pub(crate) fn parse_numeric_literal(raw: &str, kind: NumberKind) -> RuntimeResult<Value> {
     let cleaned = raw.replace('_', "");
     let bigint = kind == NumberKind::BigInt;
     let spelling = cleaned.strip_suffix('n').unwrap_or(&cleaned);
@@ -798,7 +798,7 @@ fn parse_numeric_literal(raw: &str, kind: NumberKind) -> RuntimeResult<Value> {
         .ok_or_else(|| RuntimeError::syntax_error("invalid numeric literal"))
 }
 
-fn binary_values(operator: &str, left: Value, right: Value) -> RuntimeResult<Value> {
+pub(crate) fn binary_values(operator: &str, left: Value, right: Value) -> RuntimeResult<Value> {
     match operator {
         "+" => {
             let left = left.to_primitive(super::PrimitiveHint::Default)?;

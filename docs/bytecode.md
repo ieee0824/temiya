@@ -12,13 +12,22 @@ native addresses, and platform-sized operands are intentionally excluded.
 | `StoreLocal(i)` | `-1` | one input and valid local |
 | `Duplicate` | `+1` | one input |
 | `Pop` | `-1` | one input |
-| `Add`, `StrictEqual` | `-1` | two inputs, one result |
+| `Add`, `Subtract`, `Multiply`, `Divide`, `StrictEqual` | `-1` | two inputs, one result |
+| `LogicalNot` | `0` | one input, one result |
 | `Jump(target)` | `0` | target is an instruction |
 | `JumpIfFalse(target)` | `-1` | one input and valid target |
-| `Return` | `-1` | exactly one value, terminal |
+| `Return`, `Complete`, `Throw` | `-1` | exactly one value, terminal |
 
 `Bytecode::verify` performs a work-list traversal before dispatch is allowed.
 It validates pool and frame operands, rejects stack underflow, requires equal
 stack depth at control-flow joins, proves every path terminates with `Return`,
 rejects unreachable instructions, and computes the maximum stack allocation.
 Only the resulting `VerifiedBytecode` is intended for execution by the VM.
+
+`BytecodeCompiler` lowers the baseline AST subset (primitive literals, locals,
+assignment, arithmetic and strict equality, conditional expressions, blocks,
+`if`, `while`, `return`, and `throw`) and immediately verifies its output.
+Unsupported syntax returns a source-spanned `CompileError` rather than falling
+back silently. `VirtualMachine` accepts only `VerifiedBytecode`, evaluates
+operands left-to-right, uses the runtime's ECMAScript conversions, and returns
+the same `Completion` variants as the AST statement evaluator.

@@ -112,6 +112,8 @@ stops that file's audit, so its second variant is unexecuted. Method descriptors
 read-only properties, and partial updates are separately covered through the
 public Engine API in `tests/array_stack.rs`. To reproduce an individual audit
 case, set `TEST262_CASE=push/length.js` when running the command above.
+The [audit manifest](../test262/array-stack-audit.json) records every file's
+outcome and the relevant follow-up Issues for failures.
 
 The algorithms use constant auxiliary space, with no copy of the entire array
 or precomputed property snapshot. Current object property storage still uses

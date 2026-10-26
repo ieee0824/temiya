@@ -78,3 +78,9 @@ does not run the full fixture, DOM embedding, or Boa/SpiderMonkey comparison.
 Three samples are a diagnostic baseline, not a performance acceptance gate;
 the complete comparison still requires the controls described above. The
 current linear property storage is a known optimization target.
+
+[The recorded diagnostic baseline](../benchmarks/omoikane-array-baseline.json)
+retains the implementation revision, input hashes, compiler/machine information,
+and all three samples. Its median is approximately 7.46 seconds on the recorded
+ARM64 environment; this is an optimization starting point, not a speed target
+achievement.

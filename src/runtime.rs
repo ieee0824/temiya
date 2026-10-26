@@ -26,6 +26,7 @@ mod numeric;
 mod object;
 mod pipeline;
 mod promise;
+mod proxy;
 mod regexp;
 mod statement;
 
@@ -45,6 +46,7 @@ pub use numeric::{BigIntObject, Math, NumberObject, parse_float, parse_int};
 pub use object::{PropertyDescriptor, PropertyKey, is_compatible_property_descriptor};
 pub use pipeline::{ModuleGraph, ModuleStatus, SourceTextModule};
 pub use promise::{Promise, PromiseState};
+pub use proxy::ProxyObject;
 pub use regexp::{RegExp, RegExpFlags, RegExpMatch, StringObject};
 pub use statement::{Completion, StatementEvaluator};
 

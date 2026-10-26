@@ -3,9 +3,9 @@
 use std::{cell::RefCell, rc::Rc};
 
 use super::{
-    ArrayBuffer, ArrayObject, DataView, IntrinsicId, IntrinsicRegistry, JsString, Object,
-    PropertyDescriptor, PropertyKey, RegExp, RuntimeError, RuntimeResult, StringObject, TypedArray,
-    Value,
+    ArrayBuffer, ArrayObject, DataView, IntrinsicId, IntrinsicRegistry, JsString, Math,
+    NumberObject, Object, PropertyDescriptor, PropertyKey, RegExp, RuntimeError, RuntimeResult,
+    StringObject, TypedArray, Value, parse_float, parse_int,
 };
 
 pub(super) fn initialize(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {
@@ -14,6 +14,158 @@ pub(super) fn initialize(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {
     install_reflect(intrinsics)
         .and_then(|()| install_indexed(intrinsics))
         .and_then(|()| install_string_regexp(intrinsics))
+        .and_then(|()| install_numeric(intrinsics))
+}
+
+fn install_numeric(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {
+    let number = intrinsics.get(IntrinsicId::Number);
+    let number_prototype = intrinsics.get(IntrinsicId::NumberPrototype);
+    number.set_native_call(|_, arguments| match arguments.first() {
+        None => Ok(Value::Number(0.0)),
+        Some(value) => value.to_number().map(Value::Number),
+    });
+    number.set_native_construct(move |arguments, _| {
+        let value = arguments.first().map_or(Ok(0.0), Value::to_number)?;
+        let object = NumberObject::new(value).object();
+        object.set_prototype(Some(number_prototype.clone()));
+        Ok(object)
+    });
+    for (name, value) in [
+        ("NaN", f64::NAN),
+        ("POSITIVE_INFINITY", f64::INFINITY),
+        ("NEGATIVE_INFINITY", f64::NEG_INFINITY),
+        ("MAX_VALUE", f64::MAX),
+        ("MIN_VALUE", f64::from_bits(1)),
+        ("EPSILON", f64::EPSILON),
+    ] {
+        require_define(
+            &number,
+            name.into(),
+            PropertyDescriptor::data(Value::Number(value), false, false, false),
+        )?;
+    }
+    method(&number, "isNaN", |_, arguments| {
+        Ok(Value::Boolean(
+            matches!(arguments.first(), Some(Value::Number(value)) if value.is_nan()),
+        ))
+    })?;
+    method(&number, "isFinite", |_, arguments| {
+        Ok(Value::Boolean(
+            matches!(arguments.first(), Some(Value::Number(value)) if value.is_finite()),
+        ))
+    })?;
+    method(&number, "isInteger", |_, arguments| {
+        Ok(Value::Boolean(
+            matches!(arguments.first(), Some(Value::Number(value)) if value.is_finite() && value.fract() == 0.0),
+        ))
+    })?;
+    method(&number, "parseFloat", |_, arguments| {
+        Ok(Value::Number(parse_float(
+            &value_arg(arguments.first()).to_js_string()?,
+        )))
+    })?;
+    method(&number, "parseInt", |_, arguments| {
+        let input = value_arg(arguments.first()).to_js_string()?;
+        let radix = match arguments.get(1) {
+            None | Some(Value::Undefined) => None,
+            Some(value) => Some(value.to_number()? as u32),
+        };
+        Ok(Value::Number(parse_int(&input, radix)))
+    })?;
+    method(
+        &intrinsics.get(IntrinsicId::NumberPrototype),
+        "valueOf",
+        |this, _| numeric_receiver(&this, false),
+    )?;
+    method(
+        &intrinsics.get(IntrinsicId::NumberPrototype),
+        "toFixed",
+        |this, arguments| {
+            let Value::Number(value) = numeric_receiver(&this, false)? else {
+                unreachable!()
+            };
+            let digits = length_argument(arguments.first())?;
+            if digits > 100 {
+                return Err(RuntimeError::range_error(
+                    "fraction digits are out of range",
+                ));
+            }
+            Ok(Value::String(JsString::from(format!("{value:.digits$}"))))
+        },
+    )?;
+
+    let bigint = intrinsics.get(IntrinsicId::BigInt);
+    bigint.set_native_call(|_, arguments| {
+        value_arg(arguments.first()).to_bigint().map(Value::BigInt)
+    });
+    bigint.clear_native_construct();
+    method(&bigint, "asUintN", |_, arguments| {
+        let bits = bit_count(arguments.first())?;
+        let value = value_arg(arguments.get(1)).to_bigint()?;
+        Math::bigint_as_uint_n(bits, &value).map(Value::BigInt)
+    })?;
+    method(&bigint, "asIntN", |_, arguments| {
+        let bits = bit_count(arguments.first())?;
+        let value = value_arg(arguments.get(1)).to_bigint()?;
+        Math::bigint_as_int_n(bits, &value).map(Value::BigInt)
+    })?;
+
+    let math = intrinsics.get(IntrinsicId::Math);
+    unary_math(&math, "abs", f64::abs)?;
+    unary_math(&math, "floor", f64::floor)?;
+    unary_math(&math, "ceil", f64::ceil)?;
+    unary_math(&math, "sqrt", f64::sqrt)?;
+    unary_math(&math, "round", Math::round)?;
+    method(&math, "pow", |_, arguments| {
+        Ok(Value::Number(
+            value_arg(arguments.first())
+                .to_number()?
+                .powf(value_arg(arguments.get(1)).to_number()?),
+        ))
+    })?;
+    method(&math, "max", |_, arguments| {
+        arguments
+            .iter()
+            .map(Value::to_number)
+            .collect::<RuntimeResult<Vec<_>>>()
+            .map(|values| Value::Number(Math::max(&values)))
+    })?;
+    method(&math, "min", |_, arguments| {
+        arguments
+            .iter()
+            .map(Value::to_number)
+            .collect::<RuntimeResult<Vec<_>>>()
+            .map(|values| Value::Number(Math::min(&values)))
+    })
+}
+
+fn unary_math(object: &Object, name: &str, operation: fn(f64) -> f64) -> RuntimeResult<()> {
+    method(object, name, move |_, arguments| {
+        Ok(Value::Number(operation(
+            value_arg(arguments.first()).to_number()?,
+        )))
+    })
+}
+
+fn numeric_receiver(value: &Value, bigint: bool) -> RuntimeResult<Value> {
+    match value {
+        Value::Number(_) if !bigint => Ok(value.clone()),
+        Value::BigInt(_) if bigint => Ok(value.clone()),
+        Value::Object(object) => match object.0.state.borrow().numeric_data.as_ref() {
+            Some(value @ Value::Number(_)) if !bigint => Ok(value.clone()),
+            Some(value @ Value::BigInt(_)) if bigint => Ok(value.clone()),
+            _ => Err(RuntimeError::type_error("incompatible numeric receiver")),
+        },
+        _ => Err(RuntimeError::type_error("incompatible numeric receiver")),
+    }
+}
+
+fn bit_count(value: Option<&Value>) -> RuntimeResult<u64> {
+    let value = value_arg(value).to_number()?;
+    if !value.is_finite() || value < 0.0 || value.fract() != 0.0 || value > 1_000_000.0 {
+        return Err(RuntimeError::range_error("bit count is out of range"));
+    }
+    Ok(value as u64)
 }
 
 fn install_string_regexp(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {

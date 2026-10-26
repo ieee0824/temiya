@@ -6,7 +6,7 @@
 use std::{
     any::Any,
     cell::RefCell,
-    collections::HashMap,
+    collections::{HashMap, HashSet, VecDeque},
     fmt,
     hash::{Hash, Hasher},
     marker::PhantomData,
@@ -102,7 +102,7 @@ impl<T: Trace> Allocation for T {
 
 struct Slot {
     generation: u64,
-    value: Box<dyn Allocation>,
+    value: Option<Box<dyn Allocation>>,
 }
 
 type RootCounts = Rc<RefCell<HashMap<RawHandle, usize>>>;
@@ -149,40 +149,123 @@ impl<T: Trace> Drop for Root<T> {
 pub struct Heap {
     id: u64,
     slots: Vec<Slot>,
+    free: Vec<usize>,
     roots: RootCounts,
+    options: HeapOptions,
+    allocations_since_collection: usize,
 }
+
+/// Limits controlling automatic collection and allocation failure.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct HeapOptions {
+    /// Number of allocations between automatic collection attempts.
+    pub allocation_threshold: usize,
+    /// Maximum simultaneously live allocations, or no limit when `None`.
+    pub max_allocations: Option<usize>,
+}
+
+impl Default for HeapOptions {
+    fn default() -> Self {
+        Self {
+            allocation_threshold: 1_024,
+            max_allocations: None,
+        }
+    }
+}
+
+/// Statistics produced by one stop-the-world collection.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct CollectionStats {
+    /// Allocations reachable from explicit roots.
+    pub retained: usize,
+    /// Unreachable allocations reclaimed by this collection.
+    pub reclaimed: usize,
+}
+
+/// Allocation failure returned after collection cannot satisfy a heap limit.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct OutOfMemory;
+
+impl fmt::Display for OutOfMemory {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("garbage-collected heap allocation limit reached")
+    }
+}
+
+impl std::error::Error for OutOfMemory {}
 
 impl Heap {
     /// Creates an empty heap with an independent handle namespace.
     #[must_use]
     pub fn new() -> Self {
+        Self::with_options(HeapOptions::default())
+    }
+
+    /// Creates an empty heap with explicit collector limits.
+    #[must_use]
+    pub fn with_options(options: HeapOptions) -> Self {
         static NEXT_HEAP: AtomicU64 = AtomicU64::new(1);
         Self {
             id: NEXT_HEAP.fetch_add(1, Ordering::Relaxed),
             slots: Vec::new(),
+            free: Vec::new(),
             roots: Rc::new(RefCell::new(HashMap::new())),
+            options,
+            allocations_since_collection: 0,
         }
     }
 
     /// Allocates and immediately roots a value.
     pub fn allocate<T: Trace>(&mut self, value: T) -> Root<T> {
+        self.try_allocate(value)
+            .expect("garbage-collected heap allocation failed")
+    }
+
+    /// Allocates and roots a value, collecting first when configured limits require it.
+    pub fn try_allocate<T: Trace>(&mut self, value: T) -> Result<Root<T>, OutOfMemory> {
+        if self.allocations_since_collection >= self.options.allocation_threshold {
+            self.collect();
+        }
+        if self
+            .options
+            .max_allocations
+            .is_some_and(|limit| self.live_allocations() >= limit)
+        {
+            self.collect();
+            if self
+                .options
+                .max_allocations
+                .is_some_and(|limit| self.live_allocations() >= limit)
+            {
+                return Err(OutOfMemory);
+            }
+        }
+        let (slot_index, generation) = if let Some(index) = self.free.pop() {
+            let slot = &mut self.slots[index];
+            slot.generation = slot.generation.wrapping_add(1);
+            (index, slot.generation)
+        } else {
+            self.slots.push(Slot {
+                generation: 0,
+                value: None,
+            });
+            (self.slots.len() - 1, 0)
+        };
         let handle = Handle {
             raw: RawHandle {
                 heap: self.id,
-                slot: self.slots.len(),
-                generation: 0,
+                slot: slot_index,
+                generation,
             },
             marker: PhantomData,
         };
-        self.slots.push(Slot {
-            generation: 0,
-            value: Box::new(value),
-        });
+        self.slots[slot_index].value = Some(Box::new(value));
+        self.allocations_since_collection += 1;
         register_root(&self.roots, handle.raw);
-        Root {
+        Ok(Root {
             handle,
             roots: self.roots.clone(),
-        }
+        })
     }
 
     /// Registers an existing live handle as an explicit root.
@@ -202,7 +285,7 @@ impl Heap {
         use_value: impl FnOnce(&T) -> R,
     ) -> Option<R> {
         self.slot(handle)
-            .and_then(|slot| slot.value.as_any().downcast_ref::<T>())
+            .and_then(|slot| slot.value.as_ref()?.as_any().downcast_ref::<T>())
             .map(use_value)
     }
 
@@ -213,7 +296,7 @@ impl Heap {
         use_value: impl FnOnce(&mut T) -> R,
     ) -> Option<R> {
         self.slot_mut(handle)
-            .and_then(|slot| slot.value.as_any_mut().downcast_mut::<T>())
+            .and_then(|slot| slot.value.as_mut()?.as_any_mut().downcast_mut::<T>())
             .map(use_value)
     }
 
@@ -229,9 +312,57 @@ impl Heap {
         for raw in roots {
             visit(raw);
             if let Some(slot) = self.raw_slot(raw) {
-                slot.value.trace(&mut Tracer { visit });
+                if let Some(value) = &slot.value {
+                    value.trace(&mut Tracer { visit });
+                }
             }
         }
+    }
+
+    /// Performs a complete stop-the-world mark-and-sweep collection.
+    pub fn collect(&mut self) -> CollectionStats {
+        let mut marked = HashSet::new();
+        let mut queue = self.roots.borrow().keys().copied().collect::<VecDeque<_>>();
+        while let Some(raw) = queue.pop_front() {
+            if !marked.insert(raw) {
+                continue;
+            }
+            let Some(slot) = self.raw_slot(raw) else {
+                continue;
+            };
+            let Some(value) = &slot.value else { continue };
+            value.trace(&mut Tracer {
+                visit: &mut |edge| queue.push_back(edge),
+            });
+        }
+
+        let mut reclaimed = 0;
+        for (index, slot) in self.slots.iter_mut().enumerate() {
+            let raw = RawHandle {
+                heap: self.id,
+                slot: index,
+                generation: slot.generation,
+            };
+            if slot.value.is_some() && !marked.contains(&raw) {
+                slot.value = None;
+                self.free.push(index);
+                reclaimed += 1;
+            }
+        }
+        self.allocations_since_collection = 0;
+        CollectionStats {
+            retained: self.live_allocations(),
+            reclaimed,
+        }
+    }
+
+    /// Returns the number of allocations currently present in the heap.
+    #[must_use]
+    pub fn live_allocations(&self) -> usize {
+        self.slots
+            .iter()
+            .filter(|slot| slot.value.is_some())
+            .count()
     }
 
     fn slot<T: Trace>(&self, handle: Handle<T>) -> Option<&Slot> {
@@ -244,7 +375,7 @@ impl Heap {
         }
         self.slots
             .get_mut(handle.raw.slot)
-            .filter(|slot| slot.generation == handle.raw.generation)
+            .filter(|slot| slot.generation == handle.raw.generation && slot.value.is_some())
     }
 
     fn raw_slot(&self, handle: RawHandle) -> Option<&Slot> {
@@ -253,7 +384,7 @@ impl Heap {
         }
         self.slots
             .get(handle.slot)
-            .filter(|slot| slot.generation == handle.generation)
+            .filter(|slot| slot.generation == handle.generation && slot.value.is_some())
     }
 }
 

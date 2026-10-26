@@ -61,13 +61,14 @@ pub(super) fn create_function(
         lexical_this: evaluator.this_value.clone(),
         home_object,
     });
-    let slot = Rc::new(RefCell::new(None::<Object>));
+    let slot = Rc::new(RefCell::new(None::<super::WeakObject>));
     let call_closure = closure.clone();
     let call_slot = slot.clone();
     let call = move |this: Value, arguments: &[Value]| {
         let function = call_slot
             .borrow()
-            .clone()
+            .as_ref()
+            .and_then(super::WeakObject::upgrade)
             .ok_or_else(|| RuntimeError::internal_error("function object is not initialized"))?;
         if call_closure.code.generator {
             create_generator_object(&call_closure, function, this, arguments).map(Value::Object)
@@ -93,16 +94,20 @@ pub(super) fn create_function(
         let construct_closure = closure.clone();
         let construct_slot = slot.clone();
         Object::native_callable_constructor(call, move |arguments, new_target| {
-            let function = construct_slot.borrow().clone().ok_or_else(|| {
-                RuntimeError::internal_error("function object is not initialized")
-            })?;
+            let function = construct_slot
+                .borrow()
+                .as_ref()
+                .and_then(super::WeakObject::upgrade)
+                .ok_or_else(|| {
+                    RuntimeError::internal_error("function object is not initialized")
+                })?;
             construct_function(&construct_closure, function, arguments, new_target)
                 .map_err(|error| construct_closure.realm.bind_exception(error))
         })
     } else {
         Object::native_function(call)
     };
-    *slot.borrow_mut() = Some(function.clone());
+    *slot.borrow_mut() = Some(function.downgrade());
     if let (Some(environment), Some(ExprKind::Identifier(name))) =
         (name_environment, code.name.as_ref().map(|name| &name.kind))
     {
@@ -112,11 +117,6 @@ pub(super) fn create_function(
         )?;
     }
 
-    if constructable {
-        let prototype = Object::new();
-        prototype.create_data_property("constructor".into(), Value::Object(function.clone()))?;
-        function.create_data_property("prototype".into(), Value::Object(prototype))?;
-    }
     let length = code
         .parameters
         .iter()
@@ -134,6 +134,13 @@ pub(super) fn create_function(
     if let Some(ExprKind::Identifier(name)) = code.name.as_ref().map(|name| &name.kind) {
         function
             .create_data_property("name".into(), Value::String(JsString::from(name.as_str())))?;
+    }
+    if constructable {
+        function.install_lazy_function_prototype(
+            evaluator
+                .realm
+                .intrinsic(super::IntrinsicId::ObjectPrototype),
+        )?;
     }
     Ok(function)
 }

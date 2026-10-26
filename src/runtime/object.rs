@@ -274,6 +274,9 @@ pub(super) struct ObjectState {
     properties: Vec<PropertyEntry>,
     callable: Option<NativeCall>,
     construct: Option<NativeConstruct>,
+    // The own data property already exists. Only its initial object value is
+    // deferred until an operation observes or redefines that descriptor.
+    lazy_function_prototype: Option<Object>,
     pub(super) array: bool,
     pub(super) elements: Option<Box<super::elements::Elements>>,
     pub(super) buffer: Option<super::indexed::BufferSlot>,
@@ -297,6 +300,45 @@ pub(super) fn ordinary_state() -> ObjectState {
 }
 
 impl Object {
+    pub(super) fn install_lazy_function_prototype(
+        &self,
+        object_prototype: Object,
+    ) -> RuntimeResult<()> {
+        self.define_own_property(
+            "prototype".into(),
+            PropertyDescriptor::data(Value::Undefined, true, false, false),
+        )?;
+        self.0.state.borrow_mut().lazy_function_prototype = Some(object_prototype);
+        Ok(())
+    }
+
+    fn materialize_function_prototype(&self, key: &PropertyKey) -> RuntimeResult<()> {
+        if !matches!(key, PropertyKey::String(name) if name.code_units().iter().copied().eq("prototype".encode_utf16()))
+        {
+            return Ok(());
+        }
+        let Some(parent) = self.0.state.borrow_mut().lazy_function_prototype.take() else {
+            return Ok(());
+        };
+        let prototype = Object::new();
+        prototype.set_prototype(Some(parent));
+        prototype.define_own_property(
+            "constructor".into(),
+            PropertyDescriptor::data(Value::Object(self.clone()), true, false, true),
+        )?;
+        // Do not use ordinary DefineOwnProperty here: the logical initial value
+        // exists even if its property or the function was made nonwritable or
+        // nonextensible. Preserve all attributes and insertion order.
+        let mut state = self.0.state.borrow_mut();
+        let entry = state
+            .properties
+            .iter_mut()
+            .find(|entry| entry.key == *key)
+            .expect("lazy function prototype property");
+        entry.descriptor.value = Some(Value::Object(prototype));
+        Ok(())
+    }
+
     pub(crate) fn set_native_call(
         &self,
         callback: impl Fn(Value, &[Value]) -> RuntimeResult<Value> + 'static,
@@ -462,6 +504,7 @@ impl Object {
         if self.0.state.borrow().proxy.is_some() {
             return super::proxy::get_own_property(self, key);
         }
+        self.materialize_function_prototype(key)?;
         if let Some(string) = &self.0.state.borrow().string_data {
             if matches!(key, PropertyKey::String(name) if name == &JsString::from("length")) {
                 return Ok(Some(PropertyDescriptor::data(
@@ -507,6 +550,7 @@ impl Object {
         if self.0.state.borrow().proxy.is_some() {
             return super::proxy::define_own_property(self, key, descriptor);
         }
+        self.materialize_function_prototype(&key)?;
         if self.0.state.borrow().string_data.is_some() {
             if let Some(current) = self.string_exotic_property(&key) {
                 return is_compatible_property_descriptor(false, &descriptor, Some(&current));

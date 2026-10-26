@@ -12,9 +12,11 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use num_bigint::BigInt;
 
 mod environment;
+mod execution;
 mod object;
 
 pub use environment::{Environment, EnvironmentKind, ObjectEnvironmentOptions, ThisBindingStatus};
+pub use execution::{Agent, ContextState, ExecutionContext, Realm, ScriptRecord};
 pub use object::{PropertyDescriptor, PropertyKey, is_compatible_property_descriptor};
 
 /// A JavaScript String value represented as an exact sequence of UTF-16 code units.
@@ -152,6 +154,15 @@ impl RuntimeError {
         }
     }
 
+    /// Creates an engine-internal invariant error.
+    #[must_use]
+    pub fn internal_error(message: impl Into<String>) -> Self {
+        Self {
+            kind: RuntimeErrorKind::InternalError,
+            message: message.into(),
+        }
+    }
+
     /// Returns the error category.
     #[must_use]
     pub fn kind(&self) -> RuntimeErrorKind {
@@ -182,6 +193,8 @@ pub enum RuntimeErrorKind {
     SyntaxError,
     /// A binding is absent or cannot yet be accessed.
     ReferenceError,
+    /// An invalid engine state transition was requested.
+    InternalError,
 }
 
 impl fmt::Display for RuntimeErrorKind {
@@ -190,6 +203,7 @@ impl fmt::Display for RuntimeErrorKind {
             Self::TypeError => formatter.write_str("TypeError"),
             Self::SyntaxError => formatter.write_str("SyntaxError"),
             Self::ReferenceError => formatter.write_str("ReferenceError"),
+            Self::InternalError => formatter.write_str("InternalError"),
         }
     }
 }

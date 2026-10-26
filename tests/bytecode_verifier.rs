@@ -111,3 +111,166 @@ fn accepts_a_stack_neutral_loop_with_an_exit() {
         Ok(1)
     );
 }
+
+#[test]
+fn scope_operands_and_control_flow_are_verified() {
+    use temiya::bytecode::{BindingKind, ScopeBinding, ScopeDescriptor, ScopeKind};
+    let plan = |kind, binding| {
+        Constant::Scope(ScopeDescriptor {
+            kind,
+            strict: false,
+            bindings: vec![ScopeBinding {
+                name: "x".into(),
+                kind: binding,
+            }],
+        })
+    };
+    let check = |constants, instructions| {
+        Bytecode {
+            constants,
+            instructions,
+            local_count: 0,
+        }
+        .verify()
+        .unwrap_err()
+        .kind()
+    };
+    let global = plan(ScopeKind::Global, BindingKind::Let);
+    assert_eq!(
+        check(
+            vec![global.clone()],
+            vec![Instruction::LoadConstant(0), Instruction::Return]
+        ),
+        VerifyErrorKind::InvalidConstantKind
+    );
+    assert_eq!(
+        check(vec![], vec![Instruction::ExitScope]),
+        VerifyErrorKind::ScopeMismatch
+    );
+    assert_eq!(
+        check(
+            vec![global.clone()],
+            vec![
+                Instruction::EnterScope(0),
+                Instruction::LoadBinding { scope: 0, slot: 1 },
+                Instruction::Return
+            ]
+        ),
+        VerifyErrorKind::BindingOutOfBounds
+    );
+    assert_eq!(
+        check(
+            vec![global.clone()],
+            vec![
+                Instruction::EnterScope(0),
+                Instruction::ExitScope,
+                Instruction::LoadBinding { scope: 0, slot: 0 },
+                Instruction::Return
+            ]
+        ),
+        VerifyErrorKind::BindingOutOfBounds
+    );
+    assert_eq!(
+        check(
+            vec![plan(ScopeKind::Block, BindingKind::Var)],
+            vec![Instruction::EnterScope(0)]
+        ),
+        VerifyErrorKind::InvalidScopeDescriptor
+    );
+    assert_eq!(
+        check(
+            vec![
+                plan(ScopeKind::Global, BindingKind::Var),
+                Constant::Undefined
+            ],
+            vec![
+                Instruction::EnterScope(0),
+                Instruction::LoadConstant(1),
+                Instruction::InitializeBinding { scope: 0, slot: 0 },
+                Instruction::Return
+            ]
+        ),
+        VerifyErrorKind::BindingOutOfBounds
+    );
+    // One edge exits the scope and the other retains it at the join.
+    assert_eq!(
+        check(
+            vec![global, Constant::Boolean(true)],
+            vec![
+                Instruction::EnterScope(0),
+                Instruction::LoadConstant(1),
+                Instruction::JumpIfFalse(5),
+                Instruction::ExitScope,
+                Instruction::Jump(6),
+                Instruction::Jump(6),
+                Instruction::LoadConstant(1),
+                Instruction::Return
+            ]
+        ),
+        VerifyErrorKind::ScopeMismatch
+    );
+    assert_eq!(
+        check(
+            vec![Constant::String("x".into())],
+            vec![Instruction::LoadName(0), Instruction::Return]
+        ),
+        VerifyErrorKind::ScopeMismatch
+    );
+}
+
+#[test]
+fn retained_name_references_are_checked() {
+    use temiya::bytecode::{ScopeDescriptor, ScopeKind};
+    let scope = Constant::Scope(ScopeDescriptor {
+        kind: ScopeKind::Global,
+        strict: false,
+        bindings: vec![],
+    });
+    let check = |code| {
+        Bytecode {
+            constants: vec![
+                scope.clone(),
+                Constant::String("x".into()),
+                Constant::Number(1.0),
+            ],
+            instructions: code,
+            local_count: 0,
+        }
+        .verify()
+        .unwrap_err()
+        .kind()
+    };
+    assert_eq!(
+        check(vec![
+            Instruction::EnterScope(0),
+            Instruction::LoadConstant(2),
+            Instruction::StoreReference,
+            Instruction::Return
+        ]),
+        VerifyErrorKind::ScopeMismatch
+    );
+    assert_eq!(
+        check(vec![
+            Instruction::EnterScope(0),
+            Instruction::ResolveName {
+                name: 2,
+                strict: false
+            },
+            Instruction::Return
+        ]),
+        VerifyErrorKind::InvalidConstantKind
+    );
+    assert_eq!(
+        check(vec![
+            Instruction::EnterScope(0),
+            Instruction::ResolveName {
+                name: 1,
+                strict: false
+            },
+            Instruction::ExitScope,
+            Instruction::LoadConstant(2),
+            Instruction::Complete
+        ]),
+        VerifyErrorKind::ScopeMismatch
+    );
+}

@@ -129,6 +129,9 @@ mod platform {
         let mut passthrough_load = None;
         for (offset, instruction) in body.instructions.iter().copied().enumerate() {
             match instruction {
+                Instruction::EnterScope(index) if matches!(&body.constants[index as usize], Constant::Scope(plan) if plan.kind == crate::bytecode::ScopeKind::Global && plan.bindings.is_empty()) =>
+                    {}
+                Instruction::ExitScope => {}
                 Instruction::LoadConstant(index) => {
                     let Constant::Number(number) = body.constants[index as usize] else {
                         return Err(JitError::new(

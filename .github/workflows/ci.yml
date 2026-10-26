@@ -105,3 +105,7 @@ jobs:
         env:
           TEST262_DIR: target/test262
         run: cargo +${{ matrix.toolchain }} test --locked --test addition_coercion pinned_test262_addition_coercion --all-features -- --ignored --nocapture
+      - name: Run upstream bytecode scope regressions
+        env:
+          TEST262_DIR: target/test262
+        run: cargo +${{ matrix.toolchain }} test --locked --test bytecode_scopes pinned_test262_bytecode_scope_tdz --all-features -- --ignored --nocapture

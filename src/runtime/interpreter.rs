@@ -569,27 +569,7 @@ impl ExpressionEvaluator {
 
     #[inline]
     fn apply_binary(&self, operator: &str, left: Value, right: Value) -> RuntimeResult<Value> {
-        // Primitive-only arithmetic does not need symbol lookup or JavaScript calls.
-        if (matches!(left, Value::Object(_)) || matches!(right, Value::Object(_)))
-            && operator == "+"
-        {
-            return self.addition_with_objects(left, right);
-        }
-        binary_values(operator, left, right)
-    }
-
-    #[cold]
-    #[inline(never)]
-    fn addition_with_objects(&self, left: Value, right: Value) -> RuntimeResult<Value> {
-        let key = self
-            .realm
-            .well_known_symbol(super::WellKnownSymbol::ToPrimitive)
-            .into();
-        let left =
-            super::coercion::primitive_with_hint(&left, &key, super::PrimitiveHint::Default)?;
-        let right =
-            super::coercion::primitive_with_hint(&right, &key, super::PrimitiveHint::Default)?;
-        binary_values("+", left, right)
+        binary_values_in_realm(&self.realm, operator, left, right)
     }
 
     fn assignment(&self, operator: &str, target: &Expr, value: &Expr) -> RuntimeResult<Value> {
@@ -1108,4 +1088,28 @@ fn array_like_values(value: &Value) -> RuntimeResult<Vec<Value>> {
         }
         _ => Err(RuntimeError::type_error("spread value is not iterable")),
     }
+}
+
+#[inline]
+pub(crate) fn binary_values_in_realm(
+    realm: &Realm,
+    operator: &str,
+    left: Value,
+    right: Value,
+) -> RuntimeResult<Value> {
+    if (matches!(left, Value::Object(_)) || matches!(right, Value::Object(_))) && operator == "+" {
+        return addition_with_objects(realm, left, right);
+    }
+    binary_values(operator, left, right)
+}
+
+#[cold]
+#[inline(never)]
+fn addition_with_objects(realm: &Realm, left: Value, right: Value) -> RuntimeResult<Value> {
+    let key = realm
+        .well_known_symbol(super::WellKnownSymbol::ToPrimitive)
+        .into();
+    let left = super::coercion::primitive_with_hint(&left, &key, super::PrimitiveHint::Default)?;
+    let right = super::coercion::primitive_with_hint(&right, &key, super::PrimitiveHint::Default)?;
+    binary_values("+", left, right)
 }

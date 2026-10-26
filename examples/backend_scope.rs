@@ -4,7 +4,7 @@ use temiya::{
     Engine,
     bytecode::{BytecodeCompiler, VirtualMachine},
     parser::parse_script,
-    runtime::{Completion, Value},
+    runtime::{Completion, Realm, RuntimeErrorKind, Value},
 };
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -33,6 +33,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         VirtualMachine::execute(&bytecode)?,
         Completion::Normal(Some(Value::Number(42.0)))
     ));
+
+    let bytecode_realm = Realm::ordinary();
+    for (source, expected) in [
+        ("var total=1; {let total=2; total;} total;", 1.0),
+        ("var total; total+41;", 42.0),
+    ] {
+        let code = BytecodeCompiler::compile(source)?;
+        let result = VirtualMachine::execute_in_realm(&code, &bytecode_realm)?;
+        let Completion::Normal(Some(Value::Number(value))) = result else {
+            panic!("expected numeric completion")
+        };
+        assert_eq!(value, expected);
+    }
+    let tdz = BytecodeCompiler::compile("{before; let before=1;}")?;
+    assert_eq!(
+        VirtualMachine::execute_in_realm(&tdz, &bytecode_realm)
+            .unwrap_err()
+            .kind(),
+        RuntimeErrorKind::ReferenceError
+    );
 
     #[cfg(feature = "jit")]
     check_jit()?;

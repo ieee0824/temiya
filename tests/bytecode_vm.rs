@@ -68,8 +68,11 @@ fn source_compile_reports_parse_and_unsupported_errors() {
             .contains("unsupported bytecode expression")
     );
     assert!(unsupported.span().is_some());
-    let unbound = BytecodeCompiler::compile("missing;").unwrap_err();
-    assert!(unbound.message().contains("unbound local missing"));
+    let unbound = BytecodeCompiler::compile("missing;").unwrap();
+    assert_eq!(
+        VirtualMachine::execute(&unbound).unwrap_err().kind(),
+        temiya::runtime::RuntimeErrorKind::ReferenceError
+    );
 }
 
 #[test]

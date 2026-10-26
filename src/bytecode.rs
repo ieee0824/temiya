@@ -9,6 +9,48 @@ mod vm;
 pub use compiler::{BytecodeCompiler, CompileError};
 pub use vm::VirtualMachine;
 
+/// Environment category instantiated by a scope entry.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ScopeKind {
+    /// The supplied Realm's persistent global environment.
+    Global,
+    /// A caller-prepared function environment.
+    Function,
+    /// A fresh declarative block environment.
+    Block,
+}
+
+/// Binding initialization and assignment policy.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum BindingKind {
+    /// Hoisted, mutable and initially undefined.
+    Var,
+    /// Mutable, initially in the temporal dead zone.
+    Let,
+    /// Immutable, initially in the temporal dead zone.
+    Const,
+}
+
+/// One immutable binding entry; its position is the scope's slot operand.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ScopeBinding {
+    /// Decoded binding name.
+    pub name: JsString,
+    /// Initialization and mutability policy.
+    pub kind: BindingKind,
+}
+
+/// Immutable scope metadata, containing no runtime environment or values.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ScopeDescriptor {
+    /// Concrete environment category.
+    pub kind: ScopeKind,
+    /// Assignment strictness of this code.
+    pub strict: bool,
+    /// Ordered bindings addressed by slot operands.
+    pub bindings: Vec<ScopeBinding>,
+}
+
 /// Pointer-free literal stored in a bytecode constant pool.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Constant {
@@ -22,11 +64,29 @@ pub enum Constant {
     Number(f64),
     /// Exact UTF-16 string, including lone surrogates.
     String(JsString),
+    /// Scope metadata, usable only by `EnterScope`, never `LoadConstant`.
+    Scope(ScopeDescriptor),
 }
 
 /// Portable instruction with fixed-width integer operands.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Instruction {
+    /// Instantiate metadata entry `index` and identify this scope by its entry PC.
+    EnterScope(u32),
+    /// Leave the innermost active scope, preserving the operand stack.
+    ExitScope,
+    /// Push a value from an active scope entry PC and binding slot.
+    LoadBinding { scope: u32, slot: u32 },
+    /// Initialize an active lexical binding from the stack.
+    InitializeBinding { scope: u32, slot: u32 },
+    /// Assign an active binding from the stack, checking TDZ and mutability.
+    StoreBinding { scope: u32, slot: u32 },
+    /// Resolve a string constant in the current environment chain and push its value.
+    LoadName(u32),
+    /// Resolve a name before its assignment RHS and retain its Reference.
+    ResolveName { name: u32, strict: bool },
+    /// Pop an assigned value and the innermost retained Reference, then PutValue.
+    StoreReference,
     /// Push constant-pool entry `index` (`+1`).
     LoadConstant(u32),
     /// Push local slot `index` (`+1`).
@@ -64,6 +124,12 @@ pub enum Instruction {
 impl Instruction {
     fn required_stack(self) -> usize {
         match self {
+            Self::EnterScope(_)
+            | Self::ExitScope
+            | Self::ResolveName { .. }
+            | Self::LoadBinding { .. }
+            | Self::LoadName(_) => 0,
+            Self::InitializeBinding { .. } | Self::StoreBinding { .. } | Self::StoreReference => 1,
             Self::LoadConstant(_) | Self::LoadLocal(_) | Self::Jump(_) => 0,
             Self::StoreLocal(_)
             | Self::Duplicate
@@ -79,6 +145,9 @@ impl Instruction {
 
     fn stack_delta(self) -> isize {
         match self {
+            Self::EnterScope(_) | Self::ExitScope | Self::ResolveName { .. } => 0,
+            Self::LoadBinding { .. } | Self::LoadName(_) => 1,
+            Self::InitializeBinding { .. } | Self::StoreBinding { .. } | Self::StoreReference => -1,
             Self::LoadConstant(_) | Self::LoadLocal(_) | Self::Duplicate => 1,
             Self::StoreLocal(_)
             | Self::Pop
@@ -158,6 +227,14 @@ pub enum VerifyErrorKind {
     InvalidReturnDepth,
     /// An instruction is not reachable from entry.
     UnreachableInstruction,
+    /// Scope metadata has an invalid kind, duplicate name or binding policy.
+    InvalidScopeDescriptor,
+    /// A metadata constant was used as a value, or a name operand is not a String.
+    InvalidConstantKind,
+    /// Active scopes differ at a join, are unbalanced, or have invalid nesting.
+    ScopeMismatch,
+    /// A binding references an inactive scope, invalid slot, or var initialization.
+    BindingOutOfBounds,
 }
 
 /// Verifier diagnostic carrying an instruction offset when available.
@@ -203,6 +280,13 @@ impl fmt::Display for VerifyError {
 
 impl std::error::Error for VerifyError {}
 
+#[derive(Clone, Debug, PartialEq)]
+struct FlowState {
+    depth: usize,
+    scopes: Vec<(u32, u32)>,
+    references: Vec<u32>,
+}
+
 fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
     let length = bytecode.instructions.len();
     if length == 0 {
@@ -211,62 +295,159 @@ fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
             offset: None,
         });
     }
-    let mut depths = vec![None; length];
-    let mut work = VecDeque::from([(0_usize, 0_usize)]);
+    for constant in &bytecode.constants {
+        if let Constant::Scope(plan) = constant {
+            let mut names = std::collections::HashSet::new();
+            if plan.bindings.iter().any(|binding| {
+                !names.insert(binding.name.code_units())
+                    || (plan.kind == ScopeKind::Block && binding.kind == BindingKind::Var)
+            }) {
+                return Err(VerifyError {
+                    kind: VerifyErrorKind::InvalidScopeDescriptor,
+                    offset: None,
+                });
+            }
+        }
+    }
+    let mut states: Vec<Option<FlowState>> = vec![None; length];
+    let mut work = VecDeque::from([(
+        0_usize,
+        FlowState {
+            depth: 0,
+            scopes: vec![],
+            references: vec![],
+        },
+    )]);
     let mut max_stack = 0;
-    while let Some((offset, depth)) = work.pop_front() {
-        if let Some(previous) = depths[offset] {
-            if previous != depth {
+    while let Some((offset, mut state)) = work.pop_front() {
+        if let Some(previous) = &states[offset] {
+            if previous.depth != state.depth {
                 return Err(VerifyError::at(VerifyErrorKind::StackDepthMismatch, offset));
+            }
+            if previous.scopes != state.scopes || previous.references != state.references {
+                return Err(VerifyError::at(VerifyErrorKind::ScopeMismatch, offset));
             }
             continue;
         }
-        depths[offset] = Some(depth);
+        states[offset] = Some(state.clone());
         let instruction = bytecode.instructions[offset];
+        let error = |kind| VerifyError::at(kind, offset);
+        let constant = |index: u32| {
+            bytecode
+                .constants
+                .get(index as usize)
+                .ok_or_else(|| error(VerifyErrorKind::ConstantOutOfBounds))
+        };
         match instruction {
-            Instruction::LoadConstant(index) if index as usize >= bytecode.constants.len() => {
-                return Err(VerifyError::at(
-                    VerifyErrorKind::ConstantOutOfBounds,
-                    offset,
-                ));
+            Instruction::EnterScope(index) => {
+                let Constant::Scope(plan) = constant(index)? else {
+                    return Err(error(VerifyErrorKind::InvalidConstantKind));
+                };
+                if (plan.kind == ScopeKind::Block) == state.scopes.is_empty()
+                    || state
+                        .scopes
+                        .iter()
+                        .any(|(entry, _)| *entry as usize == offset)
+                {
+                    return Err(error(VerifyErrorKind::ScopeMismatch));
+                }
+                let entry =
+                    u32::try_from(offset).map_err(|_| error(VerifyErrorKind::ScopeMismatch))?;
+                state.scopes.push((entry, index));
+            }
+            Instruction::ExitScope => {
+                state
+                    .scopes
+                    .pop()
+                    .ok_or_else(|| error(VerifyErrorKind::ScopeMismatch))?;
+            }
+            Instruction::LoadBinding { scope, slot }
+            | Instruction::InitializeBinding { scope, slot }
+            | Instruction::StoreBinding { scope, slot } => {
+                let (_, index) = state
+                    .scopes
+                    .iter()
+                    .find(|(entry, _)| *entry == scope)
+                    .ok_or_else(|| error(VerifyErrorKind::BindingOutOfBounds))?;
+                let Constant::Scope(plan) = &bytecode.constants[*index as usize] else {
+                    unreachable!()
+                };
+                let binding = plan
+                    .bindings
+                    .get(slot as usize)
+                    .ok_or_else(|| error(VerifyErrorKind::BindingOutOfBounds))?;
+                if matches!(instruction, Instruction::InitializeBinding { .. })
+                    && binding.kind == BindingKind::Var
+                {
+                    return Err(error(VerifyErrorKind::BindingOutOfBounds));
+                }
+            }
+            Instruction::LoadName(index) | Instruction::ResolveName { name: index, .. } => {
+                if !matches!(constant(index)?, Constant::String(_)) {
+                    return Err(error(VerifyErrorKind::InvalidConstantKind));
+                }
+                if state.scopes.is_empty() {
+                    return Err(error(VerifyErrorKind::ScopeMismatch));
+                }
+                if matches!(instruction, Instruction::ResolveName { .. }) {
+                    state.references.push(
+                        u32::try_from(offset).map_err(|_| error(VerifyErrorKind::ScopeMismatch))?,
+                    );
+                }
+            }
+            Instruction::StoreReference => {
+                state
+                    .references
+                    .pop()
+                    .ok_or_else(|| error(VerifyErrorKind::ScopeMismatch))?;
+            }
+            Instruction::LoadConstant(index) => {
+                if matches!(constant(index)?, Constant::Scope(_)) {
+                    return Err(error(VerifyErrorKind::InvalidConstantKind));
+                }
             }
             Instruction::LoadLocal(index) | Instruction::StoreLocal(index)
                 if index >= bytecode.local_count =>
             {
-                return Err(VerifyError::at(VerifyErrorKind::LocalOutOfBounds, offset));
+                return Err(error(VerifyErrorKind::LocalOutOfBounds));
             }
             Instruction::Jump(target) | Instruction::JumpIfFalse(target)
                 if target as usize >= length =>
             {
-                return Err(VerifyError::at(VerifyErrorKind::JumpOutOfBounds, offset));
+                return Err(error(VerifyErrorKind::JumpOutOfBounds));
+            }
+            Instruction::Complete if !state.scopes.is_empty() || !state.references.is_empty() => {
+                return Err(error(VerifyErrorKind::ScopeMismatch));
             }
             _ => {}
         }
-        if depth < instruction.required_stack() {
-            return Err(VerifyError::at(VerifyErrorKind::StackUnderflow, offset));
+        if state.depth < instruction.required_stack() {
+            return Err(error(VerifyErrorKind::StackUnderflow));
         }
         if matches!(
             instruction,
             Instruction::Return | Instruction::Complete | Instruction::Throw
-        ) && depth != 1
+        ) && state.depth != 1
         {
-            return Err(VerifyError::at(VerifyErrorKind::InvalidReturnDepth, offset));
+            return Err(error(VerifyErrorKind::InvalidReturnDepth));
         }
-        let next_depth = depth
+        max_stack = max_stack.max(state.depth);
+        state.depth = state
+            .depth
             .checked_add_signed(instruction.stack_delta())
             .expect("stack requirement prevents underflow");
-        max_stack = max_stack.max(depth).max(next_depth);
+        max_stack = max_stack.max(state.depth);
         match instruction {
             Instruction::Return | Instruction::Complete | Instruction::Throw => {}
-            Instruction::Jump(target) => work.push_back((target as usize, next_depth)),
+            Instruction::Jump(target) => work.push_back((target as usize, state)),
             Instruction::JumpIfFalse(target) => {
-                work.push_back((target as usize, next_depth));
-                enqueue_fallthrough(offset, length, next_depth, &mut work)?;
+                work.push_back((target as usize, state.clone()));
+                enqueue_fallthrough(offset, length, state, &mut work)?;
             }
-            _ => enqueue_fallthrough(offset, length, next_depth, &mut work)?,
+            _ => enqueue_fallthrough(offset, length, state, &mut work)?,
         }
     }
-    if let Some(offset) = depths.iter().position(Option::is_none) {
+    if let Some(offset) = states.iter().position(Option::is_none) {
         return Err(VerifyError::at(
             VerifyErrorKind::UnreachableInstruction,
             offset,
@@ -281,14 +462,14 @@ fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
 fn enqueue_fallthrough(
     offset: usize,
     length: usize,
-    depth: usize,
-    work: &mut VecDeque<(usize, usize)>,
+    state: FlowState,
+    work: &mut VecDeque<(usize, FlowState)>,
 ) -> Result<(), VerifyError> {
     let next = offset + 1;
     if next == length {
         Err(VerifyError::at(VerifyErrorKind::MissingReturn, offset))
     } else {
-        work.push_back((next, depth));
+        work.push_back((next, state));
         Ok(())
     }
 }

@@ -1,0 +1,109 @@
+{
+  "recorded_at": "2026-10-26T19:42:58.499Z",
+  "code_revision": "7b6955b4c76ef3eab4a302199e339ac0cb8c6b57",
+  "test262_revision": "d53ebc8b1931d9f1541e43d59650776e4b766248",
+  "architecture": "aarch64",
+  "compiler": {
+    "stable": "rustc 1.99.1 (58cf8f9c3 2026-10-13)\nbinary: rustc\ncommit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67\ncommit-date: 2026-10-13\nhost: aarch64-unknown-linux-gnu\nrelease: 1.99.1\nLLVM version: 23.1.1",
+    "msrv": "rustc 1.85.0 (4d91de4e4 2025-02-17)\nbinary: rustc\ncommit-hash: 4d91de4e48198da2e33413efdcd9cd2cc0c46688\ncommit-date: 2025-02-17\nhost: aarch64-unknown-linux-gnu\nrelease: 1.85.0\nLLVM version: 19.1.7"
+  },
+  "runner": "tests/bytecode_scopes.rs::pinned_test262_bytecode_scope_tdz",
+  "source_and_harness": "Original pinned git show bytes; sta.js/assert.js initialized through AST before each independent execution",
+  "fixtures": [
+    {
+      "path": "test/language/statements/let/global-use-before-initialization-in-prior-statement.js",
+      "sha256": "528ca7f5a56663c102c4489c7fa6285d85ad77333994401c48497f174870b94d",
+      "variants": [
+        "sloppy",
+        "strict"
+      ],
+      "expected_phase": "runtime",
+      "expected_error": "ReferenceError",
+      "parse_and_bytecode_compile": "pass",
+      "results": {
+        "stable": {
+          "AST": "pass",
+          "bytecode": "pass"
+        },
+        "msrv_1_85_0": {
+          "AST": "pass",
+          "bytecode": "pass"
+        }
+      }
+    },
+    {
+      "path": "test/language/statements/let/global-use-before-initialization-in-declaration-statement.js",
+      "sha256": "841de5082a955cbaf965ecf81c9b52e46ee5ff8d82a598938b2cb8e98846d703",
+      "variants": [
+        "sloppy",
+        "strict"
+      ],
+      "expected_phase": "runtime",
+      "expected_error": "ReferenceError",
+      "parse_and_bytecode_compile": "pass",
+      "results": {
+        "stable": {
+          "AST": "pass",
+          "bytecode": "pass"
+        },
+        "msrv_1_85_0": {
+          "AST": "pass",
+          "bytecode": "pass"
+        }
+      }
+    },
+    {
+      "path": "test/language/statements/const/global-use-before-initialization-in-prior-statement.js",
+      "sha256": "54abbcfd8d2a15136a05a589592086476eb24a4a9e2bf6044ec6934282fc5b89",
+      "variants": [
+        "sloppy",
+        "strict"
+      ],
+      "expected_phase": "runtime",
+      "expected_error": "ReferenceError",
+      "parse_and_bytecode_compile": "pass",
+      "results": {
+        "stable": {
+          "AST": "pass",
+          "bytecode": "pass"
+        },
+        "msrv_1_85_0": {
+          "AST": "pass",
+          "bytecode": "pass"
+        }
+      }
+    },
+    {
+      "path": "test/language/statements/const/global-use-before-initialization-in-declaration-statement.js",
+      "sha256": "833b4091c9fc08da08e5adffe63c10e4271b17fa874592b84682e78fe62db8ed",
+      "variants": [
+        "sloppy",
+        "strict"
+      ],
+      "expected_phase": "runtime",
+      "expected_error": "ReferenceError",
+      "parse_and_bytecode_compile": "pass",
+      "results": {
+        "stable": {
+          "AST": "pass",
+          "bytecode": "pass"
+        },
+        "msrv_1_85_0": {
+          "AST": "pass",
+          "bytecode": "pass"
+        }
+      }
+    }
+  ],
+  "totals": {
+    "original_files": 4,
+    "variants": 8,
+    "executions_per_toolchain": 16,
+    "toolchains": 2,
+    "passed_executions": 32,
+    "failed": 0,
+    "skipped": 0,
+    "unsupported_counted_as_pass": 0
+  },
+  "scope": "Focused runtime-negative regression set only; no full bytecode/TDZ/global conformance or Engine backend/speed claim."
+}

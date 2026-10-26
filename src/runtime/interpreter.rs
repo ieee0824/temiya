@@ -567,22 +567,29 @@ impl ExpressionEvaluator {
         self.apply_binary(operator, left, right)
     }
 
+    #[inline]
     fn apply_binary(&self, operator: &str, left: Value, right: Value) -> RuntimeResult<Value> {
         // Primitive-only arithmetic does not need symbol lookup or JavaScript calls.
-        if operator == "+"
-            && (matches!(left, Value::Object(_)) || matches!(right, Value::Object(_)))
+        if (matches!(left, Value::Object(_)) || matches!(right, Value::Object(_)))
+            && operator == "+"
         {
-            let key = self
-                .realm
-                .well_known_symbol(super::WellKnownSymbol::ToPrimitive)
-                .into();
-            let left =
-                super::coercion::primitive_with_hint(&left, &key, super::PrimitiveHint::Default)?;
-            let right =
-                super::coercion::primitive_with_hint(&right, &key, super::PrimitiveHint::Default)?;
-            return binary_values(operator, left, right);
+            return self.addition_with_objects(left, right);
         }
         binary_values(operator, left, right)
+    }
+
+    #[cold]
+    #[inline(never)]
+    fn addition_with_objects(&self, left: Value, right: Value) -> RuntimeResult<Value> {
+        let key = self
+            .realm
+            .well_known_symbol(super::WellKnownSymbol::ToPrimitive)
+            .into();
+        let left =
+            super::coercion::primitive_with_hint(&left, &key, super::PrimitiveHint::Default)?;
+        let right =
+            super::coercion::primitive_with_hint(&right, &key, super::PrimitiveHint::Default)?;
+        binary_values("+", left, right)
     }
 
     fn assignment(&self, operator: &str, target: &Expr, value: &Expr) -> RuntimeResult<Value> {

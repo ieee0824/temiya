@@ -6,10 +6,13 @@ arbitrary precision, and Symbol and Object comparisons use identity.
 
 `Value` exposes the fundamental abstract operations needed by the interpreter:
 `same_value`, `same_value_zero`, `to_boolean`, `to_primitive`, `to_number`,
-`to_numeric`, `to_js_string`, and `to_bigint`. Object conversion hooks preserve
-the observable `@@toPrimitive`, `valueOf`, and `toString` ordering and propagate
-abrupt completions. These explicit bootstrap hooks remain the boundary until
-Realm initialization installs the corresponding intrinsic properties.
+`to_numeric`, `to_js_string`, and `to_bigint`. These low-level conversions use
+explicit Rust object conversion hooks, preserve hook ordering and propagate
+abrupt completions; they do not themselves look up JavaScript method properties.
+The AST's `+` and `+=` instead connect ordinary JavaScript objects to realm-aware
+method lookup and default-hint conversion; see [addition coercion](addition-coercion.md).
+Several built-ins also use realm-aware coercion. The remaining operator and
+intrinsic conversion audit is tracked in #176.
 
 Object storage currently uses `Rc`; this is an explicit pre-GC representation.
 Tracing, rooting, weak references, and optimized tagged values are outside this

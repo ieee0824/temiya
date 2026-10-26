@@ -75,3 +75,10 @@ used by the embedding Engine. The original eleven omoikane inputs and existing
 15-sample/three-pair result/noise/resource guards remain the comparison protocol.
 Neither explicit-VM functionality nor this incomplete upstream audit establishes
 speed superiority over Boa.
+
+The [recorded audit](../test262/property-reference-audit.json) retains all 11
+files / 19 variants and compiler/fixture identities. AST changes from 14 pass /
+5 fail to 17 pass / 2 fail: the three strict-deletion cases improve; the two
+missing-eval failures remain. Bytecode has zero passes and 19 unsupported whole
+programs in both runs. The audit command exits 101. Those are separate from the
+direct API regression tests; no unsupported program is included in a pass count.

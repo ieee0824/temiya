@@ -5,6 +5,7 @@
 //! independently testable stages.
 
 pub mod lexer;
+pub mod source;
 
 /// Configuration used when constructing an [`Engine`].
 #[derive(Clone, Debug, Default, Eq, PartialEq)]

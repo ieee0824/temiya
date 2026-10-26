@@ -92,10 +92,39 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         });
         rows.push(serde_json::json!({"case":name,"utf16_length":old.len(),"vec_construct":old_construct,"compact_construct":new_construct,"vec_clone":old_clone,"compact_clone":new_clone}));
     }
+    let concat_iterations = n.min(100);
+    let mut concatenations = Vec::new();
+    for (name, chunk, steps) in [
+        ("inline-pair", "ab", 2),
+        ("append-chain", "0123456789abcdef", 128),
+    ] {
+        let chunk = JsString::from(chunk);
+        let flat = count(concat_iterations, || {
+            let mut string = JsString::default();
+            for _ in 0..steps {
+                // The interpreter's pre-rope concatenation, including Vec growth.
+                let mut units = string.code_units().to_vec();
+                units.extend_from_slice(chunk.code_units());
+                string = JsString::from_code_units(units);
+            }
+            assert_eq!(string.len(), chunk.len() * steps);
+            black_box(string.code_units());
+        });
+        let compact = count(concat_iterations, || {
+            let mut string = JsString::default();
+            for _ in 0..steps {
+                string = string.concat(chunk.clone());
+            }
+            assert_eq!(string.len(), chunk.len() * steps);
+            // Include final flattening, rather than counting an unobserved rope.
+            black_box(string.code_units());
+        });
+        concatenations.push(serde_json::json!({"case":name,"steps":steps,"chunk_units":chunk.len(),"flat":flat,"compact":compact}));
+    }
     println!(
         "{}",
         serde_json::to_string_pretty(
-            &serde_json::json!({"iterations":n,"warmup_iterations":128,"scope":"single-thread standalone allocation requests, including realloc; not Engine throughput or RSS","timing_instrumentation":false,"js_string_bytes":std::mem::size_of::<JsString>(),"vec_bytes":std::mem::size_of::<Vec<u16>>(),"value_bytes":std::mem::size_of::<Value>(),"pointer_width":usize::BITS,"cases":rows})
+            &serde_json::json!({"iterations":n,"warmup_iterations":128,"scope":"single-thread standalone allocation requests, including realloc; not Engine throughput or RSS","timing_instrumentation":false,"js_string_bytes":std::mem::size_of::<JsString>(),"vec_bytes":std::mem::size_of::<Vec<u16>>(),"value_bytes":std::mem::size_of::<Value>(),"pointer_width":usize::BITS,"cases":rows,"concat_iterations":concat_iterations,"concatenations":concatenations})
         )?
     );
     Ok(())

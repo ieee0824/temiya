@@ -226,7 +226,20 @@ UTF-16 slice rather than the storage variant or buffer identity.
 The Arc owns a Vec so a newly constructed long result can retain its buffer;
 converting an existing Vec into a flat Arc slice would copy that buffer. This
 choice still uses separate Vec-buffer and Arc-header allocations for a fresh
-long value. It does not implement ropes or identifier atoms. GC integration and
+long value. Concatenations of at least 256 code units can instead share their
+operands in immutable Arc rope nodes. Short concatenations use inline storage
+or one exactly sized flat buffer. Empty operands reuse the other operand.
+Rope depth is bounded at 32; exceeding the bound copies into one flat buffer,
+bounding recursive traversal and destruction even for repeated append/prepend.
+This still has quadratic worst-case copying for sufficiently long chains; it
+does not provide a balanced rope's asymptotic guarantee.
+
+`len` and `is_empty` use stored lengths. Contiguous access through `code_units`
+lazily fills a thread-safe `OnceLock` cache; it traverses uncached descendants
+without filling their caches, avoiding overlapping intermediate copies.
+Equality/hash/order and slices still use exact UTF-16 contents. Rope nodes
+contain only immutable strings, so their ownership graph has no cycles or
+managed Object edges. Identifier atoms remain unimplemented. GC integration and
 identity testing across actual Engine collections remain outstanding in #257
 and #415; the string buffer contains no managed Object edges.
 
@@ -249,3 +262,12 @@ and clone operations. It reports allocation requests/bytes, not elapsed time or
 RSS. Timing workers do not include the counting allocator. The observed
 [allocation report](../benchmarks/compact-string-allocations.json) is separate
 from full Engine throughput comparisons.
+
+The [concatenation allocation observation](../benchmarks/string-concat-allocations.json)
+compares the previous interpreter's copy/extend path with `concat`, including
+final contiguous access. Across 100 chains of 128 sixteen-unit appends, requested
+bytes fell from 78,544,000 to 2,868,000; allocation requests fell from 38,300 to
+14,500 on both measured Rust toolchains. Two two-unit operands concatenate
+without allocation. These standalone counts include allocator requests, not
+retained memory, RSS, copying instructions, or Engine throughput. The existing
+CI allocation check also rejects regressions in these concatenation budgets.

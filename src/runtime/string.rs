@@ -1,13 +1,36 @@
-//! Immutable UTF-16 storage: short names are inline; longer clones share a buffer.
+//! Immutable UTF-16 storage with inline names and bounded, lazily flattened ropes.
 use std::{
     cmp::Ordering,
     fmt,
     hash::{Hash, Hasher},
-    sync::Arc,
+    sync::{Arc, OnceLock},
 };
 
 // Fit inline units and tags in the former Vec footprint on 32/64 bit targets.
 const INLINE_CAPACITY: usize = (std::mem::size_of::<Vec<u16>>() - 4) / 2;
+const ROPE_MIN_LENGTH: usize = 256;
+const MAX_ROPE_DEPTH: u8 = 32;
+
+struct Rope {
+    left: JsString,
+    right: JsString,
+    len: usize,
+    depth: u8,
+    flat: OnceLock<Vec<u16>>,
+}
+
+impl Rope {
+    // Keep cache initialization out of the hot inline-string access path.
+    #[inline(never)]
+    fn code_units(&self) -> &[u16] {
+        self.flat.get_or_init(|| {
+            let mut units = Vec::with_capacity(self.len);
+            self.left.append_to(&mut units);
+            self.right.append_to(&mut units);
+            units
+        })
+    }
+}
 
 #[derive(Clone)]
 enum Storage {
@@ -18,6 +41,7 @@ enum Storage {
     // Preserve the Vec's allocation instead of copying the whole result into
     // a new Arc<[u16]> allocation. All access to this buffer is immutable.
     Shared(Arc<Vec<u16>>),
+    Rope(Arc<Rope>),
 }
 
 /// A JavaScript String represented as an exact, immutable sequence of UTF-16 code units.
@@ -25,6 +49,78 @@ enum Storage {
 pub struct JsString(Storage);
 
 impl JsString {
+    /// Concatenates exact UTF-16 sequences, sharing long operands until needed.
+    #[must_use]
+    pub fn concat(self, right: Self) -> Self {
+        if self.is_empty() {
+            return right;
+        }
+        if right.is_empty() {
+            return self;
+        }
+        let len = self
+            .len()
+            .checked_add(right.len())
+            .expect("string length overflow");
+        if len <= INLINE_CAPACITY {
+            let mut units = [0; INLINE_CAPACITY];
+            let split = self.len();
+            units[..split].copy_from_slice(self.code_units());
+            units[split..len].copy_from_slice(right.code_units());
+            return Self(Storage::Inline {
+                len: len as u8,
+                units,
+            });
+        }
+        let depth = self.depth().max(right.depth()) + 1;
+        if len >= ROPE_MIN_LENGTH && depth <= MAX_ROPE_DEPTH {
+            return Self(Storage::Rope(Arc::new(Rope {
+                left: self,
+                right,
+                len,
+                depth,
+                flat: OnceLock::new(),
+            })));
+        }
+        let mut units = Vec::with_capacity(len);
+        self.append_to(&mut units);
+        right.append_to(&mut units);
+        Self::from_code_units(units)
+    }
+
+    /// Returns the number of UTF-16 code units without flattening concatenations.
+    #[must_use]
+    #[inline]
+    pub fn len(&self) -> usize {
+        match &self.0 {
+            Storage::Inline { len, .. } => usize::from(*len),
+            Storage::Shared(units) => units.len(),
+            Storage::Rope(rope) => rope.len,
+        }
+    }
+
+    fn depth(&self) -> u8 {
+        match &self.0 {
+            Storage::Rope(rope) => rope.depth,
+            _ => 0,
+        }
+    }
+
+    // Traverse uncached children directly: filling intermediate caches would
+    // retain multiple overlapping copies of a long concatenation chain.
+    fn append_to(&self, output: &mut Vec<u16>) {
+        if let Storage::Rope(rope) = &self.0 {
+            if let Some(flat) = rope.flat.get() {
+                output.extend_from_slice(flat);
+            } else {
+                rope.left.append_to(output);
+                rope.right.append_to(output);
+            }
+        } else {
+            output.extend_from_slice(self.code_units());
+        }
+    }
+
     /// Creates a string from UTF-16 code units without validating surrogate pairs.
     #[must_use]
     pub fn from_code_units(code_units: impl Into<Vec<u16>>) -> Self {
@@ -53,10 +149,12 @@ impl JsString {
 
     /// Returns the string's UTF-16 code units.
     #[must_use]
+    #[inline]
     pub fn code_units(&self) -> &[u16] {
         match &self.0 {
             Storage::Inline { len, units } => &units[..usize::from(*len)],
             Storage::Shared(units) => units,
+            Storage::Rope(rope) => rope.code_units(),
         }
     }
 
@@ -69,7 +167,7 @@ impl JsString {
     /// Returns whether the string contains no UTF-16 code units.
     #[must_use]
     pub fn is_empty(&self) -> bool {
-        self.code_units().is_empty()
+        self.len() == 0
     }
 }
 
@@ -114,10 +212,26 @@ impl From<String> for JsString {
 }
 impl PartialEq for JsString {
     fn eq(&self, other: &Self) -> bool {
-        if let (Storage::Shared(left), Storage::Shared(right)) = (&self.0, &other.0) {
-            if Arc::ptr_eq(left, right) {
+        match (&self.0, &other.0) {
+            // Inline buffers are zero-padded by every constructor. Compare them
+            // directly, without dispatching through lengths and slices again.
+            (
+                Storage::Inline {
+                    len: a,
+                    units: left,
+                },
+                Storage::Inline {
+                    len: b,
+                    units: right,
+                },
+            ) => {
+                return a == b && left == right;
+            }
+            (Storage::Shared(left), Storage::Shared(right)) if Arc::ptr_eq(left, right) => {
                 return true;
             }
+            (Storage::Rope(left), Storage::Rope(right)) if Arc::ptr_eq(left, right) => return true,
+            _ => {}
         }
         self.code_units() == other.code_units()
     }
@@ -144,5 +258,33 @@ impl fmt::Debug for JsString {
             .debug_tuple("JsString")
             .field(&self.code_units())
             .finish()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn lengths_and_shared_equality_do_not_flatten_rope_children() {
+        let leaf = JsString::from("x".repeat(ROPE_MIN_LENGTH));
+        let first = leaf.clone().concat(JsString::from("y"));
+        let Storage::Rope(child) = &first.0 else {
+            panic!("expected rope")
+        };
+        let second = first.clone().concat(leaf);
+        let Storage::Rope(parent) = &second.0 else {
+            panic!("expected rope")
+        };
+        assert_eq!(second.len(), ROPE_MIN_LENGTH * 2 + 1);
+        assert!(!second.is_empty());
+        assert_eq!(second, second.clone());
+        assert!(child.flat.get().is_none());
+        assert!(parent.flat.get().is_none());
+        assert_eq!(second.code_units().len(), second.len());
+        assert!(parent.flat.get().is_some());
+        assert!(child.flat.get().is_none());
+        let address = second.code_units().as_ptr();
+        assert_eq!(second.clone().code_units().as_ptr(), address);
     }
 }

@@ -44,6 +44,39 @@ fn evaluates_literals_operators_and_assignment_references() {
 }
 
 #[test]
+fn string_addition_preserves_host_conversion_order_and_abrupt_completion() {
+    let (evaluator, environment) = evaluator();
+    let events = Rc::new(RefCell::new(Vec::new()));
+    for (name, text) in [("left", "a"), ("right", "b")] {
+        let object = Object::new();
+        let events = events.clone();
+        object.set_to_primitive_hook(move |_| {
+            events.borrow_mut().push(name);
+            Ok(Value::String(text.into()))
+        });
+        bind(&environment, name, Value::Object(object));
+    }
+    assert!(evaluate(&evaluator, "left + right").same_value(&Value::String("ab".into())));
+    assert_eq!(&*events.borrow(), &["left", "right"]);
+    events.borrow_mut().clear();
+    let failure = Object::new();
+    let captured = events.clone();
+    failure.set_to_primitive_hook(move |_| {
+        captured.borrow_mut().push("failure");
+        Err(temiya::runtime::RuntimeError::type_error(
+            "conversion failed",
+        ))
+    });
+    bind(&environment, "failure", Value::Object(failure));
+    assert!(
+        evaluator
+            .evaluate(&parse_expression("failure + right").unwrap())
+            .is_err()
+    );
+    assert_eq!(&*events.borrow(), &["failure"]);
+}
+
+#[test]
 fn delays_computed_key_coercion_until_after_assignment_rhs() {
     let (evaluator, environment) = evaluator();
     let events = Rc::new(RefCell::new(Vec::new()));

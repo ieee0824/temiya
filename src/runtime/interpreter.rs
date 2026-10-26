@@ -724,7 +724,7 @@ fn get_property(
         Value::String(string) => {
             if matches!(key, PropertyKey::String(name) if name.code_units().iter().copied().eq("length".encode_utf16()))
             {
-                return Ok(Value::Number(string.code_units().len() as f64));
+                return Ok(Value::Number(string.len() as f64));
             }
             if let Some(unit) = key
                 .array_index()
@@ -829,9 +829,9 @@ pub(crate) fn binary_values(operator: &str, left: Value, right: Value) -> Runtim
             let left = left.to_primitive(super::PrimitiveHint::Default)?;
             let right = right.to_primitive(super::PrimitiveHint::Default)?;
             if matches!(left, Value::String(_)) || matches!(right, Value::String(_)) {
-                let mut units = left.to_js_string()?.code_units().to_vec();
-                units.extend(right.to_js_string()?.code_units());
-                return Ok(Value::String(JsString::from_code_units(units)));
+                let left = left.to_js_string()?;
+                let right = right.to_js_string()?;
+                return Ok(Value::String(left.concat(right)));
             }
             numeric_binary(operator, left, right)
         }

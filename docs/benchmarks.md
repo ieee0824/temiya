@@ -391,3 +391,96 @@ The recorded Boa speed gate is false.
 These eleven microbenchmarks do not establish full application compatibility or
 SpiderMonkey superiority. Identifier atoms, ropes and real Engine GC remain
 outstanding; this change only replaces immutable leaf string storage.
+
+
+## Bounded string concatenation
+
+The [allocation observations](../benchmarks/string-concat-allocations.json)
+include final flattening, and remain separate from throughput measurements.
+
+The [ARM64 before/after](../benchmarks/string-concat-beforeafter.json) compares
+frozen predecessor `b9ddd75e7fef485db84d06b64f5bc793ba120020` with runtime
+`4cf89c1d555ceefeecb2b53882fdb077440da012`. The separate
+[ARM64 Boa comparison](../benchmarks/string-concat-boa.json) uses the same pinned
+actual application embedding. Both modes use Rust 1.99.1 release builds with
+15 samples and one validated warmup, three alternating pairs, 66 successful
+worker runs and 1056 validated results each. The modes run serially after all
+builds, using all eleven original inputs and the existing 512 MiB/180-second
+guards.
+
+| Workload | Changed / prior Temiya time | Changed Temiya / Boa time |
+| --- | ---: | ---: |
+| arith | 0.98–1.04× | 4.38–4.58× |
+| prop-mono | 0.95–1.15× | 2.14–2.43× |
+| prop-mega | 0.98–1.37× | 2.33–3.14× |
+| call | 0.82–1.05× | 2.54–2.88× |
+| closure-alloc | 1.01–1.02× | 1.47–1.50× |
+| object-alloc | 0.77–1.04× | 1.58–1.94× |
+| string-concat | 0.88–1.05× | 3.28–3.88× |
+| array | 0.72–0.97× | 2.27–2.37× |
+| primitive-string-property | 0.89–0.96× | 2.69–2.85× |
+| primitive-string-method | 0.96–0.99× | 1.87–2.19× |
+| proto-method | 0.87–1.01× | 2.04–2.19× |
+
+All 33 ARM64 before/after pairs are within their noise thresholds; this run
+does not prove a throughput improvement or the absence of regression. The
+standalone allocation reduction cannot establish an Engine speedup.
+Boa outcomes: {"Temiya slower beyond threshold":31,"within noise threshold":2}.
+The all-eleven before/after speed gate is false;
+the all-eleven Boa speed gate is false.
+
+A [focused prop-mega diagnostic](../benchmarks/string-concat-cpu-followup.json)
+checks one workload again with the same binaries, 15 samples and three alternating
+pairs. Whole-process user+system CPU-time ratios are 0.93, 1.04 and 0.98; timed
+wall-median ratios are 0.93, 1.07 and 0.98. Process CPU totals include startup,
+setup, warmup and final reporting and are not substitutes for timed medians.
+The focused diagnostic has a 180-second timeout but no RSS watchdog. It does
+not prove a speedup or absence of regression and cannot pass an all-eleven gate.
+The original observations remain in the complete before/after report.
+
+The [opt-in hosted comparison](omoikane-benchmark-ci.md) repeats both modes
+on a separate runner. Results from different architectures must not be pooled.
+These eleven microbenchmarks do not establish full application compatibility
+or SpiderMonkey superiority. Identifier atoms, balanced ropes and real runtime
+GC remain open; #415 and #427 are not complete.
+
+
+## Hosted x86_64 bounded-concatenation comparison
+
+[Run 40361665749](https://github.com/ieee0824/temiya/actions/runs/40361665749)
+completed on Ubuntu 24.04, AMD EPYC 7763, four logical CPUs. The
+[provenance record](../benchmarks/string-concat-hosted-provenance.json) retains
+build identity and the original artifact reference. Both
+[before/after](../benchmarks/string-concat-hosted-beforeafter.json) and
+[Boa](../benchmarks/string-concat-hosted-boa.json) use the original eleven
+workloads, 15 timed samples, one checked warmup and three alternating pairs.
+Each mode has 66 successful runs and 1056 validated values. They run serially
+after all builds, with the same compiler and existing 512 MiB/180-second guards.
+
+The measured revision is `ee1c0bcf0ca3533382eef0269625104a1a247ece`;
+the baseline is `82c572d0e42c8f97deccb349a02095e15b2c8af1`. The measured
+runtime is identical to code revision `4cf89c1d555ceefeecb2b53882fdb077440da012`.
+Later ARM64 data commits do not modify executable source, worker scripts,
+dependencies or the measurement workflow. Architectures are reported separately.
+
+| Workload | Changed / prior Temiya time | Changed Temiya / Boa time |
+| --- | ---: | ---: |
+| arith | 0.98–1.00× | 3.33–3.42× |
+| prop-mono | 0.94–0.96× | 2.42–2.49× |
+| prop-mega | 0.97–0.98× | 2.30–2.37× |
+| call | 0.93–1.00× | 2.34–2.36× |
+| closure-alloc | 0.93–0.95× | 1.82–1.90× |
+| object-alloc | 0.96–0.98× | 1.79–1.85× |
+| string-concat | 0.86–0.88× | 3.06–3.12× |
+| array | 0.94–0.96× | 2.24–2.40× |
+| primitive-string-property | 0.99–1.00× | 2.70–2.84× |
+| primitive-string-method | 1.00–1.03× | 1.95–2.00× |
+| proto-method | 0.95–0.97× | 2.14–2.28× |
+
+All three string-concat pairs improve beyond the 10% threshold: elapsed time
+is 12–14% lower than the prior Temiya build. The other 30 pairs are within
+the threshold; no pair regresses beyond it. This establishes the observed
+string-concat improvement on this runner, rather than a general engine speedup.
+All 33 Boa pairs still find Temiya slower beyond the threshold. Both all-eleven
+speed gates remain false. The allocation reduction and successful CI do not
+satisfy the Boa goal or complete #415/#427.

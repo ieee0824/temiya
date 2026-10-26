@@ -27,3 +27,8 @@ retain owned data and ranges; this is not a claim that all ECMAScript syntax is
 implemented. Operators retain owned spellings and are validated by the parser.
 Shared/interned names, arenas, serialization formats, and stable AST APIs are
 future decisions. Syntax ownership remains independent of runtime GC ownership.
+
+Arrays retain a trailing-comma flag; object properties retain shorthand and
+following-comma flags. These distinguish cover grammar and rest restrictions
+without reconstructing source text. Grammar-shaped ASTs can be checked with
+the [static semantics API](semantics.md) in addition to structural validation.

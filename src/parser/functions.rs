@@ -220,10 +220,12 @@ impl<'a> Parser<'a> {
         if token.text == "[" {
             self.expect("[")?;
             let mut elements = vec![];
+            let mut trailing_comma = false;
             while !self.at("]")? {
                 if self.at(",")? {
                     self.expect(",")?;
                     elements.push(None);
+                    trailing_comma = false;
                     continue;
                 }
                 let rest = self.at("...")?;
@@ -235,6 +237,7 @@ impl<'a> Parser<'a> {
                     self.binding_element()?
                 };
                 elements.push(Some(element));
+                trailing_comma = false;
                 if rest && !self.at("]")? {
                     return Err(error(
                         self.peek(LexicalGoal::Div)?.span,
@@ -245,9 +248,16 @@ impl<'a> Parser<'a> {
                     break;
                 }
                 self.expect(",")?;
+                trailing_comma = true;
             }
             self.expect("]")?;
-            return Ok(self.node(start, ExprKind::Array(elements)));
+            return Ok(self.node(
+                start,
+                ExprKind::Array {
+                    elements,
+                    trailing_comma,
+                },
+            ));
         }
         if token.text == "{" {
             self.expect("{")?;
@@ -255,6 +265,7 @@ impl<'a> Parser<'a> {
             while !self.at("}")? {
                 let token = self.peek(LexicalGoal::Div)?;
                 let spread = token.text == "...";
+                let mut shorthand = false;
                 let (key, computed, value) = if spread {
                     self.expect("...")?;
                     (self.binding_identifier()?, false, None)
@@ -271,6 +282,7 @@ impl<'a> Parser<'a> {
                             check_strict_binding(&key)?;
                         }
                         self.literal_or_identifier(token)?;
+                        shorthand = true;
                         if self.at("=")? {
                             self.expect("=")?;
                             let value = self.expression_with_in(2, true)?;
@@ -297,6 +309,8 @@ impl<'a> Parser<'a> {
                     computed,
                     value,
                     spread,
+                    shorthand,
+                    comma_after: false,
                 });
                 if spread && !self.at("}")? {
                     return Err(error(
@@ -308,6 +322,7 @@ impl<'a> Parser<'a> {
                     break;
                 }
                 self.expect(",")?;
+                properties.last_mut().unwrap().comma_after = true;
             }
             self.expect("}")?;
             return Ok(self.node(start, ExprKind::Object(properties)));
@@ -406,7 +421,9 @@ pub(super) fn bound_names(expr: &Expr) -> Vec<(&str, Span)> {
     match &expr.kind {
         ExprKind::Identifier(name) => vec![(name, expr.span)],
         ExprKind::Assignment { target, .. } | ExprKind::Spread(target) => bound_names(target),
-        ExprKind::Array(items) => items.iter().flatten().flat_map(bound_names).collect(),
+        ExprKind::Array { elements, .. } => {
+            elements.iter().flatten().flat_map(bound_names).collect()
+        }
         ExprKind::Object(properties) => properties
             .iter()
             .flat_map(|p| bound_names(p.value.as_ref().unwrap_or(&p.key)))

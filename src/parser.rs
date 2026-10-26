@@ -65,6 +65,15 @@ impl From<LexError> for ParseError {
     }
 }
 
+impl From<crate::semantics::SemanticError> for ParseError {
+    fn from(error: crate::semantics::SemanticError) -> Self {
+        Self {
+            span: error.span,
+            message: error.message,
+        }
+    }
+}
+
 /// Parses one complete expression with default Script options.
 ///
 /// Rejects trailing tokens. The returned AST owns all names and literal data.
@@ -83,6 +92,15 @@ pub fn parse_expression_with_options(
     if end.kind != TokenKind::End {
         return Err(error(end.span, "unexpected token after expression"));
     }
+    crate::semantics::validate_expression(
+        &expr,
+        crate::semantics::SemanticOptions {
+            source_goal: options.lexer.source_goal,
+            strict: options.strict,
+            asynchronous: options.lexer.source_goal == SourceGoal::Module,
+            ..crate::semantics::SemanticOptions::default()
+        },
+    )?;
     Ok(expr)
 }
 
@@ -652,20 +670,30 @@ impl<'a> Parser<'a> {
 
     fn array(&mut self, start: usize) -> Result<Expr, ParseError> {
         let mut items = vec![];
+        let mut trailing_comma = false;
         while !self.at("]")? {
             if self.at(",")? {
                 self.expect(",")?;
                 items.push(None);
+                trailing_comma = false;
                 continue;
             }
             items.push(Some(self.element()?));
+            trailing_comma = false;
             if !self.at(",")? {
                 break;
             }
             self.expect(",")?;
+            trailing_comma = true;
         }
         self.expect("]")?;
-        Ok(self.node(start, ExprKind::Array(items)))
+        Ok(self.node(
+            start,
+            ExprKind::Array {
+                elements: items,
+                trailing_comma,
+            },
+        ))
     }
 
     fn object(&mut self, start: usize) -> Result<Expr, ParseError> {
@@ -673,6 +701,7 @@ impl<'a> Parser<'a> {
         while !self.at("}")? {
             let first = self.peek(LexicalGoal::Div)?;
             let spread = first.text == "...";
+            let mut shorthand = false;
             let (key, computed, value) = if spread {
                 self.expect("...")?;
                 (self.expression_with_in(2, true)?, false, None)
@@ -702,7 +731,21 @@ impl<'a> Parser<'a> {
                             return Err(error(key.span, "expected property value"));
                         }
                         self.literal_or_identifier(key_token)?;
-                        None
+                        shorthand = true;
+                        if self.at("=")? {
+                            self.expect("=")?;
+                            let value = self.expression_with_in(2, true)?;
+                            Some(self.node(
+                                key.span.start,
+                                ExprKind::Assignment {
+                                    operator: "=".to_owned(),
+                                    target: Box::new(key.clone()),
+                                    value: Box::new(value),
+                                },
+                            ))
+                        } else {
+                            None
+                        }
                     }
                 };
                 (key, computed, value)
@@ -716,11 +759,14 @@ impl<'a> Parser<'a> {
                 value,
                 computed,
                 spread,
+                shorthand,
+                comma_after: false,
             });
             if !self.at(",")? {
                 break;
             }
             self.expect(",")?;
+            properties.last_mut().unwrap().comma_after = true;
         }
         self.expect("}")?;
         Ok(self.node(start, ExprKind::Object(properties)))
@@ -847,7 +893,9 @@ fn assignment_pattern(expr: &Expr) -> bool {
         ExprKind::Assignment {
             operator, target, ..
         } => operator == "=" && assignment_pattern(target),
-        ExprKind::Array(items) => items.iter().enumerate().all(|(i, item)| match item {
+        ExprKind::Array {
+            elements: items, ..
+        } => items.iter().enumerate().all(|(i, item)| match item {
             None => true,
             Some(Expr {
                 kind: ExprKind::Spread(target),

@@ -73,14 +73,25 @@ fn body(
         }
         statements.push(stmt);
     }
-    Ok(Program {
+    let program = Program {
         span: Span {
             start: 0,
             end: source.len(),
         },
         body: statements,
         strict: parser.strict(),
-    })
+    };
+    crate::semantics::validate_program(
+        &program,
+        crate::semantics::SemanticOptions {
+            source_goal: options.lexer.source_goal,
+            strict: program.strict,
+            in_function,
+            asynchronous: in_async,
+            generator: false,
+        },
+    )?;
+    Ok(program)
 }
 
 impl Parser<'_> {

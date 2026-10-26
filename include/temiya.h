@@ -22,22 +22,28 @@ typedef enum TemiyaStatus {
   TEMIYA_PANIC = 3
 } TemiyaStatus;
 
+typedef TemiyaStatus (*TemiyaNumberCallback)(void *user_data, double input,
+                                             double *output);
+
 uint32_t temiya_abi_version(void);
 TemiyaStatus temiya_engine_new(TemiyaEngine **out, TemiyaError **error);
-void temiya_engine_free(TemiyaEngine *engine);
+TemiyaStatus temiya_engine_free(TemiyaEngine *engine);
 TemiyaStatus temiya_realm_new(TemiyaEngine *engine, TemiyaRealm **out,
                               TemiyaError **error);
-void temiya_realm_free(TemiyaRealm *realm);
+TemiyaStatus temiya_realm_define_number_function(
+    TemiyaEngine *engine, TemiyaRealm *realm, const char *name,
+    TemiyaNumberCallback callback, void *user_data, TemiyaError **error);
+TemiyaStatus temiya_realm_free(TemiyaRealm *realm);
 TemiyaStatus temiya_script_compile(TemiyaEngine *engine, TemiyaRealm *realm,
                                    const char *source, TemiyaScript **out,
                                    TemiyaError **error);
-void temiya_script_free(TemiyaScript *script);
+TemiyaStatus temiya_script_free(TemiyaScript *script);
 TemiyaStatus temiya_script_evaluate(TemiyaEngine *engine, TemiyaScript *script,
                                     TemiyaValue **out, TemiyaError **error);
-void temiya_value_free(TemiyaValue *value);
+TemiyaStatus temiya_value_free(TemiyaValue *value);
 TemiyaStatus temiya_value_to_number(const TemiyaValue *value, double *out);
 const char *temiya_error_message(const TemiyaError *error);
-void temiya_error_free(TemiyaError *error);
+TemiyaStatus temiya_error_free(TemiyaError *error);
 
 #ifdef __cplusplus
 }

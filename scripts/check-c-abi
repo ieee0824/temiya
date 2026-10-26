@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+target_dir="${CARGO_TARGET_DIR:-target}"
+cargo build --release --locked
+cc -std=c11 -Wall -Wextra -Werror -Iinclude examples/embed.c \
+  -L"${target_dir}/release" -ltemiya \
+  -Wl,-rpath,"${target_dir}/release" -o "${target_dir}/embed-c"
+test "$("${target_dir}/embed-c")" = 42
+nm -D --defined-only "${target_dir}/release/libtemiya.so" \
+  | awk '{print $3}' | grep '^temiya_' | sort > "${target_dir}/temiya.exports.actual"
+diff -u include/temiya.exports "${target_dir}/temiya.exports.actual"

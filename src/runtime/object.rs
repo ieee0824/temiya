@@ -508,7 +508,7 @@ impl Object {
         if let Some(string) = &self.0.state.borrow().string_data {
             if matches!(key, PropertyKey::String(name) if name == &JsString::from("length")) {
                 return Ok(Some(PropertyDescriptor::data(
-                    Value::Number(string.code_units().len() as f64),
+                    Value::Number(string.len() as f64),
                     false,
                     false,
                     false,
@@ -831,7 +831,7 @@ impl Object {
         }
         let state = self.0.state.borrow();
         let string_keys = state.string_data.as_ref().map_or_else(Vec::new, |string| {
-            (0..string.code_units().len())
+            (0..string.len())
                 .map(|index| PropertyKey::String(JsString::from(index.to_string())))
                 .chain(std::iter::once(PropertyKey::from("length")))
                 .collect()
@@ -888,7 +888,7 @@ impl Object {
         let string = state.string_data.as_ref()?;
         if matches!(key, PropertyKey::String(name) if name == &JsString::from("length")) {
             return Some(PropertyDescriptor::data(
-                Value::Number(string.code_units().len() as f64),
+                Value::Number(string.len() as f64),
                 false,
                 false,
                 false,

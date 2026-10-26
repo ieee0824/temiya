@@ -270,7 +270,7 @@ impl StatementEvaluator {
                         let object = super::Object::new();
                         object.create_data_property(
                             PropertyKey::from("length"),
-                            Value::Number(string.code_units().len() as f64),
+                            Value::Number(string.len() as f64),
                         )?;
                         for (index, unit) in string.code_units().iter().enumerate() {
                             object.create_data_property(

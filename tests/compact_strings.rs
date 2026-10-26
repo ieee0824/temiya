@@ -51,6 +51,8 @@ fn constructors_and_clones_preserve_exact_units_at_storage_boundaries() {
 }
 
 #[test]
+// Only the contiguous representation cache mutates; UTF-16 key contents cannot.
+#[allow(clippy::mutable_key_type)]
 fn equality_hash_and_order_use_utf16_contents() {
     let units = [
         vec![],
@@ -79,6 +81,17 @@ fn equality_hash_and_order_use_utf16_contents() {
     }
     assert_eq!(JsString::default(), JsString::from(""));
     assert!(JsString::from("😀") < JsString::from("\u{E000}"));
+    let rope = JsString::from("a".repeat(256)).concat(JsString::from("b"));
+    map.insert(PropertyKey::from(rope.clone()), 42);
+    assert_eq!(rope.code_units().len(), 257);
+    assert_eq!(map.get(&PropertyKey::from(rope)), Some(&42));
+    assert_eq!(
+        map.get(&PropertyKey::from(JsString::from(format!(
+            "{}b",
+            "a".repeat(256)
+        )))),
+        Some(&42)
+    );
 }
 
 #[test]
@@ -114,6 +127,67 @@ fn public_engine_retains_aliases_slices_and_surrogate_keys() {
         object['0123456789\uD800\u0000\uDC00'] === 42 &&
         alias.charCodeAt(10) === 55296 && alias.codePointAt(12) === 56320 &&
         part === '89\uD800\u0000' && alias !== original;"#,
+        )
+        .unwrap();
+    assert!(matches!(
+        engine.evaluate(&script).unwrap().value(),
+        Value::Boolean(true)
+    ));
+}
+
+#[test]
+fn concatenations_preserve_units_aliases_hashes_and_threaded_flattening() {
+    let chunk = JsString::from_code_units_slice(&[0xD800, 0, 0xDC00, 0x61]);
+    let mut string = JsString::default();
+    let mut expected = Vec::new();
+    let mut aliases = Vec::new();
+    for index in 0..10_000 {
+        string = string.concat(chunk.clone());
+        expected.extend_from_slice(chunk.code_units());
+        assert_eq!(string.len(), expected.len());
+        if index % 1000 == 0 {
+            aliases.push((string.clone(), expected.clone()));
+        }
+    }
+    let shared = string.clone();
+    let concurrent = std::thread::spawn(move || shared.code_units().to_vec());
+    assert_eq!(string.code_units(), expected);
+    assert_eq!(concurrent.join().unwrap(), expected);
+    assert_eq!(hash(&string), hash(&expected));
+    assert_eq!(string, JsString::from_code_units(expected));
+    for (alias, expected) in aliases {
+        assert_eq!(alias.code_units(), expected);
+    }
+    let right_deep = (0..10_000).fold(JsString::default(), |tail, _| chunk.clone().concat(tail));
+    assert_eq!(right_deep, string);
+}
+
+#[test]
+fn concatenation_checks_all_inline_boundaries_and_preserves_evaluation_order() {
+    for left in 0..=20 {
+        for right in 0..=20 {
+            let a = vec![0xD800; left];
+            let b = vec![0xDC00; right];
+            let combined =
+                JsString::from_code_units_slice(&a).concat(JsString::from_code_units_slice(&b));
+            assert_eq!(combined.code_units(), [a, b].concat());
+        }
+    }
+    let engine = Engine::default();
+    let realm = engine.create_realm();
+    let script = engine
+        .compile(
+            &realm,
+            r#"
+        var order = '';
+        var left = function() {order += 'L'; return 'a';};
+        var right = function() {order += 'R'; return 'b';};
+        var joined = left() + right();
+        var failure = function() {order += 'X'; throw 17;};
+        var caught = false;
+        try {failure() + right();} catch (e) {caught = e === 17;}
+        joined === 'ab' && order === 'LRX' && caught;
+    "#,
         )
         .unwrap();
     assert!(matches!(

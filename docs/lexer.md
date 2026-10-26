@@ -136,8 +136,22 @@ tail goals automatically.
 
 ## Remaining limitations
 
+Hashbang comments (`#!`) are recognized only at byte zero in both Script and
+Module sources. Leading whitespace, comments, and BOM are not stripped by this
+API and therefore prevent a hashbang. The host may preprocess input separately.
+
+`Lexer::with_options` accepts `LexerOptions` with a `SourceGoal` and an
+`html_comments` switch. HTML-like comments are disabled by default and always
+disabled in Module source. When explicitly enabled in Script source, `<!--`
+opens a line comment anywhere between tokens; `-->` does so only at the source
+start or after a line terminator with intervening whitespace/comments only.
+These comments preserve line-terminator metadata. Outside permitted contexts,
+the delimiters remain ordinary punctuators for a parser to interpret or reject.
+They are never recognized inside strings, templates, or regular expressions.
+See [ECMAScript HTML-like comments](https://tc39.es/ecma262/multipage/additional-ecmascript-features-for-web-browsers.html#sec-html-like-comments).
+
 This is a bootstrap subset, not a conforming ECMAScript lexer. Private
-identifiers, hashbangs, and optional chaining are not supported.
+identifiers and optional chaining are not supported.
 Unsupported sequences can sometimes be
 split into individually valid tokens; tokenization does not validate grammar.
 A future parser must use the line-terminator metadata to implement restricted

@@ -207,3 +207,33 @@ The original eleven-workload microbenchmark scope remains narrower than a full
 application and omits async/RegExp/GC-specific suites and SpiderMonkey. #427
 and the overall performance objective remain open until that work and the
 required speed improvements are verified.
+
+#### Recorded application baseline
+
+[The first repeated comparison](../benchmarks/omoikane-comparison.json) uses
+Temiya engine/worker revision `a994bae8414b961a8f0b8974d6ee03bc3d38a511`, the
+pinned application above, Rust 1.99.1, release builds, and Linux ARM64. All
+66 worker runs and 33 comparison pairs are retained. Boa completes all eleven
+workloads; Temiya completes nine. The successful runs validate 960 results
+including warmups. Every one of the 27 valid comparison pairs finds Temiya
+slower beyond the recorded median/MAD threshold:
+
+| Workload | Temiya time / Boa time across three pairs |
+| --- | ---: |
+| arith | 4.30–4.76× |
+| prop-mono | 2.53–2.64× |
+| prop-mega | 2.65–2.84× |
+| call | 2.93–3.24× |
+| closure-alloc | Not comparable: Temiya exceeds the 512 MiB RSS watchdog in all pairs |
+| object-alloc | 2.06–2.17× |
+| string-concat | 5.83–7.74× |
+| array | 2.28–2.56× |
+| primitive-string-property | 3.16–3.56× |
+| primitive-string-method | Not comparable: Temiya's charCodeAt call fails in all pairs |
+| proto-method | 2.69–2.93× |
+
+Absolute times vary during the run; compare the paired measurements rather
+than earlier standalone numbers. This result does **not** meet the performance
+target. The memory failure is relevant to runtime ownership/GC work (#256,
+#257, #313), and the missing method to #221. The complete records preserve the
+failure statuses rather than dropping them or reporting a combined speedup.

@@ -1,0 +1,67 @@
+{
+  "engine_revision": "292a3760deb3f9d3208050350feb733c4aaf66fa",
+  "probe_revision": "02b460eba116b0b3d860e30a7417f6e8a51eac48",
+  "toolchains": [
+    "Rust 1.99.1",
+    "Rust 1.85.0"
+  ],
+  "command": "cargo run --locked --example ownership_probe -- --require-reclamation",
+  "exit_code": 2,
+  "note": "The same probe as the historical baseline. Three cyclic cases remain retained; this does not establish runtime collection.",
+  "report": {
+    "cases": [
+      {
+        "alive_after_drop": false,
+        "alive_with_clone": true,
+        "alive_with_handle": true,
+        "name": "acyclic-object",
+        "required_alive_after_migration": false
+      },
+      {
+        "alive_after_drop": true,
+        "alive_with_clone": true,
+        "alive_with_handle": true,
+        "name": "self-cycle",
+        "required_alive_after_migration": false
+      },
+      {
+        "alive_after_drop": true,
+        "alive_with_clone": true,
+        "alive_with_handle": true,
+        "name": "two-object-cycle",
+        "required_alive_after_migration": false
+      },
+      {
+        "alive_after_drop": false,
+        "alive_with_clone": true,
+        "alive_with_handle": true,
+        "name": "arrow-function",
+        "required_alive_after_migration": false
+      },
+      {
+        "alive_after_drop": false,
+        "alive_with_clone": true,
+        "alive_with_handle": true,
+        "name": "ordinary-function",
+        "required_alive_after_migration": false
+      },
+      {
+        "alive_after_drop": true,
+        "alive_with_clone": true,
+        "alive_with_handle": true,
+        "name": "escaped-prototype",
+        "required_alive_after_migration": false
+      },
+      {
+        "alive_after_drop": false,
+        "alive_with_clone": true,
+        "alive_with_handle": true,
+        "name": "lexical-closure",
+        "required_alive_after_migration": false
+      }
+    ],
+    "collection_hook": "runtime teardown only; no Engine force-collection API exists yet",
+    "reclamation_ready": false,
+    "scope": "public Engine; globals removed, scripts/Realm/Engine and both value handles dropped"
+  }
+}

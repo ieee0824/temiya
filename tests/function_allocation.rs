@@ -121,3 +121,64 @@ fn unobserved_function_prototypes_and_hidden_self_slots_do_not_pin_host_values()
     };
     assert!(!ownership::observe(&case).unwrap().alive_after_drop);
 }
+
+#[test]
+#[ignore = "requires pinned Test262 corpus; see docs/runtime-ownership.md"]
+fn pinned_test262_function_prototypes() {
+    let selection = std::env::var("TEST262_CASE")
+        .unwrap_or_else(|_| "S13.2_A1_T1.js,S13.2_A1_T2.js,S13.2_A4_T1.js,S13.2_A4_T2.js".into());
+    run_pinned_function_cases(&selection);
+}
+
+fn run_pinned_function_cases(selection: &str) {
+    use std::process::Command;
+    use temiya::test262::{TEST262_REVISION, TestCase, TestVariant};
+
+    let corpus = std::env::var("TEST262_DIR").expect("set TEST262_DIR");
+    let read = |path: &str| {
+        let output = Command::new("git")
+            .args(["-C", &corpus, "show", &format!("{TEST262_REVISION}:{path}")])
+            .output()
+            .expect("git show");
+        assert!(output.status.success(), "missing pinned file {path}");
+        String::from_utf8(output.stdout).unwrap()
+    };
+    let mut passed = 0;
+    for name in selection.split(',') {
+        let path = format!("test/language/statements/function/{name}");
+        let case = TestCase::parse(&path, read(&path)).unwrap();
+        assert!(case.metadata.negative.is_none());
+        assert!(
+            !case
+                .metadata
+                .flags
+                .iter()
+                .any(|flag| flag == "async" || flag == "raw")
+        );
+        for variant in case.variants() {
+            assert_ne!(variant, TestVariant::Module);
+            let engine = Engine::default();
+            let realm = engine.create_realm();
+            for name in ["sta.js", "assert.js"]
+                .into_iter()
+                .chain(case.metadata.includes.iter().map(String::as_str))
+            {
+                let setup = engine
+                    .compile(&realm, &read(&format!("harness/{name}")))
+                    .unwrap_or_else(|e| panic!("harness {name} compile: {e}"));
+                engine
+                    .evaluate(&setup)
+                    .unwrap_or_else(|e| panic!("harness {name} evaluate: {e:?}"));
+            }
+            let script = engine
+                .compile(&realm, &case.source_for(variant))
+                .unwrap_or_else(|e| panic!("{path} {variant:?} compile: {e}"));
+            engine
+                .evaluate(&script)
+                .unwrap_or_else(|e| panic!("{path} {variant:?} evaluate: {e:?}"));
+            passed += 1;
+            println!("PASS {path} {variant:?}");
+        }
+    }
+    println!("Test262 {TEST262_REVISION}: {passed} passed; 0 failed; 0 skipped in selection");
+}

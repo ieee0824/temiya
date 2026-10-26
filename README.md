@@ -39,6 +39,8 @@ The pinned conformance corpus and metadata rules are documented in the
 [Test262 harness](docs/test262.md).
 Cross-engine result normalization and reproducer reduction are documented in
 [differential testing](docs/differential-testing.md).
+Lexer/parser fuzz targets, limits, corpus, and regression handling are described
+in [fuzzing](docs/fuzzing.md).
 
 ## Development
 

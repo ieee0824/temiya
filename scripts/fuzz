@@ -1,0 +1,12 @@
+#!/bin/sh
+set -eu
+
+target=${1:-lexer_parser}
+seconds=${FUZZ_SECONDS:-60}
+rss_mb=${FUZZ_RSS_MB:-2048}
+timeout=${FUZZ_TIMEOUT_SECONDS:-5}
+
+exec cargo fuzz run "$target" "fuzz/corpus/$target" "fuzz/regressions/$target" -- \
+    -max_total_time="$seconds" \
+    -rss_limit_mb="$rss_mb" \
+    -timeout="$timeout"

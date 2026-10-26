@@ -1,0 +1,29 @@
+{
+  "schema": 1,
+  "revision": "52ac52f4bc05f54a08851c9b30e8fb2761f56c59",
+  "environment": {
+    "runner": "izanagi-debian-trixie-aarch64",
+    "profile": "cargo-bench",
+    "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)",
+    "target": "aarch64",
+    "iterations": 10
+  },
+  "policy": {
+    "minimum_slowdown": 0.10,
+    "noise_multiplier": 3.0,
+    "minimum_samples": 15
+  },
+  "conformance": {
+    "test262_revision": "d53ebc8b1931d9f1541e43d59650776e4b766248",
+    "selection": "manifest-backed harness smoke suite",
+    "passed": 5,
+    "failed": 0,
+    "skipped": 0
+  },
+  "measurements": [
+    {"name":"parser/script","input":"sum-function","median_ns":78625,"mad_ns":542,"samples_ns":[191833,79458,79542,78625,78250,78042,78542,78208,90333,78083,78541,78750,122292,80208,78125]},
+    {"name":"interpreter/macro","input":"sum-loop-100","median_ns":1623287,"mad_ns":96791,"samples_ns":[3530281,4612862,1526829,1555288,1502288,1623287,1526496,4537946,1666537,1685620,1551787,1485537,1702453,1460121,1916744]},
+    {"name":"gc/full","input":"allocate-100","median_ns":304624,"mad_ns":47875,"samples_ns":[269625,278666,254166,444665,253583,341332,378999,247749,352499,304624,339291,329082,311999,234750,250166]},
+    {"name":"builtins/object","input":"properties-100","median_ns":267291,"mad_ns":25625,"samples_ns":[267291,242708,241666,291582,320457,309250,337540,241957,241458,300041,250291,308624,257375,241582,273666]}
+  ]
+}

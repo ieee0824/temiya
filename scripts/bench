@@ -1,0 +1,7 @@
+#!/bin/sh
+set -eu
+
+revision=$(git rev-parse HEAD)
+rustc_version=$(rustc --version)
+TEMIYA_RUN_BENCHMARKS=1 TEMIYA_REVISION=$revision TEMIYA_RUSTC=$rustc_version \
+    cargo bench --bench baseline

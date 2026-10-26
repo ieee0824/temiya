@@ -7,6 +7,7 @@ use crate::ast::{Expr, ExprKind, Function, FunctionBody, MethodKind};
 use super::{
     Completion, Environment, ExpressionEvaluator, JsString, Object, PropertyKey, Realm,
     RuntimeError, RuntimeResult, StatementEvaluator, ThisBindingStatus, Value,
+    generator::create_generator_object, promise::settled_promise_object,
 };
 
 /// Runtime behavior selected for a parsed function definition.
@@ -21,12 +22,12 @@ pub enum FunctionKind {
 }
 
 #[derive(Clone)]
-struct FunctionClosure {
-    code: Function,
-    kind: FunctionKind,
-    realm: Realm,
-    environment: Environment,
-    lexical_this: Value,
+pub(super) struct FunctionClosure {
+    pub(super) code: Function,
+    pub(super) kind: FunctionKind,
+    pub(super) realm: Realm,
+    pub(super) environment: Environment,
+    pub(super) lexical_this: Value,
     #[allow(dead_code)]
     home_object: Option<Object>,
 }
@@ -37,9 +38,9 @@ pub(super) fn create_function(
     evaluator: &ExpressionEvaluator,
     home_object: Option<Object>,
 ) -> RuntimeResult<Object> {
-    if code.asynchronous || code.generator {
+    if code.asynchronous && code.generator {
         return Err(RuntimeError::internal_error(
-            "async and generator functions are implemented by milestone #28",
+            "async generators are not yet implemented",
         ));
     }
     let name_environment =
@@ -68,12 +69,27 @@ pub(super) fn create_function(
             .borrow()
             .clone()
             .ok_or_else(|| RuntimeError::internal_error("function object is not initialized"))?;
-        call_function(&call_closure, function, this, arguments, None)
+        if call_closure.code.generator {
+            create_generator_object(&call_closure, function, this, arguments).map(Value::Object)
+        } else if call_closure.code.asynchronous {
+            settled_promise_object(call_function(
+                &call_closure,
+                function,
+                this,
+                arguments,
+                None,
+            ))
+            .map(Value::Object)
+        } else {
+            call_function(&call_closure, function, this, arguments, None)
+        }
     };
-    let constructable = matches!(
-        kind,
-        FunctionKind::Normal | FunctionKind::Method(MethodKind::Constructor)
-    );
+    let constructable = !code.generator
+        && !code.asynchronous
+        && matches!(
+            kind,
+            FunctionKind::Normal | FunctionKind::Method(MethodKind::Constructor)
+        );
     let function = if constructable {
         let construct_closure = closure.clone();
         let construct_slot = slot.clone();
@@ -215,7 +231,7 @@ fn construct_function(
     }
 }
 
-fn ordinary_this(realm: &Realm, value: Value) -> RuntimeResult<Value> {
+pub(super) fn ordinary_this(realm: &Realm, value: Value) -> RuntimeResult<Value> {
     match value {
         Value::Undefined | Value::Null => Ok(Value::Object(realm.global_object())),
         Value::Object(_) => Ok(value),
@@ -227,7 +243,7 @@ fn ordinary_this(realm: &Realm, value: Value) -> RuntimeResult<Value> {
     }
 }
 
-fn bind_arguments(environment: &Environment, arguments: &[Value]) -> RuntimeResult<()> {
+pub(super) fn bind_arguments(environment: &Environment, arguments: &[Value]) -> RuntimeResult<()> {
     let object = Object::new();
     for (index, value) in arguments.iter().enumerate() {
         object.create_data_property(
@@ -241,7 +257,7 @@ fn bind_arguments(environment: &Environment, arguments: &[Value]) -> RuntimeResu
     environment.initialize_binding(&name, Value::Object(object))
 }
 
-fn bind_parameters(
+pub(super) fn bind_parameters(
     evaluator: &ExpressionEvaluator,
     environment: &Environment,
     parameters: &[Expr],

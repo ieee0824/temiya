@@ -88,9 +88,12 @@ codex login status
 ```
 
 This grants processes in that sandbox the same Codex account authority as the
-host. The credential is copied into the ephemeral container, never into the
-image or repository, and disappears when the container stops. Run
-`scripts/sandbox codex-auth` again after starting a new sandbox.
+host. `CODEX_HOME` points to `.git/codex-sandbox`, so credentials, configuration,
+logs, and session history persist across container recreation without becoming
+tracked files. The credential is never baked into the image. Run
+`scripts/sandbox codex-auth` initially and again only when the host credential
+changes. Because this directory contains authentication material, do not copy
+it outside `.git` or expose the workspace to untrusted sandbox processes.
 
 GitHub CLI can authenticate independently with its device flow. Configure Git
 to reuse that login over HTTPS, avoiding the need to share an SSH key:

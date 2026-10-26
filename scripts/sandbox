@@ -48,6 +48,8 @@ case "$command_name" in
         ;;
     codex-auth)
         auth_file="${CODEX_HOME:-${HOME}/.codex}/auth.json"
+        guest_codex_home="/workspace/.git/codex-sandbox"
+        guest_auth_tmp="/tmp/temiya-codex-auth.json"
         if [ ! -f "$auth_file" ]; then
             echo "Codex credentials not found: $auth_file" >&2
             exit 1
@@ -61,14 +63,19 @@ case "$command_name" in
         fi
         container_id="$1"
 
+        docker cp "$auth_file" "$container_id":"$guest_auth_tmp"
         docker exec --user root "$container_id" \
-            install -d -m 700 -o izanagi -g izanagi /home/izanagi/.codex
-        docker cp "$auth_file" "$container_id":/home/izanagi/.codex/auth.json
-        docker exec --user root "$container_id" \
-            chown izanagi:izanagi /home/izanagi/.codex/auth.json
-        docker exec --user root "$container_id" \
-            chmod 600 /home/izanagi/.codex/auth.json
-        echo "Copied Codex credentials into the running sandbox."
+            chown izanagi:izanagi "$guest_auth_tmp"
+        docker exec --user izanagi "$container_id" sh -c '
+            set -eu
+            umask 077
+            mkdir -p "$1"
+            cp "$2" "$1/auth.json"
+            chmod 700 "$1"
+            chmod 600 "$1/auth.json"
+        ' sh "$guest_codex_home" "$guest_auth_tmp"
+        docker exec --user root "$container_id" unlink "$guest_auth_tmp"
+        echo "Copied Codex credentials into persistent sandbox state."
         ;;
     logs)
         exec izanagi logs --suspicious

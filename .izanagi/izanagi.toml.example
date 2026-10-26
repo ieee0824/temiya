@@ -9,6 +9,9 @@ require_auth = true
 [sandbox.environment]
 inherit = ["CARGO_HOME", "RUSTUP_HOME"]
 
+[sandbox.environment.set]
+CODEX_HOME = "/workspace/.git/codex-sandbox"
+
 [sandbox.apple_container]
 runtime = "docker"
 image = "temiya-dev:latest"

@@ -24,6 +24,8 @@ The initial milestones are:
 6. Bytecode and tiered optimization after interpreter correctness
 
 Temiya is at the bootstrap stage and does not execute JavaScript yet.
+An initial lexer is available as `temiya::lexer::tokenize`; its supported subset
+and next steps are documented in [docs/lexer.md](docs/lexer.md).
 
 ## Development
 

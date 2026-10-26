@@ -13,6 +13,7 @@ use num_bigint::BigInt;
 
 mod array_methods;
 mod builtins;
+mod coercion;
 mod collections;
 mod elements;
 mod environment;
@@ -31,6 +32,7 @@ mod promise;
 mod proxy;
 mod regexp;
 mod statement;
+mod string_methods;
 
 pub use collections::{
     MapIterator, MapObject, SetIterator, SetObject, WeakMapObject, WeakSetObject,

@@ -50,42 +50,7 @@ impl Coercion {
     }
 
     fn number(&self, value: Value) -> RuntimeResult<f64> {
-        let Value::Object(object) = &value else {
-            return value.to_number();
-        };
-        let hooks = object.0.conversion.borrow();
-        let has_host_conversion =
-            hooks.exotic.is_some() || hooks.value_of.is_some() || hooks.to_string.is_some();
-        drop(hooks);
-        if has_host_conversion {
-            return value.to_number();
-        }
-        // Unlike bootstrap Rust conversion hooks, this path must call actual
-        // JavaScript methods, including getters and Proxy traps.
-        let exotic = object.get(&self.to_primitive)?;
-        if !matches!(exotic, Value::Undefined | Value::Null) {
-            let Value::Object(method) = exotic else {
-                return Err(RuntimeError::type_error("@@toPrimitive is not callable"));
-            };
-            let result = method.call(value.clone(), &[Value::String("number".into())])?;
-            if matches!(result, Value::Object(_)) {
-                return Err(RuntimeError::type_error("@@toPrimitive returned an object"));
-            }
-            return result.to_number();
-        }
-        for name in ["valueOf", "toString"] {
-            if let Value::Object(method) = object.get(&name.into())? {
-                if method.is_callable() {
-                    let result = method.call(value.clone(), &[])?;
-                    if !matches!(result, Value::Object(_)) {
-                        return result.to_number();
-                    }
-                }
-            }
-        }
-        Err(RuntimeError::type_error(
-            "cannot convert length to a primitive",
-        ))
+        super::coercion::primitive(&value, &self.to_primitive, false)?.to_number()
     }
 
     fn length(&self, object: &Object) -> RuntimeResult<u64> {
@@ -169,7 +134,7 @@ pub(super) fn install(
 
 type Operation = fn(&Object, u64, &[Value]) -> RuntimeResult<Value>;
 
-fn method(
+pub(super) fn method(
     holder: &Object,
     prototype: &Object,
     name: &str,

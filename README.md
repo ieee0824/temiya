@@ -43,6 +43,8 @@ Lexer/parser fuzz targets, limits, corpus, and regression handling are described
 in [fuzzing](docs/fuzzing.md).
 Scheduled dependency, Miri, and sanitizer coverage is documented in
 [security checks](docs/security-checks.md).
+Performance inputs, environment capture, noise handling, and regression policy
+are documented in [benchmarks](docs/benchmarks.md).
 
 ## Development
 

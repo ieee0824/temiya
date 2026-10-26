@@ -311,3 +311,35 @@ or speedup. This change reduces allocation and unobservable retention; it does
 not integrate tracing GC. The ownership probe still retains self-cycle,
 two-object-cycle and escaped-prototype cases. Full GC and SpiderMonkey/application
 comparisons remain separate outstanding requirements.
+
+### Matched Temiya regression comparisons
+
+To compare a runtime optimization against its measured predecessor, freeze the
+predecessor worker **before** rebuilding. The helper checks its hash against the
+prior comparison report and refuses to overwrite either destination:
+
+```sh
+node scripts/freeze-temiya-worker.mjs before-report.json \
+    /tmp/before-target/release/examples/measure_workload \
+    /tmp/frozen-before-worker /tmp/frozen-before-info.json
+```
+
+After building the changed Engine with the same Rust compiler, features and
+release profile, use the original pinned workload directory:
+
+```sh
+TEMIYA_REVISION=$(git rev-parse HEAD) node scripts/compare-omoikane-workloads.mjs \
+    --temiya-baseline /tmp/omoikane-inputs \
+    /tmp/after-target/release/examples/measure_workload \
+    /tmp/frozen-before-info.json 15 3 > after-before-report.json
+```
+
+This explicit mode validates both workers as Temiya and labels them before/after.
+It keeps the same serial alternating order, per-pass numeric oracle validation,
+watchdogs, timing boundary and median/MAD policy as the Boa comparison. The
+`after_to_before_ratio` and `all_eleven_workloads_after_faster_beyond_threshold`
+fields are Temiya regression evidence; they are not Boa superiority evidence.
+Use the default mode separately for the application Boa target. Both modes
+retain failures and exit 2 if any workload is invalid; low-sample diagnostics
+cannot satisfy either mode's speed gate. A wrong hash or compiler is rejected
+before executing the baseline.

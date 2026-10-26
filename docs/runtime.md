@@ -211,3 +211,41 @@ builtin/prototype/harness failures are failures, not skips or passing tests;
 each file stops at its first failing variant, so later variants remain unrun.
 This is not full String conformance: search, padding, case conversion, iteration,
 RegExp integration are separate work; legacy Annex B `substr` is tracked in #454.
+
+## Compact UTF-16 storage
+
+`JsString` stores short values inline and shares immutable longer buffers with
+`Arc<Vec<u16>>`. The inline capacity is ten UTF-16 code units on 64-bit targets
+and four on 32-bit targets; no mutable buffer access is exposed. Cloning a long
+string shares its allocation. `Send`/`Sync`, exact lone-surrogate preservation,
+content equality/hash/order and the public `code_units`/conversion methods are
+retained. `from_code_units_slice` also avoids an intermediate Vec for short
+literal and indexed-character evaluation. Equality and ordering use the active
+UTF-16 slice rather than the storage variant or buffer identity.
+
+The Arc owns a Vec so a newly constructed long result can retain its buffer;
+converting an existing Vec into a flat Arc slice would copy that buffer. This
+choice still uses separate Vec-buffer and Arc-header allocations for a fresh
+long value. It does not implement ropes or identifier atoms. GC integration and
+identity testing across actual Engine collections remain outstanding in #257
+and #415; the string buffer contains no managed Object edges.
+
+`tests/compact_strings.rs` covers UTF-16 lengths across both storage boundaries,
+NUL/non-BMP/lone surrogates, borrowed input mutation, clone/thread lifetimes,
+content hash/order, distinct Symbols, and public Engine alias/slice/property-key
+behavior. String storage remains the former Vec footprint (24 bytes on the
+measured 64-bit targets). Rust layout is not a public ABI promise.
+
+Run the separate allocation probe and budget checks with:
+
+```sh
+cargo run --locked --release --example string_allocation_probe > allocations.json
+node scripts/check-string-allocations.mjs allocations.json
+```
+
+The single-thread probe warms each operation before counting allocator requests,
+including reallocations. Its reference Vec uses the former UTF-16 construction
+and clone operations. It reports allocation requests/bytes, not elapsed time or
+RSS. Timing workers do not include the counting allocator. The observed
+[allocation report](../benchmarks/compact-string-allocations.json) is separate
+from full Engine throughput comparisons.

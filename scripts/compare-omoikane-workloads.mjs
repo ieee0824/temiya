@@ -7,11 +7,14 @@ import { join } from 'node:path';
 import os from 'node:os';
 import { revision, fixtureSha256, oracle } from './omoikane-benchmark-reference.mjs';
 
-const [directory, temiya, boaInfoFile, samplesText = '15', pairsText = '3'] = process.argv.slice(2);
+const args = process.argv.slice(2);
+const beforeAfter = args[0] === '--temiya-baseline';
+if (beforeAfter) args.shift();
+const [directory, temiya, boaInfoFile, samplesText = '15', pairsText = '3'] = args;
 const samples = Number(samplesText), pairs = Number(pairsText);
 if (!directory || !temiya || !boaInfoFile || !Number.isInteger(samples) || samples < 1 || samples > 1000 ||
     !Number.isInteger(pairs) || pairs < 1 || pairs > 10 || !/^[a-f0-9]{40}$/.test(process.env.TEMIYA_REVISION ?? '')) {
-  throw Error('set TEMIYA_REVISION; usage: compare-omoikane-workloads.mjs WORKLOAD_DIR TEMIYA_WORKER BOA_BUILD_INFO [SAMPLES=15] [PAIRS=3]');
+  throw Error('set TEMIYA_REVISION; usage: compare-omoikane-workloads.mjs [--temiya-baseline] WORKLOAD_DIR TEMIYA_WORKER REFERENCE_BUILD_INFO [SAMPLES=15] [PAIRS=3]');
 }
 const hash = value => createHash('sha256').update(value).digest('hex');
 if (os.platform() !== 'linux' || !/^VmRSS:/m.test(readFileSync('/proc/self/status', 'utf8'))) {
@@ -19,12 +22,20 @@ if (os.platform() !== 'linux' || !/^VmRSS:/m.test(readFileSync('/proc/self/statu
 }
 const manifest = JSON.parse(readFileSync(join(directory, 'manifest.json')));
 const boa = JSON.parse(readFileSync(boaInfoFile));
-if (manifest.revision !== revision || manifest.fixture_sha256 !== fixtureSha256 ||
-    boa.omoikane_revision !== manifest.revision || !boa.checkout_clean ||
+if (manifest.revision !== revision || manifest.fixture_sha256 !== fixtureSha256) throw Error('fixture provenance mismatch');
+if (beforeAfter) {
+  if (boa.name !== 'Temiya' || boa.mode !== 'AST interpreter' || boa.profile !== 'release' ||
+      !Array.isArray(boa.features) || boa.features.length !== 0 || !/^[a-f0-9]{40}$/.test(boa.revision ?? '') ||
+      boa.executable_sha256 !== hash(readFileSync(boa.executable))) throw Error('Temiya baseline provenance mismatch');
+} else if (boa.omoikane_revision !== manifest.revision || !boa.checkout_clean ||
     boa.executable_sha256 !== hash(readFileSync(boa.executable))) throw Error('Boa build provenance mismatch');
 const rustc = execFileSync('rustc', ['-Vv'], { encoding: 'utf8' }).trim();
 if (boa.rustc !== rustc) throw Error('use the same Rust compiler for both workers');
-const workers = [
+const workers = beforeAfter ? [
+  { name: 'Temiya after', engine: 'Temiya', executable: temiya, revision: process.env.TEMIYA_REVISION, mode: 'AST interpreter',
+    executable_sha256: hash(readFileSync(temiya)), features: [], profile: 'release' },
+  { ...boa, name: 'Temiya before', engine: 'Temiya' },
+] : [
   { name: 'Temiya', executable: temiya, revision: process.env.TEMIYA_REVISION, mode: 'AST interpreter',
     executable_sha256: hash(readFileSync(temiya)), features: [], profile: 'release' },
   { name: 'omoikane vendored Boa', executable: boa.executable, revision: boa.omoikane_revision,
@@ -41,6 +52,7 @@ const workloads = manifest.workloads.map((entry, index) => {
 });
 const timeout_ms = 180_000, rss_limit_kib = 512 * 1024;
 const report = {
+  comparison_kind: beforeAfter ? 'Temiya before/after' : 'Temiya versus omoikane Boa',
   recorded_at: new Date().toISOString(), rustc, manifest, workers, samples, pairs,
   measurement_scope: 'Function/shared setup once per process; each timed pass parses and evaluates the same invocation; startup/setup/warmup excluded from samples',
   qualification: samples >= 15 && pairs >= 3 ? 'repeated comparison' : 'diagnostic only; insufficient samples/pairs for performance acceptance',
@@ -48,7 +60,7 @@ const report = {
   machine: { platform: os.platform(), release: os.release(), architecture: os.arch(),
     cpu_models: [...new Set(os.cpus().map(cpu => cpu.model))], logical_cpus: os.cpus().length },
   limits: { timeout_ms, rss_limit_kib, proc_poll_ms: 25,
-    note: 'Same process watchdog for both workers; RSS/HWM sampled on Linux and may overshoot between polls. Boa additionally retains the application sandbox reported by its worker. Temiya has no equivalent cooperative loop/deadline budget.' },
+    note: beforeAfter ? 'Same process watchdog for both Temiya workers; RSS/HWM sampled on Linux and may overshoot between polls. Neither worker has a cooperative loop/deadline budget.' : 'Same process watchdog for both workers; RSS/HWM sampled on Linux and may overshoot between polls. Boa additionally retains the application sandbox reported by its worker. Temiya has no equivalent cooperative loop/deadline budget.' },
   runs: [], comparisons: [],
 };
 
@@ -89,7 +101,7 @@ async function run(workload, worker, pair, order) {
     else if (exit.code !== 0) result.status = 'failed';
     else {
       const measurement = JSON.parse(stdout);
-      if (measurement.engine !== worker.name || measurement.mode !== worker.mode ||
+      if (measurement.engine !== (worker.engine ?? worker.name) || measurement.mode !== worker.mode ||
           measurement.scope !== 'parse+evaluate invocation; function setup excluded' ||
           measurement.profile !== 'release' || measurement.expected !== workload.expected ||
           measurement.validated_passes !== samples + 1 || measurement.samples_ns?.length !== samples ||
@@ -120,16 +132,16 @@ for (const workload of workloads) {
       const [t, b] = results.map(result => result.measurement);
       const ratio = t.median_ns / b.median_ns;
       const threshold = Math.max(0.10, 3 * (t.mad_ns / t.median_ns + b.mad_ns / b.median_ns));
-      Object.assign(comparison, { status: 'comparable', temiya_to_boa_ratio: ratio,
+      Object.assign(comparison, { status: 'comparable', [beforeAfter ? 'after_to_before_ratio' : 'temiya_to_boa_ratio']: ratio,
         noise_threshold: threshold,
-        outcome: samples < 15 || pairs < 3 ? 'diagnostic only' : 1 - ratio > threshold ? 'Temiya faster beyond threshold' : ratio - 1 > threshold ? 'Temiya slower beyond threshold' : 'within noise threshold' });
+        outcome: samples < 15 || pairs < 3 ? 'diagnostic only' : 1 - ratio > threshold ? (beforeAfter ? 'after faster beyond threshold' : 'Temiya faster beyond threshold') : ratio - 1 > threshold ? (beforeAfter ? 'after slower beyond threshold' : 'Temiya slower beyond threshold') : 'within noise threshold' });
     }
     report.comparisons.push(comparison);
   }
 }
 report.all_workloads_valid = report.runs.every(result => result.status === 'pass');
-report.all_eleven_workloads_faster_beyond_threshold = samples >= 15 && pairs >= 3 && report.all_workloads_valid &&
-  report.comparisons.every(result => result.outcome === 'Temiya faster beyond threshold');
-report.scope_note = 'Eleven microbenchmarks only; even a passing comparison does not establish complete application compatibility or superiority on arbitrary JavaScript.';
+report[beforeAfter ? 'all_eleven_workloads_after_faster_beyond_threshold' : 'all_eleven_workloads_faster_beyond_threshold'] = samples >= 15 && pairs >= 3 && report.all_workloads_valid &&
+  report.comparisons.every(result => result.outcome === (beforeAfter ? 'after faster beyond threshold' : 'Temiya faster beyond threshold'));
+report.scope_note = beforeAfter ? 'Temiya-only before/after comparison of eleven microbenchmarks; this does not measure Boa or SpiderMonkey or establish complete application compatibility.' : 'Eleven microbenchmarks only; even a passing comparison does not establish complete application compatibility or superiority on arbitrary JavaScript.';
 console.log(JSON.stringify(report, null, 2));
 if (!report.all_workloads_valid) process.exitCode = 2;

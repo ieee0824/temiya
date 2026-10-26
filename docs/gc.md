@@ -22,3 +22,11 @@ cycles. Reused slots receive a new generation so stale handles resolve to
 optional live-allocation limit. `try_allocate` runs collection before reporting
 `OutOfMemory`, making both threshold and failure behavior deterministic in
 embedders and tests.
+
+Survivors are promoted to an old generation. When an old allocation gains a
+young strong edge, the mutator calls `Heap::write_barrier`; the owner then joins
+the remembered set scanned by `collect_minor`. Minor collection traces young
+roots and remembered old owners, promotes surviving young values, and never
+sweeps old values. Development and stress tests can call
+`verify_write_barriers` to detect an old-to-young edge whose owner was not
+remembered. Full collection remains the reference behavior for comparison.

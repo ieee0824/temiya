@@ -33,6 +33,8 @@ see [parser scope](docs/parser.md), [AST ownership](docs/ast.md), and
 [source position conversion](docs/source.md).
 ECMAScript values and fundamental abstract conversions are described in
 [runtime values](docs/runtime.md).
+Collector-independent handles, explicit roots, and tracing rules are described
+in [garbage collector contracts](docs/gc.md).
 
 ## Development
 

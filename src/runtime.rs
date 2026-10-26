@@ -11,6 +11,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use num_bigint::BigInt;
 
+mod array_methods;
 mod builtins;
 mod collections;
 mod environment;

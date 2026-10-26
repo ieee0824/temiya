@@ -201,11 +201,17 @@ impl IntrinsicId {
 pub struct IntrinsicRegistry(BTreeMap<IntrinsicId, Object>);
 
 impl IntrinsicRegistry {
-    pub(crate) fn initialize(global: &Object, host_hooks: HostHooks) -> RuntimeResult<Self> {
+    pub(crate) fn initialize(
+        global: &Object,
+        host_hooks: HostHooks,
+        symbols: &WellKnownSymbols,
+    ) -> RuntimeResult<Self> {
         let mut objects: BTreeMap<IntrinsicId, Object> = BTreeMap::new();
         for id in IntrinsicId::ALL {
             let object = if id == IntrinsicId::FunctionPrototype {
                 Object::native_function(|_, _| Ok(Value::Undefined))
+            } else if id == IntrinsicId::ArrayPrototype {
+                super::ArrayObject::new(0)?.object()
             } else if id == IntrinsicId::Object {
                 let prototype = objects
                     .get(&IntrinsicId::ObjectPrototype)
@@ -250,7 +256,20 @@ impl IntrinsicRegistry {
         }
         let registry = Self(objects);
         registry.wire_graph()?;
+        for (name, symbol) in [
+            ("toPrimitive", WellKnownSymbol::ToPrimitive),
+            ("toStringTag", WellKnownSymbol::ToStringTag),
+        ] {
+            define(
+                &registry.get(IntrinsicId::Symbol),
+                name,
+                Value::Symbol(symbols.get(symbol)),
+                false,
+                false,
+            )?;
+        }
         super::builtins::initialize(&registry, host_hooks)?;
+        super::array_methods::install(&registry, symbols)?;
         registry.install_globals(global)?;
         Ok(registry)
     }

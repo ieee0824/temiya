@@ -82,7 +82,8 @@ impl Realm {
     ) -> RuntimeResult<Self> {
         static NEXT_ID: AtomicU64 = AtomicU64::new(1);
         let well_known_symbols = WellKnownSymbols::initialize();
-        let intrinsics = IntrinsicRegistry::initialize(&global_object, host_hooks.clone())?;
+        let intrinsics =
+            IntrinsicRegistry::initialize(&global_object, host_hooks.clone(), &well_known_symbols)?;
         let global_environment = Environment::global(global_object.clone(), global_this_value);
         Ok(Self(Rc::new(RealmData {
             id: next_id(&NEXT_ID, "Realm"),

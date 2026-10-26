@@ -247,6 +247,8 @@ fn install_numeric(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {
         ("MAX_VALUE", f64::MAX),
         ("MIN_VALUE", f64::from_bits(1)),
         ("EPSILON", f64::EPSILON),
+        ("MAX_SAFE_INTEGER", 9_007_199_254_740_991.0),
+        ("MIN_SAFE_INTEGER", -9_007_199_254_740_991.0),
     ] {
         require_define(
             &number,
@@ -361,7 +363,7 @@ fn numeric_receiver(value: &Value, bigint: bool) -> RuntimeResult<Value> {
     match value {
         Value::Number(_) if !bigint => Ok(value.clone()),
         Value::BigInt(_) if bigint => Ok(value.clone()),
-        Value::Object(object) => match object.0.state.borrow().numeric_data.as_ref() {
+        Value::Object(object) => match object.0.state.borrow().primitive_data.as_ref() {
             Some(value @ Value::Number(_)) if !bigint => Ok(value.clone()),
             Some(value @ Value::BigInt(_)) if bigint => Ok(value.clone()),
             _ => Err(RuntimeError::type_error("incompatible numeric receiver")),

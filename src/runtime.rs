@@ -32,6 +32,7 @@ mod promise;
 mod proxy;
 mod regexp;
 mod statement;
+mod string;
 mod string_methods;
 
 pub use collections::{
@@ -55,53 +56,7 @@ pub use proxy::ProxyObject;
 pub use regexp::{RegExp, RegExpFlags, RegExpMatch, StringObject};
 pub use statement::{Completion, StatementEvaluator};
 
-/// A JavaScript String value represented as an exact sequence of UTF-16 code units.
-#[derive(Clone, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct JsString(Vec<u16>);
-
-impl JsString {
-    /// Creates a string from UTF-16 code units without validating surrogate pairs.
-    #[must_use]
-    pub fn from_code_units(code_units: impl Into<Vec<u16>>) -> Self {
-        Self(code_units.into())
-    }
-
-    /// Returns the string's UTF-16 code units.
-    #[must_use]
-    pub fn code_units(&self) -> &[u16] {
-        &self.0
-    }
-
-    /// Converts the string for diagnostics, replacing unpaired surrogates.
-    #[must_use]
-    pub fn to_string_lossy(&self) -> String {
-        String::from_utf16_lossy(&self.0)
-    }
-
-    /// Returns whether the string contains no UTF-16 code units.
-    #[must_use]
-    pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
-    }
-}
-
-impl From<&str> for JsString {
-    fn from(value: &str) -> Self {
-        Self(value.encode_utf16().collect())
-    }
-}
-
-impl From<String> for JsString {
-    fn from(value: String) -> Self {
-        Self::from(value.as_str())
-    }
-}
-
-impl fmt::Debug for JsString {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.debug_tuple("JsString").field(&self.0).finish()
-    }
-}
+pub use string::JsString;
 
 #[derive(Debug)]
 struct SymbolData {

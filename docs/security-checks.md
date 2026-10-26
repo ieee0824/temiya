@@ -2,7 +2,8 @@
 
 Normal pull requests run formatting, Clippy, tests, and builds on stable and the
 MSRV. The separate `Security and undefined behavior` workflow runs every Monday
-at 04:23 UTC and on manual dispatch. Its independent jobs are mandatory once
+at 04:23 UTC, on manual dispatch, and on pull requests that change this workflow
+or the root `Cargo.lock`. Its independent jobs are mandatory once
 started: none use `continue-on-error`, and each has a hard timeout.
 
 - `cargo-audit 0.22.2 --deny warnings` examines the committed root lockfile and

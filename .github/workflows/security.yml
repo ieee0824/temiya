@@ -1,6 +1,10 @@
 name: Security and undefined behavior
 
 on:
+  pull_request:
+    paths:
+      - .github/workflows/security.yml
+      - Cargo.lock
   schedule:
     - cron: '23 4 * * 1'
   workflow_dispatch:

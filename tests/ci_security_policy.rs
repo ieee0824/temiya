@@ -5,6 +5,8 @@ const DEPENDABOT: &str = include_str!("../.github/dependabot.yml");
 fn security_jobs_are_scheduled_bounded_and_failing() {
     assert!(WORKFLOW.contains("cron: '23 4 * * 1'"));
     assert!(WORKFLOW.contains("workflow_dispatch:"));
+    assert!(WORKFLOW.contains("pull_request:"));
+    assert!(WORKFLOW.contains("- Cargo.lock"));
     assert_eq!(WORKFLOW.matches("timeout-minutes:").count(), 3);
     assert!(!WORKFLOW.contains("continue-on-error"));
 }

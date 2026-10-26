@@ -274,6 +274,9 @@ pub(super) struct ObjectState {
     properties: Vec<PropertyEntry>,
     callable: Option<NativeCall>,
     construct: Option<NativeConstruct>,
+    pub(super) array: bool,
+    pub(super) buffer: Option<super::indexed::BufferSlot>,
+    pub(super) view: Option<super::indexed::ViewSlot>,
 }
 
 pub(super) fn ordinary_state() -> ObjectState {
@@ -284,6 +287,20 @@ pub(super) fn ordinary_state() -> ObjectState {
 }
 
 impl Object {
+    pub(crate) fn set_native_call(
+        &self,
+        callback: impl Fn(Value, &[Value]) -> RuntimeResult<Value> + 'static,
+    ) {
+        self.0.state.borrow_mut().callable = Some(Rc::new(callback));
+    }
+
+    pub(crate) fn set_native_construct(
+        &self,
+        callback: impl Fn(&[Value], Object) -> RuntimeResult<Object> + 'static,
+    ) {
+        self.0.state.borrow_mut().construct = Some(Rc::new(callback));
+    }
+
     /// Allocates a callable object backed by a native Rust closure.
     #[must_use]
     pub fn native_function(
@@ -399,6 +416,30 @@ impl Object {
         descriptor: PropertyDescriptor,
     ) -> RuntimeResult<bool> {
         descriptor.validate()?;
+        if self.0.state.borrow().array {
+            if matches!(&key, PropertyKey::String(name) if name == &JsString::from("length")) {
+                return self.define_array_length(descriptor);
+            }
+            if let Some(index) = key.array_index() {
+                let old_length = self.array_length();
+                if index >= old_length && !self.array_length_writable() {
+                    return Ok(false);
+                }
+                let accepted = self.define_ordinary_property(key, descriptor)?;
+                if accepted && index >= old_length {
+                    self.set_array_length_value(index + 1);
+                }
+                return Ok(accepted);
+            }
+        }
+        self.define_ordinary_property(key, descriptor)
+    }
+
+    fn define_ordinary_property(
+        &self,
+        key: PropertyKey,
+        descriptor: PropertyDescriptor,
+    ) -> RuntimeResult<bool> {
         let mut state = self.0.state.borrow_mut();
         let position = state.properties.iter().position(|entry| entry.key == key);
         let current = position.map(|index| &state.properties[index].descriptor);
@@ -414,6 +455,61 @@ impl Object {
             });
         }
         Ok(true)
+    }
+
+    pub(super) fn array_length(&self) -> u32 {
+        match self
+            .get_own_property(&"length".into())
+            .and_then(|d| d.value)
+        {
+            Some(Value::Number(value)) => value as u32,
+            _ => 0,
+        }
+    }
+
+    fn array_length_writable(&self) -> bool {
+        self.get_own_property(&"length".into())
+            .and_then(|descriptor| descriptor.writable)
+            .unwrap_or(false)
+    }
+
+    fn set_array_length_value(&self, length: u32) {
+        let mut state = self.0.state.borrow_mut();
+        let entry = state
+            .properties
+            .iter_mut()
+            .find(|entry| entry.key == PropertyKey::from("length"))
+            .expect("array length property");
+        entry.descriptor.value = Some(Value::Number(f64::from(length)));
+    }
+
+    fn define_array_length(&self, descriptor: PropertyDescriptor) -> RuntimeResult<bool> {
+        let Some(Value::Number(number)) = descriptor.value.as_ref() else {
+            return self.define_ordinary_property("length".into(), descriptor);
+        };
+        if !number.is_finite()
+            || *number < 0.0
+            || number.fract() != 0.0
+            || *number > f64::from(u32::MAX)
+        {
+            return Err(RuntimeError::range_error("invalid array length"));
+        }
+        let new_length = *number as u32;
+        let old_length = self.array_length();
+        if new_length >= old_length {
+            return self.define_ordinary_property("length".into(), descriptor);
+        }
+        if !self.array_length_writable() {
+            return Ok(false);
+        }
+        for index in (new_length..old_length).rev() {
+            let key = PropertyKey::String(JsString::from(index.to_string()));
+            if !self.delete(&key) {
+                self.set_array_length_value(index + 1);
+                return Ok(false);
+            }
+        }
+        self.define_ordinary_property("length".into(), descriptor)
     }
 
     /// Defines a writable, enumerable, configurable own data property.

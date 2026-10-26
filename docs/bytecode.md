@@ -188,7 +188,7 @@ existing Object call/construct API. Construction uses the captured constructor
 as newTarget. Callability is checked after argument evaluation in both AST and
 VM paths. Native callbacks and existing AST-backed JavaScript function objects
 are callable; function expressions/arrows additionally create actual VM-backed
-objects. Function declarations are still not lowered by this compiler. Engine continues to use the AST backend.
+objects. Ordinary function declarations additionally use scope-instantiation metadata. Engine continues to use the AST backend.
 
 Pending frames own their argument and receiver roots separately from operand
 storage. Verification tracks frame entry identity and operand baseline across
@@ -239,4 +239,4 @@ Issue #291 remains incomplete. The added shared Object-call guard changes the AS
 hot path and requires fresh comparative performance evidence before merge; #469's
 measurement does not include this work. No speed improvement is claimed.
 
-Function expression/arrow lowering is in progress in #292; see [bytecode closures](bytecode-closures.md) for actual execution, ownership, tests and unfinished gates. Function declarations and the full parameter/arguments contract remain incomplete.
+Function expression/arrow lowering is in progress in #292; see [bytecode closures](bytecode-closures.md) for actual execution, ownership, tests and unfinished gates. The full parameter/arguments contract and sloppy block declarations remain incomplete.

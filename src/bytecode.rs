@@ -40,6 +40,17 @@ pub struct ScopeBinding {
     pub kind: BindingKind,
 }
 
+/// One hoisted function and the active scope entry containing its binding.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ScopeFunction {
+    /// Declared binding name.
+    pub name: JsString,
+    /// Scope entry PC owning the binding (may differ from the capture scope).
+    pub target: u32,
+    /// Verified function code and metadata.
+    pub template: Rc<FunctionTemplate>,
+}
+
 /// Immutable scope metadata, containing no runtime environment or values.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ScopeDescriptor {
@@ -49,6 +60,8 @@ pub struct ScopeDescriptor {
     pub strict: bool,
     /// Ordered bindings addressed by slot operands.
     pub bindings: Vec<ScopeBinding>,
+    /// Selected hoisted functions in source order (last duplicate wins).
+    pub functions: Vec<ScopeFunction>,
 }
 
 /// Immutable executable function metadata; contains no runtime environment.
@@ -56,6 +69,10 @@ pub struct ScopeDescriptor {
 pub struct FunctionTemplate {
     /// Explicit function-expression name, if any.
     pub name: Option<JsString>,
+    /// Whether an explicit expression name creates a private self binding.
+    pub self_binding: bool,
+    /// Whether ordinary call instantiation creates an arguments object.
+    pub arguments_object: bool,
     /// Simple identifier parameters, in source order.
     pub parameters: Vec<JsString>,
     /// Whether this function uses lexical this/arguments/newTarget.
@@ -440,6 +457,42 @@ fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
                 let entry =
                     u32::try_from(offset).map_err(|_| error(VerifyErrorKind::ScopeMismatch))?;
                 state.scopes.push((entry, index));
+                let mut function_names = std::collections::HashSet::new();
+                for declaration in &plan.functions {
+                    validate_function_template(&declaration.template).map_err(error)?;
+                    if declaration.template.arrow
+                        || declaration.template.self_binding
+                        || declaration.template.name.as_ref() != Some(&declaration.name)
+                        || !function_names.insert(declaration.name.code_units())
+                    {
+                        return Err(error(VerifyErrorKind::InvalidScopeDescriptor));
+                    }
+                    let (_, target) = state
+                        .scopes
+                        .iter()
+                        .find(|(entry, _)| *entry == declaration.target)
+                        .ok_or_else(|| error(VerifyErrorKind::BindingOutOfBounds))?;
+                    let Constant::Scope(target) = &bytecode.constants[*target as usize] else {
+                        unreachable!()
+                    };
+                    if declaration.target != entry
+                        && (plan.kind != ScopeKind::Block || target.kind != ScopeKind::Function)
+                    {
+                        return Err(error(VerifyErrorKind::ScopeMismatch));
+                    }
+                    let expected = if target.kind == ScopeKind::Block {
+                        BindingKind::Let
+                    } else {
+                        BindingKind::Var
+                    };
+                    if !target
+                        .bindings
+                        .iter()
+                        .any(|binding| binding.name == declaration.name && binding.kind == expected)
+                    {
+                        return Err(error(VerifyErrorKind::BindingOutOfBounds));
+                    }
+                }
             }
             Instruction::ExitScope => {
                 state
@@ -488,33 +541,7 @@ fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
                 if state.scopes.is_empty() {
                     return Err(error(VerifyErrorKind::ScopeMismatch));
                 }
-                if template
-                    .body
-                    .bytecode()
-                    .instructions
-                    .first()
-                    .is_none_or(|op| !matches!(op, Instruction::EnterScope(_)))
-                {
-                    return Err(error(VerifyErrorKind::InvalidScopeDescriptor));
-                }
-                let Instruction::EnterScope(scope) = template.body.bytecode().instructions[0]
-                else {
-                    unreachable!()
-                };
-                if !matches!(template.body.bytecode().constants.get(scope as usize), Some(Constant::Scope(plan)) if plan.kind == ScopeKind::Function && plan.strict == template.strict)
-                {
-                    return Err(error(VerifyErrorKind::InvalidScopeDescriptor));
-                }
-                if template.strict || template.arrow {
-                    let mut names = std::collections::HashSet::new();
-                    if template
-                        .parameters
-                        .iter()
-                        .any(|name| !names.insert(name.code_units()))
-                    {
-                        return Err(error(VerifyErrorKind::InvalidScopeDescriptor));
-                    }
-                }
+                validate_function_template(template).map_err(error)?;
             }
             Instruction::GetProperty { .. }
             | Instruction::ResolveProperty { .. }
@@ -667,4 +694,29 @@ fn enqueue_fallthrough(
         work.push_back((next, state));
         Ok(())
     }
+}
+
+fn validate_function_template(template: &FunctionTemplate) -> Result<(), VerifyErrorKind> {
+    let body = template.body.bytecode();
+    let Some(Instruction::EnterScope(index)) = body.instructions.first() else {
+        return Err(VerifyErrorKind::InvalidScopeDescriptor);
+    };
+    if !matches!(body.constants.get(*index as usize), Some(Constant::Scope(plan)) if plan.kind == ScopeKind::Function && plan.strict == template.strict)
+    {
+        return Err(VerifyErrorKind::InvalidScopeDescriptor);
+    }
+    if template.arrow && (template.self_binding || template.arguments_object) {
+        return Err(VerifyErrorKind::InvalidScopeDescriptor);
+    }
+    if template.strict || template.arrow {
+        let mut names = std::collections::HashSet::new();
+        if template
+            .parameters
+            .iter()
+            .any(|name| !names.insert(name.code_units()))
+        {
+            return Err(VerifyErrorKind::InvalidScopeDescriptor);
+        }
+    }
+    Ok(())
 }

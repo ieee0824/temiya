@@ -119,6 +119,7 @@ fn scope_operands_and_control_flow_are_verified() {
         Constant::Scope(ScopeDescriptor {
             kind,
             strict: false,
+            functions: vec![],
             bindings: vec![ScopeBinding {
                 name: "x".into(),
                 kind: binding,
@@ -224,6 +225,7 @@ fn retained_name_references_are_checked() {
     let scope = Constant::Scope(ScopeDescriptor {
         kind: ScopeKind::Global,
         strict: false,
+        functions: vec![],
         bindings: vec![],
     });
     let check = |code| {
@@ -284,6 +286,7 @@ fn property_instructions_validate_operands_scopes_and_references() {
                 Constant::Scope(ScopeDescriptor {
                     kind: ScopeKind::Global,
                     strict: false,
+                    functions: vec![],
                     bindings: vec![],
                 }),
                 Constant::Null,
@@ -443,6 +446,7 @@ fn function_templates_require_function_bodies_and_scoped_creation() {
             Constant::Scope(ScopeDescriptor {
                 kind: ScopeKind::Function,
                 strict: false,
+                functions: vec![],
                 bindings: vec![],
             }),
             Constant::Undefined,
@@ -458,6 +462,8 @@ fn function_templates_require_function_bodies_and_scoped_creation() {
     .unwrap();
     let template = FunctionTemplate {
         name: None,
+        self_binding: false,
+        arguments_object: false,
         parameters: vec![],
         arrow: false,
         strict: false,
@@ -468,6 +474,7 @@ fn function_templates_require_function_bodies_and_scoped_creation() {
             Constant::Scope(ScopeDescriptor {
                 kind: ScopeKind::Global,
                 strict: false,
+                functions: vec![],
                 bindings: vec![],
             }),
             Constant::Function(Rc::new(template)),
@@ -505,5 +512,38 @@ fn function_templates_require_function_bodies_and_scoped_creation() {
     assert_eq!(
         scoped(invalid).verify().unwrap_err().kind(),
         VerifyErrorKind::InvalidScopeDescriptor
+    );
+}
+
+#[test]
+fn hoisted_function_metadata_validates_binding_targets_and_template_kind() {
+    use temiya::bytecode::{BindingKind, BytecodeCompiler};
+    let code = BytecodeCompiler::compile("function f(){return 42;}f();").unwrap();
+    let mut bad = code.bytecode().clone();
+    let Constant::Scope(plan) = &mut bad.constants[0] else {
+        panic!("no scope")
+    };
+    plan.functions[0].target = 99;
+    assert_eq!(
+        bad.verify().unwrap_err().kind(),
+        VerifyErrorKind::BindingOutOfBounds
+    );
+    let mut bad = code.bytecode().clone();
+    let Constant::Scope(plan) = &mut bad.constants[0] else {
+        panic!("no scope")
+    };
+    std::rc::Rc::make_mut(&mut plan.functions[0].template).self_binding = true;
+    assert_eq!(
+        bad.verify().unwrap_err().kind(),
+        VerifyErrorKind::InvalidScopeDescriptor
+    );
+    let mut bad = code.bytecode().clone();
+    let Constant::Scope(plan) = &mut bad.constants[0] else {
+        panic!("no scope")
+    };
+    plan.bindings[0].kind = BindingKind::Let;
+    assert_eq!(
+        bad.verify().unwrap_err().kind(),
+        VerifyErrorKind::BindingOutOfBounds
     );
 }

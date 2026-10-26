@@ -22,7 +22,7 @@ pub(crate) fn create(
     let named = template
         .name
         .as_ref()
-        .filter(|_| !template.arrow)
+        .filter(|_| template.self_binding)
         .map(|name| {
             let scope = Environment::declarative(Some(environment.clone()));
             scope.create_immutable_binding(name.clone(), false)?;
@@ -138,7 +138,9 @@ impl Closure {
                 boxed_this(&self.realm, this)?
             };
             frame.bind_this_value(this)?;
-            super::function::bind_arguments(&frame, arguments)?;
+            if self.template.arguments_object {
+                super::function::bind_arguments(&frame, arguments)?;
+            }
         }
         for (index, name) in self.template.parameters.iter().enumerate() {
             let argument = arguments.get(index).cloned().unwrap_or(Value::Undefined);

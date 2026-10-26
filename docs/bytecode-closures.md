@@ -1,6 +1,6 @@
 # Bytecode closures (work in progress, #292)
 
-Function expressions and arrows now create Object callables whose bodies execute
+Function declarations, expressions and arrows now create Object callables whose bodies execute
 only verified bytecode. `FunctionTemplate` stores immutable name/parameter/strictness
 metadata and independently verified nested code; it contains no AST or runtime
 Environment. `CreateFunction` captures the active actual Environment, and instances
@@ -29,7 +29,7 @@ overflow recovery and wrapper prototypes. Existing Rust-stack call depth 32 and
 argument count 65,536 limits remain in effect. Keeping captured records alive is
 not a claim that reference cycles are collected; tracing/GC remains unfinished.
 
-#292 remains open. Function declarations and hoisting, for-let per-iteration
+#292 remains open. Sloppy block/Annex B declarations, for-let per-iteration
 records, default/rest/destructuring parameters, mapped sloppy arguments and the
 full arguments descriptor/prototype contract, async/generators, inferred names,
 original pinned Test262 results, latest CI/security and performance validation
@@ -38,3 +38,32 @@ remain incomplete. Unsupported source forms fail compilation explicitly.
 Engine continues to run the AST backend (#307). Broader builtin limitations,
 including missing BigInt.prototype.valueOf, are separate from correct wrapper
 slot/prototype creation. No whole-function conformance or speed gain is claimed.
+
+## Hoisted declarations
+
+Scope metadata now records selected function templates and the binding scope's
+entry PC separately from the capture scope. Global declarations first validate
+all lexical restrictions, var/lexical conflicts, function eligibility in reverse
+selected order, and remaining var eligibility before creating any bindings or
+function objects. Initialization then creates lexicals, selected functions in
+source order (last duplicate wins), and remaining vars. Tests compare own-key
+order with the AST backend and check accessor replacement without invoking it;
+failed function/var eligibility leaves newly declared lexicals/vars absent.
+
+For simple-parameter strict functions, top-level lexical bindings live in the
+Function record, as FunctionDeclarationInstantiation step 31 requires. Non-strict
+function body declarations capture a separate body lexical record while their
+mutable bindings belong to the Function var record. The caller-prepared legacy
+body API preserves its existing separate body-lexical-record contract. Both paths
+create TDZ bindings before function objects. Declaration templates have names
+without expression-private self bindings, so a saved declaration observes later
+reassignment of its declared binding. Strict block functions initialize their
+lexical bindings on block entry; sloppy block/if function forms remain explicit
+compile errors pending the Annex B implementation. Parameters or direct body
+lexical/function declarations named arguments suppress the implicit arguments
+object, following the simple-parameter instantiation rules.
+
+These changes follow [FunctionDeclarationInstantiation](https://tc39.es/ecma262/2026/multipage/ordinary-and-exotic-objects-behaviours.html#sec-functiondeclarationinstantiation)
+and [GlobalDeclarationInstantiation](https://tc39.es/ecma262/2026/multipage/ecmascript-language-scripts-and-modules.html#sec-globaldeclarationinstantiation).
+They do not complete non-simple parameter/arguments semantics or the original
+Test262 gate.

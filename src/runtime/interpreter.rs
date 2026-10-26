@@ -2,10 +2,11 @@
 
 use num_bigint::BigInt;
 
-use crate::ast::{Expr, ExprKind, Literal, NumberKind};
+use crate::ast::{Expr, ExprKind, Literal, MethodKind, NumberKind};
 
 use super::{
-    Environment, JsString, Numeric, Object, PropertyKey, Realm, RuntimeError, RuntimeResult, Value,
+    Environment, FunctionKind, JsString, Numeric, Object, PropertyKey, Realm, RuntimeError,
+    RuntimeResult, Value, function::create_function,
 };
 
 /// The name component of a Reference Record.
@@ -210,10 +211,10 @@ impl Evaluation {
 /// A direct, AST-based expression evaluator for a Realm and lexical environment.
 #[derive(Clone, Debug)]
 pub struct ExpressionEvaluator {
-    realm: Realm,
+    pub(super) realm: Realm,
     pub(super) environment: Environment,
-    this_value: Value,
-    new_target: Option<Object>,
+    pub(super) this_value: Value,
+    pub(super) new_target: Option<Object>,
     pub(super) strict: bool,
 }
 
@@ -366,11 +367,18 @@ impl ExpressionEvaluator {
             ExprKind::PrivateIdentifier(_) | ExprKind::Super => Err(RuntimeError::reference_error(
                 "private and super references require a class execution context",
             )),
-            ExprKind::Function(_)
-            | ExprKind::Arrow(_)
-            | ExprKind::Class(_)
-            | ExprKind::Method { .. } => Err(RuntimeError::internal_error(
-                "function and class evaluation is implemented by milestone #27",
+            ExprKind::Function(function) => {
+                create_function(function, FunctionKind::Normal, self, None)
+                    .map(|function| Evaluation::Value(Value::Object(function)))
+            }
+            ExprKind::Arrow(function) => create_function(function, FunctionKind::Arrow, self, None)
+                .map(|function| Evaluation::Value(Value::Object(function))),
+            ExprKind::Method { function, kind } => {
+                create_function(function, FunctionKind::Method(*kind), self, None)
+                    .map(|function| Evaluation::Value(Value::Object(function)))
+            }
+            ExprKind::Class(_) => Err(RuntimeError::internal_error(
+                "class evaluation is not yet implemented",
             )),
             ExprKind::Yield { .. } => Err(RuntimeError::internal_error(
                 "yield evaluation is implemented by milestone #28",
@@ -630,11 +638,51 @@ impl ExpressionEvaluator {
             } else {
                 PropertyKey::String(member_name(&property.key)?)
             };
-            let value = property.value.as_ref().map_or_else(
-                || self.evaluate(&property.key),
-                |value| self.evaluate(value),
-            )?;
-            object.create_data_property(key, value)?;
+            if let Some(Expr {
+                kind: ExprKind::Method { function, kind },
+                ..
+            }) = &property.value
+            {
+                let function = create_function(
+                    function,
+                    FunctionKind::Method(*kind),
+                    self,
+                    Some(object.clone()),
+                )?;
+                match kind {
+                    MethodKind::Get => {
+                        object.define_own_property(
+                            key,
+                            super::PropertyDescriptor {
+                                get: Some(Some(function)),
+                                enumerable: Some(true),
+                                configurable: Some(true),
+                                ..super::PropertyDescriptor::default()
+                            },
+                        )?;
+                    }
+                    MethodKind::Set => {
+                        object.define_own_property(
+                            key,
+                            super::PropertyDescriptor {
+                                set: Some(Some(function)),
+                                enumerable: Some(true),
+                                configurable: Some(true),
+                                ..super::PropertyDescriptor::default()
+                            },
+                        )?;
+                    }
+                    MethodKind::Method | MethodKind::Constructor => {
+                        object.create_data_property(key, Value::Object(function))?;
+                    }
+                }
+            } else {
+                let value = property.value.as_ref().map_or_else(
+                    || self.evaluate(&property.key),
+                    |value| self.evaluate(value),
+                )?;
+                object.create_data_property(key, value)?;
+            }
         }
         Ok(Value::Object(object))
     }

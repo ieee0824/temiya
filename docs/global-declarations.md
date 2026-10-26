@@ -80,3 +80,42 @@ from 40 pass / 35 fail to 53 pass / 22 fail: 13 improve and no former pass
 regresses. All 22 failures remain visible, including eight variants whose original
 propertyHelper.js cannot initialize (#467), class execution, eval and other
 unimplemented behavior. These results do not establish full global-code conformance.
+
+
+## Hosted x86_64 global-declaration comparison
+
+[Run 40393438313](https://github.com/ieee0824/temiya/actions/runs/40393438313)
+completed on Ubuntu 24.04, four logical CPUs. The
+[provenance record](../benchmarks/global-declarations-hosted-provenance.json) retains
+build identity and the original artifact reference. Both
+[before/after](../benchmarks/global-declarations-hosted-beforeafter.json) and
+[Boa](../benchmarks/global-declarations-hosted-boa.json) use the original eleven
+workloads, 15 timed samples, one checked warmup and three alternating pairs.
+Each mode has 66 successful runs and 1056 validated values. They run serially
+after all builds, with the same compiler and existing 512 MiB/180-second guards.
+
+The measured revision is `6e00625b91421dd5aabf821bad6ce9b489c77756`;
+the baseline is `6f48fea38728cde271dccf354c95326bf1d1221e`. The measured
+runtime is identical to code revision `71c277c0963990c6b6b44951435789d029f5f169`.
+Later result-only commits do not modify executable source, worker scripts,
+dependencies or the measurement workflow. Architectures are reported separately.
+
+| Workload | Changed / prior Temiya time | Changed Temiya / Boa time |
+| --- | ---: | ---: |
+| arith | 0.98–1.01× | 3.33–4.65× |
+| prop-mono | 0.99–1.05× | 2.40–2.77× |
+| prop-mega | 1.01–1.02× | 2.24–2.26× |
+| call | 1.00–1.05× | 2.32–2.37× |
+| closure-alloc | 0.99–1.03× | 1.78–1.95× |
+| object-alloc | 1.00–1.05× | 1.81–2.12× |
+| string-concat | 0.99–1.01× | 2.96–3.02× |
+| array | 0.99–1.02× | 2.11–2.18× |
+| primitive-string-property | 1.01–1.02× | 2.66–3.30× |
+| primitive-string-method | 1.00–1.05× | 2.04–2.46× |
+| proto-method | 1.01–1.03× | 2.13–2.18× |
+
+All 33 before/after pairs remain within the noise threshold; no throughput
+speedup or regression beyond that threshold is established on this runner.
+All 33 Boa pairs still find Temiya slower beyond the threshold. Both all-eleven
+speed gates remain false. Correct global declaration behavior does not satisfy the Boa goal
+or complete #307/#427.

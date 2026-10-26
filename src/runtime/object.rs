@@ -277,6 +277,8 @@ pub(super) struct ObjectState {
     pub(super) array: bool,
     pub(super) buffer: Option<super::indexed::BufferSlot>,
     pub(super) view: Option<super::indexed::ViewSlot>,
+    pub(super) string_data: Option<JsString>,
+    pub(super) regexp: Option<super::regexp::RegExpSlot>,
 }
 
 pub(super) fn ordinary_state() -> ObjectState {
@@ -400,6 +402,26 @@ impl Object {
     /// Implements `[[GetOwnProperty]]`.
     #[must_use]
     pub fn get_own_property(&self, key: &PropertyKey) -> Option<PropertyDescriptor> {
+        if let Some(string) = &self.0.state.borrow().string_data {
+            if matches!(key, PropertyKey::String(name) if name == &JsString::from("length")) {
+                return Some(PropertyDescriptor::data(
+                    Value::Number(string.code_units().len() as f64),
+                    false,
+                    false,
+                    false,
+                ));
+            }
+            if let Some(index) = key.array_index() {
+                if let Some(unit) = string.code_units().get(index as usize) {
+                    return Some(PropertyDescriptor::data(
+                        Value::String(JsString::from_code_units(vec![*unit])),
+                        false,
+                        true,
+                        false,
+                    ));
+                }
+            }
+        }
         self.0
             .state
             .borrow()
@@ -416,6 +438,11 @@ impl Object {
         descriptor: PropertyDescriptor,
     ) -> RuntimeResult<bool> {
         descriptor.validate()?;
+        if self.0.state.borrow().string_data.is_some() {
+            if let Some(current) = self.string_exotic_property(&key) {
+                return is_compatible_property_descriptor(false, &descriptor, Some(&current));
+            }
+        }
         if self.0.state.borrow().array {
             if matches!(&key, PropertyKey::String(name) if name == &JsString::from("length")) {
                 return self.define_array_length(descriptor);
@@ -599,6 +626,9 @@ impl Object {
 
     /// Implements ordinary `[[Delete]]`.
     pub fn delete(&self, key: &PropertyKey) -> bool {
+        if self.string_exotic_property(key).is_some() {
+            return false;
+        }
         let mut state = self.0.state.borrow_mut();
         let Some(position) = state.properties.iter().position(|entry| entry.key == *key) else {
             return true;
@@ -614,6 +644,12 @@ impl Object {
     #[must_use]
     pub fn own_property_keys(&self) -> Vec<PropertyKey> {
         let state = self.0.state.borrow();
+        let string_keys = state.string_data.as_ref().map_or_else(Vec::new, |string| {
+            (0..string.code_units().len())
+                .map(|index| PropertyKey::String(JsString::from(index.to_string())))
+                .chain(std::iter::once(PropertyKey::from("length")))
+                .collect()
+        });
         let mut indices = state
             .properties
             .iter()
@@ -641,12 +677,36 @@ impl Object {
                 PropertyKey::Symbol(_) => Some(entry.key.clone()),
                 PropertyKey::String(_) => None,
             });
-        indices
+        string_keys
             .into_iter()
-            .map(|(_, key)| key)
-            .chain(strings)
-            .chain(symbols)
+            .chain(
+                indices
+                    .into_iter()
+                    .map(|(_, key)| key)
+                    .chain(strings)
+                    .chain(symbols),
+            )
             .collect()
+    }
+
+    fn string_exotic_property(&self, key: &PropertyKey) -> Option<PropertyDescriptor> {
+        let state = self.0.state.borrow();
+        let string = state.string_data.as_ref()?;
+        if matches!(key, PropertyKey::String(name) if name == &JsString::from("length")) {
+            return Some(PropertyDescriptor::data(
+                Value::Number(string.code_units().len() as f64),
+                false,
+                false,
+                false,
+            ));
+        }
+        let unit = string.code_units().get(key.array_index()? as usize)?;
+        Some(PropertyDescriptor::data(
+            Value::String(JsString::from_code_units(vec![*unit])),
+            false,
+            true,
+            false,
+        ))
     }
 }
 

@@ -23,6 +23,7 @@ mod job_queue;
 mod object;
 mod pipeline;
 mod promise;
+mod regexp;
 mod statement;
 
 pub use environment::{Environment, EnvironmentKind, ObjectEnvironmentOptions, ThisBindingStatus};
@@ -36,6 +37,7 @@ pub use job_queue::JobQueue;
 pub use object::{PropertyDescriptor, PropertyKey, is_compatible_property_descriptor};
 pub use pipeline::{ModuleGraph, ModuleStatus, SourceTextModule};
 pub use promise::{Promise, PromiseState};
+pub use regexp::{RegExp, RegExpFlags, RegExpMatch, StringObject};
 pub use statement::{Completion, StatementEvaluator};
 
 /// A JavaScript String value represented as an exact sequence of UTF-16 code units.

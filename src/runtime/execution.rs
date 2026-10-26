@@ -6,7 +6,10 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::ast::Program;
 
-use super::{Environment, JobQueue, Object, RuntimeError, RuntimeResult, Value};
+use super::{
+    Environment, IntrinsicId, IntrinsicRegistry, JobQueue, Object, RuntimeError, RuntimeResult,
+    Value, WellKnownSymbol, WellKnownSymbols,
+};
 
 /// An ECMAScript Realm with its global object and Global Environment Record.
 #[derive(Clone)]
@@ -17,20 +20,32 @@ struct RealmData {
     global_object: Object,
     global_environment: Environment,
     job_queue: JobQueue,
+    intrinsics: IntrinsicRegistry,
+    well_known_symbols: WellKnownSymbols,
 }
 
 impl Realm {
     /// Creates a Realm around a global object and its chosen global-this value.
     #[must_use]
     pub fn new(global_object: Object, global_this_value: Value) -> Self {
+        Self::try_new(global_object, global_this_value)
+            .expect("a Realm requires an extensible global object")
+    }
+
+    /// Tries to create and initialize a Realm around a host-supplied global object.
+    pub fn try_new(global_object: Object, global_this_value: Value) -> RuntimeResult<Self> {
         static NEXT_ID: AtomicU64 = AtomicU64::new(1);
+        let well_known_symbols = WellKnownSymbols::initialize();
+        let intrinsics = IntrinsicRegistry::initialize(&global_object)?;
         let global_environment = Environment::global(global_object.clone(), global_this_value);
-        Self(Rc::new(RealmData {
+        Ok(Self(Rc::new(RealmData {
             id: next_id(&NEXT_ID, "Realm"),
             global_object,
             global_environment,
             job_queue: JobQueue::new(),
-        }))
+            intrinsics,
+            well_known_symbols,
+        })))
     }
 
     /// Creates a Realm whose global-this value is its fresh global object.
@@ -62,6 +77,24 @@ impl Realm {
     #[must_use]
     pub fn job_queue(&self) -> JobQueue {
         self.0.job_queue.clone()
+    }
+
+    /// Returns this Realm's intrinsic registry.
+    #[must_use]
+    pub fn intrinsics(&self) -> &IntrinsicRegistry {
+        &self.0.intrinsics
+    }
+
+    /// Returns one intrinsic object owned by this Realm.
+    #[must_use]
+    pub fn intrinsic(&self, id: IntrinsicId) -> Object {
+        self.0.intrinsics.get(id)
+    }
+
+    /// Returns one of this Realm's well-known symbols.
+    #[must_use]
+    pub fn well_known_symbol(&self, id: WellKnownSymbol) -> super::Symbol {
+        self.0.well_known_symbols.get(id)
     }
 }
 

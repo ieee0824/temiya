@@ -4,11 +4,15 @@ use std::{
     any::Any,
     fmt,
     marker::PhantomData,
+    panic::{AssertUnwindSafe, catch_unwind},
     rc::Rc,
     sync::atomic::{AtomicU64, Ordering},
 };
 
-use crate::runtime::{Completion, Realm, RuntimeError, RuntimeErrorKind, ScriptRecord, Value};
+use crate::runtime::{
+    Completion, JsString, ModuleGraph, Object, Realm, RuntimeError, RuntimeErrorKind, ScriptRecord,
+    SourceTextModule, Value,
+};
 
 /// Configuration used when constructing an [`Engine`].
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -121,6 +125,176 @@ impl Engine {
         }
     }
 
+    /// Roots a runtime value in an owned handle for a Realm.
+    pub fn value(&self, realm: &RealmHandle, value: Value) -> Result<ValueHandle, EmbedError> {
+        self.require_realm(realm)?;
+        Ok(ValueHandle::new(self.id, realm.realm_id, value))
+    }
+
+    /// Installs a panic-isolated native function on a Realm's global object.
+    ///
+    /// Arguments and results are owned handles rooted by their runtime values.
+    /// Reentrant calls into other embedding operations are supported, but a
+    /// callback result from another engine or Realm is rejected.
+    pub fn register_global_function<F>(
+        &self,
+        realm: &RealmHandle,
+        name: &str,
+        callback: F,
+    ) -> Result<(), EmbedError>
+    where
+        F: Fn(HostCallContext, ValueHandle, Vec<ValueHandle>) -> Result<ValueHandle, HostError>
+            + 'static,
+    {
+        self.require_realm(realm)?;
+        let engine_id = self.id;
+        let realm_id = realm.realm_id;
+        let function = Object::native_function(move |this, arguments| {
+            let this = ValueHandle::new(engine_id, realm_id, this);
+            let arguments = arguments
+                .iter()
+                .cloned()
+                .map(|value| ValueHandle::new(engine_id, realm_id, value))
+                .collect();
+            let context = HostCallContext {
+                engine_id,
+                realm_id,
+            };
+            let result = catch_unwind(AssertUnwindSafe(|| callback(context, this, arguments)))
+                .map_err(|_| RuntimeError::internal_error("host function panicked"))?
+                .map_err(HostError::into_runtime)?;
+            if result.engine_id != engine_id || result.realm_id != realm_id {
+                return Err(RuntimeError::type_error(
+                    "host function returned a value from another engine or Realm",
+                ));
+            }
+            Ok(result.value)
+        });
+        realm
+            .realm
+            .global_object()
+            .create_data_property(name.into(), Value::Object(function))
+            .map(|_| ())
+            .map_err(EmbedError::Host)
+    }
+
+    /// Creates an owned ordinary object from host-provided properties.
+    pub fn create_object<I, K>(
+        &self,
+        realm: &RealmHandle,
+        properties: I,
+    ) -> Result<ValueHandle, EmbedError>
+    where
+        I: IntoIterator<Item = (K, ValueHandle)>,
+        K: Into<JsString>,
+    {
+        self.require_realm(realm)?;
+        let object = Object::new();
+        for (name, value) in properties {
+            self.require_value(realm, &value)?;
+            object
+                .create_data_property(name.into().into(), value.value)
+                .map_err(EmbedError::Host)?;
+        }
+        Ok(ValueHandle::new(
+            self.id,
+            realm.realm_id,
+            Value::Object(object),
+        ))
+    }
+
+    /// Defines an owned value as a writable global property.
+    pub fn set_global(
+        &self,
+        realm: &RealmHandle,
+        name: &str,
+        value: ValueHandle,
+    ) -> Result<(), EmbedError> {
+        self.require_realm(realm)?;
+        self.require_value(realm, &value)?;
+        realm
+            .realm
+            .global_object()
+            .create_data_property(name.into(), value.value)
+            .map(|_| ())
+            .map_err(EmbedError::Host)
+    }
+
+    /// Loads a module graph through a panic-isolated host source resolver.
+    pub fn load_module<F>(
+        &self,
+        realm: &RealmHandle,
+        specifier: &str,
+        resolver: F,
+    ) -> Result<ModuleHandle, EmbedError>
+    where
+        F: Fn(&str) -> Result<String, HostError> + 'static,
+    {
+        self.require_realm(realm)?;
+        let graph = ModuleGraph::new(realm.realm.clone(), move |request| {
+            let specifier = String::from_utf16_lossy(&request.specifier);
+            catch_unwind(AssertUnwindSafe(|| resolver(&specifier)))
+                .map_err(|_| RuntimeError::internal_error("module resolver panicked"))?
+                .map_err(HostError::into_runtime)
+        });
+        let module = graph.load(specifier).map_err(EmbedError::Host)?;
+        Ok(ModuleHandle {
+            engine_id: self.id,
+            module,
+        })
+    }
+
+    /// Links and evaluates a loaded module graph.
+    pub fn evaluate_module(&self, module: &ModuleHandle) -> Result<(), Exception> {
+        if module.engine_id != self.id {
+            return Err(Exception::engine("module belongs to another engine"));
+        }
+        module.module.link().map_err(Exception::runtime)?;
+        module.module.evaluate().map_err(Exception::runtime)?;
+        Ok(())
+    }
+
+    /// Installs a panic-isolated callback for unhandled Promise rejections.
+    pub fn register_job_error_callback<F>(
+        &self,
+        realm: &RealmHandle,
+        callback: F,
+    ) -> Result<(), EmbedError>
+    where
+        F: Fn(Exception) + 'static,
+    {
+        self.require_realm(realm)?;
+        realm
+            .realm
+            .job_queue()
+            .set_unhandled_rejection_hook(move |error| {
+                let _ = catch_unwind(AssertUnwindSafe(|| callback(Exception::runtime(error))));
+            });
+        Ok(())
+    }
+
+    /// Enqueues a panic-isolated host job on the Realm's FIFO job queue.
+    pub fn enqueue_job<F>(&self, realm: &RealmHandle, callback: F) -> Result<(), EmbedError>
+    where
+        F: FnOnce() -> Result<(), HostError> + 'static,
+    {
+        self.require_realm(realm)?;
+        realm.realm.job_queue().enqueue(move || {
+            catch_unwind(AssertUnwindSafe(callback))
+                .map_err(|_| RuntimeError::internal_error("host job panicked"))?
+                .map_err(HostError::into_runtime)
+        });
+        Ok(())
+    }
+
+    /// Drains the Realm's Promise job queue to a microtask checkpoint.
+    pub fn drain_jobs(&self, realm: &RealmHandle) -> Result<usize, Exception> {
+        if realm.engine_id != self.id {
+            return Err(Exception::engine("Realm belongs to another engine"));
+        }
+        realm.realm.job_queue().drain().map_err(Exception::runtime)
+    }
+
     /// Compiles Script source for a Realm, rejecting cross-engine handles.
     pub fn compile(&self, realm: &RealmHandle, source: &str) -> Result<CompiledScript, EmbedError> {
         self.require_engine(realm.engine_id)?;
@@ -168,6 +342,18 @@ impl Engine {
             Err(EmbedError::EngineMismatch)
         }
     }
+
+    fn require_realm(&self, realm: &RealmHandle) -> Result<(), EmbedError> {
+        self.require_engine(realm.engine_id)
+    }
+
+    fn require_value(&self, realm: &RealmHandle, value: &ValueHandle) -> Result<(), EmbedError> {
+        if value.engine_id == self.id && value.realm_id == realm.realm_id {
+            Ok(())
+        } else {
+            Err(EmbedError::EngineMismatch)
+        }
+    }
 }
 
 impl Default for Engine {
@@ -203,6 +389,28 @@ pub struct CompiledScript {
     script: ScriptRecord,
 }
 
+/// Owned loaded module tied to its creating engine and Realm.
+#[derive(Clone, Debug)]
+pub struct ModuleHandle {
+    engine_id: u64,
+    module: SourceTextModule,
+}
+
+/// Provenance-preserving factory available during a native host call.
+#[derive(Clone, Copy, Debug)]
+pub struct HostCallContext {
+    engine_id: u64,
+    realm_id: u64,
+}
+
+impl HostCallContext {
+    /// Wraps a runtime value as an owned result in the current engine and Realm.
+    #[must_use]
+    pub fn value(self, value: Value) -> ValueHandle {
+        ValueHandle::new(self.engine_id, self.realm_id, value)
+    }
+}
+
 /// Owned JavaScript value handle with engine and Realm provenance.
 #[derive(Clone, Debug)]
 pub struct ValueHandle {
@@ -212,6 +420,14 @@ pub struct ValueHandle {
 }
 
 impl ValueHandle {
+    fn new(engine_id: u64, realm_id: u64, value: Value) -> Self {
+        Self {
+            engine_id,
+            realm_id,
+            value,
+        }
+    }
+
     /// Borrows the runtime value for the duration of this Rust borrow.
     #[must_use]
     pub fn value(&self) -> &Value {
@@ -238,6 +454,8 @@ pub enum EmbedError {
     EngineMismatch,
     /// Parsing or static semantics rejected source text.
     Compile(RuntimeError),
+    /// A host object, module, or Realm operation failed.
+    Host(RuntimeError),
 }
 
 impl fmt::Display for EmbedError {
@@ -245,11 +463,55 @@ impl fmt::Display for EmbedError {
         match self {
             Self::EngineMismatch => formatter.write_str("handle belongs to another engine"),
             Self::Compile(error) => write!(formatter, "compile failed: {error}"),
+            Self::Host(error) => write!(formatter, "host integration failed: {error}"),
         }
     }
 }
 
 impl std::error::Error for EmbedError {}
+
+/// Error returned by a host function or module resolver.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct HostError {
+    kind: ExceptionKind,
+    message: String,
+}
+
+impl HostError {
+    /// Creates a host TypeError.
+    #[must_use]
+    pub fn type_error(message: impl Into<String>) -> Self {
+        Self {
+            kind: ExceptionKind::TypeError,
+            message: message.into(),
+        }
+    }
+
+    /// Creates a host ReferenceError.
+    #[must_use]
+    pub fn reference_error(message: impl Into<String>) -> Self {
+        Self {
+            kind: ExceptionKind::ReferenceError,
+            message: message.into(),
+        }
+    }
+
+    fn into_runtime(self) -> RuntimeError {
+        match self.kind {
+            ExceptionKind::TypeError => RuntimeError::type_error(self.message),
+            ExceptionKind::ReferenceError => RuntimeError::reference_error(self.message),
+            _ => RuntimeError::internal_error(self.message),
+        }
+    }
+}
+
+impl fmt::Display for HostError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(formatter, "{:?}: {}", self.kind, self.message)
+    }
+}
+
+impl std::error::Error for HostError {}
 
 /// Stable exception categories exposed to embedders.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

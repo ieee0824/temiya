@@ -4,6 +4,7 @@
 //! execution, garbage collection, and embedding APIs will be added in small,
 //! independently testable stages.
 
+pub mod ast;
 pub mod lexer;
 pub mod source;
 

@@ -97,13 +97,15 @@ Tests compare AST and VM shadowing, TDZ reads/writes, const assignment, hoisting
 loop blocks and exception unwinding. Persistent global-object versus lexical
 record behavior is checked directly; the existing AST evaluator still creates
 its var/function declarations through generic Environment operations, so that
-separate AST global-record limitation is not claimed fixed here. Scoped `+`
+separate AST global-record limitation is tracked in #466 and is not claimed fixed here. Scoped `+`
 shares the AST's Realm-aware JavaScript coercion helper and evaluation order.
 
 The pinned Test262 revision in `src/test262.rs` supplies four original runtime
 negative files: `language/statements/{let,const}/global-use-before-initialization-in-{prior-statement,declaration-statement}.js`.
 All eight strict/sloppy variants must parse and compile before both AST and VM
-raise ReferenceError. CI runs them on stable and MSRV; no unsupported compilation
+raise ReferenceError. The [recorded focused results](../test262/bytecode-scope-regressions.json) retain
+fixture hashes, compiler identities and all 32 AST/VM executions across both
+local toolchains. CI runs them on stable and MSRV; no unsupported compilation
 is counted as a pass. This is a focused regression set, not full conformance.
 
 ```sh
@@ -115,3 +117,5 @@ TEST262_DIR=target/test262 cargo test --locked --all-features --test bytecode_sc
 The embedding Engine still uses the AST interpreter. This work establishes
 scope semantics needed by future bytecode integration; it does not establish a
 speedup on omoikane or satisfy the Boa speed gate.
+
+Global declaration checks follow [GlobalDeclarationInstantiation](https://tc39.es/ecma262/2026/multipage/ecmascript-language-scripts-and-modules.html#sec-globaldeclarationinstantiation) for the supported var/lexical subset. Function declarations, Annex B rules and exhaustive exotic-global behavior remain separate work.

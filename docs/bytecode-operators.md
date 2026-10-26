@@ -42,3 +42,22 @@ Boa superiority is claimed.
 
 Reference algorithms: [GetValue/PutValue](https://tc39.es/ecma262/2026/multipage/ecmascript-data-types-and-values.html#sec-getvalue)
 and [update expressions](https://tc39.es/ecma262/2026/multipage/ecmascript-language-expressions.html#sec-update-expressions).
+
+## Fixed original follow-up audits
+
+The unchanged original closure selection (12 files/17 variants) advances from
+4 VM pass / 2 fail / 11 compile-unsupported to **6 pass / 2 fail / 9 unsupported**.
+The unchanged property selection (11 files/19 variants) advances from
+9 VM pass / 0 fail / 10 unsupported to **11 pass / 0 fail / 8 unsupported**.
+Both toolchains agree, with no previously passing variant regressed. The newly
+passing programs exercise named-function updates inside arrows and contiguous
+optional-chain short circuiting around prefix updates. AST stays 10 pass / 7 fail
+and 17 pass / 2 fail in the two selections, respectively.
+
+[operator-followup-audit.json](../test262/operator-followup-audit.json) retains all
+before/after stable/MSRV outcomes and transitions. Original host harness runs in
+AST for both backends; each entire test program is independently compiled/executed
+in the VM with no fallback/stripping. All four opt-in audits still exit 101; their
+remaining failures/unsupported are not counted as pass or skip. This does not
+complete #287, #288 or #292. Normal all-target stable/MSRV tests pass 413 tests,
+with 10 ignored. Fresh performance measurements remain required.

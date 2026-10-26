@@ -1,0 +1,1130 @@
+{
+  "schema": 1,
+  "recorded_at": "2026-10-26T22:37:46.185Z",
+  "baseline_revision": "5aaf50b5f6258465d775569aabbfa6f9035e403f",
+  "tested_revision": "62a48b445b74048029ff1a180655de5eb54a9df6",
+  "runtime_revision": "82c7947e43de4406bcc593f0a36f77f1a9db0a33",
+  "audit_test_sha256": "646d7ec6c838c010295b5033691472d4a3996822c47fbc5978799930d098f89b",
+  "corpus_revision": "d53ebc8b1931d9f1541e43d59650776e4b766248",
+  "before": {
+    "stable": {
+      "AST": {
+        "compile_unsupported": 0,
+        "fail": 7,
+        "pass": 10,
+        "skipped": 0
+      },
+      "bytecode": {
+        "compile_unsupported": 14,
+        "fail": 1,
+        "pass": 2,
+        "skipped": 0
+      },
+      "fixture_git_blobs": {
+        "harness/assert.js": "55a0e2a32f2e6259a1b445a9d924f61261e2ca5f",
+        "harness/sta.js": "d291a94f46234908009a7ee909cf9d66034c73fe",
+        "test/language/expressions/arrow-function/lexical-new.target-closure-returned.js": "248b1de6d0ebdc9e638d75b86446596582479a16",
+        "test/language/expressions/arrow-function/lexical-this.js": "f6ea9306bc98f50f7ba6b32b36940fa20122340b",
+        "test/language/expressions/function/dflt-params-ref-prior.js": "59e49aad5bab334d7ef6ef0e28ec936a25770588",
+        "test/language/expressions/function/named-no-strict-reassign-fn-name-in-body-in-arrow.js": "f15b4f56e65d5ac3a9bdeb97d856f3dbf32f9bff",
+        "test/language/expressions/function/named-strict-error-reassign-fn-name-in-body-in-arrow.js": "67562fc411a12530e997f1c39c1ee5907f3506ef",
+        "test/language/expressions/function/scope-body-lex-distinct.js": "3fbaa973c9a4e594cbd83177b631ec5f7208bb82",
+        "test/language/expressions/function/scope-name-var-close.js": "c119ca277100ac2f54b1bc193ecf04370d5a93e9",
+        "test/language/expressions/function/scope-name-var-open-non-strict.js": "4b85cf4ec86fea6c18975d6b9c15ae19ab0dbc9a",
+        "test/language/expressions/function/scope-name-var-open-strict.js": "0eeb49d3c1ff9a2888f9dd32a0281beec197c806",
+        "test/language/expressions/function/scope-param-rest-elem-var-close.js": "2829aeb6a00ae3a1a9c41b143eed173542aad528",
+        "test/language/statements/function/dflt-params-ref-prior.js": "504dade30857a6409ed91c5cfd7d8db2715961ab",
+        "test/language/statements/function/scope-body-lex-distinct.js": "55e1a5a5588d45b90133b324f93abb4ea35eea87"
+      },
+      "outcomes": [
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/function/scope-name-var-close.js",
+          "status": "pass",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": null,
+          "path": "test/language/expressions/function/scope-name-var-close.js",
+          "status": "pass",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/function/scope-name-var-close.js",
+          "status": "pass",
+          "variant": "Strict"
+        },
+        {
+          "backend": "bytecode",
+          "message": null,
+          "path": "test/language/expressions/function/scope-name-var-close.js",
+          "status": "pass",
+          "variant": "Strict"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/function/scope-name-var-open-non-strict.js",
+          "status": "pass",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode non-simple function parameter at bytes 924..1020",
+          "path": "test/language/expressions/function/scope-name-var-open-non-strict.js",
+          "status": "compile_unsupported",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/function/scope-name-var-open-strict.js",
+          "status": "pass",
+          "variant": "Strict"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode non-simple function parameter at bytes 940..1036",
+          "path": "test/language/expressions/function/scope-name-var-open-strict.js",
+          "status": "compile_unsupported",
+          "variant": "Strict"
+        },
+        {
+          "backend": "AST",
+          "message": "evaluation: RuntimeError { kind: ThrownValue, message: \"JavaScript throw completion\", thrown: Some(Object(Object { identity: 1149, .. })) }; thrown message: Expected a undefined but got a different error constructor with the same name",
+          "path": "test/language/expressions/function/scope-body-lex-distinct.js",
+          "status": "fail",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": "evaluation: RuntimeError { kind: ThrownValue, message: \"JavaScript throw completion\", thrown: Some(Object(Object { identity: 1305, .. })) }; thrown message: Expected a undefined but got a different error constructor with the same name",
+          "path": "test/language/expressions/function/scope-body-lex-distinct.js",
+          "status": "fail",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/function/named-strict-error-reassign-fn-name-in-body-in-arrow.js",
+          "status": "pass",
+          "variant": "Strict"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode expression at bytes 657..668",
+          "path": "test/language/expressions/function/named-strict-error-reassign-fn-name-in-body-in-arrow.js",
+          "status": "compile_unsupported",
+          "variant": "Strict"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/function/named-no-strict-reassign-fn-name-in-body-in-arrow.js",
+          "status": "pass",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode expression at bytes 642..653",
+          "path": "test/language/expressions/function/named-no-strict-reassign-fn-name-in-body-in-arrow.js",
+          "status": "compile_unsupported",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/function/dflt-params-ref-prior.js",
+          "status": "pass",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode non-simple function parameter at bytes 1837..1842",
+          "path": "test/language/expressions/function/dflt-params-ref-prior.js",
+          "status": "compile_unsupported",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/function/dflt-params-ref-prior.js",
+          "status": "pass",
+          "variant": "Strict"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode non-simple function parameter at bytes 1851..1856",
+          "path": "test/language/expressions/function/dflt-params-ref-prior.js",
+          "status": "compile_unsupported",
+          "variant": "Strict"
+        },
+        {
+          "backend": "AST",
+          "message": "evaluation: RuntimeError { kind: InternalError, message: \"destructuring parameter binding is not implemented\", thrown: None }; thrown message: ",
+          "path": "test/language/expressions/function/scope-param-rest-elem-var-close.js",
+          "status": "fail",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode non-simple function parameter at bytes 749..824",
+          "path": "test/language/expressions/function/scope-param-rest-elem-var-close.js",
+          "status": "compile_unsupported",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": "evaluation: RuntimeError { kind: TypeError, message: \"value is not callable\", thrown: None }; thrown message: ",
+          "path": "test/language/expressions/arrow-function/lexical-this.js",
+          "status": "fail",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode statement at bytes 1075..1132",
+          "path": "test/language/expressions/arrow-function/lexical-this.js",
+          "status": "compile_unsupported",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": "evaluation: RuntimeError { kind: TypeError, message: \"value is not callable\", thrown: None }; thrown message: ",
+          "path": "test/language/expressions/arrow-function/lexical-this.js",
+          "status": "fail",
+          "variant": "Strict"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode statement at bytes 1089..1146",
+          "path": "test/language/expressions/arrow-function/lexical-this.js",
+          "status": "compile_unsupported",
+          "variant": "Strict"
+        },
+        {
+          "backend": "AST",
+          "message": "evaluation: RuntimeError { kind: ThrownValue, message: \"JavaScript throw completion\", thrown: Some(Object(Object { identity: 2574, .. })) }; thrown message: Expected SameValue(«2», «1») to be true",
+          "path": "test/language/expressions/arrow-function/lexical-new.target-closure-returned.js",
+          "status": "fail",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode statement at bytes 1120..1218",
+          "path": "test/language/expressions/arrow-function/lexical-new.target-closure-returned.js",
+          "status": "compile_unsupported",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": "evaluation: RuntimeError { kind: ThrownValue, message: \"JavaScript throw completion\", thrown: Some(Object(Object { identity: 2739, .. })) }; thrown message: Expected SameValue(«2», «1») to be true",
+          "path": "test/language/expressions/arrow-function/lexical-new.target-closure-returned.js",
+          "status": "fail",
+          "variant": "Strict"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode statement at bytes 1134..1232",
+          "path": "test/language/expressions/arrow-function/lexical-new.target-closure-returned.js",
+          "status": "compile_unsupported",
+          "variant": "Strict"
+        },
+        {
+          "backend": "AST",
+          "message": "evaluation: RuntimeError { kind: ThrownValue, message: \"JavaScript throw completion\", thrown: Some(Object(Object { identity: 2897, .. })) }; thrown message: Expected a undefined but got a different error constructor with the same name",
+          "path": "test/language/statements/function/scope-body-lex-distinct.js",
+          "status": "fail",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode statement at bytes 2042..2085",
+          "path": "test/language/statements/function/scope-body-lex-distinct.js",
+          "status": "compile_unsupported",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/statements/function/dflt-params-ref-prior.js",
+          "status": "pass",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode statement at bytes 1847..2060",
+          "path": "test/language/statements/function/dflt-params-ref-prior.js",
+          "status": "compile_unsupported",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/statements/function/dflt-params-ref-prior.js",
+          "status": "pass",
+          "variant": "Strict"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode statement at bytes 1861..2074",
+          "path": "test/language/statements/function/dflt-params-ref-prior.js",
+          "status": "compile_unsupported",
+          "variant": "Strict"
+        }
+      ],
+      "revision": "d53ebc8b1931d9f1541e43d59650776e4b766248",
+      "scope": "Original whole test programs compiled/executed independently in AST and VM, fresh Realms. Original sta/assert/includes execute as AST-backed host harness for both backends; no test-program AST fallback or assertion stripping. Unsupported/skipped are not pass.",
+      "selected_files": 12
+    },
+    "msrv": {
+      "AST": {
+        "compile_unsupported": 0,
+        "fail": 7,
+        "pass": 10,
+        "skipped": 0
+      },
+      "bytecode": {
+        "compile_unsupported": 14,
+        "fail": 1,
+        "pass": 2,
+        "skipped": 0
+      },
+      "fixture_git_blobs": {
+        "harness/assert.js": "55a0e2a32f2e6259a1b445a9d924f61261e2ca5f",
+        "harness/sta.js": "d291a94f46234908009a7ee909cf9d66034c73fe",
+        "test/language/expressions/arrow-function/lexical-new.target-closure-returned.js": "248b1de6d0ebdc9e638d75b86446596582479a16",
+        "test/language/expressions/arrow-function/lexical-this.js": "f6ea9306bc98f50f7ba6b32b36940fa20122340b",
+        "test/language/expressions/function/dflt-params-ref-prior.js": "59e49aad5bab334d7ef6ef0e28ec936a25770588",
+        "test/language/expressions/function/named-no-strict-reassign-fn-name-in-body-in-arrow.js": "f15b4f56e65d5ac3a9bdeb97d856f3dbf32f9bff",
+        "test/language/expressions/function/named-strict-error-reassign-fn-name-in-body-in-arrow.js": "67562fc411a12530e997f1c39c1ee5907f3506ef",
+        "test/language/expressions/function/scope-body-lex-distinct.js": "3fbaa973c9a4e594cbd83177b631ec5f7208bb82",
+        "test/language/expressions/function/scope-name-var-close.js": "c119ca277100ac2f54b1bc193ecf04370d5a93e9",
+        "test/language/expressions/function/scope-name-var-open-non-strict.js": "4b85cf4ec86fea6c18975d6b9c15ae19ab0dbc9a",
+        "test/language/expressions/function/scope-name-var-open-strict.js": "0eeb49d3c1ff9a2888f9dd32a0281beec197c806",
+        "test/language/expressions/function/scope-param-rest-elem-var-close.js": "2829aeb6a00ae3a1a9c41b143eed173542aad528",
+        "test/language/statements/function/dflt-params-ref-prior.js": "504dade30857a6409ed91c5cfd7d8db2715961ab",
+        "test/language/statements/function/scope-body-lex-distinct.js": "55e1a5a5588d45b90133b324f93abb4ea35eea87"
+      },
+      "outcomes": [
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/function/scope-name-var-close.js",
+          "status": "pass",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": null,
+          "path": "test/language/expressions/function/scope-name-var-close.js",
+          "status": "pass",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/function/scope-name-var-close.js",
+          "status": "pass",
+          "variant": "Strict"
+        },
+        {
+          "backend": "bytecode",
+          "message": null,
+          "path": "test/language/expressions/function/scope-name-var-close.js",
+          "status": "pass",
+          "variant": "Strict"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/function/scope-name-var-open-non-strict.js",
+          "status": "pass",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode non-simple function parameter at bytes 924..1020",
+          "path": "test/language/expressions/function/scope-name-var-open-non-strict.js",
+          "status": "compile_unsupported",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/function/scope-name-var-open-strict.js",
+          "status": "pass",
+          "variant": "Strict"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode non-simple function parameter at bytes 940..1036",
+          "path": "test/language/expressions/function/scope-name-var-open-strict.js",
+          "status": "compile_unsupported",
+          "variant": "Strict"
+        },
+        {
+          "backend": "AST",
+          "message": "evaluation: RuntimeError { kind: ThrownValue, message: \"JavaScript throw completion\", thrown: Some(Object(Object { identity: 1149, .. })) }; thrown message: Expected a undefined but got a different error constructor with the same name",
+          "path": "test/language/expressions/function/scope-body-lex-distinct.js",
+          "status": "fail",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": "evaluation: RuntimeError { kind: ThrownValue, message: \"JavaScript throw completion\", thrown: Some(Object(Object { identity: 1305, .. })) }; thrown message: Expected a undefined but got a different error constructor with the same name",
+          "path": "test/language/expressions/function/scope-body-lex-distinct.js",
+          "status": "fail",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/function/named-strict-error-reassign-fn-name-in-body-in-arrow.js",
+          "status": "pass",
+          "variant": "Strict"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode expression at bytes 657..668",
+          "path": "test/language/expressions/function/named-strict-error-reassign-fn-name-in-body-in-arrow.js",
+          "status": "compile_unsupported",
+          "variant": "Strict"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/function/named-no-strict-reassign-fn-name-in-body-in-arrow.js",
+          "status": "pass",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode expression at bytes 642..653",
+          "path": "test/language/expressions/function/named-no-strict-reassign-fn-name-in-body-in-arrow.js",
+          "status": "compile_unsupported",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/function/dflt-params-ref-prior.js",
+          "status": "pass",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode non-simple function parameter at bytes 1837..1842",
+          "path": "test/language/expressions/function/dflt-params-ref-prior.js",
+          "status": "compile_unsupported",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/function/dflt-params-ref-prior.js",
+          "status": "pass",
+          "variant": "Strict"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode non-simple function parameter at bytes 1851..1856",
+          "path": "test/language/expressions/function/dflt-params-ref-prior.js",
+          "status": "compile_unsupported",
+          "variant": "Strict"
+        },
+        {
+          "backend": "AST",
+          "message": "evaluation: RuntimeError { kind: InternalError, message: \"destructuring parameter binding is not implemented\", thrown: None }; thrown message: ",
+          "path": "test/language/expressions/function/scope-param-rest-elem-var-close.js",
+          "status": "fail",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode non-simple function parameter at bytes 749..824",
+          "path": "test/language/expressions/function/scope-param-rest-elem-var-close.js",
+          "status": "compile_unsupported",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": "evaluation: RuntimeError { kind: TypeError, message: \"value is not callable\", thrown: None }; thrown message: ",
+          "path": "test/language/expressions/arrow-function/lexical-this.js",
+          "status": "fail",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode statement at bytes 1075..1132",
+          "path": "test/language/expressions/arrow-function/lexical-this.js",
+          "status": "compile_unsupported",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": "evaluation: RuntimeError { kind: TypeError, message: \"value is not callable\", thrown: None }; thrown message: ",
+          "path": "test/language/expressions/arrow-function/lexical-this.js",
+          "status": "fail",
+          "variant": "Strict"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode statement at bytes 1089..1146",
+          "path": "test/language/expressions/arrow-function/lexical-this.js",
+          "status": "compile_unsupported",
+          "variant": "Strict"
+        },
+        {
+          "backend": "AST",
+          "message": "evaluation: RuntimeError { kind: ThrownValue, message: \"JavaScript throw completion\", thrown: Some(Object(Object { identity: 2574, .. })) }; thrown message: Expected SameValue(«2», «1») to be true",
+          "path": "test/language/expressions/arrow-function/lexical-new.target-closure-returned.js",
+          "status": "fail",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode statement at bytes 1120..1218",
+          "path": "test/language/expressions/arrow-function/lexical-new.target-closure-returned.js",
+          "status": "compile_unsupported",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": "evaluation: RuntimeError { kind: ThrownValue, message: \"JavaScript throw completion\", thrown: Some(Object(Object { identity: 2739, .. })) }; thrown message: Expected SameValue(«2», «1») to be true",
+          "path": "test/language/expressions/arrow-function/lexical-new.target-closure-returned.js",
+          "status": "fail",
+          "variant": "Strict"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode statement at bytes 1134..1232",
+          "path": "test/language/expressions/arrow-function/lexical-new.target-closure-returned.js",
+          "status": "compile_unsupported",
+          "variant": "Strict"
+        },
+        {
+          "backend": "AST",
+          "message": "evaluation: RuntimeError { kind: ThrownValue, message: \"JavaScript throw completion\", thrown: Some(Object(Object { identity: 2897, .. })) }; thrown message: Expected a undefined but got a different error constructor with the same name",
+          "path": "test/language/statements/function/scope-body-lex-distinct.js",
+          "status": "fail",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode statement at bytes 2042..2085",
+          "path": "test/language/statements/function/scope-body-lex-distinct.js",
+          "status": "compile_unsupported",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/statements/function/dflt-params-ref-prior.js",
+          "status": "pass",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode statement at bytes 1847..2060",
+          "path": "test/language/statements/function/dflt-params-ref-prior.js",
+          "status": "compile_unsupported",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/statements/function/dflt-params-ref-prior.js",
+          "status": "pass",
+          "variant": "Strict"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode statement at bytes 1861..2074",
+          "path": "test/language/statements/function/dflt-params-ref-prior.js",
+          "status": "compile_unsupported",
+          "variant": "Strict"
+        }
+      ],
+      "revision": "d53ebc8b1931d9f1541e43d59650776e4b766248",
+      "scope": "Original whole test programs compiled/executed independently in AST and VM, fresh Realms. Original sta/assert/includes execute as AST-backed host harness for both backends; no test-program AST fallback or assertion stripping. Unsupported/skipped are not pass.",
+      "selected_files": 12
+    }
+  },
+  "after": {
+    "stable": {
+      "AST": {
+        "compile_unsupported": 0,
+        "fail": 7,
+        "pass": 10,
+        "skipped": 0
+      },
+      "bytecode": {
+        "compile_unsupported": 11,
+        "fail": 2,
+        "pass": 4,
+        "skipped": 0
+      },
+      "fixture_git_blobs": {
+        "harness/assert.js": "55a0e2a32f2e6259a1b445a9d924f61261e2ca5f",
+        "harness/sta.js": "d291a94f46234908009a7ee909cf9d66034c73fe",
+        "test/language/expressions/arrow-function/lexical-new.target-closure-returned.js": "248b1de6d0ebdc9e638d75b86446596582479a16",
+        "test/language/expressions/arrow-function/lexical-this.js": "f6ea9306bc98f50f7ba6b32b36940fa20122340b",
+        "test/language/expressions/function/dflt-params-ref-prior.js": "59e49aad5bab334d7ef6ef0e28ec936a25770588",
+        "test/language/expressions/function/named-no-strict-reassign-fn-name-in-body-in-arrow.js": "f15b4f56e65d5ac3a9bdeb97d856f3dbf32f9bff",
+        "test/language/expressions/function/named-strict-error-reassign-fn-name-in-body-in-arrow.js": "67562fc411a12530e997f1c39c1ee5907f3506ef",
+        "test/language/expressions/function/scope-body-lex-distinct.js": "3fbaa973c9a4e594cbd83177b631ec5f7208bb82",
+        "test/language/expressions/function/scope-name-var-close.js": "c119ca277100ac2f54b1bc193ecf04370d5a93e9",
+        "test/language/expressions/function/scope-name-var-open-non-strict.js": "4b85cf4ec86fea6c18975d6b9c15ae19ab0dbc9a",
+        "test/language/expressions/function/scope-name-var-open-strict.js": "0eeb49d3c1ff9a2888f9dd32a0281beec197c806",
+        "test/language/expressions/function/scope-param-rest-elem-var-close.js": "2829aeb6a00ae3a1a9c41b143eed173542aad528",
+        "test/language/statements/function/dflt-params-ref-prior.js": "504dade30857a6409ed91c5cfd7d8db2715961ab",
+        "test/language/statements/function/scope-body-lex-distinct.js": "55e1a5a5588d45b90133b324f93abb4ea35eea87"
+      },
+      "outcomes": [
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/function/scope-name-var-close.js",
+          "status": "pass",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": null,
+          "path": "test/language/expressions/function/scope-name-var-close.js",
+          "status": "pass",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/function/scope-name-var-close.js",
+          "status": "pass",
+          "variant": "Strict"
+        },
+        {
+          "backend": "bytecode",
+          "message": null,
+          "path": "test/language/expressions/function/scope-name-var-close.js",
+          "status": "pass",
+          "variant": "Strict"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/function/scope-name-var-open-non-strict.js",
+          "status": "pass",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode non-simple function parameter at bytes 924..1020",
+          "path": "test/language/expressions/function/scope-name-var-open-non-strict.js",
+          "status": "compile_unsupported",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/function/scope-name-var-open-strict.js",
+          "status": "pass",
+          "variant": "Strict"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode non-simple function parameter at bytes 940..1036",
+          "path": "test/language/expressions/function/scope-name-var-open-strict.js",
+          "status": "compile_unsupported",
+          "variant": "Strict"
+        },
+        {
+          "backend": "AST",
+          "message": "evaluation: RuntimeError { kind: ThrownValue, message: \"JavaScript throw completion\", thrown: Some(Object(Object { identity: 1149, .. })) }; thrown message: Expected a undefined but got a different error constructor with the same name",
+          "path": "test/language/expressions/function/scope-body-lex-distinct.js",
+          "status": "fail",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": "evaluation: RuntimeError { kind: ThrownValue, message: \"JavaScript throw completion\", thrown: Some(Object(Object { identity: 1305, .. })) }; thrown message: Expected a undefined but got a different error constructor with the same name",
+          "path": "test/language/expressions/function/scope-body-lex-distinct.js",
+          "status": "fail",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/function/named-strict-error-reassign-fn-name-in-body-in-arrow.js",
+          "status": "pass",
+          "variant": "Strict"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode expression at bytes 657..668",
+          "path": "test/language/expressions/function/named-strict-error-reassign-fn-name-in-body-in-arrow.js",
+          "status": "compile_unsupported",
+          "variant": "Strict"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/function/named-no-strict-reassign-fn-name-in-body-in-arrow.js",
+          "status": "pass",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode expression at bytes 642..653",
+          "path": "test/language/expressions/function/named-no-strict-reassign-fn-name-in-body-in-arrow.js",
+          "status": "compile_unsupported",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/function/dflt-params-ref-prior.js",
+          "status": "pass",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode non-simple function parameter at bytes 1837..1842",
+          "path": "test/language/expressions/function/dflt-params-ref-prior.js",
+          "status": "compile_unsupported",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/function/dflt-params-ref-prior.js",
+          "status": "pass",
+          "variant": "Strict"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode non-simple function parameter at bytes 1851..1856",
+          "path": "test/language/expressions/function/dflt-params-ref-prior.js",
+          "status": "compile_unsupported",
+          "variant": "Strict"
+        },
+        {
+          "backend": "AST",
+          "message": "evaluation: RuntimeError { kind: InternalError, message: \"destructuring parameter binding is not implemented\", thrown: None }; thrown message: ",
+          "path": "test/language/expressions/function/scope-param-rest-elem-var-close.js",
+          "status": "fail",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode non-simple function parameter at bytes 749..824",
+          "path": "test/language/expressions/function/scope-param-rest-elem-var-close.js",
+          "status": "compile_unsupported",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": "evaluation: RuntimeError { kind: TypeError, message: \"value is not callable\", thrown: None }; thrown message: ",
+          "path": "test/language/expressions/arrow-function/lexical-this.js",
+          "status": "fail",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode expression at bytes 1148..1150",
+          "path": "test/language/expressions/arrow-function/lexical-this.js",
+          "status": "compile_unsupported",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": "evaluation: RuntimeError { kind: TypeError, message: \"value is not callable\", thrown: None }; thrown message: ",
+          "path": "test/language/expressions/arrow-function/lexical-this.js",
+          "status": "fail",
+          "variant": "Strict"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode expression at bytes 1162..1164",
+          "path": "test/language/expressions/arrow-function/lexical-this.js",
+          "status": "compile_unsupported",
+          "variant": "Strict"
+        },
+        {
+          "backend": "AST",
+          "message": "evaluation: RuntimeError { kind: ThrownValue, message: \"JavaScript throw completion\", thrown: Some(Object(Object { identity: 2574, .. })) }; thrown message: Expected SameValue(«2», «1») to be true",
+          "path": "test/language/expressions/arrow-function/lexical-new.target-closure-returned.js",
+          "status": "fail",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": null,
+          "path": "test/language/expressions/arrow-function/lexical-new.target-closure-returned.js",
+          "status": "pass",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": "evaluation: RuntimeError { kind: ThrownValue, message: \"JavaScript throw completion\", thrown: Some(Object(Object { identity: 2896, .. })) }; thrown message: Expected SameValue(«2», «1») to be true",
+          "path": "test/language/expressions/arrow-function/lexical-new.target-closure-returned.js",
+          "status": "fail",
+          "variant": "Strict"
+        },
+        {
+          "backend": "bytecode",
+          "message": null,
+          "path": "test/language/expressions/arrow-function/lexical-new.target-closure-returned.js",
+          "status": "pass",
+          "variant": "Strict"
+        },
+        {
+          "backend": "AST",
+          "message": "evaluation: RuntimeError { kind: ThrownValue, message: \"JavaScript throw completion\", thrown: Some(Object(Object { identity: 3211, .. })) }; thrown message: Expected a undefined but got a different error constructor with the same name",
+          "path": "test/language/statements/function/scope-body-lex-distinct.js",
+          "status": "fail",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": "evaluation: RuntimeError { kind: ThrownValue, message: \"JavaScript throw completion\", thrown: Some(Object(Object { identity: 3369, .. })) }; thrown message: Expected a undefined but got a different error constructor with the same name",
+          "path": "test/language/statements/function/scope-body-lex-distinct.js",
+          "status": "fail",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/statements/function/dflt-params-ref-prior.js",
+          "status": "pass",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode non-simple function parameter at bytes 1863..1868",
+          "path": "test/language/statements/function/dflt-params-ref-prior.js",
+          "status": "compile_unsupported",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/statements/function/dflt-params-ref-prior.js",
+          "status": "pass",
+          "variant": "Strict"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode non-simple function parameter at bytes 1877..1882",
+          "path": "test/language/statements/function/dflt-params-ref-prior.js",
+          "status": "compile_unsupported",
+          "variant": "Strict"
+        }
+      ],
+      "revision": "d53ebc8b1931d9f1541e43d59650776e4b766248",
+      "scope": "Original whole test programs compiled/executed independently in AST and VM, fresh Realms. Original sta/assert/includes execute as AST-backed host harness for both backends; no test-program AST fallback or assertion stripping. Unsupported/skipped are not pass.",
+      "selected_files": 12
+    },
+    "msrv": {
+      "AST": {
+        "compile_unsupported": 0,
+        "fail": 7,
+        "pass": 10,
+        "skipped": 0
+      },
+      "bytecode": {
+        "compile_unsupported": 11,
+        "fail": 2,
+        "pass": 4,
+        "skipped": 0
+      },
+      "fixture_git_blobs": {
+        "harness/assert.js": "55a0e2a32f2e6259a1b445a9d924f61261e2ca5f",
+        "harness/sta.js": "d291a94f46234908009a7ee909cf9d66034c73fe",
+        "test/language/expressions/arrow-function/lexical-new.target-closure-returned.js": "248b1de6d0ebdc9e638d75b86446596582479a16",
+        "test/language/expressions/arrow-function/lexical-this.js": "f6ea9306bc98f50f7ba6b32b36940fa20122340b",
+        "test/language/expressions/function/dflt-params-ref-prior.js": "59e49aad5bab334d7ef6ef0e28ec936a25770588",
+        "test/language/expressions/function/named-no-strict-reassign-fn-name-in-body-in-arrow.js": "f15b4f56e65d5ac3a9bdeb97d856f3dbf32f9bff",
+        "test/language/expressions/function/named-strict-error-reassign-fn-name-in-body-in-arrow.js": "67562fc411a12530e997f1c39c1ee5907f3506ef",
+        "test/language/expressions/function/scope-body-lex-distinct.js": "3fbaa973c9a4e594cbd83177b631ec5f7208bb82",
+        "test/language/expressions/function/scope-name-var-close.js": "c119ca277100ac2f54b1bc193ecf04370d5a93e9",
+        "test/language/expressions/function/scope-name-var-open-non-strict.js": "4b85cf4ec86fea6c18975d6b9c15ae19ab0dbc9a",
+        "test/language/expressions/function/scope-name-var-open-strict.js": "0eeb49d3c1ff9a2888f9dd32a0281beec197c806",
+        "test/language/expressions/function/scope-param-rest-elem-var-close.js": "2829aeb6a00ae3a1a9c41b143eed173542aad528",
+        "test/language/statements/function/dflt-params-ref-prior.js": "504dade30857a6409ed91c5cfd7d8db2715961ab",
+        "test/language/statements/function/scope-body-lex-distinct.js": "55e1a5a5588d45b90133b324f93abb4ea35eea87"
+      },
+      "outcomes": [
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/function/scope-name-var-close.js",
+          "status": "pass",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": null,
+          "path": "test/language/expressions/function/scope-name-var-close.js",
+          "status": "pass",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/function/scope-name-var-close.js",
+          "status": "pass",
+          "variant": "Strict"
+        },
+        {
+          "backend": "bytecode",
+          "message": null,
+          "path": "test/language/expressions/function/scope-name-var-close.js",
+          "status": "pass",
+          "variant": "Strict"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/function/scope-name-var-open-non-strict.js",
+          "status": "pass",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode non-simple function parameter at bytes 924..1020",
+          "path": "test/language/expressions/function/scope-name-var-open-non-strict.js",
+          "status": "compile_unsupported",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/function/scope-name-var-open-strict.js",
+          "status": "pass",
+          "variant": "Strict"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode non-simple function parameter at bytes 940..1036",
+          "path": "test/language/expressions/function/scope-name-var-open-strict.js",
+          "status": "compile_unsupported",
+          "variant": "Strict"
+        },
+        {
+          "backend": "AST",
+          "message": "evaluation: RuntimeError { kind: ThrownValue, message: \"JavaScript throw completion\", thrown: Some(Object(Object { identity: 1149, .. })) }; thrown message: Expected a undefined but got a different error constructor with the same name",
+          "path": "test/language/expressions/function/scope-body-lex-distinct.js",
+          "status": "fail",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": "evaluation: RuntimeError { kind: ThrownValue, message: \"JavaScript throw completion\", thrown: Some(Object(Object { identity: 1305, .. })) }; thrown message: Expected a undefined but got a different error constructor with the same name",
+          "path": "test/language/expressions/function/scope-body-lex-distinct.js",
+          "status": "fail",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/function/named-strict-error-reassign-fn-name-in-body-in-arrow.js",
+          "status": "pass",
+          "variant": "Strict"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode expression at bytes 657..668",
+          "path": "test/language/expressions/function/named-strict-error-reassign-fn-name-in-body-in-arrow.js",
+          "status": "compile_unsupported",
+          "variant": "Strict"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/function/named-no-strict-reassign-fn-name-in-body-in-arrow.js",
+          "status": "pass",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode expression at bytes 642..653",
+          "path": "test/language/expressions/function/named-no-strict-reassign-fn-name-in-body-in-arrow.js",
+          "status": "compile_unsupported",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/function/dflt-params-ref-prior.js",
+          "status": "pass",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode non-simple function parameter at bytes 1837..1842",
+          "path": "test/language/expressions/function/dflt-params-ref-prior.js",
+          "status": "compile_unsupported",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/function/dflt-params-ref-prior.js",
+          "status": "pass",
+          "variant": "Strict"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode non-simple function parameter at bytes 1851..1856",
+          "path": "test/language/expressions/function/dflt-params-ref-prior.js",
+          "status": "compile_unsupported",
+          "variant": "Strict"
+        },
+        {
+          "backend": "AST",
+          "message": "evaluation: RuntimeError { kind: InternalError, message: \"destructuring parameter binding is not implemented\", thrown: None }; thrown message: ",
+          "path": "test/language/expressions/function/scope-param-rest-elem-var-close.js",
+          "status": "fail",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode non-simple function parameter at bytes 749..824",
+          "path": "test/language/expressions/function/scope-param-rest-elem-var-close.js",
+          "status": "compile_unsupported",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": "evaluation: RuntimeError { kind: TypeError, message: \"value is not callable\", thrown: None }; thrown message: ",
+          "path": "test/language/expressions/arrow-function/lexical-this.js",
+          "status": "fail",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode expression at bytes 1148..1150",
+          "path": "test/language/expressions/arrow-function/lexical-this.js",
+          "status": "compile_unsupported",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": "evaluation: RuntimeError { kind: TypeError, message: \"value is not callable\", thrown: None }; thrown message: ",
+          "path": "test/language/expressions/arrow-function/lexical-this.js",
+          "status": "fail",
+          "variant": "Strict"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode expression at bytes 1162..1164",
+          "path": "test/language/expressions/arrow-function/lexical-this.js",
+          "status": "compile_unsupported",
+          "variant": "Strict"
+        },
+        {
+          "backend": "AST",
+          "message": "evaluation: RuntimeError { kind: ThrownValue, message: \"JavaScript throw completion\", thrown: Some(Object(Object { identity: 2574, .. })) }; thrown message: Expected SameValue(«2», «1») to be true",
+          "path": "test/language/expressions/arrow-function/lexical-new.target-closure-returned.js",
+          "status": "fail",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": null,
+          "path": "test/language/expressions/arrow-function/lexical-new.target-closure-returned.js",
+          "status": "pass",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": "evaluation: RuntimeError { kind: ThrownValue, message: \"JavaScript throw completion\", thrown: Some(Object(Object { identity: 2896, .. })) }; thrown message: Expected SameValue(«2», «1») to be true",
+          "path": "test/language/expressions/arrow-function/lexical-new.target-closure-returned.js",
+          "status": "fail",
+          "variant": "Strict"
+        },
+        {
+          "backend": "bytecode",
+          "message": null,
+          "path": "test/language/expressions/arrow-function/lexical-new.target-closure-returned.js",
+          "status": "pass",
+          "variant": "Strict"
+        },
+        {
+          "backend": "AST",
+          "message": "evaluation: RuntimeError { kind: ThrownValue, message: \"JavaScript throw completion\", thrown: Some(Object(Object { identity: 3211, .. })) }; thrown message: Expected a undefined but got a different error constructor with the same name",
+          "path": "test/language/statements/function/scope-body-lex-distinct.js",
+          "status": "fail",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": "evaluation: RuntimeError { kind: ThrownValue, message: \"JavaScript throw completion\", thrown: Some(Object(Object { identity: 3369, .. })) }; thrown message: Expected a undefined but got a different error constructor with the same name",
+          "path": "test/language/statements/function/scope-body-lex-distinct.js",
+          "status": "fail",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/statements/function/dflt-params-ref-prior.js",
+          "status": "pass",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode non-simple function parameter at bytes 1863..1868",
+          "path": "test/language/statements/function/dflt-params-ref-prior.js",
+          "status": "compile_unsupported",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/statements/function/dflt-params-ref-prior.js",
+          "status": "pass",
+          "variant": "Strict"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode non-simple function parameter at bytes 1877..1882",
+          "path": "test/language/statements/function/dflt-params-ref-prior.js",
+          "status": "compile_unsupported",
+          "variant": "Strict"
+        }
+      ],
+      "revision": "d53ebc8b1931d9f1541e43d59650776e4b766248",
+      "scope": "Original whole test programs compiled/executed independently in AST and VM, fresh Realms. Original sta/assert/includes execute as AST-backed host harness for both backends; no test-program AST fallback or assertion stripping. Unsupported/skipped are not pass.",
+      "selected_files": 12
+    }
+  },
+  "status_transitions": [
+    {
+      "path": "test/language/expressions/arrow-function/lexical-new.target-closure-returned.js",
+      "variant": "Sloppy",
+      "backend": "bytecode",
+      "before": "compile_unsupported",
+      "after": "pass"
+    },
+    {
+      "path": "test/language/expressions/arrow-function/lexical-new.target-closure-returned.js",
+      "variant": "Strict",
+      "backend": "bytecode",
+      "before": "compile_unsupported",
+      "after": "pass"
+    },
+    {
+      "path": "test/language/statements/function/scope-body-lex-distinct.js",
+      "variant": "Sloppy",
+      "backend": "bytecode",
+      "before": "compile_unsupported",
+      "after": "fail"
+    }
+  ],
+  "gate_passed": false,
+  "scope": "Original complete fixtures, no test-program AST fallback/stripping; original AST-backed harness for both backends. Expected audit exit 101 while failures/unsupported remain. Not whole-function conformance or a speed result."
+}

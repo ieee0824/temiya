@@ -67,3 +67,32 @@ These changes follow [FunctionDeclarationInstantiation](https://tc39.es/ecma262/
 and [GlobalDeclarationInstantiation](https://tc39.es/ecma262/2026/multipage/ecmascript-language-scripts-and-modules.html#sec-globaldeclarationinstantiation).
 They do not complete non-simple parameter/arguments semantics or the original
 Test262 gate.
+
+## Fixed original Test262 audit
+
+`pinned_test262_closure_audit` fixes twelve original files (17 variants) covering
+name capture, function-body lexical scopes, defaults/rest, arrow this/newTarget,
+and expression/declaration forms. It reads the pinned Git blobs unchanged,
+compiles each entire test program through the chosen backend, and uses fresh
+Realms. Original sta/assert/includes execute as AST-backed host harness for both
+backends; test-program compilation failures never fall back to AST. Fixture blob
+identities, both toolchain reports and all failures are retained in
+[closure-audit.json](../test262/closure-audit.json).
+
+On stable and Rust 1.85.0, before/after VM coverage changes from **2 pass, 1 fail,
+14 compile-unsupported** to **4 pass, 2 fail, 11 compile-unsupported**, with zero
+skips and no previously passing variant regressed. The two newly passing variants
+execute the original returned-arrow lexical-newTarget fixture after constructor
+completion. The newly executed failure is a declaration fixture exercising direct
+eval; both remaining failures report an assertion error-constructor mismatch.
+These failures and the unsupported non-simple parameters, updates and object
+literals remain visible. AST coverage stays 10 pass / 7 fail, separately reported.
+
+Both audits intentionally exit 101 because this selected gate remains incomplete;
+these are not passing CI/conformance checks. Normal stable/MSRV all-target tests
+pass 403 tests with 10 ignored, including this opt-in audit. #292 remains open.
+
+```sh
+TEST262_DIR=/path/to/test262 TEST262_REPORT=closure-audit.json \
+  cargo test --test bytecode_closures pinned_test262_closure_audit -- --ignored --nocapture
+```

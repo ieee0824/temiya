@@ -43,7 +43,9 @@ fn decimal_radices_separators_and_bigints() {
         ),
         (
             TokenKind::LegacyDecimalNumber,
-            vec!["08", "09", "0789", "08.5", "09e2", "08.e+2"],
+            vec![
+                "08", "09", "0789", "08.5", "09e2", "08.e+2", "08.1_2", "08e1_2",
+            ],
         ),
     ] {
         for literal in literals {
@@ -69,8 +71,8 @@ fn invalid_literals_and_adjacent_identifiers() {
     for literal in [
         "0b", "0o", "0x", "0B2", "0b102", "0o8", "0xg", "0x_1", "0b_1", "0o_1", "1_", "1__2",
         "0_1", "00_1", "0_0n", "0x1_", "1._2", "1_.2", "1e_2", "1_e2", "1e+_2", "1e", "1e+", "1e-",
-        "1.2n", ".5n", "1e2n", "01n", "08n", "1nn", "0x1nn", "0n0", "08.1_2", "08e1_2", "1a", "1$",
-        "1_foo", "1名前", "0x1π", r"1\u0061", "1nfoo", "0b1nfoo", "01e2",
+        "1.2n", ".5n", "1e2n", "01n", "08n", "1nn", "0x1nn", "0n0", "1a", "1$", "1_foo", "1名前",
+        "0x1π", r"1\u0061", "1nfoo", "0b1nfoo", "01e2",
     ] {
         let error = tokenize(literal).unwrap_err();
         assert!(error.span.start <= error.span.end, "{literal}");

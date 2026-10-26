@@ -1,0 +1,218 @@
+{
+  "recorded_at": "2026-10-26T15:59:19.403Z",
+  "engine_revision": "9aed550a984b55f189892c15609188ff364095e0",
+  "probe_revision": "9aed550a984b55f189892c15609188ff364095e0",
+  "architecture": "arm64",
+  "scope": "Standalone allocator requests, including final rope flattening; not runtime timing, retained heap size, or RSS. Reference concatenation exactly reproduces the previous interpreter Vec copy and extend.",
+  "toolchains": [
+    {
+      "toolchain": "stable",
+      "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)\nbinary: rustc\ncommit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67\ncommit-date: 2026-10-13\nhost: aarch64-unknown-linux-gnu\nrelease: 1.99.1\nLLVM version: 23.1.1",
+      "observation": {
+        "cases": [
+          {
+            "case": "tiny",
+            "compact_clone": {
+              "allocation_requests": 0,
+              "requested_bytes": 0
+            },
+            "compact_construct": {
+              "allocation_requests": 0,
+              "requested_bytes": 0
+            },
+            "utf16_length": 3,
+            "vec_clone": {
+              "allocation_requests": 10000,
+              "requested_bytes": 60000
+            },
+            "vec_construct": {
+              "allocation_requests": 10000,
+              "requested_bytes": 80000
+            }
+          },
+          {
+            "case": "short",
+            "compact_clone": {
+              "allocation_requests": 0,
+              "requested_bytes": 0
+            },
+            "compact_construct": {
+              "allocation_requests": 0,
+              "requested_bytes": 0
+            },
+            "utf16_length": 10,
+            "vec_clone": {
+              "allocation_requests": 10000,
+              "requested_bytes": 200000
+            },
+            "vec_construct": {
+              "allocation_requests": 30000,
+              "requested_bytes": 560000
+            }
+          },
+          {
+            "case": "long",
+            "compact_clone": {
+              "allocation_requests": 0,
+              "requested_bytes": 0
+            },
+            "compact_construct": {
+              "allocation_requests": 20000,
+              "requested_bytes": 2000000
+            },
+            "utf16_length": 80,
+            "vec_clone": {
+              "allocation_requests": 10000,
+              "requested_bytes": 1600000
+            },
+            "vec_construct": {
+              "allocation_requests": 30000,
+              "requested_bytes": 3920000
+            }
+          }
+        ],
+        "concat_iterations": 100,
+        "concatenations": [
+          {
+            "case": "inline-pair",
+            "chunk_units": 2,
+            "compact": {
+              "allocation_requests": 0,
+              "requested_bytes": 0
+            },
+            "flat": {
+              "allocation_requests": 300,
+              "requested_bytes": 2000
+            },
+            "steps": 2
+          },
+          {
+            "case": "append-chain",
+            "chunk_units": 16,
+            "compact": {
+              "allocation_requests": 14500,
+              "requested_bytes": 2868000
+            },
+            "flat": {
+              "allocation_requests": 38300,
+              "requested_bytes": 78544000
+            },
+            "steps": 128
+          }
+        ],
+        "iterations": 10000,
+        "js_string_bytes": 24,
+        "pointer_width": 64,
+        "scope": "single-thread standalone allocation requests, including realloc; not Engine throughput or RSS",
+        "timing_instrumentation": false,
+        "value_bytes": 32,
+        "vec_bytes": 24,
+        "warmup_iterations": 128
+      }
+    },
+    {
+      "toolchain": "1.85.0",
+      "observation": {
+        "cases": [
+          {
+            "case": "tiny",
+            "compact_clone": {
+              "allocation_requests": 0,
+              "requested_bytes": 0
+            },
+            "compact_construct": {
+              "allocation_requests": 0,
+              "requested_bytes": 0
+            },
+            "utf16_length": 3,
+            "vec_clone": {
+              "allocation_requests": 10000,
+              "requested_bytes": 60000
+            },
+            "vec_construct": {
+              "allocation_requests": 10000,
+              "requested_bytes": 80000
+            }
+          },
+          {
+            "case": "short",
+            "compact_clone": {
+              "allocation_requests": 0,
+              "requested_bytes": 0
+            },
+            "compact_construct": {
+              "allocation_requests": 0,
+              "requested_bytes": 0
+            },
+            "utf16_length": 10,
+            "vec_clone": {
+              "allocation_requests": 10000,
+              "requested_bytes": 200000
+            },
+            "vec_construct": {
+              "allocation_requests": 30000,
+              "requested_bytes": 560000
+            }
+          },
+          {
+            "case": "long",
+            "compact_clone": {
+              "allocation_requests": 0,
+              "requested_bytes": 0
+            },
+            "compact_construct": {
+              "allocation_requests": 20000,
+              "requested_bytes": 2000000
+            },
+            "utf16_length": 80,
+            "vec_clone": {
+              "allocation_requests": 10000,
+              "requested_bytes": 1600000
+            },
+            "vec_construct": {
+              "allocation_requests": 30000,
+              "requested_bytes": 3920000
+            }
+          }
+        ],
+        "concat_iterations": 100,
+        "concatenations": [
+          {
+            "case": "inline-pair",
+            "chunk_units": 2,
+            "compact": {
+              "allocation_requests": 0,
+              "requested_bytes": 0
+            },
+            "flat": {
+              "allocation_requests": 300,
+              "requested_bytes": 2000
+            },
+            "steps": 2
+          },
+          {
+            "case": "append-chain",
+            "chunk_units": 16,
+            "compact": {
+              "allocation_requests": 14500,
+              "requested_bytes": 2868000
+            },
+            "flat": {
+              "allocation_requests": 38300,
+              "requested_bytes": 78544000
+            },
+            "steps": 128
+          }
+        ],
+        "iterations": 10000,
+        "js_string_bytes": 24,
+        "pointer_width": 64,
+        "scope": "single-thread standalone allocation requests, including realloc; not Engine throughput or RSS",
+        "timing_instrumentation": false,
+        "value_bytes": 32,
+        "vec_bytes": 24,
+        "warmup_iterations": 128
+      }
+    }
+  ]
+}

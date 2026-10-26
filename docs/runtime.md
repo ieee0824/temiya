@@ -262,3 +262,12 @@ and clone operations. It reports allocation requests/bytes, not elapsed time or
 RSS. Timing workers do not include the counting allocator. The observed
 [allocation report](../benchmarks/compact-string-allocations.json) is separate
 from full Engine throughput comparisons.
+
+The [concatenation allocation observation](../benchmarks/string-concat-allocations.json)
+compares the previous interpreter's copy/extend path with `concat`, including
+final contiguous access. Across 100 chains of 128 sixteen-unit appends, requested
+bytes fell from 78,544,000 to 2,868,000; allocation requests fell from 38,300 to
+14,500 on both measured Rust toolchains. Two two-unit operands concatenate
+without allocation. These standalone counts include allocator requests, not
+retained memory, RSS, copying instructions, or Engine throughput. The existing
+CI allocation check also rejects regressions in these concatenation budgets.

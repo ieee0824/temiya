@@ -63,3 +63,5 @@ jobs:
         run: cargo +${{ matrix.toolchain }} test --locked --all-features
       - name: Build
         run: cargo +${{ matrix.toolchain }} build --locked --all-features
+      - name: Verify documented execution paths
+        run: cargo +${{ matrix.toolchain }} run --locked --example backend_scope --all-features

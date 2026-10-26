@@ -40,6 +40,7 @@ pub use generator::{Generator, GeneratorState, IteratorResult};
 pub use host_data::{DateObject, HostHooks, IntlProvider, Json, JsonTransform, UnsupportedIntl};
 pub use indexed::{ArrayBuffer, ArrayObject, DataView, TypedArray};
 pub use interpreter::{ExpressionEvaluator, Reference, ReferencedName};
+pub(crate) use interpreter::{binary_values, parse_numeric_literal};
 pub use intrinsics::{IntrinsicId, IntrinsicRegistry, WellKnownSymbol, WellKnownSymbols};
 pub use job_queue::JobQueue;
 pub use numeric::{BigIntObject, Math, NumberObject, parse_float, parse_int};

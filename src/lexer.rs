@@ -24,6 +24,8 @@ pub enum TokenKind {
     Identifier,
     Number,
     String,
+    /// A regular-expression literal, including delimiters and flags.
+    RegularExpression,
     Keyword,
     Punctuator,
     End,
@@ -51,12 +53,125 @@ fn is_line_terminator(c: char) -> bool {
     matches!(c, '\n' | '\r' | '\u{2028}' | '\u{2029}')
 }
 
+fn scan_regexp(source: &str, start: usize) -> Result<usize, LexError> {
+    let mut pos = start + 1;
+    let mut in_class = false;
+    let mut escaped = false;
+    while let Some(c) = source[pos..].chars().next() {
+        if is_line_terminator(c) {
+            return Err(LexError {
+                span: Span {
+                    start: pos,
+                    end: pos + c.len_utf8(),
+                },
+                message: "line terminator in regular-expression literal",
+            });
+        }
+        pos += c.len_utf8();
+        if escaped {
+            escaped = false;
+            continue;
+        }
+        match c {
+            '\\' => escaped = true,
+            '[' if !in_class => in_class = true,
+            ']' if in_class => in_class = false,
+            '/' if !in_class => {
+                while let Some(c) = source[pos..].chars().next() {
+                    if !(unicode_id_start::is_id_continue(c)
+                        || matches!(c, '$' | '\u{200c}' | '\u{200d}'))
+                    {
+                        break;
+                    }
+                    pos += c.len_utf8();
+                }
+                return Ok(pos);
+            }
+            _ => {}
+        }
+    }
+    Err(LexError {
+        span: Span { start, end: pos },
+        message: if in_class {
+            "unterminated regular-expression character class"
+        } else {
+            "unterminated regular-expression literal"
+        },
+    })
+}
+
+/// Selects how a slash outside comments is interpreted for the next token.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum LexicalGoal {
+    /// Recognize division and division assignment (InputElementDiv subset).
+    Div,
+    /// Recognize a regular-expression literal (InputElementRegExp subset).
+    RegExp,
+}
+
+/// An incremental lexer whose caller selects a lexical goal for every token.
+///
+/// Tokens borrow the source. An error leaves the cursor unchanged, so the
+/// caller may retry with another goal. Repeated end tokens have empty spans;
+/// only the first end token can carry trailing line-terminator metadata.
+///
+/// ```
+/// use temiya::lexer::{Lexer, LexicalGoal, TokenKind};
+/// let mut lexer = Lexer::new("/a/ / 2");
+/// assert_eq!(lexer.next_token(LexicalGoal::RegExp)?.kind, TokenKind::RegularExpression);
+/// assert_eq!(lexer.next_token(LexicalGoal::Div)?.text, "/");
+/// assert_eq!(lexer.next_token(LexicalGoal::Div)?.text, "2");
+/// # Ok::<(), temiya::lexer::LexError>(())
+/// ```
+#[derive(Debug)]
+pub struct Lexer<'a> {
+    source: &'a str,
+    pos: usize,
+}
+
+impl<'a> Lexer<'a> {
+    /// Creates a lexer at the beginning of the source.
+    #[must_use]
+    pub fn new(source: &'a str) -> Self {
+        Self { source, pos: 0 }
+    }
+
+    /// Reads the next token using the supplied goal after skipping comments.
+    ///
+    /// Pattern syntax and flag validity are deferred to a future RegExp parser.
+    pub fn next_token(&mut self, goal: LexicalGoal) -> Result<Token<'a>, LexError> {
+        self.read(Some(goal))
+    }
+
+    fn read(&mut self, goal: Option<LexicalGoal>) -> Result<Token<'a>, LexError> {
+        let token = scan_token(self.source, self.pos, goal)?;
+        self.pos = token.span.end;
+        Ok(token)
+    }
+}
+
 /// Tokenizes the bootstrap subset described in `docs/lexer.md`.
 ///
-/// Unsupported input returns an error instead of being silently discarded.
+/// This compatibility API still rejects slash outside comments. Use [`Lexer`]
+/// to select a division or regular-expression goal for each token.
 pub fn tokenize(source: &str) -> Result<Vec<Token<'_>>, LexError> {
+    let mut lexer = Lexer::new(source);
     let mut tokens = Vec::new();
-    let mut pos = 0;
+    loop {
+        let token = lexer.read(None)?;
+        let end = token.kind == TokenKind::End;
+        tokens.push(token);
+        if end {
+            return Ok(tokens);
+        }
+    }
+}
+
+fn scan_token(
+    source: &str,
+    mut pos: usize,
+    goal: Option<LexicalGoal>,
+) -> Result<Token<'_>, LexError> {
     let bytes = source.as_bytes();
     let mut has_line_terminator_before = false;
     while pos < bytes.len() {
@@ -105,7 +220,19 @@ pub fn tokenize(source: &str) -> Result<Vec<Token<'_>>, LexError> {
             pos += end + 4;
             continue;
         }
-        let kind = if c.is_ascii_alphabetic() || matches!(c, '_' | '$') {
+        let kind = if c == '/' && goal.is_some() {
+            if goal == Some(LexicalGoal::Div) {
+                pos += if source[pos..].starts_with("/=") {
+                    2
+                } else {
+                    1
+                };
+                TokenKind::Punctuator
+            } else {
+                pos = scan_regexp(source, pos)?;
+                TokenKind::RegularExpression
+            }
+        } else if c.is_ascii_alphabetic() || matches!(c, '_' | '$') {
             pos += 1;
             while pos < bytes.len()
                 && (bytes[pos].is_ascii_alphanumeric() || matches!(bytes[pos], b'_' | b'$'))
@@ -217,7 +344,7 @@ pub fn tokenize(source: &str) -> Result<Vec<Token<'_>>, LexError> {
             }
             TokenKind::String
         } else {
-            // Longest spelling wins. Slash is reserved until lexical goals exist.
+            // Longest spelling wins. Slash is handled by the lexical goal above.
             let punct = [
                 ">>>=", "===", "!==", "**=", "<<=", ">>=", ">>>", "&&=", "||=", "??=", "...", "=>",
                 "==", "!=", "<=", ">=", "++", "--", "**", "<<", ">>", "&&", "||", "??", "+=", "-=",
@@ -238,15 +365,14 @@ pub fn tokenize(source: &str) -> Result<Vec<Token<'_>>, LexError> {
             pos += punct.len();
             TokenKind::Punctuator
         };
-        tokens.push(Token {
+        return Ok(Token {
             kind,
             text: &source[start..pos],
             span: Span { start, end: pos },
             has_line_terminator_before,
         });
-        has_line_terminator_before = false;
     }
-    tokens.push(Token {
+    Ok(Token {
         kind: TokenKind::End,
         has_line_terminator_before,
         text: "",
@@ -254,8 +380,7 @@ pub fn tokenize(source: &str) -> Result<Vec<Token<'_>>, LexError> {
             start: pos,
             end: pos,
         },
-    });
-    Ok(tokens)
+    })
 }
 
 #[cfg(test)]

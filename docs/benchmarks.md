@@ -443,3 +443,44 @@ on a separate runner. Results from different architectures must not be pooled.
 These eleven microbenchmarks do not establish full application compatibility
 or SpiderMonkey superiority. Identifier atoms, balanced ropes and real runtime
 GC remain open; #415 and #427 are not complete.
+
+
+## Hosted x86_64 bounded-concatenation comparison
+
+[Run 40361665749](https://github.com/ieee0824/temiya/actions/runs/40361665749)
+completed on Ubuntu 24.04, AMD EPYC 7763, four logical CPUs. The
+[provenance record](../benchmarks/string-concat-hosted-provenance.json) retains
+build identity and the original artifact reference. Both
+[before/after](../benchmarks/string-concat-hosted-beforeafter.json) and
+[Boa](../benchmarks/string-concat-hosted-boa.json) use the original eleven
+workloads, 15 timed samples, one checked warmup and three alternating pairs.
+Each mode has 66 successful runs and 1056 validated values. They run serially
+after all builds, with the same compiler and existing 512 MiB/180-second guards.
+
+The measured revision is `ee1c0bcf0ca3533382eef0269625104a1a247ece`;
+the baseline is `82c572d0e42c8f97deccb349a02095e15b2c8af1`. The measured
+runtime is identical to code revision `4cf89c1d555ceefeecb2b53882fdb077440da012`.
+Later ARM64 data commits do not modify executable source, worker scripts,
+dependencies or the measurement workflow. Architectures are reported separately.
+
+| Workload | Changed / prior Temiya time | Changed Temiya / Boa time |
+| --- | ---: | ---: |
+| arith | 0.98–1.00× | 3.33–3.42× |
+| prop-mono | 0.94–0.96× | 2.42–2.49× |
+| prop-mega | 0.97–0.98× | 2.30–2.37× |
+| call | 0.93–1.00× | 2.34–2.36× |
+| closure-alloc | 0.93–0.95× | 1.82–1.90× |
+| object-alloc | 0.96–0.98× | 1.79–1.85× |
+| string-concat | 0.86–0.88× | 3.06–3.12× |
+| array | 0.94–0.96× | 2.24–2.40× |
+| primitive-string-property | 0.99–1.00× | 2.70–2.84× |
+| primitive-string-method | 1.00–1.03× | 1.95–2.00× |
+| proto-method | 0.95–0.97× | 2.14–2.28× |
+
+All three string-concat pairs improve beyond the 10% threshold: elapsed time
+is 12–14% lower than the prior Temiya build. The other 30 pairs are within
+the threshold; no pair regresses beyond it. This establishes the observed
+string-concat improvement on this runner, rather than a general engine speedup.
+All 33 Boa pairs still find Temiya slower beyond the threshold. Both all-eleven
+speed gates remain false. The allocation reduction and successful CI do not
+satisfy the Boa goal or complete #415/#427.

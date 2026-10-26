@@ -1,10 +1,15 @@
 //! Expression and statement parsing with explicit lexical goals and owned syntax.
 
-use crate::ast::{Expr, ExprKind, Literal, NumberKind, ObjectProperty, TemplateElement};
+use crate::ast::{
+    Class, ClassElement, ClassElementKind, Expr, ExprKind, Function, FunctionBody, Literal,
+    MethodKind, NumberKind, ObjectProperty, TemplateElement,
+};
 use crate::lexer::{
     LexError, Lexer, LexerOptions, LexicalGoal, SourceGoal, Span, Token, TokenKind,
 };
 
+mod classes;
+mod functions;
 mod statements;
 pub use statements::{parse_async_function_body, parse_function_body, parse_program, parse_script};
 
@@ -83,7 +88,9 @@ fn error(span: Span, message: &'static str) -> ParseError {
     ParseError { span, message }
 }
 
+#[derive(Clone)]
 struct Parser<'a> {
+    source: &'a str,
     lexer: Lexer<'a>,
     options: ParserOptions,
     depth: usize,
@@ -94,11 +101,20 @@ struct Parser<'a> {
     labels: Vec<(String, bool)>,
     in_function: bool,
     in_async: bool,
+    in_generator: bool,
+    in_parameters: bool,
+    super_property: bool,
+    super_call: bool,
+    new_target: bool,
+    class_depth: usize,
+    forbid_arguments: bool,
+    await_reserved: bool,
 }
 
 impl<'a> Parser<'a> {
     fn new(source: &'a str, options: ParserOptions) -> Self {
         Self {
+            source,
             lexer: Lexer::with_options(source, options.lexer),
             options,
             depth: 0,
@@ -109,6 +125,14 @@ impl<'a> Parser<'a> {
             labels: vec![],
             in_function: false,
             in_async: options.lexer.source_goal == SourceGoal::Module,
+            in_generator: false,
+            in_parameters: false,
+            super_property: false,
+            super_call: false,
+            new_target: false,
+            class_depth: 0,
+            forbid_arguments: false,
+            await_reserved: options.lexer.source_goal == SourceGoal::Module,
         }
     }
 
@@ -169,9 +193,33 @@ impl<'a> Parser<'a> {
     }
 
     fn expression_inner(&mut self, min_bp: u8) -> Result<Expr, ParseError> {
-        let mut left = self.primary()?;
+        if min_bp > 2 && self.in_generator && self.at("yield")? {
+            return Err(error(
+                self.peek(LexicalGoal::RegExp)?.span,
+                "yield requires an assignment-expression context",
+            ));
+        }
+        let mut left = if min_bp <= 2 {
+            if let Some(arrow) = self.try_arrow()? {
+                arrow
+            } else {
+                self.primary()?
+            }
+        } else {
+            self.primary()?
+        };
         loop {
             let token = self.peek(LexicalGoal::Div)?;
+            if matches!(left.kind, ExprKind::Arrow(_) | ExprKind::Yield { .. }) && token.text != ","
+            {
+                break;
+            }
+            if matches!(left.kind, ExprKind::PrivateIdentifier(_)) && token.text != "in" {
+                return Err(error(
+                    left.span,
+                    "private identifier must be followed by in",
+                ));
+            }
             let start = left.span.start;
             match token.text {
                 "." | "[" | "?." if min_bp <= 20 => {
@@ -200,6 +248,11 @@ impl<'a> Parser<'a> {
                     } else {
                         self.property_name()?
                     };
+                    if matches!(left.kind, ExprKind::Super)
+                        && matches!(property.kind, ExprKind::PrivateIdentifier(_))
+                    {
+                        return Err(error(property.span, "super cannot access a private name"));
+                    }
                     left = self.node(
                         start,
                         ExprKind::Member {
@@ -272,7 +325,8 @@ impl<'a> Parser<'a> {
                 break;
             }
             self.take(LexicalGoal::Div)?;
-            if lbp == 2 && !assignable(&left) {
+            if lbp == 2 && !(assignable(&left) || (token.text == "=" && assignment_pattern(&left)))
+            {
                 return Err(error(left.span, "invalid assignment target"));
             }
             if token.text == "**" && matches!(left.kind, ExprKind::Unary { .. }) {
@@ -324,6 +378,18 @@ impl<'a> Parser<'a> {
         if matches!(token.kind, TokenKind::Template | TokenKind::TemplateHead) {
             return self.template(None);
         }
+        if token.text == "function" || self.is_async_function()? {
+            let asynchronous = token.text == "async";
+            if asynchronous {
+                self.expect("async")?;
+            }
+            let function = self.function(false, asynchronous, start)?;
+            return Ok(self.node(start, ExprKind::Function(Box::new(function))));
+        }
+        if token.text == "class" {
+            let class = self.class(false)?;
+            return Ok(self.node(start, ExprKind::Class(Box::new(class))));
+        }
         self.take(LexicalGoal::RegExp)?;
         let kind = match token.text {
             "(" => {
@@ -340,6 +406,9 @@ impl<'a> Parser<'a> {
                         argument.span,
                         "cannot delete an identifier in strict code",
                     ));
+                }
+                if token.text == "delete" && private_target(&argument) {
+                    return Err(error(argument.span, "cannot delete a private member"));
                 }
                 ExprKind::Unary {
                     operator: token.text.to_owned(),
@@ -358,13 +427,59 @@ impl<'a> Parser<'a> {
                 }
             }
             "await" if self.in_async => {
+                if self.in_parameters {
+                    return Err(error(token.span, "await in formal parameters"));
+                }
                 let argument = self.expression(17)?;
                 ExprKind::Unary {
                     operator: "await".to_owned(),
                     argument: Box::new(argument),
                 }
             }
+            "yield" if self.in_generator => {
+                if self.in_parameters {
+                    return Err(error(token.span, "yield in formal parameters"));
+                }
+                let next = self.peek(LexicalGoal::RegExp)?;
+                let delegate = !next.has_line_terminator_before && next.text == "*";
+                let argument = if delegate {
+                    self.expect("*")?;
+                    Some(Box::new(self.expression(2)?))
+                } else if next.has_line_terminator_before
+                    || next.kind == TokenKind::End
+                    || matches!(next.text, ";" | "," | ")" | "]" | "}" | ":")
+                {
+                    None
+                } else {
+                    Some(Box::new(self.expression(2)?))
+                };
+                ExprKind::Yield { argument, delegate }
+            }
+            "super" => {
+                let next = self.peek(LexicalGoal::Div)?;
+                if (next.text == "(" && self.super_call)
+                    || (matches!(next.text, "." | "[") && self.super_property)
+                {
+                    ExprKind::Super
+                } else {
+                    return Err(error(token.span, "invalid super reference"));
+                }
+            }
             "new" => {
+                if self.at(".")? {
+                    self.expect(".")?;
+                    let property = self.expect("target")?;
+                    if !self.new_target {
+                        return Err(error(property.span, "new.target outside a function"));
+                    }
+                    return Ok(self.node(
+                        start,
+                        ExprKind::MetaProperty {
+                            meta: "new".to_owned(),
+                            property: "target".to_owned(),
+                        },
+                    ));
+                }
                 let callee = self.expression(20)?;
                 if optional_chain(&callee) {
                     return Err(error(callee.span, "optional chain cannot be a constructor"));
@@ -389,6 +504,9 @@ impl<'a> Parser<'a> {
 
     fn literal_or_identifier(&self, token: Token<'a>) -> Result<Expr, ParseError> {
         let kind = match token.kind {
+            TokenKind::PrivateIdentifier if self.class_depth > 0 => {
+                ExprKind::PrivateIdentifier(token.identifier_name().unwrap().into_owned())
+            }
             TokenKind::Identifier => {
                 let name = token.identifier_name().unwrap().into_owned();
                 if (self.strict()
@@ -404,7 +522,9 @@ impl<'a> Parser<'a> {
                             | "let"
                             | "yield"
                     ))
-                    || (self.in_async && name == "await")
+                    || ((self.in_async || self.await_reserved) && name == "await")
+                    || (self.in_generator && name == "yield")
+                    || (self.forbid_arguments && name == "arguments")
                 {
                     return Err(error(token.span, "reserved identifier in this context"));
                 }
@@ -451,6 +571,15 @@ impl<'a> Parser<'a> {
     fn property_name(&mut self) -> Result<Expr, ParseError> {
         let token = self.take(LexicalGoal::Div)?;
         if let Some(name) = token.identifier_name() {
+            if token.kind == TokenKind::PrivateIdentifier {
+                if self.class_depth == 0 {
+                    return Err(error(token.span, "private access outside a class"));
+                }
+                return Ok(Expr::new(
+                    token.span,
+                    ExprKind::PrivateIdentifier(name.into_owned()),
+                ));
+            }
             return Ok(Expr::new(
                 token.span,
                 ExprKind::Identifier(name.into_owned()),
@@ -505,38 +634,45 @@ impl<'a> Parser<'a> {
     fn object(&mut self, start: usize) -> Result<Expr, ParseError> {
         let mut properties = vec![];
         while !self.at("}")? {
-            let token = self.peek(LexicalGoal::Div)?;
-            let spread = token.text == "...";
-            let computed = token.text == "[";
-            let key = if spread {
+            let first = self.peek(LexicalGoal::Div)?;
+            let spread = first.text == "...";
+            let (key, computed, value) = if spread {
                 self.expect("...")?;
-                self.expression_with_in(2, true)?
-            } else if computed {
-                self.expect("[")?;
-                let key = self.expression_with_in(2, true)?;
-                self.expect("]")?;
-                key
-            } else if token.identifier_name().is_some() {
-                self.property_name()?
+                (self.expression_with_in(2, true)?, false, None)
             } else {
-                let token = self.take(LexicalGoal::Div)?;
-                self.literal_or_identifier(token)?
-            };
-            let value = if !spread && self.at(":")? {
-                self.expect(":")?;
-                Some(self.expression_with_in(2, true)?)
-            } else {
-                if !spread && (computed || token.kind != TokenKind::Identifier) {
-                    return Err(error(key.span, "expected property value"));
-                }
-                if !spread {
-                    self.literal_or_identifier(token)?;
-                }
-                None
+                let (asynchronous, generator, kind) = self.method_prefix()?;
+                let key_token = self.peek(LexicalGoal::Div)?;
+                let (key, computed) = self.definition_key(false)?;
+                let value = if self.at("(")? {
+                    let function =
+                        self.method(first.span.start, asynchronous, generator, kind, false)?;
+                    Some(self.node(
+                        first.span.start,
+                        ExprKind::Method {
+                            function: Box::new(function),
+                            kind,
+                        },
+                    ))
+                } else {
+                    if asynchronous || generator || kind != MethodKind::Method {
+                        return Err(error(key.span, "method modifier requires a method"));
+                    }
+                    if self.at(":")? {
+                        self.expect(":")?;
+                        Some(self.expression_with_in(2, true)?)
+                    } else {
+                        if computed || key_token.kind != TokenKind::Identifier {
+                            return Err(error(key.span, "expected property value"));
+                        }
+                        self.literal_or_identifier(key_token)?;
+                        None
+                    }
+                };
+                (key, computed, value)
             };
             properties.push(ObjectProperty {
                 span: Span {
-                    start: token.span.start,
+                    start: first.span.start,
                     end: self.last_end,
                 },
                 key,
@@ -645,11 +781,54 @@ fn identifier_target(expr: &Expr) -> bool {
     }
 }
 
+fn private_target(expr: &Expr) -> bool {
+    match &expr.kind {
+        ExprKind::Member {
+            property,
+            computed: false,
+            ..
+        } => matches!(property.kind, ExprKind::PrivateIdentifier(_)),
+        ExprKind::Parenthesized(expr) => private_target(expr),
+        _ => false,
+    }
+}
+
 fn assignable(expr: &Expr) -> bool {
     match &expr.kind {
         ExprKind::Identifier(_) => true,
         ExprKind::Member { .. } => !optional_chain(expr),
         ExprKind::Parenthesized(expr) => assignable(expr),
+        _ => false,
+    }
+}
+
+fn assignment_pattern(expr: &Expr) -> bool {
+    if assignable(expr) {
+        return true;
+    }
+    match &expr.kind {
+        ExprKind::Assignment {
+            operator, target, ..
+        } => operator == "=" && assignment_pattern(target),
+        ExprKind::Array(items) => items.iter().enumerate().all(|(i, item)| match item {
+            None => true,
+            Some(Expr {
+                kind: ExprKind::Spread(target),
+                ..
+            }) => {
+                i + 1 == items.len()
+                    && assignment_pattern(target)
+                    && !matches!(target.kind, ExprKind::Assignment { .. })
+            }
+            Some(item) => assignment_pattern(item),
+        }),
+        ExprKind::Object(properties) => properties.iter().enumerate().all(|(i, p)| {
+            if p.spread {
+                i + 1 == properties.len() && assignable(&p.key)
+            } else {
+                assignment_pattern(p.value.as_ref().unwrap_or(&p.key))
+            }
+        }),
         _ => false,
     }
 }

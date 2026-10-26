@@ -42,6 +42,8 @@ fn body(
     let mut parser = Parser::new(source, options);
     parser.in_function = in_function;
     parser.in_async = in_async;
+    parser.await_reserved = in_async || options.lexer.source_goal == SourceGoal::Module;
+    parser.new_target = in_function;
     let mut statements = vec![];
     let mut directives = true;
     let mut legacy_directives = vec![];
@@ -89,7 +91,8 @@ impl Parser<'_> {
             StmtKind::Variable {
                 kind: VariableKind::Let | VariableKind::Const,
                 ..
-            }
+            } | StmtKind::FunctionDeclaration(_)
+                | StmtKind::ClassDeclaration(_)
         ) {
             return Err(error(
                 stmt.span,
@@ -99,7 +102,7 @@ impl Parser<'_> {
         Ok(stmt)
     }
 
-    fn statement_list_item(&mut self) -> Result<Stmt, ParseError> {
+    pub(super) fn statement_list_item(&mut self) -> Result<Stmt, ParseError> {
         if self.depth >= self.options.max_depth {
             return Err(error(
                 self.peek(LexicalGoal::RegExp)?.span,
@@ -126,6 +129,14 @@ impl Parser<'_> {
         let token = self.peek(LexicalGoal::RegExp)?;
         let start = token.span.start;
         let kind = match token.text {
+            "function" => {
+                StmtKind::FunctionDeclaration(Box::new(self.function(true, false, start)?))
+            }
+            "async" if self.is_async_function()? => {
+                self.expect("async")?;
+                StmtKind::FunctionDeclaration(Box::new(self.function(true, true, start)?))
+            }
+            "class" => StmtKind::ClassDeclaration(Box::new(self.class(true)?)),
             ";" => {
                 self.expect(";")?;
                 StmtKind::Empty
@@ -262,7 +273,7 @@ impl Parser<'_> {
         Ok(self.stmt(start, kind))
     }
 
-    fn semicolon(&mut self) -> Result<(), ParseError> {
+    pub(super) fn semicolon(&mut self) -> Result<(), ParseError> {
         let token = self.peek(LexicalGoal::Div)?;
         if token.text == ";" {
             self.take(LexicalGoal::Div)?;
@@ -282,7 +293,7 @@ impl Parser<'_> {
         Ok(expr)
     }
 
-    fn block(&mut self) -> Result<Stmt, ParseError> {
+    pub(super) fn block(&mut self) -> Result<Stmt, ParseError> {
         let start = self.expect("{")?.span.start;
         let mut statements = vec![];
         while !self.at("}")? {
@@ -349,7 +360,7 @@ impl Parser<'_> {
         Ok(next.kind == TokenKind::Identifier || matches!(next.text, "[" | "{"))
     }
 
-    fn binding(&mut self) -> Result<Expr, ParseError> {
+    pub(super) fn binding_identifier(&mut self) -> Result<Expr, ParseError> {
         let token = self.take(LexicalGoal::Div)?;
         if token.kind != TokenKind::Identifier {
             return Err(error(token.span, "expected binding identifier"));
@@ -377,7 +388,9 @@ impl Parser<'_> {
         loop {
             let binding = self.binding()?;
             if kind != VariableKind::Var
-                && matches!(&binding.kind, ExprKind::Identifier(name) if name == "let")
+                && functions::bound_names(&binding)
+                    .iter()
+                    .any(|(name, _)| *name == "let")
             {
                 return Err(error(binding.span, "let cannot be a lexical binding"));
             }
@@ -387,7 +400,10 @@ impl Parser<'_> {
             } else {
                 None
             };
-            if !for_header && kind == VariableKind::Const && init.is_none() {
+            if !for_header
+                && (kind == VariableKind::Const || !matches!(binding.kind, ExprKind::Identifier(_)))
+                && init.is_none()
+            {
                 return Err(error(binding.span, "const requires an initializer"));
             }
             declarations.push(VariableDeclarator {
@@ -446,7 +462,7 @@ impl Parser<'_> {
             };
             match &left {
                 ForInit::Expression(expr)
-                    if !assignable(expr)
+                    if !assignment_pattern(expr)
                         || (of
                             && (iteration_start.text == "let"
                                 || (!asynchronous
@@ -458,7 +474,13 @@ impl Parser<'_> {
                 ForInit::Variable { kind, declarations }
                     if declarations.len() != 1
                         || (declarations[0].init.is_some()
-                            && (of || *kind != VariableKind::Var || self.strict())) =>
+                            && (of
+                                || *kind != VariableKind::Var
+                                || self.strict()
+                                || !matches!(
+                                    declarations[0].binding.kind,
+                                    ExprKind::Identifier(_)
+                                ))) =>
                 {
                     return Err(error(next.span, "invalid iteration declaration"));
                 }
@@ -481,12 +503,12 @@ impl Parser<'_> {
         if asynchronous {
             return Err(error(next.span, "for-await requires of"));
         }
-        if let Some(ForInit::Variable {
-            kind: VariableKind::Const,
-            declarations,
-        }) = &init
-        {
-            if let Some(declaration) = declarations.iter().find(|d| d.init.is_none()) {
+        if let Some(ForInit::Variable { kind, declarations }) = &init {
+            if let Some(declaration) = declarations.iter().find(|d| {
+                d.init.is_none()
+                    && (*kind == VariableKind::Const
+                        || !matches!(d.binding.kind, ExprKind::Identifier(_)))
+            }) {
                 return Err(error(declaration.span, "const requires an initializer"));
             }
         }

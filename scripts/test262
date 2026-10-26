@@ -1,0 +1,18 @@
+#!/bin/sh
+set -eu
+
+revision=d53ebc8b1931d9f1541e43d59650776e4b766248
+destination=${TEST262_DIR:-target/test262}
+
+if [ ! -d "$destination/.git" ]; then
+    git init --quiet "$destination"
+    git -C "$destination" remote add origin https://github.com/tc39/test262.git
+fi
+git -C "$destination" fetch --quiet --depth 1 origin "$revision"
+git -C "$destination" checkout --quiet --detach FETCH_HEAD
+actual=$(git -C "$destination" rev-parse HEAD)
+if [ "$actual" != "$revision" ]; then
+    echo "expected Test262 $revision, got $actual" >&2
+    exit 1
+fi
+echo "$destination@$actual"

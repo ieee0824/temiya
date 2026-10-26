@@ -41,6 +41,8 @@ jobs:
         run: rustup toolchain install stable --profile minimal --component rustfmt --component clippy
       - name: Check formatting
         run: cargo +stable fmt --all --check
+      - name: Check external benchmark adapter formatting
+        run: rustfmt +stable --edition 2024 --check benchmarks/omoikane-worker/main.rs
       - name: Run Clippy
         run: cargo +stable clippy --locked --all-targets --all-features -- -D warnings
 
@@ -65,6 +67,10 @@ jobs:
         run: cargo +${{ matrix.toolchain }} build --locked --all-features
       - name: Verify documented execution paths
         run: cargo +${{ matrix.toolchain }} run --locked --example backend_scope --all-features
+      - name: Verify benchmark worker result validation
+        run: |
+          cargo +${{ matrix.toolchain }} build --locked --release --example measure_workload
+          node scripts/check-workload-workers.mjs target/release/examples/measure_workload
       - name: Fetch pinned Test262 regression corpus
         run: scripts/test262
       - name: Run upstream exception regressions

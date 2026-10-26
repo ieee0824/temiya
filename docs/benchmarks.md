@@ -127,3 +127,113 @@ None crossed the regression policy threshold. Some medians increased, including
 the interpreter macro by 3.5–13.2%; noise thresholds were 10.2–26.0% for those
 pairs. This is limited evidence against a large regression, not an equivalence
 claim or a whole-engine speedup.
+
+### Omoikane application embedding comparison
+
+The application worker in `benchmarks/omoikane-worker/main.rs` calls
+`omoikane::js::JsRuntime::with_document_and_sandbox` and `JsRuntime::eval` with
+a real document and the configuration from the pinned application's result
+tests: 60-second cooperative deadline and 100,000,000 loop iterations. Its
+vendored Boa/Regress paths, lockfile versions/checksums, and default application
+features are preserved. Boa has annex-b, intl_bundled, experimental (Temporal),
+float16, and xsum enabled; baseline-jit is absent. This is the actual embedding,
+not an upstream Boa crate or standalone Context.
+
+Extraction retains all eleven exact function bodies, original iteration counts,
+and independent numeric oracles. The original shared makeShapes/ProtoBase/
+protoReceiver text is instantiated once per worker in a stable closure rather
+than in global slots. A setup assertion verifies prototype identity and method
+behavior. This preserves one shared prototype receiver across all timed passes;
+it is never recreated inside the body. Both engines receive the same setup
+and invocation bytes. The original JavaScript timing/formatting harness is
+replaced by Rust timers; no missing engine API is stubbed.
+
+Each worker records runtime startup, setup (parse/instantiate), and one warmup
+separately. Every timed pass parses and evaluates the tiny invocation, calling
+the already-created function. The public application API does not expose a
+parse-only or parse-free execution boundary, so these samples must not be
+labeled pure execution time. Temiya deliberately recompiles the invocation on
+every pass to match that boundary. The application startup includes DOM/web API
+bootstrap, whereas Temiya startup creates its Realm; those startup numbers
+describe different embeddings and are not an engine-only speed comparison.
+
+The driver alternates engine order across three pairs, runs workers serially,
+and validates every warmup and sample. A failed/incorrect result, crash,
+180-second process timeout, or sampled RSS above 512 MiB is recorded separately
+and never contributes a speed ratio. These watchdog settings apply equally to
+both processes; on Linux the memory watcher polls every 25 ms and may overshoot.
+Temiya currently lacks Boa's additional cooperative sandbox, which remains
+enabled in the application worker. Memory observations do not prove collection
+of cycles or bound an entire application's footprint.
+
+Requirements: Linux with `/proc`, Node.js, Python 3.11+ (`PYTHON` selects the executable), Git,
+and the same Rust toolchain for both engines. The pinned application was tested
+here with Rust 1.99.1; the comparison adapter does not lower its dependencies'
+MSRV to Temiya's 1.85. Use clean, pinned source checkouts and distinct Cargo
+target directories. The builder uses omoikane's disk-space guard and requires
+14 GiB initially, with a 12 GiB target limit and 2 GiB free-space floor.
+
+```sh
+git clone https://github.com/ieee0824/omoikane /tmp/omoikane-reference
+git -C /tmp/omoikane-reference checkout --detach \
+    007556adccb8fb4329236932ca8175f8e8d119d2
+node scripts/extract-omoikane-workloads.mjs \
+    /tmp/omoikane-reference /tmp/omoikane-inputs
+CARGO_TARGET_DIR=/tmp/temiya-reference-target \
+    cargo build --locked --release --example measure_workload
+node scripts/build-omoikane-worker.mjs /tmp/omoikane-reference \
+    /tmp/omoikane-worker /tmp/omoikane-reference-target
+node scripts/check-workload-workers.mjs \
+    /tmp/temiya-reference-target/release/examples/measure_workload \
+    /tmp/omoikane-reference-target/release/omoikane-workload-worker
+TEMIYA_REVISION=$(git rev-parse HEAD) node scripts/compare-omoikane-workloads.mjs \
+    /tmp/omoikane-inputs \
+    /tmp/temiya-reference-target/release/examples/measure_workload \
+    /tmp/omoikane-worker/build-info.json 15 3 > /tmp/omoikane-comparison.json
+```
+
+The extraction/build output directories must be new. The build adapter copies
+the pinned Cargo.lock, permits only the adapter's own new package, and checks
+the resolved application/Boa features and Regress source before building.
+`build-info.json` records source/binary/lock hashes and compiler information;
+`cargo-metadata.json` and the adapter lock remain in the build directory.
+Do not run builds or other benchmarks during the timed comparison.
+
+The driver exits 2 if any workload fails but still writes the complete report.
+Runs with fewer than 15 samples or three pairs are explicitly diagnostic; they
+cannot qualify for its speed gate. All workload outcomes, samples, median/MAD,
+startup/setup costs, memory observations, limits, and provenance are retained.
+The original eleven-workload microbenchmark scope remains narrower than a full
+application and omits async/RegExp/GC-specific suites and SpiderMonkey. #427
+and the overall performance objective remain open until that work and the
+required speed improvements are verified.
+
+#### Recorded application baseline
+
+[The first repeated comparison](../benchmarks/omoikane-comparison.json) uses
+Temiya engine/worker revision `a994bae8414b961a8f0b8974d6ee03bc3d38a511`, the
+pinned application above, Rust 1.99.1, release builds, and Linux ARM64. All
+66 worker runs and 33 comparison pairs are retained. Boa completes all eleven
+workloads; Temiya completes nine. The successful runs validate 960 results
+including warmups. Every one of the 27 valid comparison pairs finds Temiya
+slower beyond the recorded median/MAD threshold:
+
+| Workload | Temiya time / Boa time across three pairs |
+| --- | ---: |
+| arith | 4.30–4.76× |
+| prop-mono | 2.53–2.64× |
+| prop-mega | 2.65–2.84× |
+| call | 2.93–3.24× |
+| closure-alloc | Not comparable: Temiya exceeds the 512 MiB RSS watchdog in all pairs |
+| object-alloc | 2.06–2.17× |
+| string-concat | 5.83–7.74× |
+| array | 2.28–2.56× |
+| primitive-string-property | 3.16–3.56× |
+| primitive-string-method | Not comparable: Temiya's charCodeAt call fails in all pairs |
+| proto-method | 2.69–2.93× |
+
+Absolute times vary during the run; compare the paired measurements rather
+than earlier standalone numbers. This result does **not** meet the performance
+target. The memory failure is relevant to runtime ownership/GC work (#256,
+#257, #313), and the missing method to #221. The complete records preserve the
+failure statuses rather than dropping them or reporting a combined speedup.

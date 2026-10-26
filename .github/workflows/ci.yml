@@ -97,3 +97,7 @@ jobs:
         env:
           TEST262_DIR: target/test262
         run: cargo +${{ matrix.toolchain }} test --locked --test function_allocation pinned_test262_function_prototypes --all-features -- --ignored --nocapture
+      - name: Run upstream addition conversion regressions
+        env:
+          TEST262_DIR: target/test262
+        run: cargo +${{ matrix.toolchain }} test --locked --test addition_coercion pinned_test262_addition_coercion --all-features -- --ignored --nocapture

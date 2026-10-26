@@ -1,10 +1,26 @@
 //! Realm-aware JavaScript coercion for built-in algorithms.
-use super::{PropertyKey, RuntimeError, RuntimeResult, Value};
+use super::{PrimitiveHint, PropertyKey, RuntimeError, RuntimeResult, Value};
 
 pub(super) fn primitive(
     value: &Value,
     to_primitive: &PropertyKey,
     string_hint: bool,
+) -> RuntimeResult<Value> {
+    primitive_with_hint(
+        value,
+        to_primitive,
+        if string_hint {
+            PrimitiveHint::String
+        } else {
+            PrimitiveHint::Number
+        },
+    )
+}
+
+pub(super) fn primitive_with_hint(
+    value: &Value,
+    to_primitive: &PropertyKey,
+    hint: PrimitiveHint,
 ) -> RuntimeResult<Value> {
     let Value::Object(object) = &value else {
         return Ok(value.clone());
@@ -14,11 +30,7 @@ pub(super) fn primitive(
         hooks.exotic.is_some() || hooks.value_of.is_some() || hooks.to_string.is_some();
     drop(hooks);
     if has_host_conversion {
-        return value.to_primitive(if string_hint {
-            super::PrimitiveHint::String
-        } else {
-            super::PrimitiveHint::Number
-        });
+        return value.to_primitive(hint);
     }
     // Unlike bootstrap Rust conversion hooks, this path must call actual
     // JavaScript methods, including getters and Proxy traps.
@@ -30,7 +42,12 @@ pub(super) fn primitive(
         let result = method.call(
             value.clone(),
             &[Value::String(
-                if string_hint { "string" } else { "number" }.into(),
+                match hint {
+                    PrimitiveHint::Default => "default",
+                    PrimitiveHint::String => "string",
+                    PrimitiveHint::Number => "number",
+                }
+                .into(),
             )],
         )?;
         if matches!(result, Value::Object(_)) {
@@ -38,7 +55,7 @@ pub(super) fn primitive(
         }
         return Ok(result);
     }
-    for name in if string_hint {
+    for name in if hint == PrimitiveHint::String {
         ["toString", "valueOf"]
     } else {
         ["valueOf", "toString"]

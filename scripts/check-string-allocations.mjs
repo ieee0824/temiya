@@ -19,4 +19,19 @@ for (const name of ['tiny', 'short', 'long']) {
     throw Error(`short construction allocation budget failed: ${name}`);
   }
 }
-console.log('PASS compact UTF-16 construction/clone allocation budgets and footprint');
+if (!Number.isSafeInteger(result.concat_iterations) || result.concat_iterations < 1 ||
+    result.concatenations?.length !== 2) throw Error('missing concatenation observations');
+for (const name of ['inline-pair', 'append-chain']) {
+  const row = result.concatenations.find(row => row.case === name);
+  const valid = row && ['flat', 'compact'].every(operation =>
+    ['allocation_requests', 'requested_bytes'].every(field => Number.isSafeInteger(row[operation]?.[field]) && row[operation][field] >= 0));
+  if (!valid || row.flat.allocation_requests < result.concat_iterations ||
+      row.flat.requested_bytes === 0) throw Error(`invalid concatenation observation: ${name}`);
+  if (name === 'inline-pair' && (row.compact.allocation_requests !== 0 || row.compact.requested_bytes !== 0)) {
+    throw Error('inline concatenation must not allocate');
+  }
+  if (name === 'append-chain' && row.compact.requested_bytes >= row.flat.requested_bytes) {
+    throw Error('concatenation chain did not reduce requested bytes including final flattening');
+  }
+}
+console.log('PASS compact UTF-16 construction/clone/concatenation allocation budgets and footprint');

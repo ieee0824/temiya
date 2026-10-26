@@ -202,18 +202,26 @@ impl From<String> for JsString {
 }
 impl PartialEq for JsString {
     fn eq(&self, other: &Self) -> bool {
-        if self.len() != other.len() {
-            return false;
-        }
-        if let (Storage::Shared(left), Storage::Shared(right)) = (&self.0, &other.0) {
-            if Arc::ptr_eq(left, right) {
+        match (&self.0, &other.0) {
+            // Inline buffers are zero-padded by every constructor. Compare them
+            // directly, without dispatching through lengths and slices again.
+            (
+                Storage::Inline {
+                    len: a,
+                    units: left,
+                },
+                Storage::Inline {
+                    len: b,
+                    units: right,
+                },
+            ) => {
+                return a == b && left == right;
+            }
+            (Storage::Shared(left), Storage::Shared(right)) if Arc::ptr_eq(left, right) => {
                 return true;
             }
-        }
-        if let (Storage::Rope(left), Storage::Rope(right)) = (&self.0, &other.0) {
-            if Arc::ptr_eq(left, right) {
-                return true;
-            }
+            (Storage::Rope(left), Storage::Rope(right)) if Arc::ptr_eq(left, right) => return true,
+            _ => {}
         }
         self.code_units() == other.code_units()
     }

@@ -195,3 +195,28 @@ fn concatenation_checks_all_inline_boundaries_and_preserves_evaluation_order() {
         Value::Boolean(true)
     ));
 }
+
+#[test]
+fn engine_observes_long_concatenations_through_string_apis_and_property_keys() {
+    let engine = Engine::default();
+    let realm = engine.create_realm();
+    let script = engine.compile(&realm, r#"
+        var joined = '';
+        for (var i = 0; i < 1000; i++) joined += '\uD800\u0000\uDC00';
+        var alias = joined;
+        var object = {};
+        object[joined] = 42;
+        joined += 'end';
+        var independentlyBuilt = '';
+        for (var j = 0; j < 1000; j++) independentlyBuilt = '\uD800\u0000\uDC00' + independentlyBuilt;
+        alias.length === 3000 && joined.length === 3003 &&
+        independentlyBuilt === alias && object[independentlyBuilt] === 42 &&
+        alias.charCodeAt(2997) === 55296 && alias.charCodeAt(2999) === 56320 &&
+        joined.slice(2997) === '\uD800\u0000\uDC00end' &&
+        new String(alias).length === 3000 && alias < joined;
+    "#).unwrap();
+    assert!(matches!(
+        engine.evaluate(&script).unwrap().value(),
+        Value::Boolean(true)
+    ));
+}

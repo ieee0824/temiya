@@ -96,3 +96,11 @@ pass 403 tests with 10 ignored, including this opt-in audit. #292 remains open.
 TEST262_DIR=/path/to/test262 TEST262_REPORT=closure-audit.json \
   cargo test --test bytecode_closures pinned_test262_closure_audit -- --ignored --nocapture
 ```
+
+The same original property selection also advances with the stacked call/function
+work: stable/MSRV each report **9 VM pass, 0 fail, 10 compile-unsupported** across
+19 variants, compared with 0 pass / 19 unsupported in the property-only revision.
+AST remains 17 pass / 2 fail. Full results are in
+[property-reference-followup-audit.json](../test262/property-reference-followup-audit.json).
+This is a follow-up result for this stack, not evidence that #469 alone passes
+those tests. The property audit still exits 101 and #288 remains incomplete.

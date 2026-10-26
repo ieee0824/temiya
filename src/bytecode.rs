@@ -1,6 +1,6 @@
 //! Portable stack bytecode and its mandatory pre-execution verifier.
 
-use std::{collections::VecDeque, fmt};
+use std::{collections::VecDeque, fmt, rc::Rc};
 
 use crate::runtime::JsString;
 
@@ -51,6 +51,21 @@ pub struct ScopeDescriptor {
     pub bindings: Vec<ScopeBinding>,
 }
 
+/// Immutable executable function metadata; contains no runtime environment.
+#[derive(Clone, Debug, PartialEq)]
+pub struct FunctionTemplate {
+    /// Explicit function-expression name, if any.
+    pub name: Option<JsString>,
+    /// Simple identifier parameters, in source order.
+    pub parameters: Vec<JsString>,
+    /// Whether this function uses lexical this/arguments/newTarget.
+    pub arrow: bool,
+    /// Whether the function is strict code.
+    pub strict: bool,
+    /// Independently verified executable function body.
+    pub body: VerifiedBytecode,
+}
+
 /// Pointer-free literal stored in a bytecode constant pool.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Constant {
@@ -68,6 +83,8 @@ pub enum Constant {
     BigInt(num_bigint::BigInt),
     /// Scope metadata, usable only by `EnterScope`, never `LoadConstant`.
     Scope(ScopeDescriptor),
+    /// Immutable nested code, usable only by CreateFunction.
+    Function(Rc<FunctionTemplate>),
 }
 
 /// Portable instruction with fixed-width integer operands.
@@ -113,6 +130,10 @@ pub enum Instruction {
     SpreadArguments,
     /// Invoke the innermost captured callee and push its result.
     Invoke,
+    /// Create a bytecode-backed closure capturing the current environment.
+    CreateFunction(u32),
+    /// Push the nearest non-arrow function newTarget, or undefined.
+    LoadNewTarget,
     /// Push the current lexical this binding.
     LoadThis,
     /// Pop a condition and jump if null or undefined.
@@ -157,7 +178,11 @@ impl Instruction {
             Self::LoadReferenceCallTarget => 0,
             Self::AsCallTarget => 1,
             Self::BeginMethodCall => 2,
-            Self::BeginReferenceCall | Self::Invoke | Self::LoadThis => 0,
+            Self::CreateFunction(_)
+            | Self::LoadNewTarget
+            | Self::BeginReferenceCall
+            | Self::Invoke
+            | Self::LoadThis => 0,
             Self::BeginCall
             | Self::BeginConstruct
             | Self::AppendArgument
@@ -194,7 +219,11 @@ impl Instruction {
             | Self::BeginConstruct
             | Self::AppendArgument
             | Self::SpreadArguments => -1,
-            Self::Invoke | Self::LoadThis | Self::DeleteReference => 1,
+            Self::CreateFunction(_)
+            | Self::LoadNewTarget
+            | Self::Invoke
+            | Self::LoadThis
+            | Self::DeleteReference => 1,
             Self::GetProperty { .. } | Self::JumpIfNullish(_) => -1,
             Self::ResolveProperty { .. } => -2,
             Self::EnterScope(_) | Self::ExitScope | Self::ResolveName { .. } => 0,
@@ -452,9 +481,45 @@ fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
                     );
                 }
             }
+            Instruction::CreateFunction(index) => {
+                let Constant::Function(template) = constant(index)? else {
+                    return Err(error(VerifyErrorKind::InvalidConstantKind));
+                };
+                if state.scopes.is_empty() {
+                    return Err(error(VerifyErrorKind::ScopeMismatch));
+                }
+                if template
+                    .body
+                    .bytecode()
+                    .instructions
+                    .first()
+                    .is_none_or(|op| !matches!(op, Instruction::EnterScope(_)))
+                {
+                    return Err(error(VerifyErrorKind::InvalidScopeDescriptor));
+                }
+                let Instruction::EnterScope(scope) = template.body.bytecode().instructions[0]
+                else {
+                    unreachable!()
+                };
+                if !matches!(template.body.bytecode().constants.get(scope as usize), Some(Constant::Scope(plan)) if plan.kind == ScopeKind::Function && plan.strict == template.strict)
+                {
+                    return Err(error(VerifyErrorKind::InvalidScopeDescriptor));
+                }
+                if template.strict || template.arrow {
+                    let mut names = std::collections::HashSet::new();
+                    if template
+                        .parameters
+                        .iter()
+                        .any(|name| !names.insert(name.code_units()))
+                    {
+                        return Err(error(VerifyErrorKind::InvalidScopeDescriptor));
+                    }
+                }
+            }
             Instruction::GetProperty { .. }
             | Instruction::ResolveProperty { .. }
-            | Instruction::LoadThis => {
+            | Instruction::LoadThis
+            | Instruction::LoadNewTarget => {
                 if state.scopes.is_empty() {
                     return Err(error(VerifyErrorKind::ScopeMismatch));
                 }
@@ -516,7 +581,7 @@ fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
                     .ok_or_else(|| error(VerifyErrorKind::ScopeMismatch))?;
             }
             Instruction::LoadConstant(index) => {
-                if matches!(constant(index)?, Constant::Scope(_)) {
+                if matches!(constant(index)?, Constant::Scope(_) | Constant::Function(_)) {
                     return Err(error(VerifyErrorKind::InvalidConstantKind));
                 }
             }

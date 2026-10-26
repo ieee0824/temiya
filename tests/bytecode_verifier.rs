@@ -433,3 +433,77 @@ fn spread_arguments_require_active_invocation_and_realm_scope() {
         Err(VerifyErrorKind::ScopeMismatch)
     );
 }
+
+#[test]
+fn function_templates_require_function_bodies_and_scoped_creation() {
+    use std::rc::Rc;
+    use temiya::bytecode::{BytecodeCompiler, FunctionTemplate, ScopeDescriptor, ScopeKind};
+    let body = Bytecode {
+        constants: vec![
+            Constant::Scope(ScopeDescriptor {
+                kind: ScopeKind::Function,
+                strict: false,
+                bindings: vec![],
+            }),
+            Constant::Undefined,
+        ],
+        instructions: vec![
+            Instruction::EnterScope(0),
+            Instruction::LoadConstant(1),
+            Instruction::Return,
+        ],
+        local_count: 0,
+    }
+    .verify()
+    .unwrap();
+    let template = FunctionTemplate {
+        name: None,
+        parameters: vec![],
+        arrow: false,
+        strict: false,
+        body,
+    };
+    let scoped = |template| Bytecode {
+        constants: vec![
+            Constant::Scope(ScopeDescriptor {
+                kind: ScopeKind::Global,
+                strict: false,
+                bindings: vec![],
+            }),
+            Constant::Function(Rc::new(template)),
+        ],
+        instructions: vec![
+            Instruction::EnterScope(0),
+            Instruction::CreateFunction(1),
+            Instruction::ExitScope,
+            Instruction::Complete,
+        ],
+        local_count: 0,
+    };
+    assert!(scoped(template.clone()).verify().is_ok());
+    let mut invalid = scoped(template.clone());
+    invalid.instructions[1] = Instruction::LoadConstant(1);
+    assert_eq!(
+        invalid.verify().unwrap_err().kind(),
+        VerifyErrorKind::InvalidConstantKind
+    );
+    let mut invalid = scoped(template.clone());
+    invalid.instructions.remove(0);
+    assert_eq!(
+        invalid.verify().unwrap_err().kind(),
+        VerifyErrorKind::ScopeMismatch
+    );
+    let mut invalid = template.clone();
+    invalid.body = BytecodeCompiler::compile("42;").unwrap();
+    assert_eq!(
+        scoped(invalid).verify().unwrap_err().kind(),
+        VerifyErrorKind::InvalidScopeDescriptor
+    );
+    let mut invalid = template;
+    invalid.arrow = true;
+    invalid.parameters = vec!["a".into(), "a".into()];
+    assert_eq!(
+        scoped(invalid).verify().unwrap_err().kind(),
+        VerifyErrorKind::InvalidScopeDescriptor
+    );
+}

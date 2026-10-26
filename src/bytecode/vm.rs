@@ -216,6 +216,46 @@ impl VirtualMachine {
                     let invocation = calls.pop().expect("verified call frame");
                     stack.push(invocation.invoke()?);
                 }
+                Instruction::CreateFunction(index) => {
+                    let Constant::Function(template) = &body.constants[index as usize] else {
+                        unreachable!()
+                    };
+                    stack.push(Value::Object(crate::runtime::bytecode_function::create(
+                        template.clone(),
+                        realm.expect("verified function Realm"),
+                        scopes
+                            .last()
+                            .expect("verified active scope")
+                            .environment
+                            .clone(),
+                    )?));
+                }
+                Instruction::LoadNewTarget => {
+                    let mut environment = scopes
+                        .last()
+                        .expect("verified active scope")
+                        .environment
+                        .clone();
+                    loop {
+                        if environment.kind() == EnvironmentKind::Global {
+                            stack.push(Value::Undefined);
+                            break;
+                        }
+                        if environment.kind() == EnvironmentKind::Function
+                            && environment.has_this_binding()?
+                        {
+                            stack.push(
+                                environment
+                                    .new_target()?
+                                    .map_or(Value::Undefined, Value::Object),
+                            );
+                            break;
+                        }
+                        environment = environment.outer().ok_or_else(|| {
+                            RuntimeError::reference_error("no newTarget environment")
+                        })?;
+                    }
+                }
                 Instruction::LoadThis => {
                     let mut environment = scopes
                         .last()
@@ -280,7 +320,9 @@ impl VirtualMachine {
 
 fn constant(constant: &Constant) -> Value {
     match constant {
-        Constant::Scope(_) => unreachable!("verifier rejects metadata values"),
+        Constant::Scope(_) | Constant::Function(_) => {
+            unreachable!("verifier rejects metadata values")
+        }
         Constant::BigInt(value) => Value::BigInt(value.clone()),
         Constant::Undefined => Value::Undefined,
         Constant::Null => Value::Null,

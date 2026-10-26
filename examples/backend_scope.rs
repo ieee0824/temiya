@@ -64,7 +64,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     check_jit()?;
 
     println!("AST and bytecode examples and rejection cases passed");
-    for source in ["Math.abs(0 - 42);", "Math.abs?.(...'7') * 6;"] {
+    for source in [
+        "Math.abs(0 - 42);",
+        "Math.abs?.(...'7') * 6;",
+        "((a,b)=>a+b)(20,22);",
+    ] {
         let calls = BytecodeCompiler::compile(source)?;
         assert!(matches!(
             VirtualMachine::execute_in_realm(&calls, &bytecode_realm)?,
@@ -80,6 +84,7 @@ fn check_jit() -> Result<(), Box<dyn std::error::Error>> {
 
     let numeric = BytecodeCompiler::compile("40 + 2;")?;
     let equality = BytecodeCompiler::compile("1 === 1;")?;
+    let callable = BytecodeCompiler::compile("(()=>42)();")?;
     #[cfg(all(target_arch = "x86_64", unix))]
     {
         assert_eq!(BaselineJit::compile(&numeric)?.execute(), 42.0);
@@ -87,11 +92,15 @@ fn check_jit() -> Result<(), Box<dyn std::error::Error>> {
             BaselineJit::compile(&equality).unwrap_err().kind(),
             JitErrorKind::UnsupportedInstruction
         );
+        assert_eq!(
+            BaselineJit::compile(&callable).unwrap_err().kind(),
+            JitErrorKind::UnsupportedInstruction
+        );
         println!("x86-64 Unix JIT execution and rejection passed");
     }
     #[cfg(not(all(target_arch = "x86_64", unix)))]
     {
-        for bytecode in [&numeric, &equality] {
+        for bytecode in [&numeric, &equality, &callable] {
             assert_eq!(
                 BaselineJit::compile(bytecode).unwrap_err().kind(),
                 JitErrorKind::UnsupportedPlatform

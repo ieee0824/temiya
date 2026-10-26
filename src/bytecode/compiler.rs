@@ -8,8 +8,8 @@ use crate::{
 };
 
 use super::{
-    BindingKind, Bytecode, Constant, Instruction, ScopeBinding, ScopeDescriptor, ScopeKind,
-    VerifiedBytecode, VerifyError,
+    BindingKind, Bytecode, Constant, FunctionTemplate, Instruction, ScopeBinding, ScopeDescriptor,
+    ScopeKind, VerifiedBytecode, VerifyError,
 };
 
 /// AST-to-bytecode compiler for the portable baseline instruction set.
@@ -25,7 +25,7 @@ impl BytecodeCompiler {
     }
 
     /// Compiles a function body for a caller-prepared function Environment.
-    /// Parameter instantiation, calls, async and generators are not lowered here.
+    /// Parameter instantiation, async and generators are not lowered here.
     pub fn compile_function_body(function: &Function) -> Result<VerifiedBytecode, CompileError> {
         if !function.parameters.is_empty() || function.asynchronous || function.generator {
             return Err(CompileError::new(
@@ -303,6 +303,20 @@ impl Compiler {
                 self.load_name(name)?;
                 Ok(())
             }
+            ExprKind::Function(function) | ExprKind::Arrow(function) => {
+                let arrow = matches!(expression.kind, ExprKind::Arrow(_));
+                let template = self.function_template(function, arrow)?;
+                let index = self.pool(Constant::Function(std::rc::Rc::new(template)))?;
+                self.code.push(Instruction::CreateFunction(index));
+                Ok(())
+            }
+            ExprKind::MetaProperty { meta, property } if meta == "new" && property == "target" => {
+                if !self.constants.iter().any(|constant| matches!(constant, Constant::Scope(plan) if plan.kind == ScopeKind::Function)) {
+                    return Err(self.unsupported("new.target outside function", expression.span));
+                }
+                self.code.push(Instruction::LoadNewTarget);
+                Ok(())
+            }
             ExprKind::Call { .. } => self.chain_value(expression, ChainUse::Value),
             ExprKind::New { callee, arguments } => self.construct(callee, arguments),
             ExprKind::This => {
@@ -421,6 +435,88 @@ impl Compiler {
             }
             _ => Err(self.unsupported("expression", expression.span)),
         }
+    }
+
+    fn function_template(
+        &self,
+        function: &Function,
+        arrow: bool,
+    ) -> Result<FunctionTemplate, CompileError> {
+        if function.asynchronous || function.generator {
+            return Err(self.unsupported("async/generator function", function.span));
+        }
+        let parameters = function
+            .parameters
+            .iter()
+            .map(|parameter| {
+                if let ExprKind::Identifier(name) = &parameter.kind {
+                    Ok(JsString::from(name.as_str()))
+                } else {
+                    Err(self.unsupported("non-simple function parameter", parameter.span))
+                }
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let strict = self.strict || function.strict;
+        let mut compiler = Compiler::empty(strict);
+        match &function.body {
+            FunctionBody::Block(body) => {
+                let StmtKind::Block(statements) = &body.kind else {
+                    return Err(self.unsupported("function block", body.span));
+                };
+                let lexical = scope_bindings(statements, false, true)?;
+                if lexical
+                    .iter()
+                    .any(|binding| parameters.contains(&binding.name))
+                {
+                    return Err(
+                        self.unsupported("parameter/lexical binding conflict", function.span)
+                    );
+                }
+                let mut bindings = scope_bindings(statements, true, false)?;
+                for name in &parameters {
+                    if !bindings.iter().any(|binding| &binding.name == name) {
+                        bindings.push(ScopeBinding {
+                            name: name.clone(),
+                            kind: BindingKind::Var,
+                        });
+                    }
+                }
+                compiler.enter_scope(ScopeKind::Function, bindings)?;
+                if !compiler.block(statements)? {
+                    compiler.constant(Constant::Undefined)?;
+                    compiler.code.push(Instruction::Return);
+                }
+            }
+            FunctionBody::Expression(expression) => {
+                let mut bindings = vec![];
+                for name in &parameters {
+                    if !bindings
+                        .iter()
+                        .any(|binding: &ScopeBinding| &binding.name == name)
+                    {
+                        bindings.push(ScopeBinding {
+                            name: name.clone(),
+                            kind: BindingKind::Var,
+                        });
+                    }
+                }
+                compiler.enter_scope(ScopeKind::Function, bindings)?;
+                compiler.expression(expression)?;
+                compiler.code.push(Instruction::Return);
+            }
+        }
+        let name = match function.name.as_ref().map(|name| &name.kind) {
+            Some(ExprKind::Identifier(name)) => Some(JsString::from(name.as_str())),
+            None => None,
+            _ => return Err(self.unsupported("function name", function.span)),
+        };
+        Ok(FunctionTemplate {
+            name,
+            parameters,
+            arrow,
+            strict,
+            body: compiler.finish()?,
+        })
     }
 
     fn construct(&mut self, callee: &Expr, arguments: &[Expr]) -> Result<(), CompileError> {

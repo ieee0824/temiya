@@ -1,0 +1,214 @@
+{
+  "recorded_at": "2026-10-26T18:29:29.552Z",
+  "engine_revision": "3bae87f905f172f9dbc742a1acccb3fdeb72ee57",
+  "probe_revision": "3bae87f905f172f9dbc742a1acccb3fdeb72ee57",
+  "scope": "Standalone allocation requests only; actual pre-parsed literal evaluation, no timing claims. String-probe observations match preceding stored observation exactly.",
+  "toolchains": [
+    {
+      "toolchain": "stable",
+      "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)\nbinary: rustc\ncommit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67\ncommit-date: 2026-10-13\nhost: aarch64-unknown-linux-gnu\nrelease: 1.99.1\nLLVM version: 23.1.1",
+      "observation": {
+        "cases": [
+          {
+            "case": "decimal",
+            "current": {
+              "allocation_requests": 0,
+              "requested_bytes": 0
+            },
+            "reference": {
+              "allocation_requests": 10000,
+              "requested_bytes": 80000
+            },
+            "source": "42",
+            "validated": true
+          },
+          {
+            "case": "separated-decimal",
+            "current": {
+              "allocation_requests": 10000,
+              "requested_bytes": 80000
+            },
+            "reference": {
+              "allocation_requests": 10000,
+              "requested_bytes": 80000
+            },
+            "source": "4_2",
+            "validated": true
+          },
+          {
+            "case": "hexadecimal",
+            "current": {
+              "allocation_requests": 0,
+              "requested_bytes": 0
+            },
+            "reference": {
+              "allocation_requests": 10000,
+              "requested_bytes": 80000
+            },
+            "source": "0x2a",
+            "validated": true
+          },
+          {
+            "case": "separated-hexadecimal",
+            "current": {
+              "allocation_requests": 10000,
+              "requested_bytes": 80000
+            },
+            "reference": {
+              "allocation_requests": 10000,
+              "requested_bytes": 80000
+            },
+            "source": "0x2_a",
+            "validated": true
+          },
+          {
+            "case": "legacy-octal",
+            "current": {
+              "allocation_requests": 0,
+              "requested_bytes": 0
+            },
+            "reference": {
+              "allocation_requests": 10000,
+              "requested_bytes": 80000
+            },
+            "source": "052",
+            "validated": true
+          },
+          {
+            "case": "bigint",
+            "current": {
+              "allocation_requests": 20000,
+              "requested_bytes": 100000
+            },
+            "reference": {
+              "allocation_requests": 30000,
+              "requested_bytes": 180000
+            },
+            "source": "42n",
+            "validated": true
+          },
+          {
+            "case": "separated-bigint",
+            "current": {
+              "allocation_requests": 30000,
+              "requested_bytes": 180000
+            },
+            "reference": {
+              "allocation_requests": 30000,
+              "requested_bytes": 180000
+            },
+            "source": "4_2n",
+            "validated": true
+          }
+        ],
+        "iterations": 10000,
+        "scope": "Single-thread standalone allocation requests, including realloc. Current path evaluates a pre-parsed literal via ExpressionEvaluator. Parsing, Realm setup and reporting are excluded; not Engine throughput or RSS.",
+        "timing_instrumentation": false,
+        "warmup_iterations": 128
+      }
+    },
+    {
+      "toolchain": "1.85.0",
+      "rustc": "rustc 1.85.0 (4d91de4e4 2025-02-17)\nbinary: rustc\ncommit-hash: 4d91de4e48198da2e33413efdcd9cd2cc0c46688\ncommit-date: 2025-02-17\nhost: aarch64-unknown-linux-gnu\nrelease: 1.85.0\nLLVM version: 19.1.7",
+      "observation": {
+        "cases": [
+          {
+            "case": "decimal",
+            "current": {
+              "allocation_requests": 0,
+              "requested_bytes": 0
+            },
+            "reference": {
+              "allocation_requests": 10000,
+              "requested_bytes": 80000
+            },
+            "source": "42",
+            "validated": true
+          },
+          {
+            "case": "separated-decimal",
+            "current": {
+              "allocation_requests": 10000,
+              "requested_bytes": 80000
+            },
+            "reference": {
+              "allocation_requests": 10000,
+              "requested_bytes": 80000
+            },
+            "source": "4_2",
+            "validated": true
+          },
+          {
+            "case": "hexadecimal",
+            "current": {
+              "allocation_requests": 0,
+              "requested_bytes": 0
+            },
+            "reference": {
+              "allocation_requests": 10000,
+              "requested_bytes": 80000
+            },
+            "source": "0x2a",
+            "validated": true
+          },
+          {
+            "case": "separated-hexadecimal",
+            "current": {
+              "allocation_requests": 10000,
+              "requested_bytes": 80000
+            },
+            "reference": {
+              "allocation_requests": 10000,
+              "requested_bytes": 80000
+            },
+            "source": "0x2_a",
+            "validated": true
+          },
+          {
+            "case": "legacy-octal",
+            "current": {
+              "allocation_requests": 0,
+              "requested_bytes": 0
+            },
+            "reference": {
+              "allocation_requests": 10000,
+              "requested_bytes": 80000
+            },
+            "source": "052",
+            "validated": true
+          },
+          {
+            "case": "bigint",
+            "current": {
+              "allocation_requests": 20000,
+              "requested_bytes": 100000
+            },
+            "reference": {
+              "allocation_requests": 30000,
+              "requested_bytes": 180000
+            },
+            "source": "42n",
+            "validated": true
+          },
+          {
+            "case": "separated-bigint",
+            "current": {
+              "allocation_requests": 30000,
+              "requested_bytes": 180000
+            },
+            "reference": {
+              "allocation_requests": 30000,
+              "requested_bytes": 180000
+            },
+            "source": "4_2n",
+            "validated": true
+          }
+        ],
+        "iterations": 10000,
+        "scope": "Single-thread standalone allocation requests, including realloc. Current path evaluates a pre-parsed literal via ExpressionEvaluator. Parsing, Realm setup and reporting are excluded; not Engine throughput or RSS.",
+        "timing_instrumentation": false,
+        "warmup_iterations": 128
+      }
+    }
+  ]
+}

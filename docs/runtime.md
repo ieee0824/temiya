@@ -4,6 +4,10 @@
 UTF-16 code units (including lone surrogates), Number uses binary64, BigInt is
 arbitrary precision, and Symbol and Object comparisons use identity.
 
+Numeric literal evaluation borrows separator-free spelling rather than making
+a normalization buffer; see [numeric literal evaluation](numeric-literal-evaluation.md)
+for the allocation probe and its limits.
+
 `Value` exposes the fundamental abstract operations needed by the interpreter:
 `same_value`, `same_value_zero`, `to_boolean`, `to_primitive`, `to_number`,
 `to_numeric`, `to_js_string`, and `to_bigint`. These low-level conversions use

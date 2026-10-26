@@ -5,7 +5,7 @@ FROM rust:1.99.1-slim AS rust-toolchain
 
 FROM node:22-bookworm-slim AS node-toolchain
 
-FROM izanagi-vm-debian:0.2.4
+FROM izanagi-vm-debian:0.2.5
 
 COPY --from=rust-toolchain /usr/local/cargo /usr/local/cargo
 COPY --from=rust-toolchain /usr/local/rustup /usr/local/rustup

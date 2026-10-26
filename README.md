@@ -39,7 +39,7 @@ corresponding public APIs are stabilized.
 
 Temiya uses [Izanagi](https://github.com/ieee0824/izanagi) with Docker on macOS.
 The development image uses Debian Trixie and pins its base to
-`izanagi-vm-debian:0.2.4` so an Izanagi update cannot silently change the base
+`izanagi-vm-debian:0.2.5` so an Izanagi update cannot silently change the base
 OS or libc. Its glibc agent is built from the matching Izanagi source revision.
 The project is mounted read-write so sandboxed development agents can edit the
 working tree. Cargo artifacts are written to the container's temporary
@@ -53,8 +53,9 @@ the image or mounted from the host.
 `codex` runs with `--no-daemon` inside the sandbox because the shared app-server
 cannot retain its PID-managed background process under the container process
 model. The unwrapped entry point is available as `codex-daemon` for diagnostics.
-`cargo` and `rustc` wrappers restore the pinned toolchain environment because
-Izanagi deliberately starts commands with a minimal environment.
+Izanagi's environment policy preserves `CARGO_HOME` and `RUSTUP_HOME` from the
+pinned development image for exec and interactive shells. Minimal `cargo` and
+`rustc` wrappers restore their PATH until upstream image-PATH inheritance works.
 
 Build the version-matched Debian base and local development image once. The
 Izanagi source is expected at `../izanagi`; set `IZANAGI_SOURCE` to override it:

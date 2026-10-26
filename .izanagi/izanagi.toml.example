@@ -6,6 +6,9 @@ backend = "apple-container"
 tracer = "none"
 require_auth = true
 
+[sandbox.environment]
+inherit = ["CARGO_HOME", "RUSTUP_HOME"]
+
 [sandbox.apple_container]
 runtime = "docker"
 image = "temiya-dev:latest"

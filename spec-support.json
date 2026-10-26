@@ -1,0 +1,42 @@
+{
+  "schema": 1,
+  "target": {
+    "standard": "ECMA-262",
+    "edition": 17,
+    "year": 2026,
+    "published": "2026-06",
+    "url": "https://tc39.es/ecma262/2026/"
+  },
+  "proposal_snapshot": {
+    "repository": "https://github.com/tc39/proposals",
+    "revision": "07002d4d999558b9c7326f98e5134e0222b13808",
+    "date": "2026-10-14"
+  },
+  "features": [
+    {"id":"language.lexical","area":"ECMA-262 core","status":"implemented","reference":"clauses 11-12","tests":["tests/identifiers.rs","tests/numeric_literals.rs","tests/string_literals.rs","tests/template_literals.rs"],"rationale":"UTF-16-aware lexical goals and literal families are covered."},
+    {"id":"language.expressions","area":"ECMA-262 core","status":"implemented","reference":"clause 13","tests":["tests/expression_parser.rs","tests/expression_evaluation.rs"],"rationale":"Expression parsing and reference evaluation are covered."},
+    {"id":"language.statements","area":"ECMA-262 core","status":"implemented","reference":"clause 14","tests":["tests/statement_parser.rs","tests/statement_evaluation.rs"],"rationale":"Declarations, control flow, and abrupt completion are covered."},
+    {"id":"language.functions-classes","area":"ECMA-262 core","status":"implemented","reference":"clauses 15-16","tests":["tests/declarations.rs","tests/functions_runtime.rs"],"rationale":"Functions, arrows, methods, construction, and class syntax are covered."},
+    {"id":"language.modules","area":"ECMA-262 core","status":"implemented","reference":"clause 16","tests":["tests/module_syntax.rs","tests/script_module_pipeline.rs"],"rationale":"Static module syntax, linking, cycles, live bindings, and top-level await are covered."},
+    {"id":"runtime.execution","area":"ECMA-262 core","status":"implemented","reference":"clauses 8-10","tests":["tests/environments.rs","tests/execution_contexts.rs"],"rationale":"Execution contexts, realms, and environment records are covered."},
+    {"id":"runtime.generators-async-promises","area":"ECMA-262 core","status":"implemented","reference":"clauses 15 and 27","tests":["tests/generator_async_runtime.rs","tests/promise_job_queue.rs"],"rationale":"Suspension, await, promise reactions, and jobs are covered."},
+    {"id":"builtins.object-function-reflect-proxy","area":"ECMA-262 built-ins","status":"implemented","reference":"clauses 20, 28","tests":["tests/object_function_reflect.rs","tests/proxy.rs"],"rationale":"Fundamental reflection and Proxy invariants are covered."},
+    {"id":"builtins.indexed-collections","area":"ECMA-262 built-ins","status":"implemented","reference":"clauses 23-25","tests":["tests/array_buffer_views.rs","tests/collections.rs"],"rationale":"Array, buffers, typed views, Map/Set, and weak-key behavior are covered."},
+    {"id":"builtins.text-numeric-date-json","area":"ECMA-262 built-ins","status":"implemented","reference":"clauses 21-22, 27","tests":["tests/string_regexp.rs","tests/number_bigint_math.rs","tests/date_json_intl.rs"],"rationale":"Core text, numeric, Date, and JSON behavior is covered."},
+    {"id":"builtins.weakref-finalization","area":"ECMA-262 built-ins","status":"unimplemented","reference":"clause 26","tests":["tests/gc_weak.rs"],"rationale":"Collector primitives exist, but JavaScript WeakRef and FinalizationRegistry intrinsics are not exposed."},
+    {"id":"builtins.shared-memory-atomics","area":"ECMA-262 built-ins","status":"unimplemented","reference":"clauses 25 and 28","tests":[],"rationale":"SharedArrayBuffer and Atomics are not implemented."},
+    {"id":"annex-b.html-comments","area":"Annex B","status":"implemented","reference":"B.1.3","tests":["tests/comment_goals.rs"],"rationale":"HTML comments are opt-in for Script source only."},
+    {"id":"annex-b.legacy-literals","area":"Annex B","status":"implemented","reference":"B.1.1-B.1.2","tests":["tests/numeric_literals.rs","tests/string_literals.rs"],"rationale":"Legacy numeric and string escape forms retain strict-mode distinctions."},
+    {"id":"annex-b.block-functions","area":"Annex B","status":"unimplemented","reference":"B.3.2-B.3.3","tests":[],"rationale":"Web-legacy block-level function semantics are not enabled."},
+    {"id":"annex-b.regexp-legacy","area":"Annex B","status":"unimplemented","reference":"B.2.4-B.2.5","tests":[],"rationale":"Legacy RegExp compile and static capture properties are absent."},
+    {"id":"host.clock","area":"host hooks","status":"implemented","reference":"host-defined Date time value","tests":["tests/date_json_intl.rs"],"rationale":"Date.now and construction use an injected clock."},
+    {"id":"host.module-resolution","area":"host hooks","status":"implemented","reference":"HostLoadImportedModule boundary","tests":["tests/script_module_pipeline.rs"],"rationale":"ModuleGraph uses an injected source resolver with deterministic caching."},
+    {"id":"host.dynamic-import","area":"host hooks","status":"unimplemented","reference":"HostLoadImportedModule for import()","tests":[],"rationale":"Dynamic import parsing exists without an embedding loader hook."},
+    {"id":"host.intl","area":"host hooks","status":"out-of-scope","reference":"ECMA-402","tests":["tests/date_json_intl.rs"],"rationale":"Intl is an explicit unconfigured host boundary."},
+    {"id":"host.web-platform","area":"host hooks","status":"out-of-scope","reference":"WHATWG host APIs","tests":[],"rationale":"DOM, fetch, timers, and browser event loops are embedding concerns."},
+    {"id":"proposal.explicit-resource-management","area":"post-2026 proposal","status":"unimplemented","reference":"TC39 Stage 4, expected 2027","tests":[],"rationale":"using/await using and DisposableStack are not implemented."},
+    {"id":"proposal.iterator-chunking","area":"post-2026 proposal","status":"unimplemented","reference":"TC39 Stage 4, expected 2027","tests":[],"rationale":"Iterator chunking helpers are not implemented."},
+    {"id":"proposal.iterator-includes-join","area":"post-2026 proposal","status":"unimplemented","reference":"TC39 Stage 4, expected 2027","tests":[],"rationale":"Iterator includes and join helpers are not implemented."},
+    {"id":"proposal.stage-0-to-3","area":"active proposals","status":"out-of-scope","reference":"pinned TC39 proposal snapshot","tests":[],"rationale":"Non-Stage-4 proposals are excluded until explicitly selected by an issue."}
+  ]
+}

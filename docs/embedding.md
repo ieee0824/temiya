@@ -30,3 +30,10 @@ microtask checkpoint, and unhandled Promise errors can be observed with
 owned `TemiyaError` handles. The ABI catches Rust panics and never lets them
 unwind into C. `examples/embed.c` demonstrates version checking, compilation,
 evaluation, and cleanup on every exit path.
+
+All handles are checked against a type-aware live-handle registry before use.
+Null cleanup succeeds, while stale, wrong-type, and double-freed handles return
+`TEMIYA_INVALID_ARGUMENT` without being dereferenced. C embedders can expose a
+reentrant unary number callback with `temiya_realm_define_number_function`;
+callback failures become JavaScript exceptions. `scripts/check-c-abi` compiles
+the public header/example and compares exported symbols with the ABI allowlist.

@@ -14,6 +14,20 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  c-abi:
+    name: C ABI header, example, and symbols
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Install stable Rust
+        run: rustup toolchain install stable --profile minimal
+      - name: Verify C ABI
+        run: bash scripts/check-c-abi
+
   quality:
     name: Formatting and Clippy
     runs-on: ubuntu-latest

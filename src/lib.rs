@@ -8,6 +8,7 @@ pub mod ast;
 pub mod benchmark;
 pub mod differential;
 pub mod embedding;
+pub mod ffi;
 pub mod gc;
 pub mod lexer;
 pub mod parser;

@@ -1,0 +1,89 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  echo "usage: scripts/release check|package vX.Y.Z [output-directory]" >&2
+  exit 2
+}
+
+command_name=${1:-}
+release_tag=${2:-}
+[[ "$command_name" == "check" || "$command_name" == "package" ]] || usage
+[[ "$release_tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]] || usage
+
+command -v cargo >/dev/null
+command -v git >/dev/null
+
+package_id=$(cargo pkgid -p temiya)
+package_version=${package_id##*@}
+target_directory=${CARGO_TARGET_DIR:-target}
+[[ "$release_tag" == "v$package_version" ]] || {
+  echo "tag $release_tag does not match Cargo version $package_version" >&2
+  exit 1
+}
+
+git rev-parse --verify "$release_tag^{commit}" >/dev/null
+tag_commit=$(git rev-parse "$release_tag^{commit}")
+head_commit=$(git rev-parse HEAD)
+[[ "$tag_commit" == "$head_commit" ]] || {
+  echo "tag $release_tag does not point at HEAD" >&2
+  exit 1
+}
+
+cargo fmt --all --check
+cargo clippy --locked --all-targets --all-features -- -D warnings
+cargo test --locked --all-features
+cargo package --locked
+
+[[ "$command_name" == "package" ]] || exit 0
+output_directory=${3:-}
+[[ -n "$output_directory" ]] || usage
+mkdir -p "$output_directory"
+output_directory=$(cd "$output_directory" && pwd)
+
+export SOURCE_DATE_EPOCH
+SOURCE_DATE_EPOCH=$(git show -s --format=%ct "$tag_commit")
+export CARGO_PROFILE_RELEASE_DEBUG=false
+export CARGO_PROFILE_RELEASE_STRIP=symbols
+cargo build --release --locked
+
+cp "$target_directory/package/temiya-$package_version.crate" "$output_directory/"
+native_directory=$(mktemp -d)
+trap 'rm -rf "$native_directory"' EXIT
+cp include/temiya.h "$target_directory/release/libtemiya.a" \
+  "$target_directory/release/libtemiya.so" "$native_directory/"
+tar --sort=name --mtime="@$SOURCE_DATE_EPOCH" --owner=0 --group=0 --numeric-owner \
+  -czf "$output_directory/temiya-$package_version-x86_64-unknown-linux-gnu.tar.gz" \
+  -C "$native_directory" .
+
+sbom="$output_directory/temiya-$package_version-sbom.spdx"
+created=$(date -u -d "@$SOURCE_DATE_EPOCH" '+%Y-%m-%dT%H:%M:%SZ')
+{
+  echo 'SPDXVersion: SPDX-2.3'
+  echo 'DataLicense: CC0-1.0'
+  echo 'SPDXID: SPDXRef-DOCUMENT'
+  echo "DocumentName: temiya-$package_version"
+  echo "DocumentNamespace: https://github.com/ieee0824/temiya/releases/tag/$release_tag#spdx-$tag_commit"
+  echo 'Creator: Tool: scripts/release'
+  echo "Created: $created"
+  awk '
+    /^\[\[package\]\]$/ { name = ""; version = "" }
+    /^name = / { name = $3; gsub(/"/, "", name) }
+    /^version = / {
+      version = $3; gsub(/"/, "", version)
+      print ""
+      print "PackageName: " name
+      print "SPDXID: SPDXRef-Package-" name "-" version
+      print "PackageVersion: " version
+      print "PackageDownloadLocation: NOASSERTION"
+      print "FilesAnalyzed: false"
+    }
+  ' Cargo.lock
+} >"$sbom"
+
+(
+  cd "$output_directory"
+  sha256sum "temiya-$package_version.crate" \
+    "temiya-$package_version-x86_64-unknown-linux-gnu.tar.gz" \
+    "temiya-$package_version-sbom.spdx" >SHA256SUMS
+)

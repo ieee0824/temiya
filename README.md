@@ -53,6 +53,8 @@ The portable instruction format and mandatory verifier are documented in
 [bytecode](docs/bytecode.md).
 Future optimizing-tier, deoptimization, OSR, GC, and debugger invariants are
 specified in the [tiering design](docs/tiering.md).
+Versioning, reproducible artifacts, SBOMs, checksums, and attestations are
+described in the [release process](docs/releasing.md).
 
 ## Development
 

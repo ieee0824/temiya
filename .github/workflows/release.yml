@@ -1,0 +1,52 @@
+name: Reproducible release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to verify
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - name: Check out tagged source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+          ref: ${{ inputs.tag || github.ref }}
+      - name: Install stable Rust
+        run: rustup toolchain install stable --profile minimal --component clippy,rustfmt
+      - name: Record toolchain
+        run: |
+          rustc --version --verbose
+          cargo --version --verbose
+      - name: Build and verify artifacts
+        env:
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+        run: scripts/release package "$RELEASE_TAG" artifacts
+      - name: Attest release artifacts
+        uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3
+        with:
+          subject-path: artifacts/*
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: temiya-${{ inputs.tag || github.ref_name }}
+          path: artifacts/*
+          if-no-files-found: error
+          compression-level: 0

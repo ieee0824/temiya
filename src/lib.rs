@@ -11,6 +11,7 @@ pub mod parser;
 pub mod runtime;
 pub mod semantics;
 pub mod source;
+pub mod test262;
 
 /// Configuration used when constructing an [`Engine`].
 #[derive(Clone, Debug, Default, Eq, PartialEq)]

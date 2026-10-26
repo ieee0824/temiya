@@ -11,8 +11,10 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use num_bigint::BigInt;
 
+mod environment;
 mod object;
 
+pub use environment::{Environment, EnvironmentKind, ObjectEnvironmentOptions, ThisBindingStatus};
 pub use object::{PropertyDescriptor, PropertyKey, is_compatible_property_descriptor};
 
 /// A JavaScript String value represented as an exact sequence of UTF-16 code units.
@@ -141,6 +143,15 @@ impl RuntimeError {
         }
     }
 
+    /// Creates a ReferenceError completion.
+    #[must_use]
+    pub fn reference_error(message: impl Into<String>) -> Self {
+        Self {
+            kind: RuntimeErrorKind::ReferenceError,
+            message: message.into(),
+        }
+    }
+
     /// Returns the error category.
     #[must_use]
     pub fn kind(&self) -> RuntimeErrorKind {
@@ -169,6 +180,8 @@ pub enum RuntimeErrorKind {
     TypeError,
     /// Text could not be parsed using the required ECMAScript grammar.
     SyntaxError,
+    /// A binding is absent or cannot yet be accessed.
+    ReferenceError,
 }
 
 impl fmt::Display for RuntimeErrorKind {
@@ -176,6 +189,7 @@ impl fmt::Display for RuntimeErrorKind {
         match self {
             Self::TypeError => formatter.write_str("TypeError"),
             Self::SyntaxError => formatter.write_str("SyntaxError"),
+            Self::ReferenceError => formatter.write_str("ReferenceError"),
         }
     }
 }

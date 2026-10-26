@@ -23,3 +23,12 @@ descriptor transitions enforce the ECMAScript non-configurable and non-writable
 invariants. Own keys are returned as sorted array indices, insertion-ordered
 strings, then insertion-ordered symbols. Prototype changes reject cycles and
 respect non-extensibility.
+
+`Environment` represents Declarative, Object, Global, Function, and Module
+Environment Records with explicit outer links. Declarative bindings retain TDZ,
+mutability, strictness, and deletability state. Object records support `with`
+visibility through a Realm-supplied `Symbol.unscopables` key. Global records
+separately track lexical and `var` declarations and expose declaration-conflict
+checks. Function records own `this`, function-object, and `new.target` state;
+module import bindings are immutable live references without performing module
+linking.

@@ -37,6 +37,8 @@ Collector-independent handles, explicit roots, and tracing rules are described
 in [garbage collector contracts](docs/gc.md).
 The pinned conformance corpus and metadata rules are documented in the
 [Test262 harness](docs/test262.md).
+Cross-engine result normalization and reproducer reduction are documented in
+[differential testing](docs/differential-testing.md).
 
 ## Development
 

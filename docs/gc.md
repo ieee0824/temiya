@@ -45,3 +45,8 @@ no finalizer-at-process-exit guarantee is implied.
 and reusable slots, reporting stale-generation and cross-heap edges immediately.
 `Heap::diagnostics` exposes live/root/free counts plus cumulative collections,
 reclamation, and peak live allocations for tests and leak investigations.
+
+The current Engine's ownership graph, selected migration representation,
+rooting protocol, public retention probe and implementation gates are documented
+in [runtime ownership migration](runtime-ownership.md). The strict probe currently
+fails on six cases; these collector contracts do not imply runtime reclamation.

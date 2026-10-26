@@ -3,7 +3,12 @@
 use crate::{lexer::Span, source::SourceText};
 
 mod functions;
+mod modules;
 pub use functions::{Class, ClassElement, ClassElementKind, Function, FunctionBody, MethodKind};
+pub use modules::{
+    ExportDeclaration, ExportKind, ExportSpecifier, ImportAttribute, ImportDeclaration, ImportName,
+    ImportSpecifier, ModuleRequest,
+};
 
 /// An owned expression with a half-open UTF-8 byte span in its original source.
 #[derive(Clone, Debug, PartialEq)]
@@ -20,6 +25,13 @@ pub struct Expr {
 pub enum ExprKind {
     /// A decoded identifier name (without Unicode normalization).
     Identifier(String),
+    /// A dynamic import call; evaluated at runtime, not a static request.
+    ImportCall {
+        /// Module specifier expression.
+        specifier: Box<Expr>,
+        /// Optional import options expression.
+        options: Option<Box<Expr>>,
+    },
     /// A decoded private identifier, excluding the leading `#`.
     PrivateIdentifier(String),
     /// A function expression.
@@ -251,6 +263,9 @@ impl Expr {
 
     fn children(&self) -> Vec<&Expr> {
         match &self.kind {
+            ExprKind::ImportCall { specifier, options } => std::iter::once(specifier.as_ref())
+                .chain(options.iter().map(Box::as_ref))
+                .collect(),
             ExprKind::Identifier(_)
             | ExprKind::PrivateIdentifier(_)
             | ExprKind::Literal(_)
@@ -387,6 +402,10 @@ pub struct Stmt {
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum StmtKind {
+    /// A top-level static import in Module source.
+    ImportDeclaration(Box<ImportDeclaration>),
+    /// A top-level export in Module source.
+    ExportDeclaration(Box<ExportDeclaration>),
     /// A function declaration.
     FunctionDeclaration(Box<Function>),
     /// A class declaration.
@@ -622,6 +641,8 @@ impl Stmt {
         let expression = |expr: &Expr| validate_expr(source, self.span, expr);
         let statement = |stmt: &Stmt| validate_stmt(source, self.span, stmt);
         match &self.kind {
+            StmtKind::ImportDeclaration(import) => import.validate(source, self.span)?,
+            StmtKind::ExportDeclaration(export) => export.validate(source, self.span)?,
             StmtKind::FunctionDeclaration(function) => function.validate(source, self.span)?,
             StmtKind::ClassDeclaration(class) => class.validate(source, self.span)?,
             StmtKind::Empty | StmtKind::Break(_) | StmtKind::Continue(_) | StmtKind::Debugger => {}

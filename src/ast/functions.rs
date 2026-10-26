@@ -155,6 +155,16 @@ impl Stmt {
     pub(super) fn expression_roots(&self) -> Vec<&Expr> {
         let mut expressions = vec![];
         match &self.kind {
+            StmtKind::ImportDeclaration(import) => {
+                expressions.extend(import.specifiers.iter().map(|s| &s.local))
+            }
+            StmtKind::ExportDeclaration(export) => match &export.kind {
+                ExportKind::Declaration(stmt) | ExportKind::DefaultDeclaration(stmt) => {
+                    expressions.extend(stmt.expression_roots())
+                }
+                ExportKind::DefaultExpression(expr) => expressions.push(expr),
+                _ => {}
+            },
             StmtKind::Empty | StmtKind::Break(_) | StmtKind::Continue(_) | StmtKind::Debugger => {}
             StmtKind::Expression(expr) | StmtKind::Throw(expr) => expressions.push(expr),
             StmtKind::Return(value) => expressions.extend(value.iter()),

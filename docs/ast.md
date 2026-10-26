@@ -22,8 +22,8 @@ the source-body parser. `ExprKind` and `StmtKind` are non-exhaustive. New syntax
 should add an explicit variant with
 owned children and spans, extend structural validation and traversal, and add
 boundary and error tests. Function, arrow, method, class, class element, binding
-pattern, and declaration nodes now retain owned data and ranges. Module nodes
-will be introduced with their parser work; this is not a claim that all ECMAScript syntax is
+pattern, declaration, static import/export, module request, and attribute nodes
+retain owned data and ranges; this is not a claim that all ECMAScript syntax is
 implemented. Operators retain owned spellings and are validated by the parser.
 Shared/interned names, arenas, serialization formats, and stable AST APIs are
 future decisions. Syntax ownership remains independent of runtime GC ownership.

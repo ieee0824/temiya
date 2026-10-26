@@ -5,8 +5,8 @@ use std::{cell::RefCell, rc::Rc};
 use super::{
     ArrayBuffer, ArrayObject, DataView, DateObject, HostHooks, IntrinsicId, IntrinsicRegistry,
     JsString, Json, MapObject, Math, NumberObject, Object, PropertyDescriptor, PropertyKey,
-    ProxyObject, RegExp, RuntimeError, RuntimeResult, SetObject, StringObject, TypedArray, Value,
-    WeakMapObject, WeakSetObject, parse_float, parse_int,
+    ProxyObject, RegExp, RuntimeError, RuntimeResult, SetObject, TypedArray, Value, WeakMapObject,
+    WeakSetObject, parse_float, parse_int,
 };
 
 pub(super) fn initialize(
@@ -17,7 +17,7 @@ pub(super) fn initialize(
     install_function(intrinsics)?;
     install_reflect(intrinsics)
         .and_then(|()| install_indexed(intrinsics))
-        .and_then(|()| install_string_regexp(intrinsics))
+        .and_then(|()| install_regexp(intrinsics))
         .and_then(|()| install_numeric(intrinsics))
         .and_then(|()| install_collections(intrinsics))
         .and_then(|()| install_date_json(intrinsics, host_hooks))
@@ -380,21 +380,7 @@ fn bit_count(value: Option<&Value>) -> RuntimeResult<u64> {
     Ok(value as u64)
 }
 
-fn install_string_regexp(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {
-    let string = intrinsics.get(IntrinsicId::String);
-    let string_prototype = intrinsics.get(IntrinsicId::StringPrototype);
-    string.set_native_call(|_, arguments| {
-        value_arg(arguments.first())
-            .to_js_string()
-            .map(Value::String)
-    });
-    string.set_native_construct(move |arguments, _| {
-        let value = value_arg(arguments.first()).to_js_string()?;
-        let object = StringObject::new(value).object();
-        object.set_prototype(Some(string_prototype.clone()));
-        Ok(object)
-    });
-
+fn install_regexp(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {
     let regexp = intrinsics.get(IntrinsicId::RegExp);
     let regexp_prototype = intrinsics.get(IntrinsicId::RegExpPrototype);
     let create = move |arguments: &[Value]| {

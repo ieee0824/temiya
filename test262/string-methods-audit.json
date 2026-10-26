@@ -1,0 +1,1110 @@
+{
+  "revision": "d53ebc8b1931d9f1541e43d59650776e4b766248",
+  "temiya_revision": "13cea252ecf9e2f846b16f9e13a5602e2e52ed86",
+  "timeout_ms": 30000,
+  "counts": {
+    "pass": 123,
+    "fail": 43,
+    "timeout": 0
+  },
+  "passing_variants": 246,
+  "unexecuted_variants": 43,
+  "note": "All 166 files in the six directories were attempted with their original harness. Each file stops at its first failing variant; 43 remaining variants are unexecuted, not passes. Failure tracking identifies currently observed blockers, not a claim that no later failure exists.",
+  "reproduce": "For each results[].path, strip test/built-ins/String/prototype/ and set TEST262_CASE to that name; run TEST262_DIR=<pinned checkout> cargo test --locked --test string_methods pinned_test262_string_methods -- --ignored --nocapture.",
+  "results": [
+    {
+      "path": "test/built-ins/String/prototype/at/index-argument-tointeger.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/at/index-non-numeric-argument-tointeger-invalid.js",
+      "status": "fail",
+      "passing_variants": 0,
+      "failure": "test/built-ins/String/prototype/at/index-non-numeric-argument-tointeger-invalid.js Sloppy evaluate: Exception { kind: ThrownValue, message: \"JavaScript throw completion\", thrown: Some(ValueHandle { engine_id: 1, realm_id: 1, value: Object(Object { identity: 162, .. }) }) }",
+      "blocked_by": "Symbol constructor is a placeholder",
+      "tracking": [
+        204
+      ]
+    },
+    {
+      "path": "test/built-ins/String/prototype/at/index-non-numeric-argument-tointeger.js",
+      "status": "fail",
+      "passing_variants": 0,
+      "failure": "test/built-ins/String/prototype/at/index-non-numeric-argument-tointeger.js Sloppy evaluate: Exception { kind: TypeError, message: \"cannot convert object to a primitive\", thrown: None }",
+      "blocked_by": "JavaScript function / constructed prototype linkage",
+      "tracking": [
+        210,
+        202
+      ]
+    },
+    {
+      "path": "test/built-ins/String/prototype/at/length.js",
+      "status": "fail",
+      "passing_variants": 0,
+      "failure": "\nrunning 1 test\ntest pinned_test262_string_methods ... FAILED\n\nfailures:\n\nfailures:\n    pinned_test262_string_methods\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.22s\n\n\nthread 'pinned_test262_string_methods' (299834) panicked at tests/string_methods.rs:275:41:\nharness propertyHelper.js evaluate: Exception { kind: TypeError, message: \"value is not callable\", thrown: None }\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n",
+      "blocked_by": "Object.prototype methods / propertyHelper dependencies",
+      "tracking": [
+        209,
+        202,
+        146
+      ]
+    },
+    {
+      "path": "test/built-ins/String/prototype/at/name.js",
+      "status": "fail",
+      "passing_variants": 0,
+      "failure": "\nrunning 1 test\ntest pinned_test262_string_methods ... FAILED\n\nfailures:\n\nfailures:\n    pinned_test262_string_methods\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.17s\n\n\nthread 'pinned_test262_string_methods' (299844) panicked at tests/string_methods.rs:275:41:\nharness propertyHelper.js evaluate: Exception { kind: TypeError, message: \"value is not callable\", thrown: None }\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n",
+      "blocked_by": "Object.prototype methods / propertyHelper dependencies",
+      "tracking": [
+        209,
+        202,
+        146
+      ]
+    },
+    {
+      "path": "test/built-ins/String/prototype/at/prop-desc.js",
+      "status": "fail",
+      "passing_variants": 0,
+      "failure": "\nrunning 1 test\ntest pinned_test262_string_methods ... FAILED\n\nfailures:\n\nfailures:\n    pinned_test262_string_methods\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.21s\n\n\nthread 'pinned_test262_string_methods' (299850) panicked at tests/string_methods.rs:275:41:\nharness propertyHelper.js evaluate: Exception { kind: TypeError, message: \"value is not callable\", thrown: None }\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n",
+      "blocked_by": "Object.prototype methods / propertyHelper dependencies",
+      "tracking": [
+        209,
+        202,
+        146
+      ]
+    },
+    {
+      "path": "test/built-ins/String/prototype/at/return-abrupt-from-this.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/at/returns-code-unit.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/at/returns-item-relative-index.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/at/returns-item.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/at/returns-undefined-for-out-of-range-index.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/charAt/S15.5.4.4_A1.1.js",
+      "status": "fail",
+      "passing_variants": 0,
+      "failure": "test/built-ins/String/prototype/charAt/S15.5.4.4_A1.1.js Sloppy evaluate: Exception { kind: ReferenceError, message: \"eval is not defined\", thrown: None }",
+      "blocked_by": "eval is absent",
+      "tracking": [
+        169
+      ]
+    },
+    {
+      "path": "test/built-ins/String/prototype/charAt/S15.5.4.4_A10.js",
+      "status": "fail",
+      "passing_variants": 0,
+      "failure": "\nrunning 1 test\ntest pinned_test262_string_methods ... FAILED\n\nfailures:\n\nfailures:\n    pinned_test262_string_methods\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.16s\n\n\nthread 'pinned_test262_string_methods' (299906) panicked at tests/string_methods.rs:275:41:\nharness propertyHelper.js evaluate: Exception { kind: TypeError, message: \"value is not callable\", thrown: None }\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n",
+      "blocked_by": "Object.prototype methods / propertyHelper dependencies",
+      "tracking": [
+        209,
+        202,
+        146
+      ]
+    },
+    {
+      "path": "test/built-ins/String/prototype/charAt/S15.5.4.4_A11.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/charAt/S15.5.4.4_A1_T1.js",
+      "status": "fail",
+      "passing_variants": 0,
+      "failure": "test/built-ins/String/prototype/charAt/S15.5.4.4_A1_T1.js Sloppy evaluate: Exception { kind: ThrownValue, message: \"JavaScript throw completion\", thrown: Some(ValueHandle { engine_id: 1, realm_id: 1, value: Object(Object { identity: 159, .. }) }) }",
+      "blocked_by": "Object constructor primitive boxing and wrapper methods",
+      "tracking": [
+        202,
+        203,
+        225
+      ]
+    },
+    {
+      "path": "test/built-ins/String/prototype/charAt/S15.5.4.4_A1_T10.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/charAt/S15.5.4.4_A1_T2.js",
+      "status": "fail",
+      "passing_variants": 0,
+      "failure": "test/built-ins/String/prototype/charAt/S15.5.4.4_A1_T2.js Sloppy evaluate: Exception { kind: ThrownValue, message: \"JavaScript throw completion\", thrown: Some(ValueHandle { engine_id: 1, realm_id: 1, value: Object(Object { identity: 159, .. }) }) }",
+      "blocked_by": "Boolean constructor/wrapper methods",
+      "tracking": [
+        203
+      ]
+    },
+    {
+      "path": "test/built-ins/String/prototype/charAt/S15.5.4.4_A1_T4.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/charAt/S15.5.4.4_A1_T5.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/charAt/S15.5.4.4_A1_T6.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/charAt/S15.5.4.4_A1_T7.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/charAt/S15.5.4.4_A1_T8.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/charAt/S15.5.4.4_A1_T9.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/charAt/S15.5.4.4_A2.js",
+      "status": "fail",
+      "passing_variants": 0,
+      "failure": "test/built-ins/String/prototype/charAt/S15.5.4.4_A2.js Sloppy evaluate: Exception { kind: TypeError, message: \"cannot convert object to a primitive\", thrown: None }",
+      "blocked_by": "JavaScript function / constructed prototype linkage",
+      "tracking": [
+        210,
+        202
+      ]
+    },
+    {
+      "path": "test/built-ins/String/prototype/charAt/S15.5.4.4_A3.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/charAt/S15.5.4.4_A4_T1.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/charAt/S15.5.4.4_A4_T2.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/charAt/S15.5.4.4_A4_T3.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/charAt/S15.5.4.4_A5.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/charAt/S15.5.4.4_A6.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/charAt/S15.5.4.4_A7.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/charAt/S15.5.4.4_A8.js",
+      "status": "fail",
+      "passing_variants": 0,
+      "failure": "test/built-ins/String/prototype/charAt/S15.5.4.4_A8.js Sloppy evaluate: Exception { kind: TypeError, message: \"value is not callable\", thrown: None }",
+      "blocked_by": "Object.prototype methods / propertyHelper dependencies",
+      "tracking": [
+        209,
+        202,
+        146
+      ]
+    },
+    {
+      "path": "test/built-ins/String/prototype/charAt/S15.5.4.4_A9.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/charAt/S9.4_A1.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/charAt/S9.4_A2.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/charAt/name.js",
+      "status": "fail",
+      "passing_variants": 0,
+      "failure": "\nrunning 1 test\ntest pinned_test262_string_methods ... FAILED\n\nfailures:\n\nfailures:\n    pinned_test262_string_methods\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.18s\n\n\nthread 'pinned_test262_string_methods' (300063) panicked at tests/string_methods.rs:275:41:\nharness propertyHelper.js evaluate: Exception { kind: TypeError, message: \"value is not callable\", thrown: None }\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n",
+      "blocked_by": "Object.prototype methods / propertyHelper dependencies",
+      "tracking": [
+        209,
+        202,
+        146
+      ]
+    },
+    {
+      "path": "test/built-ins/String/prototype/charAt/not-a-constructor.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/charAt/pos-coerce-err.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/charAt/pos-coerce-string.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/charAt/pos-rounding.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/charAt/this-value-not-obj-coercible.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/charCodeAt/S15.5.4.5_A1.1.js",
+      "status": "fail",
+      "passing_variants": 0,
+      "failure": "test/built-ins/String/prototype/charCodeAt/S15.5.4.5_A1.1.js Sloppy evaluate: Exception { kind: ReferenceError, message: \"eval is not defined\", thrown: None }",
+      "blocked_by": "eval is absent",
+      "tracking": [
+        169
+      ]
+    },
+    {
+      "path": "test/built-ins/String/prototype/charCodeAt/S15.5.4.5_A10.js",
+      "status": "fail",
+      "passing_variants": 0,
+      "failure": "\nrunning 1 test\ntest pinned_test262_string_methods ... FAILED\n\nfailures:\n\nfailures:\n    pinned_test262_string_methods\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.25s\n\n\nthread 'pinned_test262_string_methods' (300112) panicked at tests/string_methods.rs:275:41:\nharness propertyHelper.js evaluate: Exception { kind: TypeError, message: \"value is not callable\", thrown: None }\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n",
+      "blocked_by": "Object.prototype methods / propertyHelper dependencies",
+      "tracking": [
+        209,
+        202,
+        146
+      ]
+    },
+    {
+      "path": "test/built-ins/String/prototype/charCodeAt/S15.5.4.5_A11.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/charCodeAt/S15.5.4.5_A1_T1.js",
+      "status": "fail",
+      "passing_variants": 0,
+      "failure": "test/built-ins/String/prototype/charCodeAt/S15.5.4.5_A1_T1.js Sloppy evaluate: Exception { kind: ThrownValue, message: \"JavaScript throw completion\", thrown: Some(ValueHandle { engine_id: 1, realm_id: 1, value: Object(Object { identity: 159, .. }) }) }",
+      "blocked_by": "Object constructor primitive boxing and wrapper methods",
+      "tracking": [
+        202,
+        203,
+        225
+      ]
+    },
+    {
+      "path": "test/built-ins/String/prototype/charCodeAt/S15.5.4.5_A1_T10.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/charCodeAt/S15.5.4.5_A1_T2.js",
+      "status": "fail",
+      "passing_variants": 0,
+      "failure": "test/built-ins/String/prototype/charCodeAt/S15.5.4.5_A1_T2.js Sloppy evaluate: Exception { kind: ThrownValue, message: \"JavaScript throw completion\", thrown: Some(ValueHandle { engine_id: 1, realm_id: 1, value: Object(Object { identity: 159, .. }) }) }",
+      "blocked_by": "Boolean constructor/wrapper methods",
+      "tracking": [
+        203
+      ]
+    },
+    {
+      "path": "test/built-ins/String/prototype/charCodeAt/S15.5.4.5_A1_T4.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/charCodeAt/S15.5.4.5_A1_T5.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/charCodeAt/S15.5.4.5_A1_T6.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/charCodeAt/S15.5.4.5_A1_T7.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/charCodeAt/S15.5.4.5_A1_T8.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/charCodeAt/S15.5.4.5_A1_T9.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/charCodeAt/S15.5.4.5_A2.js",
+      "status": "fail",
+      "passing_variants": 0,
+      "failure": "test/built-ins/String/prototype/charCodeAt/S15.5.4.5_A2.js Sloppy evaluate: Exception { kind: TypeError, message: \"cannot convert object to a primitive\", thrown: None }",
+      "blocked_by": "JavaScript function / constructed prototype linkage",
+      "tracking": [
+        210,
+        202
+      ]
+    },
+    {
+      "path": "test/built-ins/String/prototype/charCodeAt/S15.5.4.5_A3.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/charCodeAt/S15.5.4.5_A4.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/charCodeAt/S15.5.4.5_A6.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/charCodeAt/S15.5.4.5_A7.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/charCodeAt/S15.5.4.5_A8.js",
+      "status": "fail",
+      "passing_variants": 0,
+      "failure": "test/built-ins/String/prototype/charCodeAt/S15.5.4.5_A8.js Sloppy evaluate: Exception { kind: TypeError, message: \"value is not callable\", thrown: None }",
+      "blocked_by": "Object.prototype methods / propertyHelper dependencies",
+      "tracking": [
+        209,
+        202,
+        146
+      ]
+    },
+    {
+      "path": "test/built-ins/String/prototype/charCodeAt/S15.5.4.5_A9.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/charCodeAt/name.js",
+      "status": "fail",
+      "passing_variants": 0,
+      "failure": "\nrunning 1 test\ntest pinned_test262_string_methods ... FAILED\n\nfailures:\n\nfailures:\n    pinned_test262_string_methods\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.06s\n\n\nthread 'pinned_test262_string_methods' (300232) panicked at tests/string_methods.rs:275:41:\nharness propertyHelper.js evaluate: Exception { kind: TypeError, message: \"value is not callable\", thrown: None }\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n",
+      "blocked_by": "Object.prototype methods / propertyHelper dependencies",
+      "tracking": [
+        209,
+        202,
+        146
+      ]
+    },
+    {
+      "path": "test/built-ins/String/prototype/charCodeAt/not-a-constructor.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/charCodeAt/pos-coerce-err.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/charCodeAt/pos-coerce-string.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/charCodeAt/pos-rounding.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/charCodeAt/this-value-not-obj-coercible.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/codePointAt/codePointAt.js",
+      "status": "fail",
+      "passing_variants": 0,
+      "failure": "\nrunning 1 test\ntest pinned_test262_string_methods ... FAILED\n\nfailures:\n\nfailures:\n    pinned_test262_string_methods\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.14s\n\n\nthread 'pinned_test262_string_methods' (300275) panicked at tests/string_methods.rs:275:41:\nharness propertyHelper.js evaluate: Exception { kind: TypeError, message: \"value is not callable\", thrown: None }\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n",
+      "blocked_by": "Object.prototype methods / propertyHelper dependencies",
+      "tracking": [
+        209,
+        202,
+        146
+      ]
+    },
+    {
+      "path": "test/built-ins/String/prototype/codePointAt/length.js",
+      "status": "fail",
+      "passing_variants": 0,
+      "failure": "\nrunning 1 test\ntest pinned_test262_string_methods ... FAILED\n\nfailures:\n\nfailures:\n    pinned_test262_string_methods\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.06s\n\n\nthread 'pinned_test262_string_methods' (300281) panicked at tests/string_methods.rs:275:41:\nharness propertyHelper.js evaluate: Exception { kind: TypeError, message: \"value is not callable\", thrown: None }\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n",
+      "blocked_by": "Object.prototype methods / propertyHelper dependencies",
+      "tracking": [
+        209,
+        202,
+        146
+      ]
+    },
+    {
+      "path": "test/built-ins/String/prototype/codePointAt/name.js",
+      "status": "fail",
+      "passing_variants": 0,
+      "failure": "\nrunning 1 test\ntest pinned_test262_string_methods ... FAILED\n\nfailures:\n\nfailures:\n    pinned_test262_string_methods\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.09s\n\n\nthread 'pinned_test262_string_methods' (300287) panicked at tests/string_methods.rs:275:41:\nharness propertyHelper.js evaluate: Exception { kind: TypeError, message: \"value is not callable\", thrown: None }\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n",
+      "blocked_by": "Object.prototype methods / propertyHelper dependencies",
+      "tracking": [
+        209,
+        202,
+        146
+      ]
+    },
+    {
+      "path": "test/built-ins/String/prototype/codePointAt/not-a-constructor.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/codePointAt/return-abrupt-from-object-pos-to-integer.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/codePointAt/return-abrupt-from-symbol-pos-to-integer.js",
+      "status": "fail",
+      "passing_variants": 0,
+      "failure": "test/built-ins/String/prototype/codePointAt/return-abrupt-from-symbol-pos-to-integer.js Sloppy evaluate: Exception { kind: ThrownValue, message: \"JavaScript throw completion\", thrown: Some(ValueHandle { engine_id: 1, realm_id: 1, value: Object(Object { identity: 162, .. }) }) }",
+      "blocked_by": "Symbol constructor is a placeholder",
+      "tracking": [
+        204
+      ]
+    },
+    {
+      "path": "test/built-ins/String/prototype/codePointAt/return-abrupt-from-this-as-symbol.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/codePointAt/return-abrupt-from-this.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/codePointAt/return-code-unit-coerced-position.js",
+      "status": "fail",
+      "passing_variants": 0,
+      "failure": "test/built-ins/String/prototype/codePointAt/return-code-unit-coerced-position.js Sloppy evaluate: Exception { kind: ThrownValue, message: \"JavaScript throw completion\", thrown: Some(ValueHandle { engine_id: 1, realm_id: 1, value: Object(Object { identity: 186, .. }) }) }",
+      "blocked_by": "Array.prototype.toString/join",
+      "tracking": [
+        220
+      ]
+    },
+    {
+      "path": "test/built-ins/String/prototype/codePointAt/return-first-code-unit.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/codePointAt/return-single-code-unit.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/codePointAt/return-utf16-decode.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/codePointAt/returns-undefined-on-position-equal-or-more-than-size.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/codePointAt/returns-undefined-on-position-less-than-zero.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/codePointAt/this-is-null-throws.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/codePointAt/this-is-undefined-throws.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/slice/S15.5.4.13_A10.js",
+      "status": "fail",
+      "passing_variants": 0,
+      "failure": "\nrunning 1 test\ntest pinned_test262_string_methods ... FAILED\n\nfailures:\n\nfailures:\n    pinned_test262_string_methods\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.13s\n\n\nthread 'pinned_test262_string_methods' (300385) panicked at tests/string_methods.rs:275:41:\nharness propertyHelper.js evaluate: Exception { kind: TypeError, message: \"value is not callable\", thrown: None }\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n",
+      "blocked_by": "Object.prototype methods / propertyHelper dependencies",
+      "tracking": [
+        209,
+        202,
+        146
+      ]
+    },
+    {
+      "path": "test/built-ins/String/prototype/slice/S15.5.4.13_A11.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/slice/S15.5.4.13_A1_T1.js",
+      "status": "fail",
+      "passing_variants": 0,
+      "failure": "test/built-ins/String/prototype/slice/S15.5.4.13_A1_T1.js Sloppy evaluate: Exception { kind: ThrownValue, message: \"JavaScript throw completion\", thrown: Some(ValueHandle { engine_id: 1, realm_id: 1, value: Object(Object { identity: 159, .. }) }) }",
+      "blocked_by": "Object constructor primitive boxing and wrapper methods",
+      "tracking": [
+        202,
+        203,
+        225
+      ]
+    },
+    {
+      "path": "test/built-ins/String/prototype/slice/S15.5.4.13_A1_T10.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/slice/S15.5.4.13_A1_T11.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/slice/S15.5.4.13_A1_T12.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/slice/S15.5.4.13_A1_T13.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/slice/S15.5.4.13_A1_T14.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/slice/S15.5.4.13_A1_T15.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/slice/S15.5.4.13_A1_T2.js",
+      "status": "fail",
+      "passing_variants": 0,
+      "failure": "test/built-ins/String/prototype/slice/S15.5.4.13_A1_T2.js Sloppy evaluate: Exception { kind: ThrownValue, message: \"JavaScript throw completion\", thrown: Some(ValueHandle { engine_id: 1, realm_id: 1, value: Object(Object { identity: 165, .. }) }) }",
+      "blocked_by": "Boolean constructor/wrapper methods",
+      "tracking": [
+        203
+      ]
+    },
+    {
+      "path": "test/built-ins/String/prototype/slice/S15.5.4.13_A1_T4.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/slice/S15.5.4.13_A1_T5.js",
+      "status": "fail",
+      "passing_variants": 0,
+      "failure": "test/built-ins/String/prototype/slice/S15.5.4.13_A1_T5.js Sloppy evaluate: Exception { kind: TypeError, message: \"value is not callable\", thrown: None }",
+      "blocked_by": "Function prototype linkage and dynamic constructor",
+      "tracking": [
+        210,
+        170
+      ]
+    },
+    {
+      "path": "test/built-ins/String/prototype/slice/S15.5.4.13_A1_T6.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/slice/S15.5.4.13_A1_T7.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/slice/S15.5.4.13_A1_T8.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/slice/S15.5.4.13_A1_T9.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/slice/S15.5.4.13_A2_T1.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/slice/S15.5.4.13_A2_T2.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/slice/S15.5.4.13_A2_T3.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/slice/S15.5.4.13_A2_T4.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/slice/S15.5.4.13_A2_T5.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/slice/S15.5.4.13_A2_T6.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/slice/S15.5.4.13_A2_T7.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/slice/S15.5.4.13_A2_T8.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/slice/S15.5.4.13_A2_T9.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/slice/S15.5.4.13_A3_T1.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/slice/S15.5.4.13_A3_T2.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/slice/S15.5.4.13_A3_T3.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/slice/S15.5.4.13_A3_T4.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/slice/S15.5.4.13_A6.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/slice/S15.5.4.13_A7.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/slice/S15.5.4.13_A8.js",
+      "status": "fail",
+      "passing_variants": 0,
+      "failure": "test/built-ins/String/prototype/slice/S15.5.4.13_A8.js Sloppy evaluate: Exception { kind: TypeError, message: \"value is not callable\", thrown: None }",
+      "blocked_by": "Object.prototype methods / propertyHelper dependencies",
+      "tracking": [
+        209,
+        202,
+        146
+      ]
+    },
+    {
+      "path": "test/built-ins/String/prototype/slice/S15.5.4.13_A9.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/slice/name.js",
+      "status": "fail",
+      "passing_variants": 0,
+      "failure": "\nrunning 1 test\ntest pinned_test262_string_methods ... FAILED\n\nfailures:\n\nfailures:\n    pinned_test262_string_methods\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.15s\n\n\nthread 'pinned_test262_string_methods' (300626) panicked at tests/string_methods.rs:275:41:\nharness propertyHelper.js evaluate: Exception { kind: TypeError, message: \"value is not callable\", thrown: None }\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n",
+      "blocked_by": "Object.prototype methods / propertyHelper dependencies",
+      "tracking": [
+        209,
+        202,
+        146
+      ]
+    },
+    {
+      "path": "test/built-ins/String/prototype/slice/not-a-constructor.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/slice/this-value-not-obj-coercible.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/slice/this-value-tostring-throws-symbol.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/slice/this-value-tostring-throws-toprimitive.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/substring/S15.5.4.15_A10.js",
+      "status": "fail",
+      "passing_variants": 0,
+      "failure": "\nrunning 1 test\ntest pinned_test262_string_methods ... FAILED\n\nfailures:\n\nfailures:\n    pinned_test262_string_methods\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.11s\n\n\nthread 'pinned_test262_string_methods' (300663) panicked at tests/string_methods.rs:275:41:\nharness propertyHelper.js evaluate: Exception { kind: TypeError, message: \"value is not callable\", thrown: None }\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n",
+      "blocked_by": "Object.prototype methods / propertyHelper dependencies",
+      "tracking": [
+        209,
+        202,
+        146
+      ]
+    },
+    {
+      "path": "test/built-ins/String/prototype/substring/S15.5.4.15_A11.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/substring/S15.5.4.15_A1_T1.js",
+      "status": "fail",
+      "passing_variants": 0,
+      "failure": "test/built-ins/String/prototype/substring/S15.5.4.15_A1_T1.js Sloppy evaluate: Exception { kind: ThrownValue, message: \"JavaScript throw completion\", thrown: Some(ValueHandle { engine_id: 1, realm_id: 1, value: Object(Object { identity: 159, .. }) }) }",
+      "blocked_by": "Object constructor primitive boxing and wrapper methods",
+      "tracking": [
+        202,
+        203,
+        225
+      ]
+    },
+    {
+      "path": "test/built-ins/String/prototype/substring/S15.5.4.15_A1_T10.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/substring/S15.5.4.15_A1_T11.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/substring/S15.5.4.15_A1_T12.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/substring/S15.5.4.15_A1_T13.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/substring/S15.5.4.15_A1_T14.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/substring/S15.5.4.15_A1_T15.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/substring/S15.5.4.15_A1_T2.js",
+      "status": "fail",
+      "passing_variants": 0,
+      "failure": "test/built-ins/String/prototype/substring/S15.5.4.15_A1_T2.js Sloppy evaluate: Exception { kind: ThrownValue, message: \"JavaScript throw completion\", thrown: Some(ValueHandle { engine_id: 1, realm_id: 1, value: Object(Object { identity: 165, .. }) }) }",
+      "blocked_by": "Boolean constructor/wrapper methods",
+      "tracking": [
+        203
+      ]
+    },
+    {
+      "path": "test/built-ins/String/prototype/substring/S15.5.4.15_A1_T4.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/substring/S15.5.4.15_A1_T5.js",
+      "status": "fail",
+      "passing_variants": 0,
+      "failure": "test/built-ins/String/prototype/substring/S15.5.4.15_A1_T5.js Sloppy evaluate: Exception { kind: TypeError, message: \"value is not callable\", thrown: None }",
+      "blocked_by": "Function prototype linkage and dynamic constructor",
+      "tracking": [
+        210,
+        170
+      ]
+    },
+    {
+      "path": "test/built-ins/String/prototype/substring/S15.5.4.15_A1_T6.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/substring/S15.5.4.15_A1_T7.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/substring/S15.5.4.15_A1_T8.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/substring/S15.5.4.15_A1_T9.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/substring/S15.5.4.15_A2_T1.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/substring/S15.5.4.15_A2_T10.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/substring/S15.5.4.15_A2_T2.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/substring/S15.5.4.15_A2_T3.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/substring/S15.5.4.15_A2_T4.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/substring/S15.5.4.15_A2_T5.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/substring/S15.5.4.15_A2_T6.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/substring/S15.5.4.15_A2_T7.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/substring/S15.5.4.15_A2_T8.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/substring/S15.5.4.15_A2_T9.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/substring/S15.5.4.15_A3_T1.js",
+      "status": "fail",
+      "passing_variants": 0,
+      "failure": "test/built-ins/String/prototype/substring/S15.5.4.15_A3_T1.js Sloppy evaluate: Exception { kind: ThrownValue, message: \"JavaScript throw completion\", thrown: Some(ValueHandle { engine_id: 1, realm_id: 1, value: Object(Object { identity: 159, .. }) }) }",
+      "blocked_by": "Array.prototype.toString/join",
+      "tracking": [
+        220
+      ]
+    },
+    {
+      "path": "test/built-ins/String/prototype/substring/S15.5.4.15_A3_T10.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/substring/S15.5.4.15_A3_T11.js",
+      "status": "fail",
+      "passing_variants": 0,
+      "failure": "test/built-ins/String/prototype/substring/S15.5.4.15_A3_T11.js Sloppy evaluate: Exception { kind: ThrownValue, message: \"JavaScript throw completion\", thrown: Some(ValueHandle { engine_id: 1, realm_id: 1, value: Object(Object { identity: 163, .. }) }) }",
+      "blocked_by": "Boolean constructor/wrapper methods",
+      "tracking": [
+        203
+      ]
+    },
+    {
+      "path": "test/built-ins/String/prototype/substring/S15.5.4.15_A3_T2.js",
+      "status": "fail",
+      "passing_variants": 0,
+      "failure": "test/built-ins/String/prototype/substring/S15.5.4.15_A3_T2.js Sloppy evaluate: Exception { kind: ThrownValue, message: \"JavaScript throw completion\", thrown: Some(ValueHandle { engine_id: 1, realm_id: 1, value: Object(Object { identity: 159, .. }) }) }",
+      "blocked_by": "Array.prototype.toString/join",
+      "tracking": [
+        220
+      ]
+    },
+    {
+      "path": "test/built-ins/String/prototype/substring/S15.5.4.15_A3_T3.js",
+      "status": "fail",
+      "passing_variants": 0,
+      "failure": "test/built-ins/String/prototype/substring/S15.5.4.15_A3_T3.js Sloppy evaluate: Exception { kind: ThrownValue, message: \"JavaScript throw completion\", thrown: Some(ValueHandle { engine_id: 1, realm_id: 1, value: Object(Object { identity: 159, .. }) }) }",
+      "blocked_by": "Array.prototype.toString/join",
+      "tracking": [
+        220
+      ]
+    },
+    {
+      "path": "test/built-ins/String/prototype/substring/S15.5.4.15_A3_T4.js",
+      "status": "fail",
+      "passing_variants": 0,
+      "failure": "test/built-ins/String/prototype/substring/S15.5.4.15_A3_T4.js Sloppy evaluate: Exception { kind: ThrownValue, message: \"JavaScript throw completion\", thrown: Some(ValueHandle { engine_id: 1, realm_id: 1, value: Object(Object { identity: 159, .. }) }) }",
+      "blocked_by": "Array.prototype.toString/join",
+      "tracking": [
+        220
+      ]
+    },
+    {
+      "path": "test/built-ins/String/prototype/substring/S15.5.4.15_A3_T5.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/substring/S15.5.4.15_A3_T6.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/substring/S15.5.4.15_A3_T7.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/substring/S15.5.4.15_A3_T8.js",
+      "status": "fail",
+      "passing_variants": 0,
+      "failure": "test/built-ins/String/prototype/substring/S15.5.4.15_A3_T8.js Sloppy evaluate: Exception { kind: ThrownValue, message: \"JavaScript throw completion\", thrown: Some(ValueHandle { engine_id: 1, realm_id: 1, value: Object(Object { identity: 159, .. }) }) }",
+      "blocked_by": "Number.prototype.toString",
+      "tracking": [
+        225
+      ]
+    },
+    {
+      "path": "test/built-ins/String/prototype/substring/S15.5.4.15_A3_T9.js",
+      "status": "fail",
+      "passing_variants": 0,
+      "failure": "test/built-ins/String/prototype/substring/S15.5.4.15_A3_T9.js Sloppy evaluate: Exception { kind: ThrownValue, message: \"JavaScript throw completion\", thrown: Some(ValueHandle { engine_id: 1, realm_id: 1, value: Object(Object { identity: 158, .. }) }) }",
+      "blocked_by": "Math constants",
+      "tracking": [
+        227
+      ]
+    },
+    {
+      "path": "test/built-ins/String/prototype/substring/S15.5.4.15_A6.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/substring/S15.5.4.15_A7.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/substring/S15.5.4.15_A8.js",
+      "status": "fail",
+      "passing_variants": 0,
+      "failure": "test/built-ins/String/prototype/substring/S15.5.4.15_A8.js Sloppy evaluate: Exception { kind: TypeError, message: \"value is not callable\", thrown: None }",
+      "blocked_by": "Object.prototype methods / propertyHelper dependencies",
+      "tracking": [
+        209,
+        202,
+        146
+      ]
+    },
+    {
+      "path": "test/built-ins/String/prototype/substring/S15.5.4.15_A9.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/substring/name.js",
+      "status": "fail",
+      "passing_variants": 0,
+      "failure": "\nrunning 1 test\ntest pinned_test262_string_methods ... FAILED\n\nfailures:\n\nfailures:\n    pinned_test262_string_methods\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.10s\n\n\nthread 'pinned_test262_string_methods' (300972) panicked at tests/string_methods.rs:275:41:\nharness propertyHelper.js evaluate: Exception { kind: TypeError, message: \"value is not callable\", thrown: None }\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n",
+      "blocked_by": "Object.prototype methods / propertyHelper dependencies",
+      "tracking": [
+        209,
+        202,
+        146
+      ]
+    },
+    {
+      "path": "test/built-ins/String/prototype/substring/not-a-constructor.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/substring/this-value-not-obj-coercible.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/substring/this-value-tostring-throws-symbol.js",
+      "status": "pass",
+      "passing_variants": 2
+    },
+    {
+      "path": "test/built-ins/String/prototype/substring/this-value-tostring-throws-toprimitive.js",
+      "status": "pass",
+      "passing_variants": 2
+    }
+  ]
+}

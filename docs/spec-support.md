@@ -19,9 +19,9 @@ Statuses have strict meanings:
 
 | Area | Implemented | Unimplemented | Out of scope |
 |---|---:|---:|---:|
-| ECMA-262 core language/runtime | 7 | 0 | 0 |
-| ECMA-262 built-ins | 3 | 2 | 0 |
-| Annex B | 2 | 2 | 0 |
+| ECMA-262 core language/runtime | 9 | 0 | 0 |
+| ECMA-262 built-ins | 5 | 2 | 0 |
+| Annex B | 2 | 3 | 0 |
 | Host hooks | 2 | 1 | 2 |
 | Proposals after ES2026 | 0 | 3 | 1 |
 

@@ -237,3 +237,38 @@ than earlier standalone numbers. This result does **not** meet the performance
 target. The memory failure is relevant to runtime ownership/GC work (#256,
 #257, #313), and the missing method to #221. The complete records preserve the
 failure statuses rather than dropping them or reporting a combined speedup.
+
+
+#### String core follow-up
+
+[The comparison after String core integration](../benchmarks/string-core-comparison.json)
+uses engine/worker revision `13cea252ecf9e2f846b16f9e13a5602e2e52ed86`,
+the same pinned application and unchanged eleven workloads, release Rust 1.99.1,
+and Linux ARM64. There are 15 timed samples and one checked warmup per worker,
+three alternating pairs per workload, and the same 512 MiB / 180-second limits.
+All 66 runs and 33 pair outcomes are retained. Temiya completes 10/11
+workloads in every pair. The 63 successful worker runs validate 1008 results
+including warmups. The charCodeAt workload now returns its expected 999856;
+closure allocation remains a separate ownership/GC task.
+
+| Workload | Temiya time / Boa time across three pairs |
+| --- | ---: |
+| arith | 3.93–5.80× |
+| prop-mono | 2.33–2.89× |
+| prop-mega | 2.29–3.09× |
+| call | 2.70–4.60× |
+| closure-alloc | Not comparable: Temiya memory_limit |
+| object-alloc | 1.91–2.47× |
+| string-concat | 5.02–6.85× |
+| array | 2.67–2.94× |
+| primitive-string-property | 3.32–3.37× |
+| primitive-string-method | 2.20–2.68× |
+| proto-method | 1.88–2.93× |
+
+This follow-up still does **not** meet the Boa performance target. It establishes
+that the previously missing string method executes correctly; it is not an
+optimization claim. Absolute times differ between measurement sessions, so the
+two historical reports do not establish a controlled before/after speedup or
+regression. Use the paired Boa comparisons within each report. SpiderMonkey
+comparison and application-level validation remain outstanding. Legacy
+`String.prototype.substr` is tracked separately in #454.

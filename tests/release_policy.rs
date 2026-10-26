@@ -32,18 +32,68 @@ fn workflow_has_least_privilege_pinned_actions_and_attestation() {
     assert!(WORKFLOW.contains("contents: read"));
     assert!(WORKFLOW.contains("id-token: write"));
     assert!(WORKFLOW.contains("attestations: write"));
-    assert!(
-        WORKFLOW
-            .contains("actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a")
-    );
-    assert!(WORKFLOW.contains("actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02"));
-    for revision in WORKFLOW
-        .lines()
-        .filter_map(|line| line.trim().strip_prefix("uses: "))
-        .filter_map(|action| action.split('@').nth(1))
-        .map(|revision| revision.split_whitespace().next().unwrap())
-    {
-        assert_eq!(revision.len(), 40);
-        assert!(revision.bytes().all(|byte| byte.is_ascii_hexdigit()));
+    let actions = pinned_actions(WORKFLOW).expect("every Action must use a full commit SHA");
+    for required in [
+        "actions/checkout",
+        "actions/attest-build-provenance",
+        "actions/upload-artifact",
+    ] {
+        assert!(
+            actions.contains(&required),
+            "missing release Action: {required}"
+        );
     }
+}
+
+// The release workflow uses plain `uses:` scalars. Reject malformed or moving
+// references instead of silently skipping entries without an `@` separator.
+fn pinned_actions(workflow: &str) -> Option<Vec<&str>> {
+    let mut actions = Vec::new();
+    for line in workflow.lines() {
+        let line = line.trim();
+        let line = line.strip_prefix("- ").unwrap_or(line);
+        let Some(action) = line.strip_prefix("uses:") else {
+            continue;
+        };
+        let (name, revision) = action.split_whitespace().next()?.split_once('@')?;
+        if name.is_empty()
+            || revision.len() != 40
+            || !revision.bytes().all(|byte| byte.is_ascii_hexdigit())
+        {
+            return None;
+        }
+        actions.push(name);
+    }
+    Some(actions)
+}
+
+#[test]
+fn release_actions_reject_moving_missing_and_malformed_revisions() {
+    for action in [
+        "actions/upload-artifact",
+        "actions/upload-artifact@v7",
+        "actions/upload-artifact@main",
+        "actions/upload-artifact@cf430e0",
+        "actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cdg",
+        "actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd99",
+        "@cf430e030ddbb5b0abf93d22962f4752f3646cd9",
+        "",
+    ] {
+        for prefix in ["uses: ", "- uses: "] {
+            assert!(
+                pinned_actions(&format!("{prefix}{action}")).is_none(),
+                "{action}"
+            );
+        }
+    }
+    // A valid earlier action must not hide a later unpinned entry.
+    assert!(pinned_actions(
+        "uses: actions/checkout@1111111111111111111111111111111111111111\nuses: actions/upload-artifact@v7"
+    ).is_none());
+    assert_eq!(
+        pinned_actions(
+            "- uses: actions/upload-artifact@2222222222222222222222222222222222222222 # new reviewed pin"
+        ),
+        Some(vec!["actions/upload-artifact"])
+    );
 }

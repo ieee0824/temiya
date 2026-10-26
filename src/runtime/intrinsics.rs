@@ -212,6 +212,8 @@ impl IntrinsicRegistry {
                 Object::native_function(|_, _| Ok(Value::Undefined))
             } else if id == IntrinsicId::ArrayPrototype {
                 super::ArrayObject::new(0)?.object()
+            } else if id == IntrinsicId::StringPrototype {
+                super::StringObject::new(super::JsString::default()).object()
             } else if id == IntrinsicId::Object {
                 let prototype = objects
                     .get(&IntrinsicId::ObjectPrototype)
@@ -270,6 +272,7 @@ impl IntrinsicRegistry {
         }
         super::builtins::initialize(&registry, host_hooks)?;
         super::array_methods::install(&registry, symbols)?;
+        super::string_methods::install(&registry, symbols)?;
         registry.install_globals(global)?;
         Ok(registry)
     }

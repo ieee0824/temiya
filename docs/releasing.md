@@ -35,6 +35,12 @@ provenance attestation. Release artifacts are signed through Sigstore-backed
 GitHub artifact attestations using short-lived OIDC credentials; no long-lived
 signing key is stored in the repository.
 
+Release Actions are pinned to full commit SHAs. Dependency updates must verify
+the upstream release tag and input/runtime compatibility; the policy test checks
+the pin format and required Action names independently of a particular version.
+It rejects tags, branch names, abbreviated SHAs, and missing revisions so a
+reviewed Dependabot update does not require changing a duplicated version pin.
+
 Verify downloaded files with:
 
 ```sh

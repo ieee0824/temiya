@@ -13,6 +13,13 @@ rejected. Compile failures use `EmbedError`; evaluation failures use an owned
 values. A returned `ValueHandle` owns its value and remains valid until dropped,
 without borrowing the engine through a Rust lifetime.
 
+Explicit JavaScript throws keep their original value in `Exception::thrown`,
+including throws that cross function or module boundaries. The handle retains
+the engine and evaluation Realm provenance. A native language error keeps its
+typed `ExceptionKind`; when materialized at a function boundary its error object
+is also available through `thrown()`. An engine invariant failure remains
+`ExceptionKind::Engine` and cannot be hidden by JavaScript catch/finally.
+
 Host integration is exposed through `register_global_function`,
 `create_object`/`set_global`, `load_module`, and the Realm-local job APIs.
 Native callbacks receive owned, provenance-tagged handles and a

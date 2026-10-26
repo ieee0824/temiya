@@ -96,9 +96,7 @@ impl Generator {
             }
             GeneratorState::Completed => {
                 return match resume {
-                    Resume::Throw(_) => Err(RuntimeError::type_error(
-                        "throw resumed an already completed generator",
-                    )),
+                    Resume::Throw(value) => Err(RuntimeError::thrown(value)),
                     Resume::Next(_) => Ok(IteratorResult {
                         value: Value::Undefined,
                         done: true,
@@ -113,9 +111,7 @@ impl Generator {
             let Resume::Throw(value) = resume else {
                 unreachable!()
             };
-            return Err(RuntimeError::type_error(format!(
-                "uncaught generator exception: {value:?}"
-            )));
+            return Err(RuntimeError::thrown(value));
         }
         if let Resume::Return(value) = resume {
             data.state = GeneratorState::Completed;
@@ -315,9 +311,7 @@ fn execute(data: &mut GeneratorData) -> RuntimeResult<IteratorResult> {
             }
             Completion::Throw(value) => {
                 data.state = GeneratorState::Completed;
-                return Err(RuntimeError::type_error(format!(
-                    "uncaught generator exception: {value:?}"
-                )));
+                return Err(RuntimeError::thrown(value));
             }
             Completion::Break { .. } | Completion::Continue { .. } => {
                 return Err(RuntimeError::internal_error(

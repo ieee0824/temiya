@@ -77,6 +77,18 @@ pub enum IntrinsicId {
     TypeError,
     /// `%TypeError.prototype%`.
     TypeErrorPrototype,
+    /// `%RangeError%`.
+    RangeError,
+    /// `%RangeError.prototype%`.
+    RangeErrorPrototype,
+    /// `%ReferenceError%`.
+    ReferenceError,
+    /// `%ReferenceError.prototype%`.
+    ReferenceErrorPrototype,
+    /// `%SyntaxError%`.
+    SyntaxError,
+    /// `%SyntaxError.prototype%`.
+    SyntaxErrorPrototype,
     /// `%ArrayBuffer%`.
     ArrayBuffer,
     /// `%ArrayBuffer.prototype%`.
@@ -101,7 +113,7 @@ pub enum IntrinsicId {
 
 impl IntrinsicId {
     /// Every intrinsic identity, in deterministic initialization order.
-    pub const ALL: [Self; 44] = [
+    pub const ALL: [Self; 50] = [
         Self::ObjectPrototype,
         Self::FunctionPrototype,
         Self::ArrayPrototype,
@@ -119,6 +131,9 @@ impl IntrinsicId {
         Self::DatePrototype,
         Self::ErrorPrototype,
         Self::TypeErrorPrototype,
+        Self::RangeErrorPrototype,
+        Self::ReferenceErrorPrototype,
+        Self::SyntaxErrorPrototype,
         Self::ArrayBufferPrototype,
         Self::TypedArrayPrototype,
         Self::DataViewPrototype,
@@ -142,6 +157,9 @@ impl IntrinsicId {
         Self::Date,
         Self::Error,
         Self::TypeError,
+        Self::RangeError,
+        Self::ReferenceError,
+        Self::SyntaxError,
         Self::ArrayBuffer,
         Self::TypedArray,
         Self::DataView,
@@ -167,6 +185,9 @@ impl IntrinsicId {
             Self::Date => (Self::DatePrototype, "Date"),
             Self::Error => (Self::ErrorPrototype, "Error"),
             Self::TypeError => (Self::TypeErrorPrototype, "TypeError"),
+            Self::RangeError => (Self::RangeErrorPrototype, "RangeError"),
+            Self::ReferenceError => (Self::ReferenceErrorPrototype, "ReferenceError"),
+            Self::SyntaxError => (Self::SyntaxErrorPrototype, "SyntaxError"),
             Self::ArrayBuffer => (Self::ArrayBufferPrototype, "ArrayBuffer"),
             Self::TypedArray => (Self::TypedArrayPrototype, "TypedArray"),
             Self::DataView => (Self::DataViewPrototype, "DataView"),
@@ -274,8 +295,20 @@ impl IntrinsicRegistry {
                 define(&prototype, "constructor", Value::Object(object), true, true)?;
             }
         }
-        self.get(IntrinsicId::TypeErrorPrototype)
-            .set_prototype(Some(self.get(IntrinsicId::ErrorPrototype)));
+        for (id, name) in [
+            (IntrinsicId::ErrorPrototype, "Error"),
+            (IntrinsicId::TypeErrorPrototype, "TypeError"),
+            (IntrinsicId::RangeErrorPrototype, "RangeError"),
+            (IntrinsicId::ReferenceErrorPrototype, "ReferenceError"),
+            (IntrinsicId::SyntaxErrorPrototype, "SyntaxError"),
+        ] {
+            let prototype = self.get(id);
+            if id != IntrinsicId::ErrorPrototype {
+                prototype.set_prototype(Some(self.get(IntrinsicId::ErrorPrototype)));
+            }
+            define(&prototype, "name", Value::String(name.into()), true, true)?;
+            define(&prototype, "message", Value::String("".into()), true, true)?;
+        }
         self.get(IntrinsicId::TypedArrayPrototype)
             .set_prototype(Some(object_prototype));
         Ok(())

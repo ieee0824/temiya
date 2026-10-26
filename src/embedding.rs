@@ -240,6 +240,7 @@ impl Engine {
         let module = graph.load(specifier).map_err(EmbedError::Host)?;
         Ok(ModuleHandle {
             engine_id: self.id,
+            realm_id: realm.realm_id,
             module,
         })
     }
@@ -249,8 +250,9 @@ impl Engine {
         if module.engine_id != self.id {
             return Err(Exception::engine("module belongs to another engine"));
         }
-        module.module.link().map_err(Exception::runtime)?;
-        module.module.evaluate().map_err(Exception::runtime)?;
+        let exception = |error| Exception::runtime(error, self.id, module.realm_id);
+        module.module.link().map_err(exception)?;
+        module.module.evaluate().map_err(exception)?;
         Ok(())
     }
 
@@ -264,11 +266,15 @@ impl Engine {
         F: Fn(Exception) + 'static,
     {
         self.require_realm(realm)?;
+        let engine_id = self.id;
+        let realm_id = realm.realm_id;
         realm
             .realm
             .job_queue()
             .set_unhandled_rejection_hook(move |error| {
-                let _ = catch_unwind(AssertUnwindSafe(|| callback(Exception::runtime(error))));
+                let _ = catch_unwind(AssertUnwindSafe(|| {
+                    callback(Exception::runtime(error, engine_id, realm_id))
+                }));
             });
         Ok(())
     }
@@ -292,7 +298,11 @@ impl Engine {
         if realm.engine_id != self.id {
             return Err(Exception::engine("Realm belongs to another engine"));
         }
-        realm.realm.job_queue().drain().map_err(Exception::runtime)
+        realm
+            .realm
+            .job_queue()
+            .drain()
+            .map_err(|error| Exception::runtime(error, self.id, realm.realm_id))
     }
 
     /// Compiles Script source for a Realm, rejecting cross-engine handles.
@@ -314,7 +324,11 @@ impl Engine {
                 "compiled script belongs to another engine",
             ));
         }
-        match script.script.evaluate().map_err(Exception::runtime)? {
+        match script
+            .script
+            .evaluate()
+            .map_err(|error| Exception::runtime(error, self.id, script.realm_id))?
+        {
             Completion::Normal(value) => Ok(ValueHandle {
                 engine_id: self.id,
                 realm_id: script.realm_id,
@@ -393,6 +407,7 @@ pub struct CompiledScript {
 #[derive(Clone, Debug)]
 pub struct ModuleHandle {
     engine_id: u64,
+    realm_id: u64,
     module: SourceTextModule,
 }
 
@@ -551,14 +566,16 @@ impl Exception {
         &self.message
     }
 
-    /// Returns the thrown JavaScript value when this came from `throw`.
+    /// Returns the original throw value, or a native error object when it was
+    /// materialized while crossing a JavaScript function boundary.
     #[must_use]
     pub fn thrown(&self) -> Option<&ValueHandle> {
         self.thrown.as_ref()
     }
 
-    fn runtime(error: RuntimeError) -> Self {
+    fn runtime(error: RuntimeError, engine_id: u64, realm_id: u64) -> Self {
         let kind = match error.kind() {
+            RuntimeErrorKind::ThrownValue => ExceptionKind::ThrownValue,
             RuntimeErrorKind::TypeError => ExceptionKind::TypeError,
             RuntimeErrorKind::SyntaxError => ExceptionKind::SyntaxError,
             RuntimeErrorKind::ReferenceError => ExceptionKind::ReferenceError,
@@ -568,7 +585,9 @@ impl Exception {
         Self {
             kind,
             message: error.message().to_owned(),
-            thrown: None,
+            thrown: error
+                .thrown_value()
+                .map(|value| ValueHandle::new(engine_id, realm_id, value.clone())),
         }
     }
 

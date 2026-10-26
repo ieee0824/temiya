@@ -26,6 +26,42 @@ struct RealmData {
 }
 
 impl Realm {
+    /// Materializes a catchable exception without invoking a potentially
+    /// replaced global constructor. Internal failures remain Rust errors.
+    pub(crate) fn exception_value(&self, error: &RuntimeError) -> RuntimeResult<Value> {
+        use super::{PropertyDescriptor, RuntimeErrorKind};
+        if let Some(value) = error.thrown_value() {
+            return Ok(value.clone());
+        }
+        let prototype = match error.kind() {
+            RuntimeErrorKind::ThrownValue => unreachable!("throw payload"),
+            RuntimeErrorKind::TypeError => IntrinsicId::TypeErrorPrototype,
+            RuntimeErrorKind::SyntaxError => IntrinsicId::SyntaxErrorPrototype,
+            RuntimeErrorKind::ReferenceError => IntrinsicId::ReferenceErrorPrototype,
+            RuntimeErrorKind::RangeError => IntrinsicId::RangeErrorPrototype,
+            RuntimeErrorKind::InternalError => return Err(error.clone()),
+        };
+        let object = Object::new();
+        object.set_prototype(Some(self.intrinsic(prototype)));
+        object.define_own_property(
+            "message".into(),
+            PropertyDescriptor::data(Value::String(error.message().into()), true, false, true),
+        )?;
+        Ok(Value::Object(object))
+    }
+
+    /// Retains the originating Realm before a function crosses a caller boundary.
+    /// Success paths and already-materialized exceptions allocate nothing here.
+    pub(crate) fn bind_exception(&self, mut error: RuntimeError) -> RuntimeError {
+        if error.thrown.is_none() && error.kind() != super::RuntimeErrorKind::InternalError {
+            match self.exception_value(&error) {
+                Ok(value) => error.thrown = Some(Box::new(value)),
+                Err(failure) => return failure,
+            }
+        }
+        error
+    }
+
     /// Creates a Realm around a global object and its chosen global-this value.
     #[must_use]
     pub fn new(global_object: Object, global_this_value: Value) -> Self {

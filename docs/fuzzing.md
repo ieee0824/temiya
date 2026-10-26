@@ -12,3 +12,10 @@ a five-second per-input timeout, and a 2048 MiB RSS limit. Override these with
 Seeds live under `fuzz/corpus/lexer_parser`. Minimized crashes must be copied to
 `fuzz/regressions/lexer_parser`; those fixtures also run under ordinary
 `cargo test`, so fixed crashes remain covered without requiring libFuzzer.
+
+The `gc_interpreter` target maps bytes to bounded sequences of allocation,
+rooting, barriered mutation, full/minor collection, Script evaluation,
+exceptional jobs, and job-queue checkpoints. It runs the heap and write-barrier
+verifiers after every transition. Its corpus and promoted regressions use the
+same directories under `fuzz/corpus/gc_interpreter` and
+`fuzz/regressions/gc_interpreter`; run it as `scripts/fuzz gc_interpreter`.

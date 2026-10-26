@@ -22,3 +22,11 @@ the Rust boundary and converted to engine exceptions; they never unwind
 through JavaScript evaluation. Jobs execute FIFO at an explicit `drain_jobs`
 microtask checkpoint, and unhandled Promise errors can be observed with
 `register_job_error_callback`.
+
+## C ABI
+
+`include/temiya.h` exposes ABI version 1 using opaque handles and explicit
+`*_free` functions. Every fallible call returns `TemiyaStatus`; diagnostics are
+owned `TemiyaError` handles. The ABI catches Rust panics and never lets them
+unwind into C. `examples/embed.c` demonstrates version checking, compilation,
+evaluation, and cleanup on every exit path.

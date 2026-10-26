@@ -47,3 +47,12 @@ variants. The before/after audit improves from 31 passes/64 failures to
 failing. The remaining failures include eval/isNaN exposure, Boolean and
 BigInt/Symbol boxing, Date conversion, Function.prototype.toString, and Symbol
 construction. They remain failures; this is not full addition conformance.
+
+The [primitive-workload diagnostic](../benchmarks/addition-coercion-diagnostic.json)
+uses all eleven original omoikane inputs with three timed samples and one pair,
+22 successful worker runs and 88 validated values. Its baseline is the frozen
+`4cf89c1d555ceefeecb2b53882fdb077440da012` runtime, whose executable source is
+identical to merged main `466dbac1e3d27076c2b9f854f9d214a4c49e8275`. The
+changed runtime is `52fb8b159ad038d446880b55cf97f48d6e61a6e5`. Raw ratios
+range from 0.94 to 1.05. This is a small diagnostic, not a speedup or absence-of-
+regression claim. Its all-eleven speed gate is false and it does not measure Boa.

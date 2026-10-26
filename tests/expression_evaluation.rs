@@ -252,3 +252,44 @@ fn builds_array_object_template_and_constructor_results() {
     );
     assert!(evaluate(&evaluator, "new Constructor(4).value").same_value(&Value::Number(4.0)));
 }
+
+#[test]
+fn invalid_call_and_construct_evaluate_arguments_before_type_errors() {
+    for source in [
+        "target(mark = 42)",
+        "new target(mark = 42)",
+        "target?.(mark = 42)",
+    ] {
+        for target in [Value::Number(1.0), Value::Object(Object::new())] {
+            let (evaluator, environment) = evaluator();
+            bind(&environment, "target", target);
+            bind(&environment, "mark", Value::Number(0.0));
+            let error = evaluator
+                .evaluate(&parse_expression(source).unwrap())
+                .unwrap_err();
+            assert_eq!(error.kind(), RuntimeErrorKind::TypeError);
+            assert!(evaluate(&evaluator, "mark").same_value(&Value::Number(42.0)));
+        }
+    }
+    let (evaluator, environment) = evaluator();
+    bind(&environment, "target", Value::Null);
+    bind(&environment, "mark", Value::Number(0.0));
+    assert!(evaluate(&evaluator, "target?.(mark = 42)").same_value(&Value::Undefined));
+    assert!(evaluate(&evaluator, "mark").same_value(&Value::Number(0.0)));
+}
+
+#[test]
+fn argument_abrupt_completion_precedes_invalid_callee_error() {
+    let (evaluator, environment) = evaluator();
+    bind(&environment, "target", Value::Number(1.0));
+    for source in [
+        "target(missing)",
+        "new target(missing)",
+        "target?.(missing)",
+    ] {
+        let error = evaluator
+            .evaluate(&parse_expression(source).unwrap())
+            .unwrap_err();
+        assert_eq!(error.kind(), RuntimeErrorKind::ReferenceError);
+    }
+}

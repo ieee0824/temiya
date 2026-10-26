@@ -524,27 +524,28 @@ impl ExpressionEvaluator {
         if optional && matches!(function, Value::Undefined | Value::Null) {
             return Ok(Evaluation::ShortCircuit);
         }
+        let arguments = self.arguments(arguments)?;
         let Value::Object(function) = function else {
             return Err(RuntimeError::type_error("value is not callable"));
         };
         if !function.is_callable() {
             return Err(RuntimeError::type_error("value is not callable"));
         }
-        let arguments = self.arguments(arguments)?;
         function.call(this_value, &arguments).map(Evaluation::Value)
     }
 
     fn construct(&self, callee: &Expr, arguments: &[Expr]) -> RuntimeResult<Value> {
-        let Value::Object(constructor) = self.evaluate(callee)? else {
+        let constructor = self.evaluate(callee)?;
+        let arguments = self.arguments(arguments)?;
+        let Value::Object(constructor) = constructor else {
             return Err(RuntimeError::type_error("value is not a constructor"));
         };
         if !constructor.is_constructor() {
             return Err(RuntimeError::type_error("value is not a constructor"));
         }
-        Ok(Value::Object(constructor.construct(
-            &self.arguments(arguments)?,
-            constructor.clone(),
-        )?))
+        Ok(Value::Object(
+            constructor.construct(&arguments, constructor.clone())?,
+        ))
     }
 
     fn arguments(&self, arguments: &[Expr]) -> RuntimeResult<Vec<Value>> {

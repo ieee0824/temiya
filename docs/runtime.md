@@ -163,3 +163,51 @@ non-number ArraySetLength coercion gaps (#450), one needs isPrototypeOf (#209),
 and one needs the cross-Realm Test262 host (#147). This storage change does not
 claim complete ArraySetLength conformance. See `test262/array-elements-audit.json`
 for exact outcomes; select a single file with `TEST262_CASE=filename.js`.
+
+## String indexing and slicing
+
+The public `Engine` AST path exposes `String.prototype.charAt`, `charCodeAt`,
+`codePointAt`, `at`, `slice`, and `substring`. These follow
+[ECMAScript 2026 section 22.1.3](https://tc39.es/ecma262/2026/multipage/text-processing.html#sec-properties-of-the-string-prototype-object).
+Storage and indexing use UTF-16 code units, including lone surrogates;
+`codePointAt` combines only a valid leading/trailing surrogate pair.
+Negative positions are relative only for `at` and `slice`. `substring` clamps
+negative positions and swaps its normalized endpoints. Out-of-range results
+are `''`, `NaN`, or `undefined` according to the particular method.
+
+Primitive property reads consult the current Realm's wrapper prototype after
+checking a string's own length/index properties, retaining the primitive as the
+accessor/call receiver. Reads do not allocate a wrapper object. Canonical string
+indices are distinguished from names such as `'01'`, `'+1'`, and `'-0'`.
+Primitive writes and standalone `Reference::property` values without an
+associated Realm retain their earlier limited behavior.
+
+Methods coerce the receiver before indices, invoke actual JavaScript
+`Symbol.toPrimitive`/`toString`/`valueOf` methods, and preserve thrown values.
+Explicit Rust conversion hooks retain their embedding behavior. String wrappers
+and the empty `String.prototype` carry String data; `valueOf` and `toString`
+check that brand and reject a Proxy around a wrapper. `String()` defaults to an
+empty string, and String call/construction observes JavaScript coercion.
+The String call alone accepts a Symbol primitive as a descriptive string.
+Derived construction/new-target behavior remains incomplete.
+
+`tests/string_methods.rs` checks UTF-16 boundaries, metadata, coercion order,
+exceptions, primitive receivers, and boxed strings through the public Engine.
+The focused upstream selection runs 28 unmodified Test262 files in both modes
+(56 variants) with original harness includes:
+
+```sh
+scripts/test262
+TEST262_DIR=target/test262 cargo test --locked --test string_methods \
+  pinned_test262_string_methods -- --ignored --nocapture
+```
+
+Set `TEST262_CASE=charAt/pos-rounding.js,slice/this-value-not-obj-coercible.js`
+to run an explicit selection from `test/built-ins/String/prototype/` at the pinned
+revision. The complete six-directory audit is recorded in
+[`string-methods-audit.json`](../test262/string-methods-audit.json): 123 files / 246
+variants passed; 43 files failed and their later 43 variants were unexecuted. External
+builtin/prototype/harness failures are failures, not skips or passing tests;
+each file stops at its first failing variant, so later variants remain unrun.
+This is not full String conformance: search, padding, case conversion, iteration,
+RegExp integration and the legacy Annex B `substr` are separate work.

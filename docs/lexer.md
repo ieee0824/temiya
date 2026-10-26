@@ -15,8 +15,8 @@ The flag resets after every token, so a newline affects only the next token.
 Token text and byte spans exclude preceding whitespace and comments.
 
 This implementation supports Unicode identifiers, a core keyword set,
-numeric literals (including fractions and exponents), quoted strings without
-escapes, common operators and delimiters, line comments, and block comments.
+numeric literals (including fractions and exponents), quoted strings,
+common operators and delimiters, line comments, and block comments.
 Contextual words such as `let`, `async`, and `await` remain identifiers for a
 future parser to interpret.
 
@@ -59,6 +59,23 @@ numbers; large literals cannot overflow the scanner. Signs are separate
 punctuators. Runtime conversion and arithmetic remain future work. See
 [ECMAScript numeric literals](https://tc39.es/ecma262/multipage/ecmascript-language-lexical-grammar.html#sec-literals-numeric-literals).
 
+## String literals
+
+Quoted strings retain raw spelling and byte spans. `Token::string_value()`
+decodes them to UTF-16 code units, including lone surrogates; it deliberately
+does not use Rust `String`, which cannot represent those values. Standard
+single-character escapes, hex escapes, both Unicode escape forms, identity
+escapes, and line continuations are supported. Raw LF and CR are errors; raw
+U+2028 and U+2029 are allowed. Continuations remove the escaped line terminator
+from the cooked value, treating CRLF as one sequence. Newlines inside a string
+do not affect the following token's `has_line_terminator_before`.
+
+Legacy octal and non-octal decimal escapes produce `LegacyString` tokens so a
+future parser can reject them in strict code. Plain `\0` without a following
+decimal digit is a normal escape. Unterminated strings and malformed hex or
+Unicode escapes produce byte-range errors. See
+[ECMAScript string literals](https://tc39.es/ecma262/multipage/ecmascript-language-lexical-grammar.html#sec-literals-string-literals).
+
 ## Lexical goals
 
 `Lexer::new(source)` and `next_token(LexicalGoal)` provide incremental scanning.
@@ -97,7 +114,7 @@ template-literal support.
 ## Remaining limitations
 
 This is a bootstrap subset, not a conforming ECMAScript lexer. Private
-identifiers, string escapes, templates, hashbangs, and optional chaining are not supported.
+identifiers, templates, hashbangs, and optional chaining are not supported.
 Unsupported sequences can sometimes be
 split into individually valid tokens; tokenization does not validate grammar.
 A future parser must use the line-terminator metadata to implement restricted

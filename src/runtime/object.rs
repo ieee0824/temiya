@@ -259,6 +259,7 @@ fn callable_or_undefined(value: Value, name: &str) -> RuntimeResult<Option<Objec
 }
 
 type NativeCall = Rc<dyn Fn(Value, &[Value]) -> RuntimeResult<Value>>;
+type NativeConstruct = Rc<dyn Fn(&[Value], Object) -> RuntimeResult<Object>>;
 
 #[derive(Clone)]
 struct PropertyEntry {
@@ -272,6 +273,7 @@ pub(super) struct ObjectState {
     extensible: bool,
     properties: Vec<PropertyEntry>,
     callable: Option<NativeCall>,
+    construct: Option<NativeConstruct>,
 }
 
 pub(super) fn ordinary_state() -> ObjectState {
@@ -292,6 +294,27 @@ impl Object {
         object
     }
 
+    /// Allocates a constructable object backed by a native Rust closure.
+    #[must_use]
+    pub fn native_constructor(
+        callback: impl Fn(&[Value], Object) -> RuntimeResult<Object> + 'static,
+    ) -> Self {
+        let object = Self::new();
+        object.0.state.borrow_mut().construct = Some(Rc::new(callback));
+        object
+    }
+
+    /// Allocates an object with both native `[[Call]]` and `[[Construct]]` methods.
+    #[must_use]
+    pub fn native_callable_constructor(
+        call: impl Fn(Value, &[Value]) -> RuntimeResult<Value> + 'static,
+        construct: impl Fn(&[Value], Object) -> RuntimeResult<Object> + 'static,
+    ) -> Self {
+        let object = Self::native_function(call);
+        object.0.state.borrow_mut().construct = Some(Rc::new(construct));
+        object
+    }
+
     /// Returns whether this object has a `[[Call]]` internal method.
     #[must_use]
     pub fn is_callable(&self) -> bool {
@@ -304,6 +327,20 @@ impl Object {
             RuntimeError::type_error("object does not have a [[Call]] internal method")
         })?;
         callback(this_value, arguments)
+    }
+
+    /// Returns whether this object has a `[[Construct]]` internal method.
+    #[must_use]
+    pub fn is_constructor(&self) -> bool {
+        self.0.state.borrow().construct.is_some()
+    }
+
+    /// Invokes this object's `[[Construct]]` internal method.
+    pub fn construct(&self, arguments: &[Value], new_target: Self) -> RuntimeResult<Self> {
+        let callback = self.0.state.borrow().construct.clone().ok_or_else(|| {
+            RuntimeError::type_error("object does not have a [[Construct]] internal method")
+        })?;
+        callback(arguments, new_target)
     }
 
     /// Returns this object's prototype.
@@ -395,10 +432,11 @@ impl Object {
 
     /// Implements ordinary `[[Get]]` with this object as the receiver.
     pub fn get(&self, key: &PropertyKey) -> RuntimeResult<Value> {
-        self.get_with_receiver(key, self)
+        self.get_with_receiver(key, Value::Object(self.clone()))
     }
 
-    fn get_with_receiver(&self, key: &PropertyKey, receiver: &Self) -> RuntimeResult<Value> {
+    /// Implements ordinary `[[Get]]` with an explicit receiver.
+    pub fn get_with_receiver(&self, key: &PropertyKey, receiver: Value) -> RuntimeResult<Value> {
         let Some(descriptor) = self.get_own_property(key) else {
             return self.prototype().map_or(Ok(Value::Undefined), |prototype| {
                 prototype.get_with_receiver(key, receiver)
@@ -410,31 +448,38 @@ impl Object {
         let Some(getter) = descriptor.get.flatten() else {
             return Ok(Value::Undefined);
         };
-        getter.call(Value::Object(receiver.clone()), &[])
+        getter.call(receiver, &[])
     }
 
     /// Implements ordinary `[[Set]]` with this object as the receiver.
     pub fn set(&self, key: &PropertyKey, value: Value) -> RuntimeResult<bool> {
-        self.set_with_receiver(key, value, self)
+        self.set_with_receiver(key, value, Value::Object(self.clone()))
     }
 
-    fn set_with_receiver(
+    /// Implements ordinary `[[Set]]` with an explicit receiver.
+    pub fn set_with_receiver(
         &self,
         key: &PropertyKey,
         value: Value,
-        receiver: &Self,
+        receiver: Value,
     ) -> RuntimeResult<bool> {
         let descriptor = self.get_own_property(key);
         let Some(descriptor) = descriptor else {
             if let Some(prototype) = self.prototype() {
                 return prototype.set_with_receiver(key, value, receiver);
             }
+            let Value::Object(receiver) = receiver else {
+                return Ok(false);
+            };
             return receiver.create_data_property(key.clone(), value);
         };
         if descriptor.is_data_descriptor() {
             if descriptor.writable != Some(true) {
                 return Ok(false);
             }
+            let Value::Object(receiver) = receiver else {
+                return Ok(false);
+            };
             if let Some(existing) = receiver.get_own_property(key) {
                 if existing.is_accessor_descriptor() || existing.writable != Some(true) {
                     return Ok(false);
@@ -452,7 +497,7 @@ impl Object {
         let Some(setter) = descriptor.set.flatten() else {
             return Ok(false);
         };
-        setter.call(Value::Object(receiver.clone()), &[value])?;
+        setter.call(receiver, &[value])?;
         Ok(true)
     }
 

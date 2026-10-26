@@ -13,10 +13,12 @@ use num_bigint::BigInt;
 
 mod environment;
 mod execution;
+mod interpreter;
 mod object;
 
 pub use environment::{Environment, EnvironmentKind, ObjectEnvironmentOptions, ThisBindingStatus};
 pub use execution::{Agent, ContextState, ExecutionContext, Realm, ScriptRecord};
+pub use interpreter::{ExpressionEvaluator, Reference, ReferencedName};
 pub use object::{PropertyDescriptor, PropertyKey, is_compatible_property_descriptor};
 
 /// A JavaScript String value represented as an exact sequence of UTF-16 code units.
@@ -154,6 +156,15 @@ impl RuntimeError {
         }
     }
 
+    /// Creates a RangeError completion.
+    #[must_use]
+    pub fn range_error(message: impl Into<String>) -> Self {
+        Self {
+            kind: RuntimeErrorKind::RangeError,
+            message: message.into(),
+        }
+    }
+
     /// Creates an engine-internal invariant error.
     #[must_use]
     pub fn internal_error(message: impl Into<String>) -> Self {
@@ -193,6 +204,8 @@ pub enum RuntimeErrorKind {
     SyntaxError,
     /// A binding is absent or cannot yet be accessed.
     ReferenceError,
+    /// A numeric value falls outside the operation's permitted range.
+    RangeError,
     /// An invalid engine state transition was requested.
     InternalError,
 }
@@ -203,6 +216,7 @@ impl fmt::Display for RuntimeErrorKind {
             Self::TypeError => formatter.write_str("TypeError"),
             Self::SyntaxError => formatter.write_str("SyntaxError"),
             Self::ReferenceError => formatter.write_str("ReferenceError"),
+            Self::RangeError => formatter.write_str("RangeError"),
             Self::InternalError => formatter.write_str("InternalError"),
         }
     }

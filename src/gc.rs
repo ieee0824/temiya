@@ -103,6 +103,7 @@ impl<T: Trace> Allocation for T {
 struct Slot {
     generation: u64,
     value: Option<Box<dyn Allocation>>,
+    old: bool,
 }
 
 type RootCounts = Rc<RefCell<HashMap<RawHandle, usize>>>;
@@ -153,6 +154,7 @@ pub struct Heap {
     roots: RootCounts,
     options: HeapOptions,
     allocations_since_collection: usize,
+    remembered: HashSet<RawHandle>,
 }
 
 /// Limits controlling automatic collection and allocation failure.
@@ -194,6 +196,31 @@ impl fmt::Display for OutOfMemory {
 
 impl std::error::Error for OutOfMemory {}
 
+/// A write-barrier validation failure.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum WriteBarrierError {
+    /// The owner handle is not live in this heap.
+    InvalidOwner,
+    /// The target handle is not live in this heap.
+    InvalidTarget,
+    /// An old allocation contains a young edge but is absent from the remembered set.
+    MissingBarrier(RawHandle),
+}
+
+impl fmt::Display for WriteBarrierError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::InvalidOwner => formatter.write_str("write barrier owner is not live"),
+            Self::InvalidTarget => formatter.write_str("write barrier target is not live"),
+            Self::MissingBarrier(_) => {
+                formatter.write_str("old-to-young edge lacks a write barrier")
+            }
+        }
+    }
+}
+
+impl std::error::Error for WriteBarrierError {}
+
 impl Heap {
     /// Creates an empty heap with an independent handle namespace.
     #[must_use]
@@ -212,6 +239,7 @@ impl Heap {
             roots: Rc::new(RefCell::new(HashMap::new())),
             options,
             allocations_since_collection: 0,
+            remembered: HashSet::new(),
         }
     }
 
@@ -248,6 +276,7 @@ impl Heap {
             self.slots.push(Slot {
                 generation: 0,
                 value: None,
+                old: false,
             });
             (self.slots.len() - 1, 0)
         };
@@ -260,6 +289,7 @@ impl Heap {
             marker: PhantomData,
         };
         self.slots[slot_index].value = Some(Box::new(value));
+        self.slots[slot_index].old = false;
         self.allocations_since_collection += 1;
         register_root(&self.roots, handle.raw);
         Ok(Root {
@@ -298,6 +328,48 @@ impl Heap {
         self.slot_mut(handle)
             .and_then(|slot| slot.value.as_mut()?.as_any_mut().downcast_mut::<T>())
             .map(use_value)
+    }
+
+    /// Records a possible old-to-young edge before or after mutating its owner.
+    ///
+    /// Embedders must call this whenever an old allocation gains a strong edge.
+    pub fn write_barrier<T: Trace, U: Trace>(
+        &mut self,
+        owner: Handle<T>,
+        target: Handle<U>,
+    ) -> Result<(), WriteBarrierError> {
+        let owner_slot = self
+            .raw_slot(owner.raw)
+            .ok_or(WriteBarrierError::InvalidOwner)?;
+        self.raw_slot(target.raw)
+            .ok_or(WriteBarrierError::InvalidTarget)?;
+        if owner_slot.old && self.is_young(target.raw) {
+            self.remembered.insert(owner.raw);
+        }
+        Ok(())
+    }
+
+    /// Verifies that every observed old-to-young edge has a remembered owner.
+    pub fn verify_write_barriers(&self) -> Result<(), WriteBarrierError> {
+        for (index, slot) in self.slots.iter().enumerate() {
+            let Some(value) = &slot.value else { continue };
+            if !slot.old {
+                continue;
+            }
+            let owner = RawHandle {
+                heap: self.id,
+                slot: index,
+                generation: slot.generation,
+            };
+            let mut has_young_edge = false;
+            value.trace(&mut Tracer {
+                visit: &mut |edge| has_young_edge |= self.is_young(edge),
+            });
+            if has_young_edge && !self.remembered.contains(&owner) {
+                return Err(WriteBarrierError::MissingBarrier(owner));
+            }
+        }
+        Ok(())
     }
 
     /// Returns the number of explicit root registrations for a handle.
@@ -347,8 +419,76 @@ impl Heap {
                 slot.value = None;
                 self.free.push(index);
                 reclaimed += 1;
+            } else if slot.value.is_some() {
+                slot.old = true;
             }
         }
+        self.remembered.clear();
+        self.allocations_since_collection = 0;
+        CollectionStats {
+            retained: self.live_allocations(),
+            reclaimed,
+        }
+    }
+
+    /// Collects unreachable young allocations while leaving the old generation intact.
+    pub fn collect_minor(&mut self) -> CollectionStats {
+        let mut marked = HashSet::new();
+        let mut queue = VecDeque::new();
+        let roots = self.roots.borrow().keys().copied().collect::<Vec<_>>();
+        let seeds = roots
+            .iter()
+            .copied()
+            .chain(self.remembered.iter().copied())
+            .collect::<HashSet<_>>();
+        for raw in seeds {
+            if self.is_young(raw) {
+                queue.push_back(raw);
+            } else if let Some(value) = self.raw_slot(raw).and_then(|slot| slot.value.as_ref()) {
+                value.trace(&mut Tracer {
+                    visit: &mut |edge| {
+                        if self.is_young(edge) {
+                            queue.push_back(edge);
+                        }
+                    },
+                });
+            }
+        }
+        while let Some(raw) = queue.pop_front() {
+            if !marked.insert(raw) {
+                continue;
+            }
+            let Some(value) = self.raw_slot(raw).and_then(|slot| slot.value.as_ref()) else {
+                continue;
+            };
+            value.trace(&mut Tracer {
+                visit: &mut |edge| {
+                    if self.is_young(edge) {
+                        queue.push_back(edge);
+                    }
+                },
+            });
+        }
+
+        let mut reclaimed = 0;
+        for (index, slot) in self.slots.iter_mut().enumerate() {
+            if slot.old || slot.value.is_none() {
+                continue;
+            }
+            let raw = RawHandle {
+                heap: self.id,
+                slot: index,
+                generation: slot.generation,
+            };
+            if marked.contains(&raw) {
+                slot.old = true;
+            } else {
+                slot.value = None;
+                self.free.push(index);
+                reclaimed += 1;
+            }
+        }
+        self.remembered.clear();
         self.allocations_since_collection = 0;
         CollectionStats {
             retained: self.live_allocations(),
@@ -363,6 +503,10 @@ impl Heap {
             .iter()
             .filter(|slot| slot.value.is_some())
             .count()
+    }
+
+    fn is_young(&self, handle: RawHandle) -> bool {
+        self.raw_slot(handle).is_some_and(|slot| !slot.old)
     }
 
     fn slot<T: Trace>(&self, handle: Handle<T>) -> Option<&Slot> {

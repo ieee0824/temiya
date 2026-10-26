@@ -275,9 +275,7 @@ impl ExpressionEvaluator {
     fn eval(&self, expression: &Expr) -> RuntimeResult<Evaluation> {
         match &expression.kind {
             ExprKind::Identifier(name) => self.identifier(name).map(Evaluation::Reference),
-            ExprKind::Literal(literal) => {
-                literal_value(literal, self.strict).map(Evaluation::Value)
-            }
+            ExprKind::Literal(literal) => self.literal(literal).map(Evaluation::Value),
             ExprKind::This => Ok(Evaluation::Value(self.this_value.clone())),
             ExprKind::Parenthesized(inner) => self.eval(inner)?.value().map(Evaluation::Value),
             ExprKind::MetaProperty { meta, property } if meta == "new" && property == "target" => {
@@ -596,6 +594,19 @@ impl ExpressionEvaluator {
         Ok(Value::Object(object))
     }
 
+    fn literal(&self, literal: &Literal) -> RuntimeResult<Value> {
+        match literal {
+            Literal::RegExp(spelling) => {
+                let regexp = super::RegExp::from_literal(spelling)?;
+                regexp.object().set_prototype(Some(
+                    self.realm.intrinsic(super::IntrinsicId::RegExpPrototype),
+                ));
+                Ok(Value::Object(regexp.object()))
+            }
+            _ => literal_value(literal, self.strict),
+        }
+    }
+
     fn object(&self, properties: &[crate::ast::ObjectProperty]) -> RuntimeResult<Value> {
         let object = Object::new();
         for property in properties {
@@ -745,9 +756,7 @@ fn literal_value(literal: &Literal, strict: bool) -> RuntimeResult<Value> {
         Literal::String { value, .. } => {
             Ok(Value::String(JsString::from_code_units(value.clone())))
         }
-        Literal::RegExp(_) => Err(RuntimeError::internal_error(
-            "RegExp literal evaluation is implemented by milestone #35",
-        )),
+        Literal::RegExp(_) => unreachable!("RegExp literals require a Realm"),
         Literal::Number { raw, kind } => parse_numeric_literal(raw, *kind),
     }
 }

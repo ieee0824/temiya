@@ -4,13 +4,74 @@ use std::{cell::RefCell, rc::Rc};
 
 use super::{
     ArrayBuffer, ArrayObject, DataView, IntrinsicId, IntrinsicRegistry, JsString, Object,
-    PropertyDescriptor, PropertyKey, RuntimeError, RuntimeResult, TypedArray, Value,
+    PropertyDescriptor, PropertyKey, RegExp, RuntimeError, RuntimeResult, StringObject, TypedArray,
+    Value,
 };
 
 pub(super) fn initialize(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {
     install_object(intrinsics)?;
     install_function(intrinsics)?;
-    install_reflect(intrinsics).and_then(|()| install_indexed(intrinsics))
+    install_reflect(intrinsics)
+        .and_then(|()| install_indexed(intrinsics))
+        .and_then(|()| install_string_regexp(intrinsics))
+}
+
+fn install_string_regexp(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {
+    let string = intrinsics.get(IntrinsicId::String);
+    let string_prototype = intrinsics.get(IntrinsicId::StringPrototype);
+    string.set_native_call(|_, arguments| {
+        value_arg(arguments.first())
+            .to_js_string()
+            .map(Value::String)
+    });
+    string.set_native_construct(move |arguments, _| {
+        let value = value_arg(arguments.first()).to_js_string()?;
+        let object = StringObject::new(value).object();
+        object.set_prototype(Some(string_prototype.clone()));
+        Ok(object)
+    });
+
+    let regexp = intrinsics.get(IntrinsicId::RegExp);
+    let regexp_prototype = intrinsics.get(IntrinsicId::RegExpPrototype);
+    let create = move |arguments: &[Value]| {
+        let pattern = match arguments.first() {
+            Some(Value::Object(object)) => RegExp::from_object(object.clone()).map_or_else(
+                || value_arg(arguments.first()).to_js_string(),
+                |value| Ok(value.source()),
+            )?,
+            value => value_arg(value).to_js_string()?,
+        };
+        let flags = match arguments.get(1) {
+            None | Some(Value::Undefined) => String::new(),
+            Some(value) => value.to_js_string()?.to_string_lossy(),
+        };
+        let object = RegExp::new(pattern, &flags)?.object();
+        object.set_prototype(Some(regexp_prototype.clone()));
+        Ok(object)
+    };
+    let create = std::rc::Rc::new(create);
+    let call_create = create.clone();
+    regexp.set_native_call(move |_, arguments| call_create(arguments).map(Value::Object));
+    regexp.set_native_construct(move |arguments, _| create(arguments));
+    method(
+        &intrinsics.get(IntrinsicId::RegExpPrototype),
+        "exec",
+        |this, arguments| {
+            let object = object_value(&this, "RegExp receiver")?;
+            let regexp = RegExp::from_object(object)
+                .ok_or_else(|| RuntimeError::type_error("receiver is not a RegExp"))?;
+            let input = value_arg(arguments.first()).to_js_string()?;
+            let Some(found) = regexp.exec(&input)? else {
+                return Ok(Value::Null);
+            };
+            let values = found
+                .captures
+                .into_iter()
+                .map(|capture| capture.map_or(Value::Undefined, Value::String))
+                .collect();
+            array_value(values)
+        },
+    )
 }
 
 fn install_indexed(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {

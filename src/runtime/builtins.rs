@@ -12,13 +12,14 @@ use super::{
 pub(super) fn initialize(
     intrinsics: &IntrinsicRegistry,
     host_hooks: HostHooks,
+    symbols: &super::WellKnownSymbols,
 ) -> RuntimeResult<()> {
     install_object(intrinsics)?;
     install_function(intrinsics)?;
     install_reflect(intrinsics)
         .and_then(|()| install_indexed(intrinsics))
         .and_then(|()| install_regexp(intrinsics))
-        .and_then(|()| install_numeric(intrinsics))
+        .and_then(|()| install_numeric(intrinsics, symbols))
         .and_then(|()| install_collections(intrinsics))
         .and_then(|()| install_date_json(intrinsics, host_hooks))
         .and_then(|()| install_proxy(intrinsics))
@@ -227,15 +228,19 @@ fn weak_set_receiver(value: Value) -> RuntimeResult<WeakSetObject> {
         .ok_or_else(|| RuntimeError::type_error("receiver is not a WeakSet"))
 }
 
-fn install_numeric(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {
+fn install_numeric(
+    intrinsics: &IntrinsicRegistry,
+    symbols: &super::WellKnownSymbols,
+) -> RuntimeResult<()> {
     let number = intrinsics.get(IntrinsicId::Number);
     let number_prototype = intrinsics.get(IntrinsicId::NumberPrototype);
-    number.set_native_call(|_, arguments| match arguments.first() {
-        None => Ok(Value::Number(0.0)),
-        Some(value) => value.to_number().map(Value::Number),
+    let number_key: PropertyKey = symbols.get(super::WellKnownSymbol::ToPrimitive).into();
+    let construct_number_key = number_key.clone();
+    number.set_native_call(move |_, arguments| {
+        number_argument(arguments.first(), &number_key).map(Value::Number)
     });
     number.set_native_construct(move |arguments, _| {
-        let value = arguments.first().map_or(Ok(0.0), Value::to_number)?;
+        let value = number_argument(arguments.first(), &construct_number_key)?;
         let object = NumberObject::new(value).object();
         object.set_prototype(Some(number_prototype.clone()));
         Ok(object)
@@ -269,6 +274,11 @@ fn install_numeric(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {
     method(&number, "isInteger", |_, arguments| {
         Ok(Value::Boolean(
             matches!(arguments.first(), Some(Value::Number(value)) if value.is_finite() && value.fract() == 0.0),
+        ))
+    })?;
+    numeric_method(intrinsics, &number, "isSafeInteger", 1, |_, arguments| {
+        Ok(Value::Boolean(
+            matches!(arguments.first(), Some(Value::Number(value)) if value.is_finite() && value.fract() == 0.0 && value.abs() <= 9_007_199_254_740_991.0),
         ))
     })?;
     method(&number, "parseFloat", |_, arguments| {
@@ -307,8 +317,13 @@ fn install_numeric(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {
     )?;
 
     let bigint = intrinsics.get(IntrinsicId::BigInt);
-    bigint.set_native_call(|_, arguments| {
-        value_arg(arguments.first()).to_bigint().map(Value::BigInt)
+    let bigint_key: PropertyKey = symbols.get(super::WellKnownSymbol::ToPrimitive).into();
+    bigint.set_native_call(move |_, arguments| {
+        let value = super::coercion::primitive(&value_arg(arguments.first()), &bigint_key, false)?;
+        match value {
+            Value::Number(number) => super::numeric::number_to_bigint(number).map(Value::BigInt),
+            value => value.to_bigint().map(Value::BigInt),
+        }
     });
     bigint.clear_native_construct();
     method(&bigint, "asUintN", |_, arguments| {
@@ -321,6 +336,41 @@ fn install_numeric(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {
         let value = value_arg(arguments.get(1)).to_bigint()?;
         Math::bigint_as_int_n(bits, &value).map(Value::BigInt)
     })?;
+
+    let prototype = intrinsics.get(IntrinsicId::BigIntPrototype);
+    numeric_method(intrinsics, &prototype, "valueOf", 0, |this, _| {
+        numeric_receiver(&this, true)
+    })?;
+    let key: PropertyKey = symbols.get(super::WellKnownSymbol::ToPrimitive).into();
+    numeric_method(
+        intrinsics,
+        &prototype,
+        "toString",
+        0,
+        move |this, arguments| {
+            let Value::BigInt(value) = numeric_receiver(&this, true)? else {
+                unreachable!()
+            };
+            let radix = match arguments.first() {
+                None | Some(Value::Undefined) => 10,
+                Some(value) => {
+                    let number = super::coercion::primitive(value, &key, false)?.to_number()?;
+                    let integer = if number.is_nan() { 0.0 } else { number.trunc() };
+                    if !(2.0..=36.0).contains(&integer) {
+                        return Err(RuntimeError::range_error(
+                            "BigInt radix must be between 2 and 36",
+                        ));
+                    }
+                    integer as u32
+                }
+            };
+            Ok(Value::String(value.to_str_radix(radix).into()))
+        },
+    )?;
+    prototype.define_own_property(
+        symbols.get(super::WellKnownSymbol::ToStringTag).into(),
+        PropertyDescriptor::data(Value::String("BigInt".into()), false, false, true),
+    )?;
 
     let math = intrinsics.get(IntrinsicId::Math);
     unary_math(&math, "abs", f64::abs)?;
@@ -872,4 +922,40 @@ fn array_value(values: Vec<Value>) -> RuntimeResult<Value> {
         PropertyDescriptor::data(Value::Number(length as f64), true, false, false),
     )?;
     Ok(Value::Object(array))
+}
+
+// These new numeric methods expose ordinary builtin metadata and Function.prototype.
+fn numeric_method(
+    intrinsics: &IntrinsicRegistry,
+    holder: &Object,
+    name: &str,
+    length: u32,
+    callback: impl Fn(Value, &[Value]) -> RuntimeResult<Value> + 'static,
+) -> RuntimeResult<()> {
+    let method = Object::native_function(callback);
+    method.set_prototype(Some(intrinsics.get(IntrinsicId::FunctionPrototype)));
+    method.define_own_property(
+        "name".into(),
+        PropertyDescriptor::data(Value::String(name.into()), false, false, true),
+    )?;
+    method.define_own_property(
+        "length".into(),
+        PropertyDescriptor::data(Value::Number(f64::from(length)), false, false, true),
+    )?;
+    require_define(
+        holder,
+        name.into(),
+        PropertyDescriptor::data(Value::Object(method), true, false, true),
+    )
+}
+
+fn number_argument(value: Option<&Value>, key: &PropertyKey) -> RuntimeResult<f64> {
+    let Some(value) = value else { return Ok(0.0) };
+    match super::coercion::primitive(value, key, false)? {
+        Value::BigInt(value) => Ok(value
+            .to_string()
+            .parse::<f64>()
+            .expect("BigInt decimal is a valid Number spelling")),
+        value => value.to_number(),
+    }
 }

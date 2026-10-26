@@ -231,3 +231,23 @@ fn modulus(bits: u64) -> RuntimeResult<BigInt> {
         num_bigint::BigUint::from(1_u8) << shift,
     ))
 }
+
+// NumberToBigInt reads the exact binary64 integer, not its shortest decimal
+// spelling (which can denote a different mathematical integer above 2^53).
+pub(super) fn number_to_bigint(value: f64) -> RuntimeResult<BigInt> {
+    if !value.is_finite() || value.fract() != 0.0 {
+        return Err(RuntimeError::range_error("Number is not a finite integer"));
+    }
+    if value == 0.0 {
+        return Ok(BigInt::from(0));
+    }
+    let bits = value.to_bits();
+    let exponent = ((bits >> 52) & 0x7ff) as i32 - 1023 - 52;
+    let significand = BigInt::from((bits & ((1_u64 << 52) - 1)) | (1_u64 << 52));
+    let result = if exponent >= 0 {
+        significand << exponent as usize
+    } else {
+        significand >> (-exponent) as usize
+    };
+    Ok(if bits >> 63 == 0 { result } else { -result })
+}

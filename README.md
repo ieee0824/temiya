@@ -23,7 +23,44 @@ The initial milestones are:
 5. Stable Rust embedding API and C ABI
 6. Bytecode and tiered optimization after interpreter correctness
 
-Temiya is at the bootstrap stage and does not execute JavaScript yet.
+Temiya executes a subset of JavaScript through its Rust embedding API. It is
+experimental: parsing a construct does not imply that it can be evaluated, and
+the presence of a built-in name does not imply complete ECMAScript behavior.
+
+```rust
+use temiya::{Engine, runtime::Value};
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let engine = Engine::default();
+    let realm = engine.create_realm();
+    let script = engine.compile(&realm, "function twice(x) { return x * 2; } twice(21);")?;
+    let result = engine.evaluate(&script)?;
+    assert!(matches!(result.value(), Value::Number(42.0)));
+    Ok(())
+}
+```
+
+The execution paths currently have different capabilities:
+
+| Path | Entry point | Current scope and limits |
+| --- | --- | --- |
+| Parser | `parser::parse_script` / `parse_module` | Produces owned syntax; does not execute it. For example, a class expression parses but AST evaluation rejects it. |
+| AST interpreter | `Engine::compile` then `Engine::evaluate` | Executes arithmetic, variables, loops, ordinary functions, and supported object operations. This is the embedding API's execution path. Classes and dynamic import are among the missing runtime features; built-ins remain incomplete. |
+| Bytecode interpreter | `BytecodeCompiler::compile` then `VirtualMachine::execute` | Explicit, separate subset supporting primitive arithmetic, locals, and basic control flow. Object literals and ordinary function calls are rejected during lowering. `Engine` does not select this backend. |
+| Experimental JIT | `BaselineJit::compile` with `--features jit` | Separate straight-line numeric backend on x86-64 Unix. For example, `40 + 2;` is supported, but `1 === 1;` is rejected. Other platforms, including ARM64, return `UnsupportedPlatform`. Enabling the feature does not make `Engine` use JIT execution. |
+
+Run `cargo run --example backend_scope --all-features` to check these examples
+through the public APIs, including the unsupported cases. See
+[bytecode and JIT](docs/bytecode.md) for their explicit error contracts.
+
+The tracing collector, debugger, and optimizing-tier contracts are development
+components; their APIs do not imply a collecting heap, debugger, or optimizing
+tier integrated into `Engine`. Runtime objects currently use `Rc` ownership,
+which does not reclaim reference cycles. The Test262 tooling records corpus
+metadata but does not yet establish whole-engine conformance. There is no
+measured claim that Temiya outperforms Boa or SpiderMonkey; see the
+[performance comparison requirements](docs/benchmarks.md#cross-engine-targets).
+
 An initial lexer is available as `temiya::lexer::tokenize`; its supported subset
 and next steps are documented in [docs/lexer.md](docs/lexer.md).
 Owned expression and statement parsers are available as

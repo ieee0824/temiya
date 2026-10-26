@@ -32,3 +32,10 @@ separately track lexical and `var` declarations and expose declaration-conflict
 checks. Function records own `this`, function-object, and `new.target` state;
 module import bindings are immutable live references without performing module
 linking.
+
+`Realm` owns the global object and Global Environment Record. `ScriptRecord`
+owns parsed code and its Realm, while `ExecutionContext` owns the active Realm,
+code/function association, and lexical/variable environments. A single-thread
+`Agent` exposes explicit enter, suspend, resume, and leave transitions. Entering
+a nested context suspends its caller, leaving resumes it, and `run_in_context`
+restores the stack for both normal and abrupt ECMAScript completions.

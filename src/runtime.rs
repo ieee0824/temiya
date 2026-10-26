@@ -13,12 +13,14 @@ use num_bigint::BigInt;
 
 mod environment;
 mod execution;
+mod function;
 mod interpreter;
 mod object;
 mod statement;
 
 pub use environment::{Environment, EnvironmentKind, ObjectEnvironmentOptions, ThisBindingStatus};
 pub use execution::{Agent, ContextState, ExecutionContext, Realm, ScriptRecord};
+pub use function::FunctionKind;
 pub use interpreter::{ExpressionEvaluator, Reference, ReferencedName};
 pub use object::{PropertyDescriptor, PropertyKey, is_compatible_property_descriptor};
 pub use statement::{Completion, StatementEvaluator};

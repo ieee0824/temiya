@@ -6,8 +6,9 @@ use crate::ast::{
 };
 
 use super::{
-    Environment, ExpressionEvaluator, JsString, ObjectEnvironmentOptions, PropertyKey, Realm,
-    RuntimeError, RuntimeResult, Value, interpreter::strict_equal,
+    Environment, ExpressionEvaluator, FunctionKind, JsString, ObjectEnvironmentOptions,
+    PropertyKey, Realm, RuntimeError, RuntimeResult, Value, function::create_function,
+    interpreter::strict_equal,
 };
 
 /// The completion produced by statement evaluation.
@@ -119,6 +120,7 @@ impl StatementEvaluator {
         evaluator.expression.strict |= program.strict;
         evaluator.instantiate_var_statements(&program.body)?;
         evaluator.instantiate_lexical(&program.body, &evaluator.expression.environment)?;
+        evaluator.instantiate_functions(&program.body)?;
         evaluator.statement_list(&program.body)
     }
 
@@ -288,8 +290,8 @@ impl StatementEvaluator {
             StmtKind::Variable { kind, declarations } => {
                 self.evaluate_declarations(*kind, declarations)
             }
-            StmtKind::FunctionDeclaration(_)
-            | StmtKind::ClassDeclaration(_)
+            StmtKind::FunctionDeclaration(_) => Ok(Completion::Normal(None)),
+            StmtKind::ClassDeclaration(_)
             | StmtKind::ImportDeclaration(_)
             | StmtKind::ExportDeclaration(_) => Err(RuntimeError::internal_error(
                 "function, class, and module declaration execution belongs to later milestones",
@@ -300,7 +302,9 @@ impl StatementEvaluator {
     fn block(&self, statements: &[Stmt]) -> RuntimeResult<Completion> {
         let environment = Environment::declarative(Some(self.expression.environment.clone()));
         self.instantiate_lexical(statements, &environment)?;
-        self.nested(environment).statement_list(statements)
+        let evaluator = self.nested(environment);
+        evaluator.instantiate_functions(statements)?;
+        evaluator.statement_list(statements)
     }
 
     fn while_loop(
@@ -511,6 +515,40 @@ impl StatementEvaluator {
                         }
                     }
                 }
+            }
+        }
+        Ok(())
+    }
+
+    fn instantiate_functions(&self, statements: &[Stmt]) -> RuntimeResult<()> {
+        for statement in statements {
+            let StmtKind::FunctionDeclaration(function) = &statement.kind else {
+                continue;
+            };
+            let Some(Expr {
+                kind: ExprKind::Identifier(name),
+                ..
+            }) = &function.name
+            else {
+                return Err(RuntimeError::syntax_error(
+                    "function declaration requires a name",
+                ));
+            };
+            let name = JsString::from(name.as_str());
+            let function = create_function(function, FunctionKind::Normal, &self.expression, None)?;
+            if self.expression.environment.has_binding(&name)? {
+                self.expression.environment.set_mutable_binding(
+                    &name,
+                    Value::Object(function),
+                    false,
+                )?;
+            } else {
+                self.expression
+                    .environment
+                    .create_mutable_binding(name.clone(), false)?;
+                self.expression
+                    .environment
+                    .initialize_binding(&name, Value::Object(function))?;
             }
         }
         Ok(())

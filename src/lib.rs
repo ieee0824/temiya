@@ -4,6 +4,8 @@
 //! execution, garbage collection, and embedding APIs will be added in small,
 //! independently testable stages.
 
+pub mod lexer;
+
 /// Configuration used when constructing an [`Engine`].
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct EngineOptions {

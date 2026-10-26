@@ -115,7 +115,12 @@ pub enum ExprKind {
     /// A comma expression in evaluation order.
     Sequence(Vec<Expr>),
     /// An array literal; absent elements represent holes.
-    Array(Vec<Option<Expr>>),
+    Array {
+        /// Elements in source order; absent elements are holes.
+        elements: Vec<Option<Expr>>,
+        /// Whether a comma follows the final non-hole element.
+        trailing_comma: bool,
+    },
     /// An object literal with source-ordered properties.
     Object(Vec<ObjectProperty>),
     /// A property access, including computed and optional access.
@@ -171,6 +176,10 @@ pub struct ObjectProperty {
     pub computed: bool,
     /// Whether this is a spread property.
     pub spread: bool,
+    /// Whether this is a shorthand name, including a cover-initialized name.
+    pub shorthand: bool,
+    /// Whether a comma immediately follows this property in source.
+    pub comma_after: bool,
 }
 
 /// An owned template text component.
@@ -289,7 +298,7 @@ impl Expr {
                 alternate,
             } => vec![test, consequent, alternate],
             ExprKind::Sequence(items) => items.iter().collect(),
-            ExprKind::Array(items) => items.iter().flatten().collect(),
+            ExprKind::Array { elements, .. } => elements.iter().flatten().collect(),
             ExprKind::Object(properties) => properties
                 .iter()
                 .flat_map(|p| std::iter::once(&p.key).chain(p.value.iter()))

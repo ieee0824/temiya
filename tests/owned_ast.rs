@@ -83,6 +83,8 @@ fn validates_object_property_boundaries() {
             value: Some(name(3, 4, "b")),
             computed: false,
             spread: false,
+            shorthand: false,
+            comma_after: false,
         }]),
     );
     expr.validate(&SourceText::new("{a:b}")).unwrap();

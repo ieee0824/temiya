@@ -23,7 +23,8 @@ The parser rejects invalid assignment/update targets, unparenthesized mixtures
 of nullish and logical operators, unary expressions before exponentiation,
 invalid untagged template escapes, and forbidden optional-chain constructors or
 tags. Strict mode rejects legacy numbers/strings, strict reserved names, and
-identifier deletion. Full static semantics will be added separately.
+identifier deletion. Name and scope checks run before returning the AST; see
+[static semantics](semantics.md).
 
 ## Statements and source bodies
 
@@ -55,7 +56,7 @@ for-of and for-await-of prohibit declaration initializers.
 Source-body directive prologues recognize an unescaped `use strict` spelling.
 Legacy escapes in earlier directives are checked retrospectively. A string in
 an ordinary nested block does not activate strict mode. Full declaration/scope
-early-error validation remains separate work.
+early-error validation runs after parsing as described below.
 
 ## Declarations, functions, and classes
 
@@ -108,9 +109,17 @@ as a constructor. `import.meta` is a Module-only meta-property. Top-level await
 and for-await-of are supported without enabling return at module top level.
 See [ECMAScript imports and exports](https://tc39.es/ecma262/multipage/ecmascript-language-scripts-and-modules.html#sec-imports).
 
-This is not yet a complete ECMAScript frontend. Cover-initialized
-object assignment patterns, Annex B function declarations in single-statement
-slots, declaration/scope analysis, undeclared private references, and full
-early-error validation remain roadmap work. Regexp pattern validation and
-module resolution/linking and runtime evaluation are also separate. The recursion limit bounds nested parser
+## Early errors
+
+Every public parse entry point runs [static semantics](semantics.md), checking
+declaration conflicts, module exports, private references, strict restrictions,
+and contextual control-flow/suspension rules. Object shorthand defaults are
+accepted as cover syntax only when used in binding or assignment patterns.
+Array trailing-comma and object property metadata distinguish rest patterns
+from valid spread literals.
+
+This is not yet a complete ECMAScript frontend. Annex B function declarations in
+single-statement slots and unsupported proposals remain outside the current
+scope. Regexp pattern validation, module resolution/linking, and runtime
+evaluation are separate milestones. The recursion limit bounds nested parser
 calls, not arbitrary manually built AST depth or total source length.

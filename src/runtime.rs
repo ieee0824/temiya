@@ -18,6 +18,7 @@ mod generator;
 mod interpreter;
 mod job_queue;
 mod object;
+mod pipeline;
 mod promise;
 mod statement;
 
@@ -28,6 +29,7 @@ pub use generator::{Generator, GeneratorState, IteratorResult};
 pub use interpreter::{ExpressionEvaluator, Reference, ReferencedName};
 pub use job_queue::JobQueue;
 pub use object::{PropertyDescriptor, PropertyKey, is_compatible_property_descriptor};
+pub use pipeline::{ModuleGraph, ModuleStatus, SourceTextModule};
 pub use promise::{Promise, PromiseState};
 pub use statement::{Completion, StatementEvaluator};
 

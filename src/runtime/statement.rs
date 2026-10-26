@@ -130,6 +130,11 @@ impl StatementEvaluator {
         self.statement(statement, &[])
     }
 
+    pub(super) fn evaluate_instantiated(&self, statements: &[Stmt]) -> RuntimeResult<Completion> {
+        self.instantiate_functions(statements)?;
+        self.statement_list(statements)
+    }
+
     fn nested(&self, environment: Environment) -> Self {
         let mut expression = self.expression.clone();
         expression.environment = environment;
@@ -537,11 +542,17 @@ impl StatementEvaluator {
             let name = JsString::from(name.as_str());
             let function = create_function(function, FunctionKind::Normal, &self.expression, None)?;
             if self.expression.environment.has_binding(&name)? {
-                self.expression.environment.set_mutable_binding(
-                    &name,
-                    Value::Object(function),
-                    false,
-                )?;
+                let value = Value::Object(function);
+                if self
+                    .expression
+                    .environment
+                    .set_mutable_binding(&name, value.clone(), false)
+                    .is_err()
+                {
+                    self.expression
+                        .environment
+                        .initialize_binding(&name, value)?;
+                }
             } else {
                 self.expression
                     .environment

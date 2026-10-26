@@ -65,3 +65,18 @@ Engine still executes AST code. Correct global bindings and successful tests do
 not establish a speedup against Boa. The original eleven omoikane workloads,
 result oracles and repeated comparison/resource guards remain the performance
 acceptance evidence.
+
+Recorded local ARM64 results on stable and Rust 1.85.0: each full test run has
+362 passes and 8 default ignored tests. The corpus-dependent focused test is
+executed explicitly in addition to those counts:
+[stable](../test262/global-declaration-focused-stable.json) and
+[MSRV](../test262/global-declaration-focused-msrv.json) each pass 14 variants
+from seven original files, with no failures or skips.
+
+The [full global-code audit](../test262/global-declaration-audit.json) retains
+all 42 files / 75 variants against the #465 baseline and this change. It includes
+parse-negative grammar tests, not just runtime feature tests. Results change
+from 40 pass / 35 fail to 53 pass / 22 fail: 13 improve and no former pass
+regresses. All 22 failures remain visible, including eight variants whose original
+propertyHelper.js cannot initialize (#467), class execution, eval and other
+unimplemented behavior. These results do not establish full global-code conformance.

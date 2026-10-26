@@ -384,3 +384,35 @@ fn pending_invocations_require_balanced_frames_and_argument_boundaries() {
         Err(VerifyErrorKind::ScopeMismatch)
     );
 }
+
+#[test]
+fn call_target_pairs_require_references_and_two_operands() {
+    use Instruction::*;
+    assert!(
+        verify(vec![
+            LoadReferenceCallTarget,
+            BeginMethodCall,
+            Invoke,
+            Return
+        ])
+        .is_err()
+    );
+    assert_eq!(
+        verify(vec![LoadConstant(0), BeginMethodCall, Invoke, Return]),
+        Err(VerifyErrorKind::StackUnderflow)
+    );
+    assert_eq!(
+        verify(vec![
+            LoadConstant(0),
+            AsCallTarget,
+            BeginMethodCall,
+            Invoke,
+            Return
+        ]),
+        Ok(2)
+    );
+    assert_eq!(
+        verify(vec![AsCallTarget, BeginMethodCall, Invoke, Return]),
+        Err(VerifyErrorKind::StackUnderflow)
+    );
+}

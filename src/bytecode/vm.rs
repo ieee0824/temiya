@@ -159,6 +159,28 @@ impl VirtualMachine {
                             .delete()?,
                     ));
                 }
+                Instruction::LoadReferenceCallTarget => {
+                    let reference = references.pop().expect("verified reference stack");
+                    let receiver = reference.this_value().unwrap_or(Value::Undefined);
+                    let callee = reference.get_value()?;
+                    stack.push(receiver);
+                    stack.push(callee);
+                }
+                Instruction::AsCallTarget => {
+                    let callee = pop(&mut stack)?;
+                    stack.push(Value::Undefined);
+                    stack.push(callee);
+                }
+                Instruction::BeginMethodCall => {
+                    let callee = pop(&mut stack)?;
+                    let receiver = pop(&mut stack)?;
+                    calls.push(Invocation {
+                        callee,
+                        receiver,
+                        construct: false,
+                        arguments: vec![],
+                    });
+                }
                 Instruction::BeginCall | Instruction::BeginConstruct => {
                     calls.push(Invocation {
                         callee: pop(&mut stack)?,

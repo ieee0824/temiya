@@ -99,6 +99,12 @@ pub enum Instruction {
     BeginCall,
     /// Consume a Reference, capturing its value and receiver before arguments.
     BeginReferenceCall,
+    /// Consume a Reference and push receiver then callee, evaluating GetValue once.
+    LoadReferenceCallTarget,
+    /// Convert a value callee to an undefined-receiver call target pair.
+    AsCallTarget,
+    /// Capture a receiver/callee pair before arguments.
+    BeginMethodCall,
     /// Capture a constructor value and its newTarget before arguments.
     BeginConstruct,
     /// Append one evaluated value to the innermost pending invocation.
@@ -146,6 +152,9 @@ pub enum Instruction {
 impl Instruction {
     fn required_stack(self) -> usize {
         match self {
+            Self::LoadReferenceCallTarget => 0,
+            Self::AsCallTarget => 1,
+            Self::BeginMethodCall => 2,
             Self::BeginReferenceCall | Self::Invoke | Self::LoadThis => 0,
             Self::BeginCall | Self::BeginConstruct | Self::AppendArgument => 1,
             Self::GetProperty { .. } | Self::ResolveProperty { .. } => 2,
@@ -172,6 +181,9 @@ impl Instruction {
 
     fn stack_delta(self) -> isize {
         match self {
+            Self::LoadReferenceCallTarget => 2,
+            Self::AsCallTarget => 1,
+            Self::BeginMethodCall => -2,
             Self::BeginReferenceCall => 0,
             Self::BeginCall | Self::BeginConstruct | Self::AppendArgument => -1,
             Self::Invoke | Self::LoadThis | Self::DeleteReference => 1,
@@ -444,7 +456,14 @@ fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
                     );
                 }
             }
+            Instruction::LoadReferenceCallTarget => {
+                state
+                    .references
+                    .pop()
+                    .ok_or_else(|| error(VerifyErrorKind::ScopeMismatch))?;
+            }
             Instruction::BeginCall
+            | Instruction::BeginMethodCall
             | Instruction::BeginConstruct
             | Instruction::BeginReferenceCall => {
                 if matches!(instruction, Instruction::BeginReferenceCall) {

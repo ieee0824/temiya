@@ -135,11 +135,16 @@ fn call_frames_capture_method_before_nested_arguments_and_preserve_receiver() {
         .global_object()
         .create_data_property("argument".into(), Value::Object(argument))
         .unwrap();
-    assert!(
-        vm_value(&realm, "(receiver.method)(argument(), argument());")
-            .same_value(&Value::Number(42.0))
-    );
-    assert_eq!(*events.borrow(), ["get", "arg", "arg", "call"]);
+    for source in [
+        "(receiver.method)(argument(), argument());",
+        "receiver.method?.(argument(), argument());",
+        "(receiver?.method)?.(argument(), argument());",
+        "receiver?.method?.(argument(), argument());",
+    ] {
+        assert!(vm_value(&realm, source).same_value(&Value::Number(42.0)));
+        assert_eq!(*events.borrow(), ["get", "arg", "arg", "call"]);
+        events.borrow_mut().clear();
+    }
     // Break the deliberately cyclic test getter capture.
     receiver.try_delete(&"method".into()).unwrap();
 }
@@ -266,5 +271,62 @@ fn pending_callee_roots_drop_after_argument_throw_and_normal_return() {
         let result = VirtualMachine::execute_in_realm(&code, &realm);
         assert_eq!(result.is_err(), source.contains("missing"));
         assert!(weak.upgrade().is_none(), "callee retained after {source}");
+    }
+}
+
+#[test]
+fn optional_calls_propagate_short_circuits_and_preserve_grouped_receivers() {
+    let bootstrap = parse_script("var nil=null; var count=0; var receiver={answer:42,method:function(x){count=count+1;return this.answer+x;},absent:null}; function factory(){count=count+1;return receiver;} function nothing(){count=count+1;return null;} function identity(x){return x;}").unwrap();
+    for source in [
+        "nil?.method(count=count+1).answer;",
+        "nil?.method?.(count=count+1)();",
+        "receiver.absent?.(count=count+1).answer;",
+        "receiver.method?.(0);",
+        "(receiver?.method)?.(0);",
+        "(receiver?.method)(0);",
+        "(receiver.method)?.(identity(0));",
+        "factory()?.method?.(0);",
+        "nothing()?.method().answer;",
+        "identity?.(receiver)?.method(0);",
+        "receiver?.method(0)?.missing?.(count=count+1);",
+        "delete nil?.method().answer;",
+        "delete receiver?.method(0).missing;",
+        "nil?.method(missing);",
+        "(nil?.method)(count=count+1);",
+        "(nil?.method)?.(count=count+1);",
+        "(nil?.method).answer;",
+        "receiver.absent?.().answer;",
+        "receiver.method?.(missing);",
+        "receiver.answer?.(count=count+1);",
+        "nothing()?.().answer;",
+        "false?.(count=count+1);",
+        "identity((nil?.method)?.(count=count+1));",
+    ] {
+        let ast_realm = Realm::ordinary();
+        let vm_realm = Realm::ordinary();
+        for realm in [&ast_realm, &vm_realm] {
+            StatementEvaluator::new(realm.clone())
+                .evaluate_program(&bootstrap)
+                .unwrap();
+        }
+        let expected = StatementEvaluator::new(ast_realm.clone())
+            .evaluate_program(&parse_script(source).unwrap());
+        let code =
+            BytecodeCompiler::compile(source).unwrap_or_else(|error| panic!("{source}: {error}"));
+        let actual = VirtualMachine::execute_in_realm(&code, &vm_realm);
+        match (expected, actual) {
+            (Ok(left), Ok(right)) => assert_same_completion(&left, &right),
+            (Err(left), Err(right)) => assert_eq!(left.kind(), right.kind(), "{source}"),
+            pair => panic!("{source}: {pair:?}"),
+        }
+        let key = temiya::runtime::PropertyKey::from("count");
+        assert!(
+            ast_realm
+                .global_object()
+                .get(&key)
+                .unwrap()
+                .same_value(&vm_realm.global_object().get(&key).unwrap()),
+            "argument/call count differs for {source}"
+        );
     }
 }

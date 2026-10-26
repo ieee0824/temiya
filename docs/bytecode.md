@@ -16,6 +16,9 @@ native addresses, and platform-sized operands are intentionally excluded.
 | `DeleteReference` | `+1` | retained Reference |
 | `BeginCall`, `BeginConstruct` | `-1` | capture callee in pending invocation |
 | `BeginReferenceCall` | `0` | consume Reference; capture GetValue and receiver |
+| `LoadReferenceCallTarget` | `+2` | consume Reference; push receiver/callee once |
+| `AsCallTarget` | `+1` | value becomes undefined-receiver/callee pair |
+| `BeginMethodCall` | `-2` | capture receiver/callee pair |
 | `AppendArgument` | `-1` | exactly one value above invocation baseline |
 | `Invoke` | `+1` | balanced invocation at baseline |
 | `LoadThis` | `+1` | active lexical this context |
@@ -176,7 +179,7 @@ original upstream programs can be validated through the complete bytecode path.
 
 ## Invocation work in progress (#291)
 
-Ordinary calls, computed and parenthesized method calls, and construction now
+Ordinary and optional calls, computed and parenthesized method calls, and construction now
 lower to pending invocation frames. A frame captures the callee and receiver
 before evaluating arguments, appends each argument in order, then dispatches the
 existing Object call/construct API. Construction uses the captured constructor
@@ -195,8 +198,16 @@ conservative Rust-stack limit returns RangeError and releases the nesting budget
 on unwind. This is an observable current implementation limit, not a claim of
 unbounded JavaScript recursion or an iterative VM function stack.
 
-Optional calls/contiguous optional call chains and spread arguments remain
-explicit compile errors. The required original Test262 call/construct suite has
+Optional chains lower as one contiguous member/call path. A nullish branch
+releases the retained base or receiver/callee pair, skips remaining keys and
+arguments, and yields undefined (true for deletion). Parentheses terminate
+short-circuit propagation while retaining a successful method's receiver.
+Reference GetValue occurs once before the optional-call check. Falsy non-nullish
+callees still evaluate arguments and fail callability checks normally. Local
+AST/VM comparisons cover mixed chains, grouped calls, skipped arguments and
+error precedence, following [ECMA-262 2026 optional chains](https://tc39.es/ecma262/2026/multipage/ecmascript-language-expressions.html#sec-optional-chains).
+
+Spread arguments remain explicit compile errors. The required original Test262 call/construct suite has
 not yet been run for this work; local integration tests do not satisfy that gate.
 Issue #291 remains incomplete. The added shared Object-call guard changes the AST
 hot path and requires fresh comparative performance evidence before merge; #469's

@@ -40,8 +40,8 @@ the unchanged baseline runtime; fixture blob IDs, all outcomes and transitions
 are retained in [numeric-builtins-audit.json](../test262/numeric-builtins-audit.json).
 
 All four opt-in runs still exit 101. Eighteen variants fail while evaluating the
-original propertyHelper.js before the test program (#467); two require BigInt
-updates not yet merged from #472, and two require the callable Symbol constructor.
+original propertyHelper.js before the test program (#467); two require BigInt/Number
+relational comparisons not yet merged from #473, and two require the callable Symbol constructor.
 These are recorded as failures. Normal Engine/host tests independently verify
 the actual descriptors, real Symbol values, wrappers, radix order/errors and
 cross-Realm branding. They do not replace the failing original upstream cases.

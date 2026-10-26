@@ -31,3 +31,14 @@ Unsupported syntax returns a source-spanned `CompileError` rather than falling
 back silently. `VirtualMachine` accepts only `VerifiedBytecode`, evaluates
 operands left-to-right, uses the runtime's ECMAScript conversions, and returns
 the same `Completion` variants as the AST statement evaluator.
+
+## Experimental baseline JIT
+
+The `jit` Cargo feature enables `BaselineJit`; it is absent from default builds
+and `libc` is an optional dependency activated only by that feature. On
+x86-64 Unix, verified straight-line numeric bytecode is lowered to SSE2 machine
+code. Executable memory follows a W^X transition: bytes are written to an RW
+mapping, then the mapping becomes RX before execution. Unsupported platforms,
+instructions, completions, or register pressure return typed `JitError`s so the
+embedder can explicitly select the bytecode interpreter fallback. This is an
+experimental baseline backend, not an optimizing tier.

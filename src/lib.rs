@@ -11,6 +11,8 @@ pub mod differential;
 pub mod embedding;
 pub mod ffi;
 pub mod gc;
+#[cfg(feature = "jit")]
+pub mod jit;
 pub mod lexer;
 pub mod parser;
 pub mod runtime;

@@ -6,12 +6,13 @@
 
 use std::cell::RefCell;
 use std::fmt;
-use std::rc::Rc;
+use std::rc::{Rc, Weak};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use num_bigint::BigInt;
 
 mod builtins;
+mod collections;
 mod environment;
 mod execution;
 mod function;
@@ -27,6 +28,9 @@ mod promise;
 mod regexp;
 mod statement;
 
+pub use collections::{
+    MapIterator, MapObject, SetIterator, SetObject, WeakMapObject, WeakSetObject,
+};
 pub use environment::{Environment, EnvironmentKind, ObjectEnvironmentOptions, ThisBindingStatus};
 pub use execution::{Agent, ContextState, ExecutionContext, Realm, ScriptRecord};
 pub use function::FunctionKind;
@@ -268,7 +272,13 @@ struct ObjectData {
 #[derive(Clone)]
 pub struct Object(Rc<ObjectData>);
 
+#[derive(Clone)]
+pub(super) struct WeakObject(Weak<ObjectData>);
+
 impl Object {
+    pub(super) fn downgrade(&self) -> WeakObject {
+        WeakObject(Rc::downgrade(&self.0))
+    }
     /// Allocates an ordinary object with the standard fallback conversion behavior.
     #[must_use]
     pub fn new() -> Self {
@@ -303,6 +313,12 @@ impl Object {
     /// Installs an ordinary `toString` conversion hook.
     pub fn set_to_string_hook(&self, hook: impl Fn() -> RuntimeResult<Value> + 'static) {
         self.0.conversion.borrow_mut().to_string = Some(Rc::new(hook));
+    }
+}
+
+impl WeakObject {
+    pub(super) fn upgrade(&self) -> Option<Object> {
+        self.0.upgrade().map(Object)
     }
 }
 

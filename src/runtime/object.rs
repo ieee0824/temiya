@@ -280,6 +280,10 @@ pub(super) struct ObjectState {
     pub(super) string_data: Option<JsString>,
     pub(super) regexp: Option<super::regexp::RegExpSlot>,
     pub(super) numeric_data: Option<Value>,
+    pub(super) map_data: Option<super::collections::MapSlot>,
+    pub(super) set_data: Option<super::collections::SetSlot>,
+    pub(super) weak_map_data: Option<super::collections::WeakMapSlot>,
+    pub(super) weak_set_data: Option<super::collections::WeakSetSlot>,
 }
 
 pub(super) fn ordinary_state() -> ObjectState {
@@ -306,6 +310,10 @@ impl Object {
 
     pub(crate) fn clear_native_construct(&self) {
         self.0.state.borrow_mut().construct = None;
+    }
+
+    pub(crate) fn clear_native_call(&self) {
+        self.0.state.borrow_mut().callable = None;
     }
 
     /// Allocates a callable object backed by a native Rust closure.

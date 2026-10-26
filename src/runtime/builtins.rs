@@ -3,9 +3,10 @@
 use std::{cell::RefCell, rc::Rc};
 
 use super::{
-    ArrayBuffer, ArrayObject, DataView, IntrinsicId, IntrinsicRegistry, JsString, Math,
+    ArrayBuffer, ArrayObject, DataView, IntrinsicId, IntrinsicRegistry, JsString, MapObject, Math,
     NumberObject, Object, PropertyDescriptor, PropertyKey, RegExp, RuntimeError, RuntimeResult,
-    StringObject, TypedArray, Value, parse_float, parse_int,
+    SetObject, StringObject, TypedArray, Value, WeakMapObject, WeakSetObject, parse_float,
+    parse_int,
 };
 
 pub(super) fn initialize(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {
@@ -15,6 +16,118 @@ pub(super) fn initialize(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {
         .and_then(|()| install_indexed(intrinsics))
         .and_then(|()| install_string_regexp(intrinsics))
         .and_then(|()| install_numeric(intrinsics))
+        .and_then(|()| install_collections(intrinsics))
+}
+
+fn install_collections(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {
+    let map = intrinsics.get(IntrinsicId::Map);
+    let map_prototype = intrinsics.get(IntrinsicId::MapPrototype);
+    map.clear_native_call();
+    map.set_native_construct(move |_, _| {
+        let object = MapObject::new().object();
+        object.set_prototype(Some(map_prototype.clone()));
+        Ok(object)
+    });
+    let map_prototype = intrinsics.get(IntrinsicId::MapPrototype);
+    method(&map_prototype, "set", |this, arguments| {
+        let map = map_receiver(this)?;
+        map.set(value_arg(arguments.first()), value_arg(arguments.get(1)));
+        Ok(Value::Object(map.object()))
+    })?;
+    method(&map_prototype, "get", |this, arguments| {
+        Ok(map_receiver(this)?.get(&value_arg(arguments.first())))
+    })?;
+    method(&map_prototype, "has", |this, arguments| {
+        Ok(Value::Boolean(
+            map_receiver(this)?.has(&value_arg(arguments.first())),
+        ))
+    })?;
+    method(&map_prototype, "delete", |this, arguments| {
+        Ok(Value::Boolean(
+            map_receiver(this)?.delete(&value_arg(arguments.first())),
+        ))
+    })?;
+
+    let set = intrinsics.get(IntrinsicId::Set);
+    let set_prototype = intrinsics.get(IntrinsicId::SetPrototype);
+    set.clear_native_call();
+    set.set_native_construct(move |_, _| {
+        let object = SetObject::new().object();
+        object.set_prototype(Some(set_prototype.clone()));
+        Ok(object)
+    });
+    let set_prototype = intrinsics.get(IntrinsicId::SetPrototype);
+    method(&set_prototype, "add", |this, arguments| {
+        let set = set_receiver(this)?;
+        set.add(value_arg(arguments.first()));
+        Ok(Value::Object(set.object()))
+    })?;
+    method(&set_prototype, "has", |this, arguments| {
+        Ok(Value::Boolean(
+            set_receiver(this)?.has(&value_arg(arguments.first())),
+        ))
+    })?;
+    method(&set_prototype, "delete", |this, arguments| {
+        Ok(Value::Boolean(
+            set_receiver(this)?.delete(&value_arg(arguments.first())),
+        ))
+    })?;
+
+    let weak_map = intrinsics.get(IntrinsicId::WeakMap);
+    let weak_map_prototype = intrinsics.get(IntrinsicId::WeakMapPrototype);
+    weak_map.clear_native_call();
+    weak_map.set_native_construct(move |_, _| {
+        let object = WeakMapObject::new().object();
+        object.set_prototype(Some(weak_map_prototype.clone()));
+        Ok(object)
+    });
+    let weak_map_prototype = intrinsics.get(IntrinsicId::WeakMapPrototype);
+    method(&weak_map_prototype, "set", |this, arguments| {
+        let map = weak_map_receiver(this)?;
+        map.set(&value_arg(arguments.first()), value_arg(arguments.get(1)))?;
+        Ok(Value::Object(map.object()))
+    })?;
+    method(&weak_map_prototype, "get", |this, arguments| {
+        let map = weak_map_receiver(this)?;
+        match arguments.first() {
+            Some(Value::Object(key)) => Ok(map.get(key)),
+            _ => Ok(Value::Undefined),
+        }
+    })?;
+
+    let weak_set = intrinsics.get(IntrinsicId::WeakSet);
+    let weak_set_prototype = intrinsics.get(IntrinsicId::WeakSetPrototype);
+    weak_set.clear_native_call();
+    weak_set.set_native_construct(move |_, _| {
+        let object = WeakSetObject::new().object();
+        object.set_prototype(Some(weak_set_prototype.clone()));
+        Ok(object)
+    });
+    let weak_set_prototype = intrinsics.get(IntrinsicId::WeakSetPrototype);
+    method(&weak_set_prototype, "add", |this, arguments| {
+        let set = weak_set_receiver(this)?;
+        set.add(&value_arg(arguments.first()))?;
+        Ok(Value::Object(set.object()))
+    })
+}
+
+fn map_receiver(value: Value) -> RuntimeResult<MapObject> {
+    let object = object_value(&value, "Map receiver")?;
+    MapObject::from_object(object).ok_or_else(|| RuntimeError::type_error("receiver is not a Map"))
+}
+fn set_receiver(value: Value) -> RuntimeResult<SetObject> {
+    let object = object_value(&value, "Set receiver")?;
+    SetObject::from_object(object).ok_or_else(|| RuntimeError::type_error("receiver is not a Set"))
+}
+fn weak_map_receiver(value: Value) -> RuntimeResult<WeakMapObject> {
+    let object = object_value(&value, "WeakMap receiver")?;
+    WeakMapObject::from_object(object)
+        .ok_or_else(|| RuntimeError::type_error("receiver is not a WeakMap"))
+}
+fn weak_set_receiver(value: Value) -> RuntimeResult<WeakSetObject> {
+    let object = object_value(&value, "WeakSet receiver")?;
+    WeakSetObject::from_object(object)
+        .ok_or_else(|| RuntimeError::type_error("receiver is not a WeakSet"))
 }
 
 fn install_numeric(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {

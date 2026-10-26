@@ -29,6 +29,27 @@ fn dependency_update_ecosystems_are_both_monitored() {
 
 #[test]
 fn checkout_is_pinned_and_credentials_are_not_persisted() {
-    assert_eq!(WORKFLOW.matches("actions/checkout@11d5960").count(), 3);
-    assert_eq!(WORKFLOW.matches("persist-credentials: false").count(), 3);
+    let checkout_revisions = WORKFLOW.lines().filter_map(|line| {
+        line.trim()
+            .strip_prefix("uses: actions/checkout@")
+            .and_then(|revision| revision.split_whitespace().next())
+    });
+    let checkout_revisions: Vec<_> = checkout_revisions.collect();
+
+    assert!(!checkout_revisions.is_empty());
+    assert!(
+        checkout_revisions
+            .iter()
+            .all(|revision| revision.len() == 40
+                && revision.bytes().all(|byte| byte.is_ascii_hexdigit()))
+    );
+    assert!(
+        checkout_revisions
+            .windows(2)
+            .all(|revisions| revisions[0] == revisions[1])
+    );
+    assert_eq!(
+        WORKFLOW.matches("persist-credentials: false").count(),
+        checkout_revisions.len()
+    );
 }

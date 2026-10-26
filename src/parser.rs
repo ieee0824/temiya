@@ -5,6 +5,9 @@ use crate::lexer::{
     LexError, Lexer, LexerOptions, LexicalGoal, SourceGoal, Span, Token, TokenKind,
 };
 
+mod statements;
+pub use statements::{parse_async_function_body, parse_function_body, parse_program, parse_script};
+
 /// Parsing configuration for source context and recursion limits.
 #[derive(Clone, Copy, Debug)]
 pub struct ParserOptions {
@@ -13,7 +16,7 @@ pub struct ParserOptions {
     /// Enables strict-code restrictions on legacy literals and identifiers.
     /// Module source is always strict regardless of this setting.
     pub strict: bool,
-    /// Maximum nested expression parsing calls; zero rejects all expressions.
+    /// Maximum nested statement/expression parsing calls; zero rejects all nodes.
     pub max_depth: usize,
 }
 
@@ -22,7 +25,7 @@ impl Default for ParserOptions {
         Self {
             lexer: LexerOptions::default(),
             strict: false,
-            max_depth: 128,
+            max_depth: 64,
         }
     }
 }
@@ -67,12 +70,7 @@ pub fn parse_expression_with_options(
     source: &str,
     options: ParserOptions,
 ) -> Result<Expr, ParseError> {
-    let mut parser = Parser {
-        lexer: Lexer::with_options(source, options.lexer),
-        options,
-        depth: 0,
-        last_end: 0,
-    };
+    let mut parser = Parser::new(source, options);
     let expr = parser.expression(0)?;
     let end = parser.take(LexicalGoal::Div)?;
     if end.kind != TokenKind::End {
@@ -90,9 +88,37 @@ struct Parser<'a> {
     options: ParserOptions,
     depth: usize,
     last_end: usize,
+    allow_in: bool,
+    loops: usize,
+    switches: usize,
+    labels: Vec<(String, bool)>,
+    in_function: bool,
+    in_async: bool,
 }
 
 impl<'a> Parser<'a> {
+    fn new(source: &'a str, options: ParserOptions) -> Self {
+        Self {
+            lexer: Lexer::with_options(source, options.lexer),
+            options,
+            depth: 0,
+            last_end: 0,
+            allow_in: true,
+            loops: 0,
+            switches: 0,
+            labels: vec![],
+            in_function: false,
+            in_async: options.lexer.source_goal == SourceGoal::Module,
+        }
+    }
+
+    fn expression_with_in(&mut self, min_bp: u8, allow_in: bool) -> Result<Expr, ParseError> {
+        let previous = self.allow_in;
+        self.allow_in = allow_in;
+        let result = self.expression(min_bp);
+        self.allow_in = previous;
+        result
+    }
     fn strict(&self) -> bool {
         self.options.strict || self.options.lexer.source_goal == SourceGoal::Module
     }
@@ -168,7 +194,7 @@ impl<'a> Parser<'a> {
                         if optional {
                             self.expect("[")?;
                         }
-                        let property = self.expression(0)?;
+                        let property = self.expression_with_in(0, true)?;
                         self.expect("]")?;
                         property
                     } else {
@@ -223,7 +249,7 @@ impl<'a> Parser<'a> {
             }
             if token.text == "?" && min_bp <= 3 {
                 self.take(LexicalGoal::Div)?;
-                let consequent = self.expression(2)?;
+                let consequent = self.expression_with_in(2, true)?;
                 self.expect(":")?;
                 let alternate = self.expression(2)?;
                 left = self.node(
@@ -239,6 +265,9 @@ impl<'a> Parser<'a> {
             let Some((lbp, rbp)) = binding_power(token.text) else {
                 break;
             };
+            if token.text == "in" && !self.allow_in {
+                break;
+            }
             if lbp < min_bp {
                 break;
             }
@@ -298,7 +327,7 @@ impl<'a> Parser<'a> {
         self.take(LexicalGoal::RegExp)?;
         let kind = match token.text {
             "(" => {
-                let expr = self.expression(0)?;
+                let expr = self.expression_with_in(0, true)?;
                 self.expect(")")?;
                 ExprKind::Parenthesized(Box::new(expr))
             }
@@ -326,6 +355,13 @@ impl<'a> Parser<'a> {
                     operator: token.text.to_owned(),
                     argument: Box::new(argument),
                     prefix: true,
+                }
+            }
+            "await" if self.in_async => {
+                let argument = self.expression(17)?;
+                ExprKind::Unary {
+                    operator: "await".to_owned(),
+                    argument: Box::new(argument),
                 }
             }
             "new" => {
@@ -368,7 +404,7 @@ impl<'a> Parser<'a> {
                             | "let"
                             | "yield"
                     ))
-                    || (self.options.lexer.source_goal == SourceGoal::Module && name == "await")
+                    || (self.in_async && name == "await")
                 {
                     return Err(error(token.span, "reserved identifier in this context"));
                 }
@@ -441,10 +477,10 @@ impl<'a> Parser<'a> {
     fn element(&mut self) -> Result<Expr, ParseError> {
         if self.at("...")? {
             let start = self.expect("...")?.span.start;
-            let expr = self.expression(2)?;
+            let expr = self.expression_with_in(2, true)?;
             Ok(self.node(start, ExprKind::Spread(Box::new(expr))))
         } else {
-            self.expression(2)
+            self.expression_with_in(2, true)
         }
     }
 
@@ -474,10 +510,10 @@ impl<'a> Parser<'a> {
             let computed = token.text == "[";
             let key = if spread {
                 self.expect("...")?;
-                self.expression(2)?
+                self.expression_with_in(2, true)?
             } else if computed {
                 self.expect("[")?;
-                let key = self.expression(2)?;
+                let key = self.expression_with_in(2, true)?;
                 self.expect("]")?;
                 key
             } else if token.identifier_name().is_some() {
@@ -488,7 +524,7 @@ impl<'a> Parser<'a> {
             };
             let value = if !spread && self.at(":")? {
                 self.expect(":")?;
-                Some(self.expression(2)?)
+                Some(self.expression_with_in(2, true)?)
             } else {
                 if !spread && (computed || token.kind != TokenKind::Identifier) {
                     return Err(error(key.span, "expected property value"));
@@ -536,7 +572,7 @@ impl<'a> Parser<'a> {
             if matches!(token.kind, TokenKind::Template | TokenKind::TemplateTail) {
                 break;
             }
-            expressions.push(self.expression(0)?);
+            expressions.push(self.expression_with_in(0, true)?);
             token = self.take(LexicalGoal::TemplateTail)?;
             if !matches!(
                 token.kind,

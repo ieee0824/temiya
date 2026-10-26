@@ -311,3 +311,354 @@ impl Expr {
         Ok(())
     }
 }
+
+/// A parsed source unit with owned statements.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Program {
+    /// Entire source range, including leading and trailing trivia.
+    pub span: Span,
+    /// Statements in source order.
+    pub body: Vec<Stmt>,
+    /// Whether this body is strict code.
+    pub strict: bool,
+}
+
+/// An owned statement with its complete source range.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Stmt {
+    /// Half-open UTF-8 source range.
+    pub span: Span,
+    /// Statement structure.
+    pub kind: StmtKind,
+}
+
+/// Statement syntax, extended with declarations as those parsers are added.
+#[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
+pub enum StmtKind {
+    /// An explicit empty statement.
+    Empty,
+    /// An expression statement.
+    Expression(Expr),
+    /// A block of statements.
+    Block(Vec<Stmt>),
+    /// An if statement, including an optional else branch.
+    If {
+        /// Condition expression.
+        test: Expr,
+        /// True branch.
+        consequent: Box<Stmt>,
+        /// False branch.
+        alternate: Option<Box<Stmt>>,
+    },
+    /// A while loop.
+    While {
+        /// Condition expression.
+        test: Expr,
+        /// Loop body.
+        body: Box<Stmt>,
+    },
+    /// A do-while loop.
+    DoWhile {
+        /// Loop body.
+        body: Box<Stmt>,
+        /// Condition expression.
+        test: Expr,
+    },
+    /// A three-clause for loop.
+    For {
+        /// Optional initializer.
+        init: Option<ForInit>,
+        /// Optional condition.
+        test: Option<Expr>,
+        /// Optional update.
+        update: Option<Expr>,
+        /// Loop body.
+        body: Box<Stmt>,
+    },
+    /// A for-in or for-of loop.
+    ForEach {
+        /// Iteration target or declaration.
+        left: ForInit,
+        /// Enumerated or iterated expression.
+        right: Expr,
+        /// True for for-of, false for for-in.
+        of: bool,
+        /// True for for-await-of.
+        asynchronous: bool,
+        /// Loop body.
+        body: Box<Stmt>,
+    },
+    /// A labelled statement.
+    Labeled {
+        /// Decoded label name.
+        label: String,
+        /// Labelled statement.
+        body: Box<Stmt>,
+    },
+    /// A break with an optional decoded label name.
+    Break(Option<String>),
+    /// A continue with an optional decoded label name.
+    Continue(Option<String>),
+    /// A return with an optional value.
+    Return(Option<Expr>),
+    /// A throw with its value.
+    Throw(Expr),
+    /// A switch statement.
+    Switch {
+        /// Selected value.
+        discriminant: Expr,
+        /// Cases in source order.
+        cases: Vec<SwitchCase>,
+    },
+    /// A try statement with catch and/or finally.
+    Try {
+        /// Protected block.
+        block: Box<Stmt>,
+        /// Optional catch clause.
+        handler: Option<CatchClause>,
+        /// Optional finally block.
+        finalizer: Option<Box<Stmt>>,
+    },
+    /// A debugger statement.
+    Debugger,
+    /// A with statement, permitted only in non-strict code.
+    With {
+        /// Object expression.
+        object: Expr,
+        /// Nested statement.
+        body: Box<Stmt>,
+    },
+    /// A variable declaration (basic identifier bindings initially).
+    Variable {
+        /// Declaration keyword category.
+        kind: VariableKind,
+        /// Declarators in source order.
+        declarations: Vec<VariableDeclarator>,
+    },
+}
+
+/// A for-loop initializer or iteration target.
+#[derive(Clone, Debug, PartialEq)]
+pub enum ForInit {
+    /// An expression initializer or reference target.
+    Expression(Expr),
+    /// A var/let/const declaration.
+    Variable {
+        /// Declaration category.
+        kind: VariableKind,
+        /// Declarators in source order.
+        declarations: Vec<VariableDeclarator>,
+    },
+}
+
+/// Variable declaration category.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum VariableKind {
+    /// A var declaration.
+    Var,
+    /// A let declaration.
+    Let,
+    /// A const declaration.
+    Const,
+}
+
+/// A binding and optional initializer, retaining its own range.
+#[derive(Clone, Debug, PartialEq)]
+pub struct VariableDeclarator {
+    /// Range from binding start through initializer, if present.
+    pub span: Span,
+    /// Binding syntax, initially an identifier expression.
+    pub binding: Expr,
+    /// Initial value expression.
+    pub init: Option<Expr>,
+}
+
+/// A switch case or default clause.
+#[derive(Clone, Debug, PartialEq)]
+pub struct SwitchCase {
+    /// Complete clause source range.
+    pub span: Span,
+    /// Case expression, absent for default.
+    pub test: Option<Expr>,
+    /// Statements in the clause.
+    pub consequent: Vec<Stmt>,
+}
+
+/// A catch binding and block.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CatchClause {
+    /// Range including catch keyword, optional binding, and block.
+    pub span: Span,
+    /// Optional exception binding.
+    pub param: Option<Expr>,
+    /// Catch block.
+    pub body: Box<Stmt>,
+}
+
+fn validate_span(source: &SourceText<'_>, parent: Span, span: Span) -> Result<(), AstError> {
+    source.range(span).map_err(|_| AstError {
+        span,
+        message: "invalid AST source range",
+    })?;
+    if span.start < parent.start || span.end > parent.end {
+        return Err(AstError {
+            span,
+            message: "child is outside its parent",
+        });
+    }
+    Ok(())
+}
+
+fn validate_expr(source: &SourceText<'_>, parent: Span, expr: &Expr) -> Result<(), AstError> {
+    validate_span(source, parent, expr.span)?;
+    expr.validate(source)
+}
+
+fn validate_stmt(source: &SourceText<'_>, parent: Span, stmt: &Stmt) -> Result<(), AstError> {
+    validate_span(source, parent, stmt.span)?;
+    stmt.validate(source)
+}
+
+fn validate_declarations(
+    source: &SourceText<'_>,
+    parent: Span,
+    declarations: &[VariableDeclarator],
+) -> Result<(), AstError> {
+    for declaration in declarations {
+        validate_span(source, parent, declaration.span)?;
+        validate_expr(source, declaration.span, &declaration.binding)?;
+        if let Some(init) = &declaration.init {
+            validate_expr(source, declaration.span, init)?;
+        }
+    }
+    Ok(())
+}
+
+fn validate_for_init(
+    source: &SourceText<'_>,
+    parent: Span,
+    init: &ForInit,
+) -> Result<(), AstError> {
+    match init {
+        ForInit::Expression(expr) => validate_expr(source, parent, expr),
+        ForInit::Variable { declarations, .. } => {
+            validate_declarations(source, parent, declarations)
+        }
+    }
+}
+
+impl Program {
+    /// Validates source boundaries and containment throughout statements and expressions.
+    pub fn validate(&self, source: &SourceText<'_>) -> Result<(), AstError> {
+        validate_span(source, self.span, self.span)?;
+        for stmt in &self.body {
+            validate_stmt(source, self.span, stmt)?;
+        }
+        Ok(())
+    }
+}
+
+impl Stmt {
+    /// Validates source boundaries and containment for this statement's subtree.
+    /// This does not perform ECMAScript static semantics or control-flow analysis.
+    pub fn validate(&self, source: &SourceText<'_>) -> Result<(), AstError> {
+        validate_span(source, self.span, self.span)?;
+        let expression = |expr: &Expr| validate_expr(source, self.span, expr);
+        let statement = |stmt: &Stmt| validate_stmt(source, self.span, stmt);
+        match &self.kind {
+            StmtKind::Empty | StmtKind::Break(_) | StmtKind::Continue(_) | StmtKind::Debugger => {}
+            StmtKind::Expression(expr) | StmtKind::Throw(expr) => expression(expr)?,
+            StmtKind::Return(value) => {
+                if let Some(expr) = value {
+                    expression(expr)?;
+                }
+            }
+            StmtKind::Block(body) => {
+                for stmt in body {
+                    statement(stmt)?;
+                }
+            }
+            StmtKind::If {
+                test,
+                consequent,
+                alternate,
+            } => {
+                expression(test)?;
+                statement(consequent)?;
+                if let Some(stmt) = alternate {
+                    statement(stmt)?;
+                }
+            }
+            StmtKind::While { test, body } | StmtKind::DoWhile { test, body } => {
+                expression(test)?;
+                statement(body)?;
+            }
+            StmtKind::For {
+                init,
+                test,
+                update,
+                body,
+            } => {
+                if let Some(init) = init {
+                    validate_for_init(source, self.span, init)?;
+                }
+                if let Some(test) = test {
+                    expression(test)?;
+                }
+                if let Some(update) = update {
+                    expression(update)?;
+                }
+                statement(body)?;
+            }
+            StmtKind::ForEach {
+                left, right, body, ..
+            } => {
+                validate_for_init(source, self.span, left)?;
+                expression(right)?;
+                statement(body)?;
+            }
+            StmtKind::Labeled { body, .. } => statement(body)?,
+            StmtKind::Switch {
+                discriminant,
+                cases,
+            } => {
+                expression(discriminant)?;
+                for case in cases {
+                    validate_span(source, self.span, case.span)?;
+                    if let Some(test) = &case.test {
+                        validate_expr(source, case.span, test)?;
+                    }
+                    for stmt in &case.consequent {
+                        validate_stmt(source, case.span, stmt)?;
+                    }
+                }
+            }
+            StmtKind::Try {
+                block,
+                handler,
+                finalizer,
+            } => {
+                statement(block)?;
+                if let Some(handler) = handler {
+                    validate_span(source, self.span, handler.span)?;
+                    if let Some(param) = &handler.param {
+                        validate_expr(source, handler.span, param)?;
+                    }
+                    validate_stmt(source, handler.span, &handler.body)?;
+                }
+                if let Some(finalizer) = finalizer {
+                    statement(finalizer)?;
+                }
+            }
+            StmtKind::With { object, body } => {
+                expression(object)?;
+                statement(body)?;
+            }
+            StmtKind::Variable { declarations, .. } => {
+                validate_declarations(source, self.span, declarations)?
+            }
+        }
+        Ok(())
+    }
+}

@@ -394,7 +394,7 @@ fn scan_number(source: &str, start: usize) -> Result<(usize, TokenKind), LexErro
         if kind != TokenKind::LegacyOctalNumber {
             if bytes.get(pos) == Some(&b'.') {
                 integer = false;
-                pos = scan_digits(source, pos + 1, 10, kind == TokenKind::Number)?;
+                pos = scan_digits(source, pos + 1, 10, true)?;
             }
             if matches!(bytes.get(pos), Some(b'e' | b'E')) {
                 integer = false;
@@ -403,7 +403,7 @@ fn scan_number(source: &str, start: usize) -> Result<(usize, TokenKind), LexErro
                     pos += 1;
                 }
                 let digits = pos;
-                pos = scan_digits(source, pos, 10, kind == TokenKind::Number)?;
+                pos = scan_digits(source, pos, 10, true)?;
                 if digits == pos {
                     return Err(numeric_error(start, pos));
                 }
@@ -617,7 +617,7 @@ pub struct LexerOptions {
 /// assert_eq!(lexer.next_token(LexicalGoal::Div)?.text, "2");
 /// # Ok::<(), temiya::lexer::LexError>(())
 /// ```
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Lexer<'a> {
     source: &'a str,
     pos: usize,
@@ -791,12 +791,15 @@ fn scan_token(
             // Longest spelling wins. Slash is handled by the lexical goal above.
             let punct = [
                 ">>>=", "===", "!==", "**=", "<<=", ">>=", ">>>", "&&=", "||=", "??=", "...", "=>",
-                "==", "!=", "<=", ">=", "++", "--", "**", "<<", ">>", "&&", "||", "??", "+=", "-=",
-                "*=", "%=", "&=", "|=", "^=", "{", "}", "(", ")", "[", "]", ".", ";", ",", "<",
-                ">", "+", "-", "*", "%", "&", "|", "^", "!", "~", "?", ":", "=",
+                "?.", "==", "!=", "<=", ">=", "++", "--", "**", "<<", ">>", "&&", "||", "??", "+=",
+                "-=", "*=", "%=", "&=", "|=", "^=", "{", "}", "(", ")", "[", "]", ".", ";", ",",
+                "<", ">", "+", "-", "*", "%", "&", "|", "^", "!", "~", "?", ":", "=",
             ]
             .into_iter()
-            .find(|p| source[pos..].starts_with(p));
+            .find(|p| {
+                source[pos..].starts_with(p)
+                    && !(*p == "?." && bytes.get(pos + 2).is_some_and(u8::is_ascii_digit))
+            });
             let Some(punct) = punct else {
                 return Err(LexError {
                     span: Span {

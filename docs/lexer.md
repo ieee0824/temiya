@@ -49,7 +49,8 @@ directly precede a decimal digit, identifier start, or identifier escape.
 
 Legacy leading-zero integers produce `LegacyOctalNumber` when all digits are
 octal, or `LegacyDecimalNumber` when an 8 or 9 occurs. The latter can include a
-fraction or exponent. These forms reject separators and are preserved for a
+fraction or exponent. Leading-zero integer parts reject separators; decimal
+fraction and exponent parts permit them. These forms are preserved for a
 future parser to reject in strict code. A dot following a legacy octal integer
 is a separate punctuator, allowing property access. Lexing does not validate
 whether adjacent tokens form a valid expression.
@@ -151,7 +152,7 @@ They are never recognized inside strings, templates, or regular expressions.
 See [ECMAScript HTML-like comments](https://tc39.es/ecma262/multipage/additional-ecmascript-features-for-web-browsers.html#sec-html-like-comments).
 
 This is a bootstrap subset, not a conforming ECMAScript lexer. Private
-identifiers and optional chaining are not supported.
+identifiers are not supported.
 Unsupported sequences can sometimes be
 split into individually valid tokens; tokenization does not validate grammar.
 A future parser must use the line-terminator metadata to implement restricted

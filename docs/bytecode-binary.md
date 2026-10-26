@@ -42,3 +42,22 @@ Shared hot paths, function prototype setup and Object layout change. Previous
 unary/operator measurements do not establish this revision's performance; fresh
 before/after and actual omoikane Boa comparisons are required. No performance
 improvement or Boa superiority is claimed.
+
+## Fixed original Test262 audit
+
+The 16-file selection has 31 strict/sloppy variants. With identical original
+fixtures and host harness, VM results advance from 0 pass / 0 fail / 31
+compile-unsupported to **19 pass / 2 fail / 10 unsupported**. AST advances from
+15 pass / 16 fail to **25 pass / 6 fail**. Stable and Rust 1.85.0 agree, with no
+previous pass regressed. All four opt-in runs exit 101; the gate remains false.
+[binary-audit.json](../test262/binary-audit.json) retains fixture blob IDs, exact
+runtime revisions, all outcomes and transitions. The baseline runtime is unchanged
+and receives only the copied audit test file.
+
+The remaining executed failures involve BigInt wrapper conversion; VM compile
+unsupported includes object literal expressions and other prerequisites in the
+original programs. These results do not establish complete operator support.
+Normal all-target tests on both toolchains pass **424 tests**, with 11 ignored.
+Formatting, Clippy on all targets/features with warnings denied, and public
+backend examples on both toolchains pass on ARM64. The JIT reports its expected
+unsupported platform result here; x86 execution is checked separately by CI.

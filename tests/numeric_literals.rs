@@ -1,6 +1,66 @@
 use temiya::lexer::{Lexer, LexicalGoal, Span, TokenKind, tokenize};
 
 #[test]
+fn engine_evaluates_spelling_variants_and_numeric_boundaries() {
+    use temiya::{Engine, runtime::Value};
+    let engine = Engine::default();
+    let realm = engine.create_realm();
+    for (source, expected) in [
+        ("42", 42.0),
+        ("4_2", 42.0),
+        ("0b101010", 42.0),
+        ("0B10_1010", 42.0),
+        ("0o52", 42.0),
+        ("0O5_2", 42.0),
+        ("0x2a", 42.0),
+        ("0X2_A", 42.0),
+        (".42e2", 42.0),
+        ("4_2.0_0", 42.0),
+        ("052", 42.0),
+        ("09", 9.0),
+        ("1e999", f64::INFINITY),
+        ("5e-324", f64::from_bits(1)),
+        ("-0", -0.0),
+        ("9007199254740993", 9007199254740992.0),
+    ] {
+        let script = engine.compile(&realm, source).unwrap();
+        let result = engine.evaluate(&script).unwrap();
+        assert!(
+            result.value().same_value(&Value::Number(expected)),
+            "{source}: {result:?}"
+        );
+    }
+    for source in [
+        "42n",
+        "4_2n",
+        "0b101010n",
+        "0B10_1010n",
+        "0o52n",
+        "0O5_2n",
+        "0x2an",
+        "0X2_An",
+    ] {
+        let result = engine
+            .evaluate(&engine.compile(&realm, source).unwrap())
+            .unwrap();
+        assert!(
+            result.value().same_value(&Value::BigInt(42.into())),
+            "{source}: {result:?}"
+        );
+    }
+    let large = Value::BigInt((num_bigint::BigInt::from(1u8) << 256usize) - 1u8);
+    for source in [
+        "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffn",
+        "0xFFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFFn",
+    ] {
+        let result = engine
+            .evaluate(&engine.compile(&realm, source).unwrap())
+            .unwrap();
+        assert!(result.value().same_value(&large), "{source}: {result:?}");
+    }
+}
+
+#[test]
 fn decimal_radices_separators_and_bigints() {
     for (kind, literals) in [
         (

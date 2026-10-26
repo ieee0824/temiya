@@ -75,6 +75,10 @@ jobs:
         run: |
           cargo +${{ matrix.toolchain }} run --locked --release --example string_allocation_probe > target/string-allocations.json
           node scripts/check-string-allocations.mjs target/string-allocations.json
+      - name: Verify numeric normalization allocation budgets
+        run: |
+          cargo +${{ matrix.toolchain }} run --locked --release --example numeric_allocation_probe > target/numeric-allocations.json
+          node scripts/check-numeric-allocations.mjs target/numeric-allocations.json
       - name: Fetch pinned Test262 regression corpus
         run: scripts/test262
       - name: Run upstream exception regressions

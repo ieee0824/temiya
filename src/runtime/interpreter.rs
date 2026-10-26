@@ -812,7 +812,11 @@ fn literal_value(literal: &Literal, strict: bool) -> RuntimeResult<Value> {
 }
 
 pub(crate) fn parse_numeric_literal(raw: &str, kind: NumberKind) -> RuntimeResult<Value> {
-    let cleaned = raw.replace('_', "");
+    let cleaned = if raw.as_bytes().contains(&b'_') {
+        std::borrow::Cow::Owned(raw.replace('_', ""))
+    } else {
+        std::borrow::Cow::Borrowed(raw)
+    };
     let bigint = kind == NumberKind::BigInt;
     let spelling = cleaned.strip_suffix('n').unwrap_or(&cleaned);
     let radix = if spelling.starts_with("0x") || spelling.starts_with("0X") {

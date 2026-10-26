@@ -391,3 +391,55 @@ The recorded Boa speed gate is false.
 These eleven microbenchmarks do not establish full application compatibility or
 SpiderMonkey superiority. Identifier atoms, ropes and real Engine GC remain
 outstanding; this change only replaces immutable leaf string storage.
+
+
+## Bounded string concatenation
+
+The [allocation observations](../benchmarks/string-concat-allocations.json)
+include final flattening, and remain separate from throughput measurements.
+
+The [ARM64 before/after](../benchmarks/string-concat-beforeafter.json) compares
+frozen predecessor `b9ddd75e7fef485db84d06b64f5bc793ba120020` with runtime
+`4cf89c1d555ceefeecb2b53882fdb077440da012`. The separate
+[ARM64 Boa comparison](../benchmarks/string-concat-boa.json) uses the same pinned
+actual application embedding. Both modes use Rust 1.99.1 release builds with
+15 samples and one validated warmup, three alternating pairs, 66 successful
+worker runs and 1056 validated results each. The modes run serially after all
+builds, using all eleven original inputs and the existing 512 MiB/180-second
+guards.
+
+| Workload | Changed / prior Temiya time | Changed Temiya / Boa time |
+| --- | ---: | ---: |
+| arith | 0.98–1.04× | 4.38–4.58× |
+| prop-mono | 0.95–1.15× | 2.14–2.43× |
+| prop-mega | 0.98–1.37× | 2.33–3.14× |
+| call | 0.82–1.05× | 2.54–2.88× |
+| closure-alloc | 1.01–1.02× | 1.47–1.50× |
+| object-alloc | 0.77–1.04× | 1.58–1.94× |
+| string-concat | 0.88–1.05× | 3.28–3.88× |
+| array | 0.72–0.97× | 2.27–2.37× |
+| primitive-string-property | 0.89–0.96× | 2.69–2.85× |
+| primitive-string-method | 0.96–0.99× | 1.87–2.19× |
+| proto-method | 0.87–1.01× | 2.04–2.19× |
+
+All 33 ARM64 before/after pairs are within their noise thresholds; this run
+does not prove a throughput improvement or the absence of regression. The
+standalone allocation reduction cannot establish an Engine speedup.
+Boa outcomes: {"Temiya slower beyond threshold":31,"within noise threshold":2}.
+The all-eleven before/after speed gate is false;
+the all-eleven Boa speed gate is false.
+
+A [focused prop-mega diagnostic](../benchmarks/string-concat-cpu-followup.json)
+checks one workload again with the same binaries, 15 samples and three alternating
+pairs. Whole-process user+system CPU-time ratios are 0.93, 1.04 and 0.98; timed
+wall-median ratios are 0.93, 1.07 and 0.98. Process CPU totals include startup,
+setup, warmup and final reporting and are not substitutes for timed medians.
+The focused diagnostic has a 180-second timeout but no RSS watchdog. It does
+not prove a speedup or absence of regression and cannot pass an all-eleven gate.
+The original observations remain in the complete before/after report.
+
+The [opt-in hosted comparison](omoikane-benchmark-ci.md) repeats both modes
+on a separate runner. Results from different architectures must not be pooled.
+These eleven microbenchmarks do not establish full application compatibility
+or SpiderMonkey superiority. Identifier atoms, balanced ropes and real runtime
+GC remain open; #415 and #427 are not complete.

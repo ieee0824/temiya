@@ -127,7 +127,10 @@ pub(super) fn create_function(
             )
         })
         .count();
-    function.create_data_property("length".into(), Value::Number(length as f64))?;
+    function.define_own_property(
+        "length".into(),
+        super::PropertyDescriptor::data(Value::Number(length as f64), false, false, true),
+    )?;
     if let Some(ExprKind::Identifier(name)) = code.name.as_ref().map(|name| &name.kind) {
         function
             .create_data_property("name".into(), Value::String(JsString::from(name.as_str())))?;

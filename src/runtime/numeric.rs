@@ -13,7 +13,7 @@ impl NumberObject {
     #[must_use]
     pub fn new(value: f64) -> Self {
         let object = Object::new();
-        object.0.state.borrow_mut().numeric_data = Some(Value::Number(value));
+        object.0.state.borrow_mut().primitive_data = Some(Value::Number(value));
         Self(object)
     }
 
@@ -26,7 +26,7 @@ impl NumberObject {
     /// Returns the boxed Number.
     #[must_use]
     pub fn value(&self) -> f64 {
-        match self.0.0.state.borrow().numeric_data.as_ref() {
+        match self.0.0.state.borrow().primitive_data.as_ref() {
             Some(Value::Number(value)) => *value,
             _ => unreachable!("Number data"),
         }
@@ -42,7 +42,7 @@ impl BigIntObject {
     #[must_use]
     pub fn new(value: BigInt) -> Self {
         let object = Object::new();
-        object.0.state.borrow_mut().numeric_data = Some(Value::BigInt(value));
+        object.0.state.borrow_mut().primitive_data = Some(Value::BigInt(value));
         Self(object)
     }
 
@@ -55,7 +55,7 @@ impl BigIntObject {
     /// Returns the boxed BigInt.
     #[must_use]
     pub fn value(&self) -> BigInt {
-        match self.0.0.state.borrow().numeric_data.as_ref() {
+        match self.0.0.state.borrow().primitive_data.as_ref() {
             Some(Value::BigInt(value)) => value.clone(),
             _ => unreachable!("BigInt data"),
         }

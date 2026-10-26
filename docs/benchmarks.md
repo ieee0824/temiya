@@ -52,3 +52,29 @@ For a reviewable comparison:
 The eleven microbenchmarks provide an initial comparison, not proof that a
 complete application or every JavaScript program runs faster. Broader workloads
 and the outstanding compatibility work remain necessary before such claims.
+
+### Array workload diagnostic
+
+The array stack implementation enables omoikane's original array function body
+at its original 500,000 iterations. Extract it from the pinned Git objects of an
+omoikane checkout, retaining its MIT notice, then run the numeric result worker:
+
+```sh
+node scripts/extract-omoikane-array.mjs /path/to/omoikane \
+    > /tmp/omoikane-array.js 2> /tmp/omoikane-array-provenance.json
+cargo build --locked --release --example measure_number
+timeout 180 target/release/examples/measure_number \
+    /tmp/omoikane-array.js 124999750000 3
+```
+
+Node.js only extracts the function; it does not run the measured loop. The
+worker separately records Realm creation, compilation, one discarded warmup,
+and evaluation samples through Engine. It validates every result, including
+warmup, against the independent sum `n * (n - 1) / 2`. An incorrect result or
+engine error exits unsuccessfully without a valid timing report.
+
+This replaces omoikane's JavaScript timing harness with a Rust host timer. It
+does not run the full fixture, DOM embedding, or Boa/SpiderMonkey comparison.
+Three samples are a diagnostic baseline, not a performance acceptance gate;
+the complete comparison still requires the controls described above. The
+current linear property storage is a known optimization target.

@@ -76,3 +76,43 @@ zero skips within this selected suite. Other Test262 cases are unmeasured, not
 passes. A normal `cargo test` reports the corpus-dependent test as ignored;
 the command above and CI explicitly run it. The behavior follows
 [TryStatement evaluation](https://262.ecma-international.org/17.0/#sec-try-statement-runtime-semantics-evaluation).
+
+## Array stack and queue methods
+
+Array literals and the Array constructor share the Realm's Array prototype,
+which is itself an empty Array exotic object. `push`, `pop`, `shift`, and
+`unshift` are callable from JavaScript and generic over array-like receivers.
+They box primitive receivers, read/convert length once, preserve holes and
+inherited indices, and perform observable Get/HasProperty/Set/Delete operations
+in specification order. Failed writes/deletes throw and keep preceding changes.
+Array-like lengths use the 2^53−1 limit without wrapping to a 32-bit index;
+actual Arrays still enforce their separate 2^32−1 length limit.
+
+Length conversion invokes JavaScript `Symbol.toPrimitive`, `valueOf`, and
+`toString` methods; explicit Rust embedding conversion hooks remain supported.
+Object literals now inherit Object.prototype, whose valueOf/toString fallback
+methods support this conversion. The Symbol.toPrimitive/toStringTag identities
+and Number safe-integer constants are exposed for these operations. This does
+not complete the Symbol/Boolean/Error constructor APIs or replace the bootstrap
+conversion path used by every other operator.
+
+The focused Test262 gate uses 25 unchanged files / 50 strict and sloppy variants:
+
+```sh
+TEST262_DIR=/tmp/temiya-test262 cargo test --locked --all-features \
+    --test array_stack pinned_test262_array_stack -- --ignored --nocapture
+```
+
+An audit of all 89 upstream files in the four method directories found 69 files
+passing both variants (138 passes), 20 failing files, and zero timeouts. Twelve
+fail before the test body in propertyHelper.js because other builtin function
+APIs are incomplete; eight need Object.freeze. These failures remain tracked
+by #202/#146 and #208 and are not counted as passes. The failing first variant
+stops that file's audit, so its second variant is unexecuted. Method descriptors,
+read-only properties, and partial updates are separately covered through the
+public Engine API in `tests/array_stack.rs`. To reproduce an individual audit
+case, set `TEST262_CASE=push/length.js` when running the command above.
+
+The algorithms use constant auxiliary space, with no copy of the entire array
+or precomputed property snapshot. Current object property storage still uses
+linear searches; fast indexed storage remains necessary for competitive speed.

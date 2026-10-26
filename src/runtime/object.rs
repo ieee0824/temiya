@@ -279,7 +279,7 @@ pub(super) struct ObjectState {
     pub(super) view: Option<super::indexed::ViewSlot>,
     pub(super) string_data: Option<JsString>,
     pub(super) regexp: Option<super::regexp::RegExpSlot>,
-    pub(super) numeric_data: Option<Value>,
+    pub(super) primitive_data: Option<Value>,
     pub(super) map_data: Option<super::collections::MapSlot>,
     pub(super) set_data: Option<super::collections::SetSlot>,
     pub(super) weak_map_data: Option<super::collections::WeakMapSlot>,

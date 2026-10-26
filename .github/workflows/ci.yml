@@ -71,3 +71,7 @@ jobs:
         env:
           TEST262_DIR: target/test262
         run: cargo +${{ matrix.toolchain }} test --locked --test exception_flow pinned_test262_exception_regressions --all-features -- --ignored --nocapture
+      - name: Run upstream array stack regressions
+        env:
+          TEST262_DIR: target/test262
+        run: cargo +${{ matrix.toolchain }} test --locked --test array_stack pinned_test262_array_stack --all-features -- --ignored --nocapture

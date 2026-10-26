@@ -575,6 +575,9 @@ impl ExpressionEvaluator {
     fn array(&self, elements: &[Option<Expr>]) -> RuntimeResult<Value> {
         let array = ArrayObject::new(elements.len() as u32)?;
         let object = array.object();
+        object.set_prototype(Some(
+            self.realm.intrinsic(super::IntrinsicId::ArrayPrototype),
+        ));
         let mut index = 0_u32;
         for element in elements {
             if let Some(element) = element {
@@ -609,6 +612,9 @@ impl ExpressionEvaluator {
 
     fn object(&self, properties: &[crate::ast::ObjectProperty]) -> RuntimeResult<Value> {
         let object = Object::new();
+        object.set_prototype(Some(
+            self.realm.intrinsic(super::IntrinsicId::ObjectPrototype),
+        ));
         for property in properties {
             if property.spread {
                 let spread_value = self.evaluate(&property.key)?;

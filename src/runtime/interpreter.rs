@@ -552,9 +552,9 @@ impl ExpressionEvaluator {
         let mut values = Vec::new();
         for argument in arguments {
             if let ExprKind::Spread(value) = &argument.kind {
-                values.extend(array_like_values(&self.evaluate(value)?)?);
+                super::iterator::spread_arguments(&self.realm, self.evaluate(value)?, &mut values)?;
             } else {
-                values.push(self.evaluate(argument)?);
+                super::iterator::push_argument(&mut values, self.evaluate(argument)?)?;
             }
         }
         Ok(values)

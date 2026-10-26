@@ -19,7 +19,7 @@ native addresses, and platform-sized operands are intentionally excluded.
 | `LoadReferenceCallTarget` | `+2` | consume Reference; push receiver/callee once |
 | `AsCallTarget` | `+1` | value becomes undefined-receiver/callee pair |
 | `BeginMethodCall` | `-2` | capture receiver/callee pair |
-| `AppendArgument` | `-1` | exactly one value above invocation baseline |
+| `AppendArgument`, `SpreadArguments` | `-1` | exactly one value above invocation baseline; spread also needs Realm scope |
 | `Invoke` | `+1` | balanced invocation at baseline |
 | `LoadThis` | `+1` | active lexical this context |
 | `JumpIfNullish(target)` | `-1` | one input and valid target |
@@ -207,7 +207,31 @@ callees still evaluate arguments and fail callability checks normally. Local
 AST/VM comparisons cover mixed chains, grouped calls, skipped arguments and
 error precedence, following [ECMA-262 2026 optional chains](https://tc39.es/ecma262/2026/multipage/ecmascript-language-expressions.html#sec-optional-chains).
 
-Spread arguments remain explicit compile errors. The required original Test262 call/construct suite has
+Spread arguments now consume the actual synchronous iterator protocol in both
+AST and VM argument lists: GetMethod(@@iterator), call with the iterable receiver,
+capture next once, then read done before value for each object result. Existing
+array-like objects without @@iterator are rejected; overridden iterator methods
+are honored. Native and JavaScript callbacks, getters and thrown values use the
+same Object API as ordinary calls. Standard Array values/@@iterator and String
+@@iterator are installed with shared branded next methods, Realm-local prototypes,
+and identity @@iterator inheritance. String iteration emits code points while
+preserving lone UTF-16 surrogates. Array values observe dynamic length, holes,
+reentrant getters and index advancement before element Get; exhausted iterators
+release their target. The iterator instance stores boxed private state rather
+than a closure capturing itself. Its optional slot adds one pointer to ObjectState.
+
+Argument lists currently have an implementation limit of 65,536 values (ordinary
+and spread combined). Overflow returns RangeError, closes a still-active iterator,
+and drops pending invocation roots; the original overflow takes precedence over
+return getter/call failures. Iterator-step/done/value failures propagate without
+an extra return call, as required by ArgumentListEvaluation. These guards and
+added intrinsic objects require new performance measurements before merge.
+
+This implements argument spread and Array values/String iterator prerequisites,
+not full iterator/builtin conformance: Array keys/entries, TypedArray-specific
+iteration and detached-buffer behavior, Map/Set/generator iterator exposure,
+Iterator constructor/helpers, cross-Realm symbol identity, and the older AST
+array-literal spread algorithm remain separate unfinished areas. The required original Test262 call/construct suite has
 not yet been run for this work; local integration tests do not satisfy that gate.
 Issue #291 remains incomplete. The added shared Object-call guard changes the AST
 hot path and requires fresh comparative performance evidence before merge; #469's

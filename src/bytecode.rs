@@ -109,6 +109,8 @@ pub enum Instruction {
     BeginConstruct,
     /// Append one evaluated value to the innermost pending invocation.
     AppendArgument,
+    /// Consume an iterable through the Realm iterator protocol and append arguments.
+    SpreadArguments,
     /// Invoke the innermost captured callee and push its result.
     Invoke,
     /// Push the current lexical this binding.
@@ -156,7 +158,10 @@ impl Instruction {
             Self::AsCallTarget => 1,
             Self::BeginMethodCall => 2,
             Self::BeginReferenceCall | Self::Invoke | Self::LoadThis => 0,
-            Self::BeginCall | Self::BeginConstruct | Self::AppendArgument => 1,
+            Self::BeginCall
+            | Self::BeginConstruct
+            | Self::AppendArgument
+            | Self::SpreadArguments => 1,
             Self::GetProperty { .. } | Self::ResolveProperty { .. } => 2,
             Self::DeleteReference => 0,
             Self::JumpIfNullish(_) => 1,
@@ -185,7 +190,10 @@ impl Instruction {
             Self::AsCallTarget => 1,
             Self::BeginMethodCall => -2,
             Self::BeginReferenceCall => 0,
-            Self::BeginCall | Self::BeginConstruct | Self::AppendArgument => -1,
+            Self::BeginCall
+            | Self::BeginConstruct
+            | Self::AppendArgument
+            | Self::SpreadArguments => -1,
             Self::Invoke | Self::LoadThis | Self::DeleteReference => 1,
             Self::GetProperty { .. } | Self::JumpIfNullish(_) => -1,
             Self::ResolveProperty { .. } => -2,
@@ -481,13 +489,19 @@ fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
                     baseline,
                 ));
             }
-            Instruction::AppendArgument | Instruction::Invoke => {
+            Instruction::AppendArgument | Instruction::SpreadArguments | Instruction::Invoke => {
+                if matches!(instruction, Instruction::SpreadArguments) && state.scopes.is_empty() {
+                    return Err(error(VerifyErrorKind::ScopeMismatch));
+                }
                 let (_, baseline) = state
                     .calls
                     .last()
                     .ok_or_else(|| error(VerifyErrorKind::ScopeMismatch))?;
-                let expected =
-                    baseline + usize::from(matches!(instruction, Instruction::AppendArgument));
+                let expected = baseline
+                    + usize::from(matches!(
+                        instruction,
+                        Instruction::AppendArgument | Instruction::SpreadArguments
+                    ));
                 if state.depth != expected {
                     return Err(error(VerifyErrorKind::StackDepthMismatch));
                 }

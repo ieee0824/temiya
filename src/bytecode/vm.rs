@@ -200,11 +200,17 @@ impl VirtualMachine {
                     });
                 }
                 Instruction::AppendArgument => {
-                    calls
-                        .last_mut()
-                        .expect("verified call frame")
-                        .arguments
-                        .push(pop(&mut stack)?);
+                    crate::runtime::iterator::push_argument(
+                        &mut calls.last_mut().expect("verified call frame").arguments,
+                        pop(&mut stack)?,
+                    )?;
+                }
+                Instruction::SpreadArguments => {
+                    crate::runtime::iterator::spread_arguments(
+                        realm.expect("verified scoped spread"),
+                        pop(&mut stack)?,
+                        &mut calls.last_mut().expect("verified call frame").arguments,
+                    )?;
                 }
                 Instruction::Invoke => {
                     let invocation = calls.pop().expect("verified call frame");

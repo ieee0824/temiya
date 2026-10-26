@@ -318,6 +318,7 @@ pub(super) struct ObjectState {
     pub(super) weak_map_data: Option<super::collections::WeakMapSlot>,
     pub(super) weak_set_data: Option<super::collections::WeakSetSlot>,
     pub(super) date_value: Option<f64>,
+    pub(super) iterator: Option<Box<super::iterator::IteratorSlot>>,
     pub(super) proxy: Option<super::proxy::ProxySlot>,
 }
 

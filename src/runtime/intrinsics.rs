@@ -107,13 +107,22 @@ pub enum IntrinsicId {
     Math,
     /// `%JSON%`.
     Json,
+    /// `%Iterator.prototype%` (iterator helpers remain separate work).
+    IteratorPrototype,
+    /// `%ArrayIteratorPrototype%`.
+    ArrayIteratorPrototype,
+    /// `%StringIteratorPrototype%`.
+    StringIteratorPrototype,
     /// `%Proxy%`.
     Proxy,
 }
 
 impl IntrinsicId {
     /// Every intrinsic identity, in deterministic initialization order.
-    pub const ALL: [Self; 50] = [
+    pub const ALL: [Self; 53] = [
+        Self::IteratorPrototype,
+        Self::ArrayIteratorPrototype,
+        Self::StringIteratorPrototype,
         Self::ObjectPrototype,
         Self::FunctionPrototype,
         Self::ArrayPrototype,
@@ -259,6 +268,7 @@ impl IntrinsicRegistry {
         let registry = Self(objects);
         registry.wire_graph()?;
         for (name, symbol) in [
+            ("iterator", WellKnownSymbol::Iterator),
             ("toPrimitive", WellKnownSymbol::ToPrimitive),
             ("toStringTag", WellKnownSymbol::ToStringTag),
         ] {
@@ -273,6 +283,7 @@ impl IntrinsicRegistry {
         super::builtins::initialize(&registry, host_hooks)?;
         super::array_methods::install(&registry, symbols)?;
         super::string_methods::install(&registry, symbols)?;
+        super::iterator::install(&registry, symbols)?;
         registry.install_globals(global)?;
         Ok(registry)
     }

@@ -433,8 +433,13 @@ impl Compiler {
 
     fn arguments(&mut self, arguments: &[Expr]) -> Result<(), CompileError> {
         for argument in arguments {
-            self.expression(argument)?;
-            self.code.push(Instruction::AppendArgument);
+            if let ExprKind::Spread(value) = &argument.kind {
+                self.expression(value)?;
+                self.code.push(Instruction::SpreadArguments);
+            } else {
+                self.expression(argument)?;
+                self.code.push(Instruction::AppendArgument);
+            }
         }
         Ok(())
     }

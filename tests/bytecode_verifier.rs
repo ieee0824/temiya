@@ -416,3 +416,20 @@ fn call_target_pairs_require_references_and_two_operands() {
         Err(VerifyErrorKind::StackUnderflow)
     );
 }
+
+#[test]
+fn spread_arguments_require_active_invocation_and_realm_scope() {
+    use Instruction::*;
+    assert!(verify(vec![LoadConstant(0), SpreadArguments, Return]).is_err());
+    assert_eq!(
+        verify(vec![
+            LoadConstant(0),
+            BeginCall,
+            LoadConstant(1),
+            SpreadArguments,
+            Invoke,
+            Return
+        ]),
+        Err(VerifyErrorKind::ScopeMismatch)
+    );
+}

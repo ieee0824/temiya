@@ -6,6 +6,7 @@
 
 pub mod ast;
 pub mod benchmark;
+pub mod bytecode;
 pub mod differential;
 pub mod embedding;
 pub mod ffi;

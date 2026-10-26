@@ -272,3 +272,42 @@ two historical reports do not establish a controlled before/after speedup or
 regression. Use the paired Boa comparisons within each report. SpiderMonkey
 comparison and application-level validation remain outstanding. Legacy
 `String.prototype.substr` is tracked separately in #454.
+
+
+#### Function allocation retention follow-up
+
+[The comparison after removing hidden self retention and deferring default
+prototype values](../benchmarks/function-retention-comparison.json) uses engine/worker
+revision `292a3760deb3f9d3208050350feb733c4aaf66fa`, the same pinned omoikane
+embedding and unchanged eleven inputs, release Rust 1.99.1 and Linux ARM64.
+There are 15 timed samples plus a checked warmup per worker and three alternating
+pairs per workload, with the unchanged 512 MiB / 180-second limits. All 66 runs
+and 33 pair outcomes are retained; 66 runs pass, validating 1056 results.
+
+The original closure-allocation workload executes 300000 iterations and returns
+715003. All three Temiya workers complete it, with observed peak HWM
+3616–3624 KiB. The historical comparisons stopped this workload at
+the memory limit; a failed earlier run cannot supply a before/after speed ratio.
+These sampled peaks do not prove collection of arbitrary cycles.
+
+| Workload | Temiya time / Boa time across three pairs |
+| --- | ---: |
+| arith | 4.39–4.66× |
+| prop-mono | 2.59–2.66× |
+| prop-mega | 2.65–2.79× |
+| call | 3.09–3.15× |
+| closure-alloc | 2.03–2.16× |
+| object-alloc | 1.80–1.91× |
+| string-concat | 5.80–6.21× |
+| array | 2.55–2.70× |
+| primitive-string-property | 3.12–3.89× |
+| primitive-string-method | 2.32–2.48× |
+| proto-method | 2.65–2.74× |
+
+Both engines complete all eleven workloads correctly in every pair.
+The Boa speed objective remains unmet. Compare paired samples inside this report;
+absolute times across historical sessions do not establish controlled regression
+or speedup. This change reduces allocation and unobservable retention; it does
+not integrate tracing GC. The ownership probe still retains self-cycle,
+two-object-cycle and escaped-prototype cases. Full GC and SpiderMonkey/application
+comparisons remain separate outstanding requirements.

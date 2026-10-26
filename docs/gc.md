@@ -49,4 +49,4 @@ reclamation, and peak live allocations for tests and leak investigations.
 The current Engine's ownership graph, selected migration representation,
 rooting protocol, public retention probe and implementation gates are documented
 in [runtime ownership migration](runtime-ownership.md). The strict probe currently
-fails on six cases; these collector contracts do not imply runtime reclamation.
+fails on three cyclic cases after the function-allocation update; these collector contracts do not imply runtime reclamation.

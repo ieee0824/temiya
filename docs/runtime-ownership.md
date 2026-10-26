@@ -30,8 +30,9 @@ cargo run --locked --example ownership_probe -- --require-reclamation
 The diagnostic invocation emits JSON and exits zero after safety checks. The
 strict invocation emits the same observations and exits **2** while any token
 survives teardown. The recorded
-[baseline](../benchmarks/runtime-ownership-baseline.json) releases the acyclic
-control but retains all six cyclic/function cases. This is an observed failure,
+[baseline](../benchmarks/runtime-ownership-baseline.json) released the acyclic
+control but retained all six cyclic/function cases. See the function-allocation
+update below for current observations. This is an observed failure,
 not an ignored test or a claimed collector pass. `tests/runtime_ownership.rs`
 checks live-handle/clone/function/prototype safety and acyclic release; it does
 not require known leaks to persist after migration. The strict command is the
@@ -209,3 +210,44 @@ Reject two alternatives: keeping Root values inside heap records permanently
 roots cycles; applying Rc trial deletion without enumerating native captures
 cannot distinguish hidden internal edges from external references. Both still
 need the explicit graph and callback work selected above.
+
+## Function allocation retention update
+
+The function-allocation change keeps the internal callable self lookup weak.
+For constructable ordinary functions, the own `prototype` data property is
+registered at creation with its standard writable/nonenumerable/nonconfigurable
+attributes and insertion position. Its initial object value is materialized
+when GetOwnProperty (including Get) or DefineOwnProperty first observes it.
+OwnKeys and rejected deletion do not require the value. A materialized prototype
+inherits Object.prototype and has the standard nonenumerable `constructor`
+backlink. PreventExtensions does not prevent the logical existing property's
+value from being materialized; redefinition still validates the actual value.
+
+The edge inventory gains one strong pending Object.prototype reference in
+ObjectState. The self lookup becomes W; once materialized, the visible
+function/prototype/constructor graph remains strong. Descriptor observation and
+escaped prototypes intentionally preserve that graph. This update does not
+enable collection and does not trace arbitrary object/environment cycles.
+
+The original seven-fixture probe now releases arrow, ordinary anonymous and
+lexical-closure cases, as well as the acyclic control. Three cases still retain
+values: self-cycle, two-object-cycle and escaped-prototype. The historical
+baseline above is unchanged. Current observations are recorded separately in
+[function ownership observations](../benchmarks/function-ownership-observations.json).
+The strict reclamation gate remains failing until those cycles are collected.
+
+`tests/function_allocation.rs` covers data descriptors, order, replacement,
+nonwritability/nonextensibility, Proxy invariants, escaped/live constructors,
+removal of active call targets, and release after an unobserved prototype or
+OwnKeys. Its ignored upstream selection executes four original Test262 files
+(`language/statements/function/S13.2_A1_T1.js`, `S13.2_A1_T2.js`,
+`S13.2_A4_T1.js`, `S13.2_A4_T2.js`) in strict/sloppy modes at the pinned revision:
+
+```sh
+TEST262_DIR=target/test262 cargo test --locked --test function_allocation \
+  pinned_test262_function_prototypes -- --ignored --nocapture
+```
+
+This is eight passing variants, not full Function conformance. Function name
+inference, restricted properties, broader metadata and full prototype-chain
+coverage remain tracked separately (#202, #210).

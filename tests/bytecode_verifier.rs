@@ -274,3 +274,64 @@ fn retained_name_references_are_checked() {
         VerifyErrorKind::ScopeMismatch
     );
 }
+
+#[test]
+fn property_instructions_validate_operands_scopes_and_references() {
+    use temiya::bytecode::{ScopeDescriptor, ScopeKind};
+    let check = |code| {
+        Bytecode {
+            constants: vec![
+                Constant::Scope(ScopeDescriptor {
+                    kind: ScopeKind::Global,
+                    strict: false,
+                    bindings: vec![],
+                }),
+                Constant::Null,
+                Constant::String("x".into()),
+            ],
+            instructions: code,
+            local_count: 0,
+        }
+        .verify()
+        .unwrap_err()
+        .kind()
+    };
+    assert_eq!(
+        check(vec![
+            Instruction::EnterScope(0),
+            Instruction::LoadConstant(1),
+            Instruction::GetProperty { strict: false },
+            Instruction::Return
+        ]),
+        VerifyErrorKind::StackUnderflow
+    );
+    assert_eq!(
+        check(vec![
+            Instruction::LoadConstant(1),
+            Instruction::LoadConstant(2),
+            Instruction::GetProperty { strict: false },
+            Instruction::Return
+        ]),
+        VerifyErrorKind::ScopeMismatch
+    );
+    assert_eq!(
+        check(vec![
+            Instruction::EnterScope(0),
+            Instruction::DeleteReference,
+            Instruction::Return
+        ]),
+        VerifyErrorKind::ScopeMismatch
+    );
+    assert_eq!(
+        check(vec![Instruction::LoadThis, Instruction::Return]),
+        VerifyErrorKind::ScopeMismatch
+    );
+    assert_eq!(
+        check(vec![
+            Instruction::LoadConstant(1),
+            Instruction::JumpIfNullish(3),
+            Instruction::Return
+        ]),
+        VerifyErrorKind::JumpOutOfBounds
+    );
+}

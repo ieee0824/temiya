@@ -54,6 +54,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         RuntimeErrorKind::ReferenceError
     );
 
+    let property = BytecodeCompiler::compile("this.answer=42; this?.answer;")?;
+    assert!(matches!(
+        VirtualMachine::execute(&property)?,
+        Completion::Normal(Some(Value::Number(42.0)))
+    ));
+
     #[cfg(feature = "jit")]
     check_jit()?;
 

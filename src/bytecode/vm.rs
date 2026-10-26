@@ -1,6 +1,6 @@
 use crate::runtime::{
-    Completion, Environment, EnvironmentKind, Realm, Reference, RuntimeError, RuntimeResult, Value,
-    binary_values, binary_values_in_realm,
+    Completion, Environment, EnvironmentKind, Realm, Reference, ReferencedName, RuntimeError,
+    RuntimeResult, Value, binary_values, binary_values_in_realm,
 };
 
 use super::{BindingKind, Constant, Instruction, ScopeDescriptor, ScopeKind, VerifiedBytecode};
@@ -135,6 +135,54 @@ impl VirtualMachine {
                         .expect("verified reference stack")
                         .put_value(pop(&mut stack)?)?;
                 }
+                Instruction::GetProperty { strict } | Instruction::ResolveProperty { strict } => {
+                    let key = pop(&mut stack)?;
+                    let base = pop(&mut stack)?;
+                    let reference = Reference::property_in_realm(
+                        realm.expect("verified scoped property access"),
+                        base,
+                        ReferencedName::Value(key),
+                        strict,
+                    );
+                    if matches!(instruction, Instruction::GetProperty { .. }) {
+                        stack.push(reference.get_value()?);
+                    } else {
+                        references.push(reference);
+                    }
+                }
+                Instruction::DeleteReference => {
+                    stack.push(Value::Boolean(
+                        references
+                            .pop()
+                            .expect("verified reference stack")
+                            .delete()?,
+                    ));
+                }
+                Instruction::LoadThis => {
+                    let mut environment = scopes
+                        .last()
+                        .expect("verified active scope")
+                        .environment
+                        .clone();
+                    loop {
+                        if environment.kind() == EnvironmentKind::Global {
+                            stack.push(environment.global_this_value()?);
+                            break;
+                        }
+                        if environment.has_this_binding()? {
+                            stack.push(environment.get_this_binding()?);
+                            break;
+                        }
+                        environment = environment
+                            .outer()
+                            .ok_or_else(|| RuntimeError::reference_error("no this binding"))?;
+                    }
+                }
+                Instruction::JumpIfNullish(target) => {
+                    if matches!(pop(&mut stack)?, Value::Null | Value::Undefined) {
+                        pc = target as usize;
+                    }
+                }
                 Instruction::LoadConstant(index) => {
                     stack.push(constant(&body.constants[index as usize]))
                 }
@@ -175,6 +223,7 @@ impl VirtualMachine {
 fn constant(constant: &Constant) -> Value {
     match constant {
         Constant::Scope(_) => unreachable!("verifier rejects metadata values"),
+        Constant::BigInt(value) => Value::BigInt(value.clone()),
         Constant::Undefined => Value::Undefined,
         Constant::Null => Value::Null,
         Constant::Boolean(value) => Value::Boolean(*value),

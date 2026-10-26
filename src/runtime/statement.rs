@@ -480,9 +480,23 @@ impl StatementEvaluator {
         handler: Option<&CatchClause>,
         finalizer: Option<&Stmt>,
     ) -> RuntimeResult<Completion> {
-        let mut completion = self.statement(block, &[])?;
-        if let (Completion::Throw(thrown), Some(handler)) = (&completion, handler) {
-            completion = self.catch(handler, thrown.clone())?;
+        let mut completion = self.statement(block, &[]);
+        if let Some(handler) = handler {
+            let thrown = match &completion {
+                Ok(Completion::Throw(value)) => Some(value.clone()),
+                Err(error) => Some(self.expression.realm.exception_value(error)?),
+                _ => None,
+            };
+            if let Some(thrown) = thrown {
+                completion = self.catch(handler, thrown);
+            }
+        }
+        // Invariant/host panic failures are not JavaScript abrupt completions.
+        // Neither catch nor finally may turn them into successful JS execution.
+        if let Err(error) = &completion {
+            if error.kind() == super::RuntimeErrorKind::InternalError {
+                return completion;
+            }
         }
         if let Some(finalizer) = finalizer {
             let final_completion = self.statement(finalizer, &[])?;
@@ -490,7 +504,7 @@ impl StatementEvaluator {
                 return Ok(final_completion);
             }
         }
-        Ok(completion)
+        completion
     }
 
     fn catch(&self, handler: &CatchClause, thrown: Value) -> RuntimeResult<Completion> {

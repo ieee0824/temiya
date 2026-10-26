@@ -152,10 +152,11 @@ pub enum PrimitiveHint {
 }
 
 /// Runtime failures raised by abstract operations.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct RuntimeError {
     kind: RuntimeErrorKind,
     message: String,
+    thrown: Option<Box<Value>>,
 }
 
 impl RuntimeError {
@@ -165,6 +166,7 @@ impl RuntimeError {
         Self {
             kind: RuntimeErrorKind::TypeError,
             message: message.into(),
+            thrown: None,
         }
     }
 
@@ -174,6 +176,7 @@ impl RuntimeError {
         Self {
             kind: RuntimeErrorKind::SyntaxError,
             message: message.into(),
+            thrown: None,
         }
     }
 
@@ -183,6 +186,7 @@ impl RuntimeError {
         Self {
             kind: RuntimeErrorKind::ReferenceError,
             message: message.into(),
+            thrown: None,
         }
     }
 
@@ -192,6 +196,7 @@ impl RuntimeError {
         Self {
             kind: RuntimeErrorKind::RangeError,
             message: message.into(),
+            thrown: None,
         }
     }
 
@@ -201,7 +206,26 @@ impl RuntimeError {
         Self {
             kind: RuntimeErrorKind::InternalError,
             message: message.into(),
+            thrown: None,
         }
+    }
+
+    /// Carries an arbitrary JavaScript throw value through an operation boundary.
+    /// No string conversion or user code is invoked; object identity is preserved.
+    #[must_use]
+    pub fn thrown(value: Value) -> Self {
+        Self {
+            kind: RuntimeErrorKind::ThrownValue,
+            message: "JavaScript throw completion".into(),
+            thrown: Some(Box::new(value)),
+        }
+    }
+
+    /// Returns the original JavaScript value (including `undefined` and `null`),
+    /// or a native error object already materialized in its originating Realm.
+    #[must_use]
+    pub fn thrown_value(&self) -> Option<&Value> {
+        self.thrown.as_deref()
     }
 
     /// Returns the error category.
@@ -225,9 +249,25 @@ impl fmt::Display for RuntimeError {
 
 impl std::error::Error for RuntimeError {}
 
+impl PartialEq for RuntimeError {
+    fn eq(&self, other: &Self) -> bool {
+        self.kind == other.kind
+            && self.message == other.message
+            && match (&self.thrown, &other.thrown) {
+                (None, None) => true,
+                (Some(left), Some(right)) => left.same_value(right),
+                _ => false,
+            }
+    }
+}
+
+impl Eq for RuntimeError {}
+
 /// Categories of runtime errors currently produced by abstract operations.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum RuntimeErrorKind {
+    /// An explicit JavaScript throw, whose value is retained separately.
+    ThrownValue,
     /// An operation was applied to an incompatible ECMAScript value.
     TypeError,
     /// Text could not be parsed using the required ECMAScript grammar.
@@ -243,6 +283,7 @@ pub enum RuntimeErrorKind {
 impl fmt::Display for RuntimeErrorKind {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::ThrownValue => formatter.write_str("JavaScript throw"),
             Self::TypeError => formatter.write_str("TypeError"),
             Self::SyntaxError => formatter.write_str("SyntaxError"),
             Self::ReferenceError => formatter.write_str("ReferenceError"),

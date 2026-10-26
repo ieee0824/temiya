@@ -71,7 +71,10 @@ fn throw_resume_abruptly_completes_the_generator() {
     let error = run("function* values() { yield 1; } let iterator = values(); \
          iterator.next(); iterator.throw('failure');")
     .unwrap_err();
-    assert_eq!(error.kind(), RuntimeErrorKind::TypeError);
+    assert_eq!(error.kind(), RuntimeErrorKind::ThrownValue);
+    assert!(
+        matches!(error.thrown_value(), Some(Value::String(value)) if value.to_string_lossy() == "failure")
+    );
 }
 
 #[test]

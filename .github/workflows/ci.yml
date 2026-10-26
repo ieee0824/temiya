@@ -65,3 +65,9 @@ jobs:
         run: cargo +${{ matrix.toolchain }} build --locked --all-features
       - name: Verify documented execution paths
         run: cargo +${{ matrix.toolchain }} run --locked --example backend_scope --all-features
+      - name: Fetch pinned Test262 regression corpus
+        run: scripts/test262
+      - name: Run upstream exception regressions
+        env:
+          TEST262_DIR: target/test262
+        run: cargo +${{ matrix.toolchain }} test --locked --test exception_flow pinned_test262_exception_regressions --all-features -- --ignored --nocapture

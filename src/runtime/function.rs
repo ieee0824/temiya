@@ -74,11 +74,13 @@ pub(super) fn create_function(
         } else if call_closure.code.asynchronous {
             settled_promise_object(
                 call_closure.realm.job_queue(),
-                call_function(&call_closure, function, this, arguments, None),
+                call_function(&call_closure, function, this, arguments, None)
+                    .map_err(|error| call_closure.realm.bind_exception(error)),
             )
             .map(Value::Object)
         } else {
             call_function(&call_closure, function, this, arguments, None)
+                .map_err(|error| call_closure.realm.bind_exception(error))
         }
     };
     let constructable = !code.generator
@@ -95,6 +97,7 @@ pub(super) fn create_function(
                 RuntimeError::internal_error("function object is not initialized")
             })?;
             construct_function(&construct_closure, function, arguments, new_target)
+                .map_err(|error| construct_closure.realm.bind_exception(error))
         })
     } else {
         Object::native_function(call)
@@ -190,9 +193,7 @@ fn call_function(
             match statements.evaluate_statement(body)? {
                 Completion::Return(value) => Ok(value),
                 Completion::Normal(_) => Ok(Value::Undefined),
-                Completion::Throw(value) => Err(RuntimeError::type_error(format!(
-                    "uncaught JavaScript exception: {value:?}"
-                ))),
+                Completion::Throw(value) => Err(RuntimeError::thrown(value)),
                 Completion::Break { .. } | Completion::Continue { .. } => Err(
                     RuntimeError::internal_error("invalid completion escaped a function body"),
                 ),

@@ -184,9 +184,7 @@ impl SourceTextModule {
             );
             match evaluator.evaluate_instantiated(&body)? {
                 Completion::Normal(value) => Ok(value.unwrap_or(Value::Undefined)),
-                Completion::Throw(value) => Err(RuntimeError::type_error(format!(
-                    "uncaught module exception: {value:?}"
-                ))),
+                Completion::Throw(value) => Err(RuntimeError::thrown(value)),
                 _ => Err(RuntimeError::internal_error(
                     "invalid completion escaped module evaluation",
                 )),

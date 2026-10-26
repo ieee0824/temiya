@@ -17,6 +17,7 @@ mod environment;
 mod execution;
 mod function;
 mod generator;
+mod host_data;
 mod indexed;
 mod interpreter;
 mod intrinsics;
@@ -35,6 +36,7 @@ pub use environment::{Environment, EnvironmentKind, ObjectEnvironmentOptions, Th
 pub use execution::{Agent, ContextState, ExecutionContext, Realm, ScriptRecord};
 pub use function::FunctionKind;
 pub use generator::{Generator, GeneratorState, IteratorResult};
+pub use host_data::{DateObject, HostHooks, IntlProvider, Json, JsonTransform, UnsupportedIntl};
 pub use indexed::{ArrayBuffer, ArrayObject, DataView, TypedArray};
 pub use interpreter::{ExpressionEvaluator, Reference, ReferencedName};
 pub use intrinsics::{IntrinsicId, IntrinsicRegistry, WellKnownSymbol, WellKnownSymbols};

@@ -7,8 +7,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use crate::ast::Program;
 
 use super::{
-    Environment, IntrinsicId, IntrinsicRegistry, JobQueue, Object, RuntimeError, RuntimeResult,
-    Value, WellKnownSymbol, WellKnownSymbols,
+    Environment, HostHooks, IntrinsicId, IntrinsicRegistry, JobQueue, Object, RuntimeError,
+    RuntimeResult, Value, WellKnownSymbol, WellKnownSymbols,
 };
 
 /// An ECMAScript Realm with its global object and Global Environment Record.
@@ -22,6 +22,7 @@ struct RealmData {
     job_queue: JobQueue,
     intrinsics: IntrinsicRegistry,
     well_known_symbols: WellKnownSymbols,
+    host_hooks: HostHooks,
 }
 
 impl Realm {
@@ -34,9 +35,18 @@ impl Realm {
 
     /// Tries to create and initialize a Realm around a host-supplied global object.
     pub fn try_new(global_object: Object, global_this_value: Value) -> RuntimeResult<Self> {
+        Self::try_new_with_host(global_object, global_this_value, HostHooks::default())
+    }
+
+    /// Tries to create a Realm with explicitly supplied host-dependent services.
+    pub fn try_new_with_host(
+        global_object: Object,
+        global_this_value: Value,
+        host_hooks: HostHooks,
+    ) -> RuntimeResult<Self> {
         static NEXT_ID: AtomicU64 = AtomicU64::new(1);
         let well_known_symbols = WellKnownSymbols::initialize();
-        let intrinsics = IntrinsicRegistry::initialize(&global_object)?;
+        let intrinsics = IntrinsicRegistry::initialize(&global_object, host_hooks.clone())?;
         let global_environment = Environment::global(global_object.clone(), global_this_value);
         Ok(Self(Rc::new(RealmData {
             id: next_id(&NEXT_ID, "Realm"),
@@ -45,6 +55,7 @@ impl Realm {
             job_queue: JobQueue::new(),
             intrinsics,
             well_known_symbols,
+            host_hooks,
         })))
     }
 
@@ -95,6 +106,12 @@ impl Realm {
     #[must_use]
     pub fn well_known_symbol(&self, id: WellKnownSymbol) -> super::Symbol {
         self.0.well_known_symbols.get(id)
+    }
+
+    /// Returns this Realm's host-service boundary.
+    #[must_use]
+    pub fn host_hooks(&self) -> &HostHooks {
+        &self.0.host_hooks
     }
 }
 

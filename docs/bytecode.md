@@ -14,6 +14,8 @@ native addresses, and platform-sized operands are intentionally excluded.
 | `GetProperty {strict}` | `-1` | base/key and active scope |
 | `ResolveProperty {strict}` | `-2` | base/key; retain Reference |
 | `DeleteReference` | `+1` | retained Reference |
+| `LoadReference` | `+1` | retained Reference; reads without consuming it |
+| `DiscardReference` | `0` | consumes retained Reference without a write |
 | `BeginCall`, `BeginConstruct` | `-1` | capture callee in pending invocation |
 | `BeginReferenceCall` | `0` | consume Reference; capture GetValue and receiver |
 | `LoadReferenceCallTarget` | `+2` | consume Reference; push receiver/callee once |
@@ -33,6 +35,7 @@ native addresses, and platform-sized operands are intentionally excluded.
 | `Duplicate` | `+1` | one input |
 | `Pop` | `-1` | one input |
 | `Add`, `Subtract`, `Multiply`, `Divide`, `StrictEqual` | `-1` | two inputs, one result |
+| `Binary(op)` | `-1` | two inputs; generic arithmetic/comparison/bitwise/in/instanceof |
 | `LogicalNot` | `0` | one input, one result |
 | `Jump(target)` | `0` | target is an instruction |
 | `JumpIfFalse(target)` | `-1` | one input and valid target |
@@ -46,7 +49,7 @@ Only the resulting `VerifiedBytecode` is intended for execution by the VM.
 
 `BytecodeCompiler` lowers the baseline AST subset (primitive literals, scoped bindings,
 assignment, property get/set/delete, optional member chains, BigInt literals,
-arithmetic and strict equality, conditional expressions, blocks,
+binary/unary/update and compound operators, logical short circuit, conditional expressions, blocks,
 `if`, `while`, `return`, and `throw`) and immediately verifies its output.
 Unsupported syntax returns a source-spanned `CompileError` rather than falling
 back silently. `VirtualMachine` accepts only `VerifiedBytecode`, evaluates
@@ -244,4 +247,6 @@ measurement does not include this work. No speed improvement is claimed.
 
 Function expression/arrow lowering is in progress in #292; see [bytecode closures](bytecode-closures.md) for actual execution, ownership, tests and unfinished gates. The full parameter/arguments contract and sloppy block declarations remain incomplete.
 
-Unary/update lowering and computed-Reference conversion fixes are in progress in #287; see [bytecode operators](bytecode-operators.md) for execution semantics and unfinished gates.
+Operator lowering and computed-Reference conversion fixes are in progress in #287;
+see [unary/update operators](bytecode-operators.md) and
+[binary/compound operators](bytecode-binary.md) for execution semantics and unfinished gates.

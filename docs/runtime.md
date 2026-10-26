@@ -115,6 +115,51 @@ case, set `TEST262_CASE=push/length.js` when running the command above.
 The [audit manifest](../test262/array-stack-audit.json) records every file's
 outcome and the relevant follow-up Issues for failures.
 
-The algorithms use constant auxiliary space, with no copy of the entire array
-or precomputed property snapshot. Current object property storage still uses
-linear searches; fast indexed storage remains necessary for competitive speed.
+The stack/queue algorithms use constant auxiliary space, with no precomputed
+property snapshot. Array element storage may change representation during a
+write or deletion as described below; ordinary named properties still use
+linear searches.
+
+## Array element storage
+
+Array indices (0 through 2^32−2) use a separate packed vector, holey vector, or
+ordered sparse map. Canonical index parsing, complete property descriptors,
+prototype lookup, and Proxy dispatch remain shared with ordinary property
+operations. A hole is distinct from a present `undefined`; named and Symbol
+properties retain their insertion order after ascending indices.
+
+Large gaps switch to sparse storage without allocating up to the index. Dense
+storage returns at 50% occupancy (small spans of at most 64 slots are allowed);
+deletion switches holey storage to sparse below 25% occupancy. Filling all
+holes returns to packed storage. These thresholds are implementation choices,
+not observable JavaScript state. The current backing store keeps full
+descriptors, rather than specializing number/value-only elements. Clearing a
+large backing vector releases excess capacity; cycles in stored values retain
+the existing Rc ownership limitations.
+
+Numeric length shrink deletes existing elements in descending order, stopping
+at a nonconfigurable property and restoring length to that index plus one.
+Invalid descriptor attributes reject the operation before deleting elements;
+a requested read-only length takes effect even after a partial shrink. No
+getter or Proxy trap is bypassed: Array's own deletion operation has no user
+callback, and a Proxy still dispatches through its traps. Huge sparse lengths
+do not cause a loop across missing indices.
+
+`tests/array_elements.rs` covers the public Engine and Rust object APIs,
+including representation transitions, inherited accessors that mutate storage,
+Proxy traps, descriptor failures, key order, owned-value release, and 4,000
+mixed operations compared with an independent ordered model. A private test
+also checks actual representation transitions and retained capacity. CI runs
+18 additional variants from the pinned Test262 Array/length directory:
+
+```sh
+TEST262_DIR=/tmp/temiya-test262 cargo test --locked --all-features \
+    --test array_stack pinned_test262_array_elements -- --ignored --nocapture
+```
+
+The complete 30-file Array/length audit passes 23 files (46 variants); seven
+files fail and their second variants are unexecuted. Five involve existing
+non-number ArraySetLength coercion gaps (#450), one needs isPrototypeOf (#209),
+and one needs the cross-Realm Test262 host (#147). This storage change does not
+claim complete ArraySetLength conformance. See `test262/array-elements-audit.json`
+for exact outcomes; select a single file with `TEST262_CASE=filename.js`.

@@ -77,10 +77,53 @@ This replaces omoikane's JavaScript timing harness with a Rust host timer. It
 does not run the full fixture, DOM embedding, or Boa/SpiderMonkey comparison.
 Three samples are a diagnostic baseline, not a performance acceptance gate;
 the complete comparison still requires the controls described above. The
-current linear property storage is a known optimization target.
+baseline predates the packed/holey/sparse array element implementation.
 
 [The recorded diagnostic baseline](../benchmarks/omoikane-array-baseline.json)
 retains the implementation revision, input hashes, compiler/machine information,
 and all three samples. Its median is approximately 7.46 seconds on the recorded
 ARM64 environment; this is an optimization starting point, not a speed target
 achievement.
+
+### Comparing array storage changes
+
+Build `measure_number` for the baseline and current engine in separate Git
+worktrees and separate Cargo target directories. Shared target directories can
+reuse a fresh package artifact from the wrong checkout, invalidating results.
+Then compare the workers serially, with alternating order between pairs:
+
+```sh
+BASELINE_REVISION=<full-baseline-commit> CURRENT_REVISION=<full-current-commit> \
+    node scripts/compare-number-workers.mjs \
+    /path/to/baseline/measure_number /path/to/current/measure_number \
+    /tmp/omoikane-array.js 124999750000 15 3 > /tmp/array-comparison.json
+```
+
+Each worker validates one warmup and every timed result. The driver records
+all samples, executable/source hashes, exact revisions, compiler, hardware,
+per-pair median/MAD comparisons, and sampled Linux process memory. It exits
+unsuccessfully without a comparison report if a worker fails or times out.
+The workers must have been built with the reported compiler and no features;
+the driver cannot recover build flags from an executable. Sampled process
+memory is diagnostic and does not establish that all reference cycles are
+collected. These are Temiya before/after measurements, not measurements of the
+vendored Boa embedding or SpiderMonkey.
+
+[The array storage comparison](../benchmarks/array-elements-comparison.json)
+records three alternating pairs of 15 timed passes per revision, each preceded
+by a validated warmup. On the recorded ARM64 machine, the freshly built
+baseline medians were 3.31–3.37 seconds and packed/holey/sparse storage medians
+were 0.985–1.035 seconds: a 68.8–70.2% reduction (3.21–3.36× speedup) on this
+specific workload. Each pair exceeded the documented noise threshold. These
+paired baseline runs, rather than the earlier 7.46-second standalone record,
+are the evidence for improvement. All 96 executions produced the expected
+124999750000 result. Sampled process high-water marks were 3,788–3,812 KiB
+before and 3,544 KiB after; these observations are not a general memory bound.
+
+The [internal regression diagnostic](../benchmarks/array-elements-internal.json)
+also retains three alternating pairs for parsing, parse-plus-interpreter,
+standalone GC, and ordinary object properties (15 samples, 1,000 iterations).
+None crossed the regression policy threshold. Some medians increased, including
+the interpreter macro by 3.5–13.2%; noise thresholds were 10.2–26.0% for those
+pairs. This is limited evidence against a large regression, not an equivalence
+claim or a whole-engine speedup.

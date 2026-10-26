@@ -167,6 +167,13 @@ cycle retaining Runtime remains the host's explicit ownership responsibility.
    callbacks. Catch host panics at the existing embedding boundary; RAII must
    unregister frame regions on normal return, throw and panic unwind.
 
+Arbitrary Rust host state may have a reentrant destructor. Detach retired host
+payloads during sweep and run their Rust destructors only after heap borrows are
+released and the heap is consistent, under a host panic boundary. Host reentry
+then creates a fresh rooted frame. Defer recursive collection during collection;
+final Runtime teardown rejects new entries once closing starts. Dropping the
+Engine wrapper does not start closing while public handles still own Runtime.
+
 Keep existing full-collector weak/ephemeron verification as the oracle. Do not
 enable generational, incremental, moving or concurrent runtime collection in
 this first integration. Existing barriers/collect_minor are isolated components;

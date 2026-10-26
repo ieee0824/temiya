@@ -211,10 +211,10 @@ impl Evaluation {
 #[derive(Clone, Debug)]
 pub struct ExpressionEvaluator {
     realm: Realm,
-    environment: Environment,
+    pub(super) environment: Environment,
     this_value: Value,
     new_target: Option<Object>,
-    strict: bool,
+    pub(super) strict: bool,
 }
 
 impl ExpressionEvaluator {
@@ -860,7 +860,7 @@ fn bigint_shift(value: &BigInt) -> RuntimeResult<u32> {
         .map_err(|_| RuntimeError::range_error("BigInt exponent or shift count is too large"))
 }
 
-fn strict_equal(left: &Value, right: &Value) -> bool {
+pub(super) fn strict_equal(left: &Value, right: &Value) -> bool {
     match (left, right) {
         (Value::Number(a), Value::Number(b)) => !a.is_nan() && !b.is_nan() && a == b,
         _ => left.same_value(right),

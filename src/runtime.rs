@@ -15,11 +15,13 @@ mod environment;
 mod execution;
 mod interpreter;
 mod object;
+mod statement;
 
 pub use environment::{Environment, EnvironmentKind, ObjectEnvironmentOptions, ThisBindingStatus};
 pub use execution::{Agent, ContextState, ExecutionContext, Realm, ScriptRecord};
 pub use interpreter::{ExpressionEvaluator, Reference, ReferencedName};
 pub use object::{PropertyDescriptor, PropertyKey, is_compatible_property_descriptor};
+pub use statement::{Completion, StatementEvaluator};
 
 /// A JavaScript String value represented as an exact sequence of UTF-16 code units.
 #[derive(Clone, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]

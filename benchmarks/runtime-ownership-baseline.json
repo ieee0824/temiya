@@ -1,0 +1,67 @@
+{
+  "command": "cargo run --locked --example ownership_probe -- --require-reclamation",
+  "exit_code": 2,
+  "report": {
+    "cases": [
+      {
+        "alive_after_drop": false,
+        "alive_with_clone": true,
+        "alive_with_handle": true,
+        "name": "acyclic-object",
+        "required_alive_after_migration": false
+      },
+      {
+        "alive_after_drop": true,
+        "alive_with_clone": true,
+        "alive_with_handle": true,
+        "name": "self-cycle",
+        "required_alive_after_migration": false
+      },
+      {
+        "alive_after_drop": true,
+        "alive_with_clone": true,
+        "alive_with_handle": true,
+        "name": "two-object-cycle",
+        "required_alive_after_migration": false
+      },
+      {
+        "alive_after_drop": true,
+        "alive_with_clone": true,
+        "alive_with_handle": true,
+        "name": "arrow-function",
+        "required_alive_after_migration": false
+      },
+      {
+        "alive_after_drop": true,
+        "alive_with_clone": true,
+        "alive_with_handle": true,
+        "name": "ordinary-function",
+        "required_alive_after_migration": false
+      },
+      {
+        "alive_after_drop": true,
+        "alive_with_clone": true,
+        "alive_with_handle": true,
+        "name": "escaped-prototype",
+        "required_alive_after_migration": false
+      },
+      {
+        "alive_after_drop": true,
+        "alive_with_clone": true,
+        "alive_with_handle": true,
+        "name": "lexical-closure",
+        "required_alive_after_migration": false
+      }
+    ],
+    "collection_hook": "runtime teardown only; no Engine force-collection API exists yet",
+    "reclamation_ready": false,
+    "scope": "public Engine; globals removed, scripts/Realm/Engine and both value handles dropped"
+  },
+  "engine_revision": "4866b4de8ea03de01066fcfd450b9a16d011c948",
+  "probe_revision": "02b460eba116b0b3d860e30a7417f6e8a51eac48",
+  "toolchains": [
+    "rustc 1.99.1 (58cf8f9c3 2026-10-13)",
+    "Rust 1.85.0"
+  ],
+  "note": "Runtime source is unchanged from engine_revision; the probe is introduced at probe_revision. Strict exit 2 on both toolchains is a measured unmet reclamation condition, not a passing GC integration result."
+}

@@ -441,6 +441,18 @@ fn pinned_test262_closure_audit() {
                     };
                     match result {
                         Ok(Completion::Normal(_)) => Ok(()),
+                        Err(error) => {
+                            let detail = if let Some(Value::Object(object)) = error.thrown_value() {
+                                if let Ok(Value::String(message)) = object.get(&"message".into()) {
+                                    message.to_string_lossy()
+                                } else {
+                                    String::new()
+                                }
+                            } else {
+                                String::new()
+                            };
+                            Err(format!("evaluation: {error:?}; thrown message: {detail}"))
+                        }
                         other => Err(format!("evaluation: {other:?}")),
                     }
                 };

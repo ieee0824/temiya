@@ -22,6 +22,7 @@ impl ArrayObject {
     pub fn new(length: u32) -> RuntimeResult<Self> {
         let object = Object::new();
         object.0.state.borrow_mut().array = true;
+        object.0.state.borrow_mut().elements = Some(Box::default());
         object.define_own_property(
             "length".into(),
             PropertyDescriptor::data(Value::Number(f64::from(length)), true, false, false),

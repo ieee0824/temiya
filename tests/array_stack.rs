@@ -303,18 +303,6 @@ fn method_descriptors_and_non_constructibility_match_the_builtin_contract() {
 #[test]
 #[ignore = "requires pinned Test262 corpus; see docs/runtime.md"]
 fn pinned_test262_array_stack() {
-    use std::process::Command;
-    use temiya::test262::{TEST262_REVISION, TestCase, TestVariant};
-
-    let corpus = std::env::var("TEST262_DIR").expect("set TEST262_DIR");
-    let read = |path: &str| {
-        let output = Command::new("git")
-            .args(["-C", &corpus, "show", &format!("{TEST262_REVISION}:{path}")])
-            .output()
-            .expect("git show");
-        assert!(output.status.success(), "missing pinned file {path}");
-        String::from_utf8(output.stdout).unwrap()
-    };
     let selection = std::env::var("TEST262_CASE").unwrap_or_else(|_| {
         [
             "push/S15.4.4.7_A2_T3.js",
@@ -345,9 +333,45 @@ fn pinned_test262_array_stack() {
         ]
         .join(",")
     });
+    run_pinned_array_cases("prototype", &selection);
+}
+
+#[test]
+#[ignore = "requires pinned Test262 corpus; see docs/runtime.md"]
+fn pinned_test262_array_elements() {
+    let selection = std::env::var("TEST262_CASE").unwrap_or_else(|_| {
+        [
+            "15.4.5.1-3.d-1.js",
+            "15.4.5.1-3.d-2.js",
+            "15.4.5.1-3.d-3.js",
+            "S15.4.2.2_A2.1_T1.js",
+            "S15.4.5.1_A1.1_T1.js",
+            "S15.4.5.1_A1.2_T1.js",
+            "S15.4.5.2_A3_T4.js",
+            "define-own-prop-length-no-value-order.js",
+            "define-own-prop-length-overflow-order.js",
+        ]
+        .join(",")
+    });
+    run_pinned_array_cases("length", &selection);
+}
+
+fn run_pinned_array_cases(directory: &str, selection: &str) {
+    use std::process::Command;
+    use temiya::test262::{TEST262_REVISION, TestCase, TestVariant};
+
+    let corpus = std::env::var("TEST262_DIR").expect("set TEST262_DIR");
+    let read = |path: &str| {
+        let output = Command::new("git")
+            .args(["-C", &corpus, "show", &format!("{TEST262_REVISION}:{path}")])
+            .output()
+            .expect("git show");
+        assert!(output.status.success(), "missing pinned file {path}");
+        String::from_utf8(output.stdout).unwrap()
+    };
     let mut passed = 0;
     for name in selection.split(',') {
-        let path = format!("test/built-ins/Array/prototype/{name}");
+        let path = format!("test/built-ins/Array/{directory}/{name}");
         let case = TestCase::parse(&path, read(&path)).unwrap();
         assert!(case.metadata.negative.is_none());
         assert!(

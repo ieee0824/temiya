@@ -275,6 +275,7 @@ pub(super) struct ObjectState {
     callable: Option<NativeCall>,
     construct: Option<NativeConstruct>,
     pub(super) array: bool,
+    pub(super) elements: Option<Box<super::elements::Elements>>,
     pub(super) buffer: Option<super::indexed::BufferSlot>,
     pub(super) view: Option<super::indexed::ViewSlot>,
     pub(super) string_data: Option<JsString>,
@@ -481,6 +482,11 @@ impl Object {
                 }
             }
         }
+        if let Some(elements) = &self.0.state.borrow().elements {
+            if let Some(index) = key.array_index() {
+                return Ok(elements.get(index).cloned());
+            }
+        }
         Ok(self
             .0
             .state
@@ -531,6 +537,18 @@ impl Object {
         descriptor: PropertyDescriptor,
     ) -> RuntimeResult<bool> {
         let mut state = self.0.state.borrow_mut();
+        if state.array {
+            if let Some(index) = key.array_index() {
+                let elements = state.elements.as_ref().expect("array elements");
+                let Some(updated) =
+                    validate_and_apply(elements.get(index), state.extensible, &descriptor)
+                else {
+                    return Ok(false);
+                };
+                state.elements.as_mut().unwrap().insert(index, updated);
+                return Ok(true);
+            }
+        }
         let position = state.properties.iter().position(|entry| entry.key == key);
         let current = position.map(|index| &state.properties[index].descriptor);
         let Some(updated) = validate_and_apply(current, state.extensible, &descriptor) else {
@@ -573,7 +591,7 @@ impl Object {
         entry.descriptor.value = Some(Value::Number(f64::from(length)));
     }
 
-    fn define_array_length(&self, descriptor: PropertyDescriptor) -> RuntimeResult<bool> {
+    fn define_array_length(&self, mut descriptor: PropertyDescriptor) -> RuntimeResult<bool> {
         let Some(Value::Number(number)) = descriptor.value.as_ref() else {
             return self.define_ordinary_property("length".into(), descriptor);
         };
@@ -585,6 +603,8 @@ impl Object {
             return Err(RuntimeError::range_error("invalid array length"));
         }
         let new_length = *number as u32;
+        // Normalize -0, including when the old length is not writable.
+        descriptor.value = Some(Value::Number(f64::from(new_length)));
         let old_length = self.array_length();
         if new_length >= old_length {
             return self.define_ordinary_property("length".into(), descriptor);
@@ -592,14 +612,36 @@ impl Object {
         if !self.array_length_writable() {
             return Ok(false);
         }
-        for index in (new_length..old_length).rev() {
-            let key = PropertyKey::String(JsString::from(index.to_string()));
-            if !self.delete(&key) {
-                self.set_array_length_value(index + 1);
-                return Ok(false);
-            }
+        let make_readonly = descriptor.writable == Some(false);
+        if make_readonly {
+            descriptor.writable = Some(true);
         }
-        self.define_ordinary_property("length".into(), descriptor)
+        // Reject invalid attributes before deleting any elements. Defer making
+        // length read-only until any partial shrink has restored its value.
+        if !self.define_ordinary_property("length".into(), descriptor)? {
+            return Ok(false);
+        }
+        let blocked = self
+            .0
+            .state
+            .borrow_mut()
+            .elements
+            .as_mut()
+            .expect("array elements")
+            .shrink(new_length);
+        if let Some(index) = blocked {
+            self.set_array_length_value(index + 1);
+        }
+        if make_readonly {
+            self.define_ordinary_property(
+                "length".into(),
+                PropertyDescriptor {
+                    writable: Some(false),
+                    ..PropertyDescriptor::default()
+                },
+            )?;
+        }
+        Ok(blocked.is_none())
     }
 
     /// Defines a writable, enumerable, configurable own data property.
@@ -710,6 +752,18 @@ impl Object {
             return Ok(false);
         }
         let mut state = self.0.state.borrow_mut();
+        if let Some(elements) = &mut state.elements {
+            if let Some(index) = key.array_index() {
+                if elements
+                    .get(index)
+                    .is_some_and(|d| d.configurable != Some(true))
+                {
+                    return Ok(false);
+                }
+                elements.remove(index);
+                return Ok(true);
+            }
+        }
         let Some(position) = state.properties.iter().position(|entry| entry.key == *key) else {
             return Ok(true);
         };
@@ -748,6 +802,14 @@ impl Object {
                     .map(|index| (index, entry.key.clone()))
             })
             .collect::<Vec<_>>();
+        if let Some(elements) = &state.elements {
+            indices.extend(
+                elements
+                    .indices()
+                    .into_iter()
+                    .map(|index| (index, PropertyKey::from(JsString::from(index.to_string())))),
+            );
+        }
         indices.sort_unstable_by_key(|(index, _)| *index);
         let strings = state
             .properties

@@ -77,10 +77,34 @@ This replaces omoikane's JavaScript timing harness with a Rust host timer. It
 does not run the full fixture, DOM embedding, or Boa/SpiderMonkey comparison.
 Three samples are a diagnostic baseline, not a performance acceptance gate;
 the complete comparison still requires the controls described above. The
-current linear property storage is a known optimization target.
+baseline predates the packed/holey/sparse array element implementation.
 
 [The recorded diagnostic baseline](../benchmarks/omoikane-array-baseline.json)
 retains the implementation revision, input hashes, compiler/machine information,
 and all three samples. Its median is approximately 7.46 seconds on the recorded
 ARM64 environment; this is an optimization starting point, not a speed target
 achievement.
+
+### Comparing array storage changes
+
+Build `measure_number` for the baseline and current engine in separate Git
+worktrees and separate Cargo target directories. Shared target directories can
+reuse a fresh package artifact from the wrong checkout, invalidating results.
+Then compare the workers serially, with alternating order between pairs:
+
+```sh
+BASELINE_REVISION=<full-baseline-commit> CURRENT_REVISION=<full-current-commit> \
+    node scripts/compare-number-workers.mjs \
+    /path/to/baseline/measure_number /path/to/current/measure_number \
+    /tmp/omoikane-array.js 124999750000 15 3 > /tmp/array-comparison.json
+```
+
+Each worker validates one warmup and every timed result. The driver records
+all samples, executable/source hashes, exact revisions, compiler, hardware,
+per-pair median/MAD comparisons, and sampled Linux process memory. It exits
+unsuccessfully without a comparison report if a worker fails or times out.
+The workers must have been built with the reported compiler and no features;
+the driver cannot recover build flags from an executable. Sampled process
+memory is diagnostic and does not establish that all reference cycles are
+collected. These are Temiya before/after measurements, not measurements of the
+vendored Boa embedding or SpiderMonkey.

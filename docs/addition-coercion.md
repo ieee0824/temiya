@@ -41,7 +41,7 @@ strict/sloppy variants. The default six-file selection has 12 passing variants.
 `TEST262_REPORT` optionally writes all outcomes. Unsupported metadata is recorded
 as skipped and prevents the selection from passing.
 
-The complete addition directory at the same pin contains 48 files and 95
+The [complete addition audit](../test262/addition-coercion-audit.json) at the same pin contains 48 files and 95
 variants. The before/after audit improves from 31 passes/64 failures to
 59 passes/36 failures, with zero skipped files and no previously passing variant
 failing. The remaining failures include eval/isNaN exposure, Boolean and

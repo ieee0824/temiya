@@ -17,10 +17,11 @@ It does not assert that the source matches node spelling or validate grammar.
 `visit` traverses syntax in source evaluation order, including conditional
 branches unconditionally; it does not execute code.
 
-This first AST includes expression nodes needed by the upcoming Pratt parser.
-`ExprKind` is non-exhaustive. New syntax should add an explicit variant with
+The AST includes expressions used by the Pratt parser and statements used by
+the source-body parser. `ExprKind` and `StmtKind` are non-exhaustive. New syntax
+should add an explicit variant with
 owned children and spans, extend structural validation and traversal, and add
-boundary and error tests. Statement/declaration/module nodes will be introduced
+boundary and error tests. Function/class and module nodes will be introduced
 with their parser work; this is not a claim that all ECMAScript syntax is
 implemented. Operators retain owned spellings and are validated by the parser.
 Shared/interned names, arenas, serialization formats, and stable AST APIs are

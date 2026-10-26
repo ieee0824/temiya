@@ -1,4 +1,4 @@
-//! Expression parsing with caller-controlled lexical goals and owned syntax.
+//! Expression and statement parsing with explicit lexical goals and owned syntax.
 
 use crate::ast::{Expr, ExprKind, Literal, NumberKind, ObjectProperty, TemplateElement};
 use crate::lexer::{

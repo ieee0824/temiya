@@ -262,8 +262,10 @@ fn global_environment_detects_lexical_and_var_conflicts() {
         .create_global_var_binding(name("variable"), true)
         .unwrap();
     assert!(environment.has_var_declaration(&name("variable")).unwrap());
+    // ECMA-262 2026 checks restricted properties, not a historical var-name list.
+    // This explicitly deletable var has a configurable property.
     assert!(
-        !environment
+        environment
             .can_declare_global_lexical(&name("variable"))
             .unwrap()
     );

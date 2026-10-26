@@ -498,7 +498,8 @@ impl Environment {
         self.with_global(|record| Ok(record.declarative_record.has_binding(name)))
     }
 
-    /// Tests whether a name is recorded as a global `var` declaration.
+    /// Returns legacy bookkeeping of recorded global `var` names.
+    /// ECMAScript 2026 lexical eligibility uses record/property checks instead.
     pub fn has_var_declaration(&self, name: &JsString) -> RuntimeResult<bool> {
         self.with_global(|record| Ok(record.var_declared_names.contains(name)))
     }
@@ -546,9 +547,7 @@ impl Environment {
 
     /// Tests whether a global lexical declaration can be created without conflict.
     pub fn can_declare_global_lexical(&self, name: &JsString) -> RuntimeResult<bool> {
-        Ok(!self.has_lexical_declaration(name)?
-            && !self.has_var_declaration(name)?
-            && !self.has_restricted_global_property(name)?)
+        Ok(!self.has_lexical_declaration(name)? && !self.has_restricted_global_property(name)?)
     }
 
     /// Creates and initializes a global `var` binding.

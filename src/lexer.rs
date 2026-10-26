@@ -13,6 +13,10 @@ pub struct Token<'a> {
     pub kind: TokenKind,
     pub text: &'a str,
     pub span: Span,
+    /// Whether preceding whitespace or comments contain a line terminator.
+    /// For the first token this covers leading trivia; for `End`, trailing
+    /// trivia. Empty input has no preceding line terminator.
+    pub has_line_terminator_before: bool,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -43,6 +47,10 @@ impl std::fmt::Display for LexError {
 
 impl std::error::Error for LexError {}
 
+fn is_line_terminator(c: char) -> bool {
+    matches!(c, '\n' | '\r' | '\u{2028}' | '\u{2029}')
+}
+
 /// Tokenizes the bootstrap subset described in `docs/lexer.md`.
 ///
 /// Unsupported input returns an error instead of being silently discarded.
@@ -50,6 +58,7 @@ pub fn tokenize(source: &str) -> Result<Vec<Token<'_>>, LexError> {
     let mut tokens = Vec::new();
     let mut pos = 0;
     let bytes = source.as_bytes();
+    let mut has_line_terminator_before = false;
     while pos < bytes.len() {
         let start = pos;
         let c = source[pos..].chars().next().unwrap();
@@ -65,6 +74,7 @@ pub fn tokenize(source: &str) -> Result<Vec<Token<'_>>, LexError> {
                 | '\u{2028}'
                 | '\u{2029}'
         ) {
+            has_line_terminator_before |= is_line_terminator(c);
             pos += c.len_utf8();
             continue;
         }
@@ -72,7 +82,7 @@ pub fn tokenize(source: &str) -> Result<Vec<Token<'_>>, LexError> {
             pos += 2;
             while pos < bytes.len() {
                 let c = source[pos..].chars().next().unwrap();
-                if matches!(c, '\n' | '\r' | '\u{2028}' | '\u{2029}') {
+                if is_line_terminator(c) {
                     break;
                 }
                 pos += c.len_utf8();
@@ -89,6 +99,9 @@ pub fn tokenize(source: &str) -> Result<Vec<Token<'_>>, LexError> {
                     message: "unterminated block comment",
                 });
             };
+            has_line_terminator_before |= source[pos + 2..pos + 2 + end]
+                .chars()
+                .any(is_line_terminator);
             pos += end + 4;
             continue;
         }
@@ -229,10 +242,13 @@ pub fn tokenize(source: &str) -> Result<Vec<Token<'_>>, LexError> {
             kind,
             text: &source[start..pos],
             span: Span { start, end: pos },
+            has_line_terminator_before,
         });
+        has_line_terminator_before = false;
     }
     tokens.push(Token {
         kind: TokenKind::End,
+        has_line_terminator_before,
         text: "",
         span: Span {
             start: pos,
@@ -304,5 +320,84 @@ mod tests {
     fn comment_ends_at_unicode_line_separator() {
         assert_eq!(tokenize("// comment\u{2028}42").unwrap()[0].text, "42");
         assert_eq!(tokenize("").unwrap()[0].kind, TokenKind::End);
+    }
+
+    #[test]
+    fn tracks_all_line_terminators_in_whitespace_and_comments() {
+        for newline in ["\n", "\r", "\r\n", "\u{2028}", "\u{2029}"] {
+            for source in [
+                format!("a{newline}b c"),
+                format!("a/*雪{newline}*/b c"),
+                format!("a//雪{newline}b c"),
+            ] {
+                let tokens = tokenize(&source).unwrap();
+                assert_eq!(
+                    tokens
+                        .iter()
+                        .map(|t| t.has_line_terminator_before)
+                        .collect::<Vec<_>>(),
+                    [false, true, false, false],
+                    "{source:?}"
+                );
+                assert_eq!(tokens[1].text, "b");
+                for token in tokens {
+                    assert_eq!(&source[token.span.start..token.span.end], token.text);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn trivia_without_newlines_does_not_set_metadata() {
+        for source in [
+            "a b",
+            "a/**/b",
+            "a/*雪*/ /*comment*/b",
+            "a\t\u{000b}\u{000c}\u{00a0}\u{feff}b",
+        ] {
+            assert!(
+                tokenize(source)
+                    .unwrap()
+                    .iter()
+                    .all(|t| !t.has_line_terminator_before),
+                "{source:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn tracks_leading_trailing_and_comment_only_trivia() {
+        for (source, expected) in [
+            ("", vec![false]),
+            ("/**/ //comment", vec![false]),
+            ("\n", vec![true]),
+            ("/*\n*/ //comment", vec![true]),
+            ("\na", vec![true, false]),
+            ("a\n", vec![false, true]),
+            ("a/*\n*/", vec![false, true]),
+            ("a//comment", vec![false, false]),
+            ("a//comment\n", vec![false, true]),
+            ("a/**//*\n*//**/ b c", vec![false, true, false, false]),
+            ("a\n/**/ /*comment*/b", vec![false, true, false]),
+        ] {
+            let tokens = tokenize(source).unwrap();
+            assert_eq!(
+                tokens
+                    .iter()
+                    .map(|t| t.has_line_terminator_before)
+                    .collect::<Vec<_>>(),
+                expected,
+                "{source:?}"
+            );
+            let end = tokens.last().unwrap();
+            assert_eq!(end.kind, TokenKind::End);
+            assert_eq!(
+                end.span,
+                Span {
+                    start: source.len(),
+                    end: source.len()
+                }
+            );
+        }
     }
 }

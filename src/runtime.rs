@@ -16,6 +16,7 @@ mod environment;
 mod execution;
 mod function;
 mod generator;
+mod indexed;
 mod interpreter;
 mod intrinsics;
 mod job_queue;
@@ -28,6 +29,7 @@ pub use environment::{Environment, EnvironmentKind, ObjectEnvironmentOptions, Th
 pub use execution::{Agent, ContextState, ExecutionContext, Realm, ScriptRecord};
 pub use function::FunctionKind;
 pub use generator::{Generator, GeneratorState, IteratorResult};
+pub use indexed::{ArrayBuffer, ArrayObject, DataView, TypedArray};
 pub use interpreter::{ExpressionEvaluator, Reference, ReferencedName};
 pub use intrinsics::{IntrinsicId, IntrinsicRegistry, WellKnownSymbol, WellKnownSymbols};
 pub use job_queue::JobQueue;

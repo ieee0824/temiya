@@ -5,8 +5,8 @@ use num_bigint::BigInt;
 use crate::ast::{Expr, ExprKind, Literal, MethodKind, NumberKind};
 
 use super::{
-    Environment, FunctionKind, JsString, Numeric, Object, PropertyKey, Realm, RuntimeError,
-    RuntimeResult, Value, function::create_function,
+    ArrayObject, Environment, FunctionKind, JsString, Numeric, Object, PropertyKey, Realm,
+    RuntimeError, RuntimeResult, Value, function::create_function,
 };
 
 /// The name component of a Reference Record.
@@ -575,7 +575,8 @@ impl ExpressionEvaluator {
     }
 
     fn array(&self, elements: &[Option<Expr>]) -> RuntimeResult<Value> {
-        let object = Object::new();
+        let array = ArrayObject::new(elements.len() as u32)?;
+        let object = array.object();
         let mut index = 0_u32;
         for element in elements {
             if let Some(element) = element {
@@ -592,10 +593,6 @@ impl ExpressionEvaluator {
                 index += 1;
             }
         }
-        object.create_data_property(
-            PropertyKey::String(JsString::from("length")),
-            Value::Number(f64::from(index)),
-        )?;
         Ok(Value::Object(object))
     }
 

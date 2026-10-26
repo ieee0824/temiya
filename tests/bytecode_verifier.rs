@@ -547,3 +547,51 @@ fn hoisted_function_metadata_validates_binding_targets_and_template_kind() {
         VerifyErrorKind::BindingOutOfBounds
     );
 }
+
+#[test]
+fn update_and_typeof_instructions_require_their_values_or_references() {
+    use Instruction::*;
+    for op in [
+        UpdateReference {
+            increment: true,
+            prefix: false,
+        },
+        TypeOfReference,
+    ] {
+        assert_eq!(
+            verify(vec![op, Return]),
+            Err(VerifyErrorKind::ScopeMismatch)
+        );
+    }
+    assert_eq!(
+        verify(vec![TypeOf, Return]),
+        Err(VerifyErrorKind::StackUnderflow)
+    );
+    assert_eq!(verify(vec![LoadConstant(0), TypeOf, Return]), Ok(1));
+}
+
+#[test]
+fn numeric_unary_opcode_requires_one_value() {
+    use temiya::bytecode::UnaryNumericOperator;
+    for operator in [
+        UnaryNumericOperator::Plus,
+        UnaryNumericOperator::Minus,
+        UnaryNumericOperator::BitNot,
+    ] {
+        assert_eq!(
+            verify(vec![
+                Instruction::UnaryNumeric(operator),
+                Instruction::Return
+            ]),
+            Err(VerifyErrorKind::StackUnderflow)
+        );
+        assert_eq!(
+            verify(vec![
+                Instruction::LoadConstant(0),
+                Instruction::UnaryNumeric(operator),
+                Instruction::Return
+            ]),
+            Ok(1)
+        );
+    }
+}

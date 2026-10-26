@@ -1,6 +1,7 @@
 //! Direct expression evaluation and ECMAScript Reference Records.
 
 use num_bigint::BigInt;
+use std::cell::RefCell;
 
 use crate::ast::{Expr, ExprKind, Literal, MethodKind, NumberKind};
 
@@ -65,11 +66,65 @@ enum ReferenceBase {
     Unresolvable(Object),
 }
 
+// Primitive names need no observable conversion state. Only object-valued
+// computed names allocate a mutable cell, keeping ordinary environment/static
+// property references free of dynamic borrows. Cloning copies the Record state.
+#[derive(Clone, Debug)]
+enum ReferenceName {
+    Plain(ReferencedName),
+    Computed(Box<RefCell<ReferencedName>>),
+}
+
+impl ReferenceName {
+    fn new(name: ReferencedName) -> Self {
+        if matches!(
+            name,
+            ReferencedName::Computed { .. } | ReferencedName::Value(Value::Object(_))
+        ) {
+            Self::Computed(Box::new(RefCell::new(name)))
+        } else {
+            Self::Plain(name)
+        }
+    }
+
+    fn property_key(&self) -> RuntimeResult<PropertyKey> {
+        let Self::Computed(cell) = self else {
+            let Self::Plain(name) = self else {
+                unreachable!()
+            };
+            return name.property_key();
+        };
+        let name = cell.borrow();
+        if let ReferencedName::PropertyKey(key) = &*name {
+            return Ok(key.clone());
+        }
+        let unresolved = name.clone();
+        drop(name);
+        // ToPropertyKey can run arbitrary/reentrant JavaScript. Store the key
+        // before getter/PutValue and release the original key object now.
+        let key = unresolved.property_key()?;
+        *cell.borrow_mut() = ReferencedName::PropertyKey(key.clone());
+        Ok(key)
+    }
+
+    fn binding_name(&self) -> RuntimeResult<JsString> {
+        match self {
+            Self::Plain(name) => name.binding_name(),
+            Self::Computed(_) => match self.property_key()? {
+                PropertyKey::String(name) => Ok(name),
+                PropertyKey::Symbol(_) => Err(RuntimeError::reference_error(
+                    "environment name cannot be a Symbol",
+                )),
+            },
+        }
+    }
+}
+
 /// An ECMAScript Reference Record used by identifier and property expressions.
 #[derive(Clone, Debug)]
 pub struct Reference {
     base: ReferenceBase,
-    name: ReferencedName,
+    name: ReferenceName,
     strict: bool,
     this_value: Option<Value>,
     primitive_prototype: Option<Object>,
@@ -81,7 +136,7 @@ impl Reference {
     pub fn environment(environment: Environment, name: JsString, strict: bool) -> Self {
         Self {
             base: ReferenceBase::Environment(environment),
-            name: ReferencedName::PropertyKey(PropertyKey::String(name)),
+            name: ReferenceName::Plain(ReferencedName::PropertyKey(PropertyKey::String(name))),
             strict,
             this_value: None,
             primitive_prototype: None,
@@ -98,7 +153,7 @@ impl Reference {
     ) -> Self {
         Self {
             base: ReferenceBase::Property(base),
-            name,
+            name: ReferenceName::new(name),
             strict,
             this_value,
             primitive_prototype: None,
@@ -138,7 +193,7 @@ impl Reference {
     pub fn unresolvable(global_object: Object, name: JsString, strict: bool) -> Self {
         Self {
             base: ReferenceBase::Unresolvable(global_object),
-            name: ReferencedName::PropertyKey(PropertyKey::String(name)),
+            name: ReferenceName::Plain(ReferencedName::PropertyKey(PropertyKey::String(name))),
             strict,
             this_value: None,
             primitive_prototype: None,
@@ -578,15 +633,7 @@ impl ExpressionEvaluator {
         match operator {
             "void" => Ok(Value::Undefined),
             "!" => Ok(Value::Boolean(!value.to_boolean())),
-            "+" => Ok(Value::Number(value.to_number()?)),
-            "-" => match value.to_numeric()? {
-                Numeric::Number(value) => Ok(Value::Number(-value)),
-                Numeric::BigInt(value) => Ok(Value::BigInt(-value)),
-            },
-            "~" => match value.to_numeric()? {
-                Numeric::Number(value) => Ok(Value::Number(f64::from(!to_i32(value)))),
-                Numeric::BigInt(value) => Ok(Value::BigInt(!value)),
-            },
+            "+" | "-" | "~" => unary_numeric_value(Some(&self.realm), operator, value),
             "await" => super::promise::await_value(value),
             _ => Err(RuntimeError::syntax_error("unknown unary operator")),
         }
@@ -594,27 +641,7 @@ impl ExpressionEvaluator {
 
     fn update(&self, operator: &str, argument: &Expr, prefix: bool) -> RuntimeResult<Value> {
         let reference = self.evaluate_reference(argument)?;
-        let old = reference.get_value()?.to_numeric()?;
-        let (old_value, new_value) = match old {
-            Numeric::Number(value) => (
-                Value::Number(value),
-                Value::Number(if operator == "++" {
-                    value + 1.0
-                } else {
-                    value - 1.0
-                }),
-            ),
-            Numeric::BigInt(value) => {
-                let next = if operator == "++" {
-                    &value + 1
-                } else {
-                    &value - 1
-                };
-                (Value::BigInt(value), Value::BigInt(next))
-            }
-        };
-        reference.put_value(new_value.clone())?;
-        Ok(if prefix { new_value } else { old_value })
+        update_reference_in_realm(&self.realm, &reference, operator == "++", prefix)
     }
 
     fn binary(&self, operator: &str, left: &Expr, right: &Expr) -> RuntimeResult<Value> {
@@ -1115,7 +1142,7 @@ fn instance_of(left: Value, right: Value) -> RuntimeResult<bool> {
     Ok(false)
 }
 
-fn type_of(value: &Value) -> &'static str {
+pub(crate) fn type_of(value: &Value) -> &'static str {
     match value {
         Value::Undefined => "undefined",
         Value::Null => "object",
@@ -1189,4 +1216,72 @@ fn addition_with_objects(realm: &Realm, left: Value, right: Value) -> RuntimeRes
     let left = super::coercion::primitive_with_hint(&left, &key, super::PrimitiveHint::Default)?;
     let right = super::coercion::primitive_with_hint(&right, &key, super::PrimitiveHint::Default)?;
     binary_values("+", left, right)
+}
+
+/// Performs the complete update on one retained Reference, including Realm-aware
+/// ToPrimitive(Number), ToNumeric, PutValue and numeric postfix results.
+pub(crate) fn update_reference_in_realm(
+    realm: &Realm,
+    reference: &Reference,
+    increment: bool,
+    prefix: bool,
+) -> RuntimeResult<Value> {
+    let old = reference.get_value()?;
+    let old = if matches!(old, Value::Object(_)) {
+        super::coercion::primitive(
+            &old,
+            &realm
+                .well_known_symbol(super::WellKnownSymbol::ToPrimitive)
+                .into(),
+            false,
+        )?
+        .to_numeric()?
+    } else {
+        old.to_numeric()?
+    };
+    let (old, new) = match old {
+        Numeric::Number(value) => (
+            Value::Number(value),
+            Value::Number(if increment { value + 1.0 } else { value - 1.0 }),
+        ),
+        Numeric::BigInt(value) => {
+            let next = if increment { &value + 1 } else { &value - 1 };
+            (Value::BigInt(value), Value::BigInt(next))
+        }
+    };
+    reference.put_value(new.clone())?;
+    Ok(if prefix { new } else { old })
+}
+
+/// Shared numeric unary operation; primitive operands do not need a Realm.
+pub(crate) fn unary_numeric_value(
+    realm: Option<&Realm>,
+    operator: &str,
+    value: Value,
+) -> RuntimeResult<Value> {
+    let primitive = if matches!(value, Value::Object(_)) {
+        let realm = realm
+            .ok_or_else(|| RuntimeError::internal_error("object unary operation requires Realm"))?;
+        super::coercion::primitive(
+            &value,
+            &realm
+                .well_known_symbol(super::WellKnownSymbol::ToPrimitive)
+                .into(),
+            false,
+        )?
+    } else {
+        value
+    };
+    if operator == "+" {
+        return primitive.to_number().map(Value::Number);
+    }
+    match (operator, primitive.to_numeric()?) {
+        ("-", Numeric::Number(value)) => Ok(Value::Number(-value)),
+        ("-", Numeric::BigInt(value)) => Ok(Value::BigInt(-value)),
+        ("~", Numeric::Number(value)) => Ok(Value::Number(f64::from(!to_i32(value)))),
+        ("~", Numeric::BigInt(value)) => Ok(Value::BigInt(!value)),
+        _ => Err(RuntimeError::internal_error(
+            "invalid numeric unary operator",
+        )),
+    }
 }

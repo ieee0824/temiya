@@ -23,6 +23,9 @@ native addresses, and platform-sized operands are intentionally excluded.
 | `Invoke` | `+1` | balanced invocation at baseline |
 | `CreateFunction(i)` | `+1` | active scope and verified function template |
 | `LoadNewTarget` | `+1` | active lexical context |
+| `UpdateReference {increment,prefix}` | `+1` | consume Reference; Number/BigInt update and prefix/postfix result |
+| `TypeOfReference` | `+1` | consume Reference; special-case unresolvable name |
+| `TypeOf`, `UnaryNumeric(op)` | `0` | one input; shared typeof/numeric conversion |
 | `LoadThis` | `+1` | active lexical this context |
 | `JumpIfNullish(target)` | `-1` | one input and valid target |
 | `LoadLocal(i)` | `+1` | `i < local_count` |
@@ -240,3 +243,5 @@ hot path and requires fresh comparative performance evidence before merge; #469'
 measurement does not include this work. No speed improvement is claimed.
 
 Function expression/arrow lowering is in progress in #292; see [bytecode closures](bytecode-closures.md) for actual execution, ownership, tests and unfinished gates. The full parameter/arguments contract and sloppy block declarations remain incomplete.
+
+Unary/update lowering and computed-Reference conversion fixes are in progress in #287; see [bytecode operators](bytecode-operators.md) for execution semantics and unfinished gates.

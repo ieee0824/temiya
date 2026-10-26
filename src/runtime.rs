@@ -46,8 +46,12 @@ pub use function::FunctionKind;
 pub use generator::{Generator, GeneratorState, IteratorResult};
 pub use host_data::{DateObject, HostHooks, IntlProvider, Json, JsonTransform, UnsupportedIntl};
 pub use indexed::{ArrayBuffer, ArrayObject, DataView, TypedArray};
+pub(crate) use interpreter::unary_numeric_value;
 pub use interpreter::{ExpressionEvaluator, Reference, ReferencedName};
-pub(crate) use interpreter::{binary_values, binary_values_in_realm, parse_numeric_literal};
+pub(crate) use interpreter::{
+    binary_values, binary_values_in_realm, parse_numeric_literal, type_of,
+    update_reference_in_realm,
+};
 pub use intrinsics::{IntrinsicId, IntrinsicRegistry, WellKnownSymbol, WellKnownSymbols};
 pub use job_queue::JobQueue;
 pub use numeric::{BigIntObject, Math, NumberObject, parse_float, parse_int};

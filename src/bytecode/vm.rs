@@ -150,6 +150,36 @@ impl VirtualMachine {
                         references.push(reference);
                     }
                 }
+                Instruction::UpdateReference { increment, prefix } => {
+                    let reference = references.pop().expect("verified reference stack");
+                    stack.push(crate::runtime::update_reference_in_realm(
+                        realm.expect("scoped update Realm"),
+                        &reference,
+                        increment,
+                        prefix,
+                    )?);
+                }
+                Instruction::TypeOfReference => {
+                    let reference = references.pop().expect("verified reference stack");
+                    let value = if reference.is_unresolvable() {
+                        Value::Undefined
+                    } else {
+                        reference.get_value()?
+                    };
+                    stack.push(Value::String(crate::runtime::type_of(&value).into()));
+                }
+                Instruction::UnaryNumeric(operator) => {
+                    let value = pop(&mut stack)?;
+                    stack.push(crate::runtime::unary_numeric_value(
+                        realm,
+                        operator.spelling(),
+                        value,
+                    )?);
+                }
+                Instruction::TypeOf => {
+                    let value = pop(&mut stack)?;
+                    stack.push(Value::String(crate::runtime::type_of(&value).into()));
+                }
                 Instruction::DeleteReference => {
                     stack.push(Value::Boolean(
                         references

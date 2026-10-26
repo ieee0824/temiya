@@ -104,6 +104,27 @@ pub enum Constant {
     Function(Rc<FunctionTemplate>),
 }
 
+/// Supported numeric unary operations; conversion semantics are shared with AST.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum UnaryNumericOperator {
+    /// Unary plus (ToNumber; rejects BigInt).
+    Plus,
+    /// Number/BigInt negation.
+    Minus,
+    /// Number ToInt32 / BigInt bitwise complement.
+    BitNot,
+}
+
+impl UnaryNumericOperator {
+    pub(crate) fn spelling(self) -> &'static str {
+        match self {
+            Self::Plus => "+",
+            Self::Minus => "-",
+            Self::BitNot => "~",
+        }
+    }
+}
+
 /// Portable instruction with fixed-width integer operands.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Instruction {
@@ -127,6 +148,14 @@ pub enum Instruction {
     GetProperty { strict: bool },
     /// Pop base and key values; retain their property Reference before the RHS.
     ResolveProperty { strict: bool },
+    /// Consume a retained Reference, update its Number/BigInt, push prefix/postfix result.
+    UpdateReference { increment: bool, prefix: bool },
+    /// Consume a retained Reference and implement typeof, including unresolvable names.
+    TypeOfReference,
+    /// Apply Realm-aware numeric coercion and replace the unary operand.
+    UnaryNumeric(UnaryNumericOperator),
+    /// Replace a value with its ECMAScript typeof string.
+    TypeOf,
     /// Consume a retained Reference and push the deletion result.
     DeleteReference,
     /// Capture a value callee before evaluating its arguments.
@@ -205,7 +234,8 @@ impl Instruction {
             | Self::AppendArgument
             | Self::SpreadArguments => 1,
             Self::GetProperty { .. } | Self::ResolveProperty { .. } => 2,
-            Self::DeleteReference => 0,
+            Self::DeleteReference | Self::UpdateReference { .. } | Self::TypeOfReference => 0,
+            Self::TypeOf | Self::UnaryNumeric(_) => 1,
             Self::JumpIfNullish(_) => 1,
             Self::EnterScope(_)
             | Self::ExitScope
@@ -240,7 +270,9 @@ impl Instruction {
             | Self::LoadNewTarget
             | Self::Invoke
             | Self::LoadThis
-            | Self::DeleteReference => 1,
+            | Self::DeleteReference
+            | Self::UpdateReference { .. }
+            | Self::TypeOfReference => 1,
             Self::GetProperty { .. } | Self::JumpIfNullish(_) => -1,
             Self::ResolveProperty { .. } => -2,
             Self::EnterScope(_) | Self::ExitScope | Self::ResolveName { .. } => 0,
@@ -254,7 +286,7 @@ impl Instruction {
             | Self::Complete
             | Self::Throw => -1,
             Self::Add | Self::Subtract | Self::Multiply | Self::Divide | Self::StrictEqual => -1,
-            Self::Jump(_) | Self::LogicalNot => 0,
+            Self::Jump(_) | Self::LogicalNot | Self::TypeOf | Self::UnaryNumeric(_) => 0,
         }
     }
 }
@@ -601,7 +633,10 @@ fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
                     state.calls.pop();
                 }
             }
-            Instruction::StoreReference | Instruction::DeleteReference => {
+            Instruction::StoreReference
+            | Instruction::DeleteReference
+            | Instruction::UpdateReference { .. }
+            | Instruction::TypeOfReference => {
                 state
                     .references
                     .pop()

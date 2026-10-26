@@ -10,7 +10,7 @@ use std::{
     fmt,
     hash::{Hash, Hasher},
     marker::PhantomData,
-    rc::Rc,
+    rc::{Rc, Weak},
     sync::atomic::{AtomicU64, Ordering},
 };
 
@@ -33,6 +33,40 @@ impl<T: Trace> Handle<T> {
     #[must_use]
     pub fn erase(self) -> RawHandle {
         self.raw
+    }
+
+    /// Creates a weak handle that does not contribute to reachability.
+    #[must_use]
+    pub fn downgrade(self) -> WeakHandle<T> {
+        WeakHandle {
+            raw: self.raw,
+            marker: PhantomData,
+        }
+    }
+}
+
+/// A typed weak reference to an allocation.
+pub struct WeakHandle<T: Trace> {
+    raw: RawHandle,
+    marker: PhantomData<fn() -> T>,
+}
+
+impl<T: Trace> WeakHandle<T> {
+    /// Resolves this weak reference only while its target is still live.
+    #[must_use]
+    pub fn upgrade(self, heap: &Heap) -> Option<Handle<T>> {
+        heap.raw_slot(self.raw)?;
+        Some(Handle {
+            raw: self.raw,
+            marker: PhantomData,
+        })
+    }
+}
+
+impl<T: Trace> Copy for WeakHandle<T> {}
+impl<T: Trace> Clone for WeakHandle<T> {
+    fn clone(&self) -> Self {
+        *self
     }
 }
 
@@ -143,6 +177,69 @@ impl<T: Trace> Drop for Root<T> {
     }
 }
 
+trait RegistrySweep {
+    fn discover_dead(&self, live: &HashSet<RawHandle>);
+    fn run_cleanup(&self);
+}
+
+struct RegistryInner<T> {
+    entries: RefCell<Vec<(RawHandle, T)>>,
+    pending: RefCell<VecDeque<T>>,
+    callback: RefCell<Box<dyn FnMut(T)>>,
+}
+
+impl<T: 'static> RegistrySweep for RegistryInner<T> {
+    fn discover_dead(&self, live: &HashSet<RawHandle>) {
+        let mut entries = self.entries.borrow_mut();
+        let mut pending = self.pending.borrow_mut();
+        let mut index = 0;
+        while index < entries.len() {
+            if live.contains(&entries[index].0) {
+                index += 1;
+            } else {
+                let (_, held) = entries.remove(index);
+                pending.push_back(held);
+            }
+        }
+    }
+
+    fn run_cleanup(&self) {
+        while let Some(held) = self.pending.borrow_mut().pop_front() {
+            (self.callback.borrow_mut())(held);
+        }
+    }
+}
+
+/// Registers held values for ordered cleanup after weak targets become unreachable.
+pub struct FinalizationRegistry<T: 'static> {
+    inner: Rc<RegistryInner<T>>,
+}
+
+impl<T: 'static> FinalizationRegistry<T> {
+    /// Creates a registry attached to a heap's cleanup-job queue.
+    pub fn new(heap: &mut Heap, callback: impl FnMut(T) + 'static) -> Self {
+        let inner = Rc::new(RegistryInner {
+            entries: RefCell::new(Vec::new()),
+            pending: RefCell::new(VecDeque::new()),
+            callback: RefCell::new(Box::new(callback)),
+        });
+        let erased: Rc<dyn RegistrySweep> = inner.clone();
+        heap.registries.push(Rc::downgrade(&erased));
+        Self { inner }
+    }
+
+    /// Associates a held value with a weak target without retaining that target.
+    pub fn register<U: Trace>(&self, target: Handle<U>, held: T) {
+        self.inner.entries.borrow_mut().push((target.raw, held));
+    }
+
+    /// Returns the number of cleanup records waiting to run.
+    #[must_use]
+    pub fn pending_len(&self) -> usize {
+        self.inner.pending.borrow().len()
+    }
+}
+
 /// Storage boundary used by collectors and interpreter code.
 ///
 /// The initial implementation is non-moving; its handles and trace contract do
@@ -155,6 +252,8 @@ pub struct Heap {
     options: HeapOptions,
     allocations_since_collection: usize,
     remembered: HashSet<RawHandle>,
+    ephemerons: Vec<(RawHandle, RawHandle)>,
+    registries: Vec<Weak<dyn RegistrySweep>>,
 }
 
 /// Limits controlling automatic collection and allocation failure.
@@ -240,6 +339,8 @@ impl Heap {
             options,
             allocations_since_collection: 0,
             remembered: HashSet::new(),
+            ephemerons: Vec::new(),
+            registries: Vec::new(),
         }
     }
 
@@ -372,6 +473,32 @@ impl Heap {
         Ok(())
     }
 
+    /// Adds an ephemeron whose value is retained only when its key is reachable.
+    pub fn add_ephemeron<K: Trace, V: Trace>(
+        &mut self,
+        key: Handle<K>,
+        value: Handle<V>,
+    ) -> Result<(), WriteBarrierError> {
+        self.raw_slot(key.raw)
+            .ok_or(WriteBarrierError::InvalidOwner)?;
+        self.raw_slot(value.raw)
+            .ok_or(WriteBarrierError::InvalidTarget)?;
+        self.ephemerons.push((key.raw, value.raw));
+        Ok(())
+    }
+
+    /// Runs queued finalization cleanup callbacks in registry and registration order.
+    pub fn run_cleanup_jobs(&mut self) {
+        self.registries.retain(|registry| {
+            if let Some(registry) = registry.upgrade() {
+                registry.run_cleanup();
+                true
+            } else {
+                false
+            }
+        });
+    }
+
     /// Returns the number of explicit root registrations for a handle.
     #[must_use]
     pub fn root_count<T: Trace>(&self, handle: Handle<T>) -> usize {
@@ -407,6 +534,35 @@ impl Heap {
                 visit: &mut |edge| queue.push_back(edge),
             });
         }
+        loop {
+            let mut added = false;
+            for &(key, value) in &self.ephemerons {
+                if marked.contains(&key) && !marked.contains(&value) {
+                    queue.push_back(value);
+                    added = true;
+                }
+            }
+            while let Some(raw) = queue.pop_front() {
+                if !marked.insert(raw) {
+                    continue;
+                }
+                let Some(value) = self.raw_slot(raw).and_then(|slot| slot.value.as_ref()) else {
+                    continue;
+                };
+                value.trace(&mut Tracer {
+                    visit: &mut |edge| queue.push_back(edge),
+                });
+            }
+            if !added {
+                break;
+            }
+        }
+
+        self.registries
+            .retain(|registry| registry.strong_count() > 0);
+        for registry in self.registries.iter().filter_map(Weak::upgrade) {
+            registry.discover_dead(&marked);
+        }
 
         let mut reclaimed = 0;
         for (index, slot) in self.slots.iter_mut().enumerate() {
@@ -424,6 +580,8 @@ impl Heap {
             }
         }
         self.remembered.clear();
+        self.ephemerons
+            .retain(|(key, value)| marked.contains(key) && marked.contains(value));
         self.allocations_since_collection = 0;
         CollectionStats {
             retained: self.live_allocations(),
@@ -468,6 +626,36 @@ impl Heap {
                     }
                 },
             });
+        }
+        loop {
+            let mut added = false;
+            for &(key, value) in &self.ephemerons {
+                let key_reachable = self
+                    .raw_slot(key)
+                    .is_some_and(|slot| slot.old || marked.contains(&key));
+                if key_reachable && self.is_young(value) && !marked.contains(&value) {
+                    queue.push_back(value);
+                    added = true;
+                }
+            }
+            while let Some(raw) = queue.pop_front() {
+                if !marked.insert(raw) {
+                    continue;
+                }
+                let Some(value) = self.raw_slot(raw).and_then(|slot| slot.value.as_ref()) else {
+                    continue;
+                };
+                value.trace(&mut Tracer {
+                    visit: &mut |edge| {
+                        if self.is_young(edge) {
+                            queue.push_back(edge);
+                        }
+                    },
+                });
+            }
+            if !added {
+                break;
+            }
         }
 
         let mut reclaimed = 0;

@@ -30,3 +30,12 @@ roots and remembered old owners, promotes surviving young values, and never
 sweeps old values. Development and stress tests can call
 `verify_write_barriers` to detect an old-to-young edge whose owner was not
 remembered. Full collection remains the reference behavior for comparison.
+
+Weak reachability uses `WeakHandle`, which upgrades only while its target slot
+and generation remain live. Ephemerons retain their value only after the key is
+marked; full collection repeats ephemeron processing to a fixpoint, which is the
+primitive used by weak-keyed collections. `FinalizationRegistry` records only a
+weak target plus an independent held value. Collection discovers dead targets
+in registration order, sweeps them, and queues cleanup. The embedder invokes
+`run_cleanup_jobs` afterward, so callbacks cannot resurrect swept targets and
+no finalizer-at-process-exit guarantee is implied.

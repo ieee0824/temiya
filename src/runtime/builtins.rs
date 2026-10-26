@@ -3,13 +3,16 @@
 use std::{cell::RefCell, rc::Rc};
 
 use super::{
-    ArrayBuffer, ArrayObject, DataView, IntrinsicId, IntrinsicRegistry, JsString, MapObject, Math,
-    NumberObject, Object, PropertyDescriptor, PropertyKey, RegExp, RuntimeError, RuntimeResult,
-    SetObject, StringObject, TypedArray, Value, WeakMapObject, WeakSetObject, parse_float,
-    parse_int,
+    ArrayBuffer, ArrayObject, DataView, DateObject, HostHooks, IntrinsicId, IntrinsicRegistry,
+    JsString, Json, MapObject, Math, NumberObject, Object, PropertyDescriptor, PropertyKey, RegExp,
+    RuntimeError, RuntimeResult, SetObject, StringObject, TypedArray, Value, WeakMapObject,
+    WeakSetObject, parse_float, parse_int,
 };
 
-pub(super) fn initialize(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {
+pub(super) fn initialize(
+    intrinsics: &IntrinsicRegistry,
+    host_hooks: HostHooks,
+) -> RuntimeResult<()> {
     install_object(intrinsics)?;
     install_function(intrinsics)?;
     install_reflect(intrinsics)
@@ -17,6 +20,74 @@ pub(super) fn initialize(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {
         .and_then(|()| install_string_regexp(intrinsics))
         .and_then(|()| install_numeric(intrinsics))
         .and_then(|()| install_collections(intrinsics))
+        .and_then(|()| install_date_json(intrinsics, host_hooks))
+}
+
+fn install_date_json(intrinsics: &IntrinsicRegistry, host: HostHooks) -> RuntimeResult<()> {
+    let date = intrinsics.get(IntrinsicId::Date);
+    let date_prototype = intrinsics.get(IntrinsicId::DatePrototype);
+    let call_host = host.clone();
+    date.set_native_call(move |_, _| {
+        DateObject::now(&call_host)
+            .to_iso_string()
+            .map(Value::String)
+    });
+    let construct_host = host.clone();
+    date.set_native_construct(move |arguments, _| {
+        let value = match arguments.first() {
+            Some(value) => value.to_number()?,
+            None => construct_host.now(),
+        };
+        let object = DateObject::new(value).object();
+        object.set_prototype(Some(date_prototype.clone()));
+        Ok(object)
+    });
+    method(&date, "now", move |_, _| Ok(Value::Number(host.now())))?;
+    let date_prototype = intrinsics.get(IntrinsicId::DatePrototype);
+    method(&date_prototype, "valueOf", |this, _| {
+        Ok(Value::Number(date_receiver(this)?.value()))
+    })?;
+    method(&date_prototype, "toISOString", |this, _| {
+        date_receiver(this)?.to_iso_string().map(Value::String)
+    })?;
+
+    let json = intrinsics.get(IntrinsicId::Json);
+    method(&json, "parse", |_, arguments| {
+        let source = value_arg(arguments.first()).to_js_string()?;
+        let reviver = callable_arg(arguments.get(1)).ok();
+        let mut callback = |key: &str, value: Value| match &reviver {
+            Some(reviver) => reviver.call(
+                Value::Undefined,
+                &[Value::String(JsString::from(key)), value],
+            ),
+            None => Ok(value),
+        };
+        let callback = reviver
+            .as_ref()
+            .map(|_| &mut callback as &mut dyn FnMut(&str, Value) -> RuntimeResult<Value>);
+        Json::parse(&source, callback)
+    })?;
+    method(&json, "stringify", |_, arguments| {
+        let replacer = callable_arg(arguments.get(1)).ok();
+        let mut callback = |key: &str, value: Value| match &replacer {
+            Some(replacer) => replacer.call(
+                Value::Undefined,
+                &[Value::String(JsString::from(key)), value],
+            ),
+            None => Ok(value),
+        };
+        let callback = replacer
+            .as_ref()
+            .map(|_| &mut callback as &mut dyn FnMut(&str, Value) -> RuntimeResult<Value>);
+        Ok(Json::stringify(value_arg(arguments.first()), callback)?
+            .map_or(Value::Undefined, Value::String))
+    })
+}
+
+fn date_receiver(value: Value) -> RuntimeResult<DateObject> {
+    let object = object_value(&value, "Date receiver")?;
+    DateObject::from_object(object)
+        .ok_or_else(|| RuntimeError::type_error("receiver is not a Date"))
 }
 
 fn install_collections(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {

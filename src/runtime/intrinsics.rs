@@ -2,7 +2,9 @@
 
 use std::collections::BTreeMap;
 
-use super::{JsString, Object, PropertyDescriptor, RuntimeError, RuntimeResult, Symbol, Value};
+use super::{
+    HostHooks, JsString, Object, PropertyDescriptor, RuntimeError, RuntimeResult, Symbol, Value,
+};
 
 /// Identifies an intrinsic object owned by a Realm.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -178,7 +180,7 @@ impl IntrinsicId {
 pub struct IntrinsicRegistry(BTreeMap<IntrinsicId, Object>);
 
 impl IntrinsicRegistry {
-    pub(crate) fn initialize(global: &Object) -> RuntimeResult<Self> {
+    pub(crate) fn initialize(global: &Object, host_hooks: HostHooks) -> RuntimeResult<Self> {
         let mut objects: BTreeMap<IntrinsicId, Object> = BTreeMap::new();
         for id in IntrinsicId::ALL {
             let object = if id == IntrinsicId::FunctionPrototype {
@@ -227,7 +229,7 @@ impl IntrinsicRegistry {
         }
         let registry = Self(objects);
         registry.wire_graph()?;
-        super::builtins::initialize(&registry)?;
+        super::builtins::initialize(&registry, host_hooks)?;
         registry.install_globals(global)?;
         Ok(registry)
     }

@@ -1,14 +1,14 @@
 //! Statement evaluation and ECMAScript Completion Records.
 
 use crate::ast::{
-    CatchClause, Expr, ExprKind, ForInit, Program, Stmt, StmtKind, SwitchCase, VariableDeclarator,
-    VariableKind,
+    CatchClause, Expr, ExprKind, ForInit, Function, Program, Stmt, StmtKind, SwitchCase,
+    VariableDeclarator, VariableKind,
 };
 
 use super::{
-    Environment, ExpressionEvaluator, FunctionKind, JsString, ObjectEnvironmentOptions,
-    PropertyKey, Realm, RuntimeError, RuntimeResult, Value, function::create_function,
-    interpreter::strict_equal,
+    Environment, EnvironmentKind, ExpressionEvaluator, FunctionKind, JsString,
+    ObjectEnvironmentOptions, PropertyKey, Realm, RuntimeError, RuntimeResult, Value,
+    function::create_function, interpreter::strict_equal,
 };
 
 /// The completion produced by statement evaluation.
@@ -118,15 +118,23 @@ impl StatementEvaluator {
     pub fn evaluate_program(&self, program: &Program) -> RuntimeResult<Completion> {
         let mut evaluator = self.clone();
         evaluator.expression.strict |= program.strict;
-        evaluator.instantiate_var_statements(&program.body)?;
-        evaluator.instantiate_lexical(&program.body, &evaluator.expression.environment)?;
-        evaluator.instantiate_functions(&program.body)?;
+        if evaluator.is_global_script() {
+            evaluator.instantiate_global_script(&program.body)?;
+        } else {
+            evaluator.instantiate_var_statements(&program.body)?;
+            evaluator.instantiate_lexical(&program.body, &evaluator.expression.environment)?;
+            evaluator.instantiate_functions(&program.body)?;
+        }
         evaluator.statement_list(&program.body)
     }
 
     /// Evaluates one statement.
     pub fn evaluate_statement(&self, statement: &Stmt) -> RuntimeResult<Completion> {
-        self.instantiate_var_statements(std::slice::from_ref(statement))?;
+        if self.is_global_script() {
+            self.instantiate_global_script(std::slice::from_ref(statement))?;
+        } else {
+            self.instantiate_var_statements(std::slice::from_ref(statement))?;
+        }
         self.statement(statement, &[])
     }
 
@@ -517,6 +525,95 @@ impl StatementEvaluator {
         self.nested(environment).statement(&handler.body, &[])
     }
 
+    fn is_global_script(&self) -> bool {
+        self.variable_environment.kind() == EnvironmentKind::Global
+            && self.variable_environment == self.expression.environment
+    }
+
+    // GlobalDeclarationInstantiation for the currently executable declaration
+    // subset. Block functions and non-global code keep their existing rules.
+    fn instantiate_global_script(&self, statements: &[Stmt]) -> RuntimeResult<()> {
+        let environment = &self.variable_environment;
+        let mut lexical: Vec<(JsString, bool)> = vec![];
+        let mut vars = vec![];
+        collect_var_names(statements, &mut vars)?;
+        for statement in statements {
+            if let StmtKind::Variable { kind, declarations } = &statement.kind {
+                if *kind != VariableKind::Var {
+                    for declaration in declarations {
+                        let name = binding_name(&declaration.binding)?;
+                        if lexical.iter().any(|(other, _)| *other == name) {
+                            return Err(RuntimeError::syntax_error(
+                                "duplicate lexical declaration",
+                            ));
+                        }
+                        lexical.push((name, *kind == VariableKind::Const));
+                    }
+                }
+            }
+        }
+        // The last direct function declaration wins. Reverse again before
+        // instantiation to preserve the surviving declarations' source order.
+        let mut functions: Vec<(&Function, JsString)> = vec![];
+        for statement in statements.iter().rev() {
+            if let StmtKind::FunctionDeclaration(function) = &statement.kind {
+                let name = function.name.as_ref().ok_or_else(|| {
+                    RuntimeError::syntax_error("function declaration requires a name")
+                })?;
+                let name = binding_name(name)?;
+                if !functions.iter().any(|(_, previous)| *previous == name) {
+                    functions.push((function, name));
+                }
+            }
+        }
+        functions.reverse();
+        for (name, _) in &lexical {
+            if vars.contains(name)
+                || functions.iter().any(|(_, other)| other == name)
+                || !environment.can_declare_global_lexical(name)?
+            {
+                return Err(RuntimeError::syntax_error(
+                    "global lexical declaration conflicts",
+                ));
+            }
+        }
+        for name in vars.iter().chain(functions.iter().map(|(_, name)| name)) {
+            if environment.has_lexical_declaration(name)? {
+                return Err(RuntimeError::syntax_error(
+                    "global var/function conflicts with lexical declaration",
+                ));
+            }
+        }
+        for (_, name) in functions.iter().rev() {
+            if !environment.can_declare_global_function(name)? {
+                return Err(RuntimeError::type_error(
+                    "global function declaration is not permitted",
+                ));
+            }
+        }
+        vars.retain(|name| !functions.iter().any(|(_, other)| other == name));
+        for name in &vars {
+            if !environment.can_declare_global_var(name)? {
+                return Err(RuntimeError::type_error(
+                    "global object rejects var declaration",
+                ));
+            }
+        }
+        // No binding or function object is created before all ordinary-global
+        // declaration checks have completed successfully.
+        for (name, immutable) in lexical {
+            environment.create_global_lexical_binding(name, !immutable, immutable)?;
+        }
+        for (function, name) in functions {
+            let function = create_function(function, FunctionKind::Normal, &self.expression, None)?;
+            environment.create_global_function_binding(name, Value::Object(function), false)?;
+        }
+        for name in vars {
+            environment.create_global_var_binding(name, false)?;
+        }
+        Ok(())
+    }
+
     fn instantiate_lexical(
         &self,
         statements: &[Stmt],
@@ -606,7 +703,7 @@ impl StatementEvaluator {
                         self.variable_environment.set_mutable_binding(
                             &name,
                             self.expression.evaluate(init)?,
-                            false,
+                            self.expression.strict,
                         )?;
                     }
                 }

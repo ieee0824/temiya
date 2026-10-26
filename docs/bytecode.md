@@ -95,9 +95,9 @@ numeric subset. Binding/name operations and nonempty scopes remain unsupported.
 
 Tests compare AST and VM shadowing, TDZ reads/writes, const assignment, hoisting,
 loop blocks and exception unwinding. Persistent global-object versus lexical
-record behavior is checked directly; the existing AST evaluator still creates
-its var/function declarations through generic Environment operations, so that
-separate AST global-record limitation is tracked in #466 and is not claimed fixed here. Scoped `+`
+record behavior is checked directly. The AST Script global-record connection
+tracked in #466 also has paired state/error tests in `tests/global_declarations.rs`;
+Engine backend selection remains separate work in #307. Scoped `+`
 shares the AST's Realm-aware JavaScript coercion helper and evaluation order.
 
 The pinned Test262 revision in `src/test262.rs` supplies four original runtime

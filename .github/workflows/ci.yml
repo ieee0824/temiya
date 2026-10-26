@@ -109,3 +109,7 @@ jobs:
         env:
           TEST262_DIR: target/test262
         run: cargo +${{ matrix.toolchain }} test --locked --test bytecode_scopes pinned_test262_bytecode_scope_tdz --all-features -- --ignored --nocapture
+      - name: Run upstream global declaration regressions
+        env:
+          TEST262_DIR: target/test262
+        run: cargo +${{ matrix.toolchain }} test --locked --test global_declarations pinned_test262_global_declarations --all-features -- --ignored --nocapture

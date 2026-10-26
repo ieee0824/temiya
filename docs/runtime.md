@@ -278,3 +278,8 @@ bytes fell from 78,544,000 to 2,868,000; allocation requests fell from 38,300 to
 without allocation. These standalone counts include allocator requests, not
 retained memory, RSS, copying instructions, or Engine throughput. The existing
 CI allocation check also rejects regressions in these concatenation budgets.
+
+Script global var/function declarations use the actual global object record;
+lexical declarations remain separate. See [global declaration behavior and
+validation](global-declarations.md), including ECMAScript 2026 configurable-property
+shadowing, strict initializers and explicit bytecode comparisons.

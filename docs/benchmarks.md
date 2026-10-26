@@ -166,7 +166,7 @@ Temiya currently lacks Boa's additional cooperative sandbox, which remains
 enabled in the application worker. Memory observations do not prove collection
 of cycles or bound an entire application's footprint.
 
-Requirements: Node.js, Python 3.11+ (`PYTHON` selects the executable), Git,
+Requirements: Linux with `/proc`, Node.js, Python 3.11+ (`PYTHON` selects the executable), Git,
 and the same Rust toolchain for both engines. The pinned application was tested
 here with Rust 1.99.1; the comparison adapter does not lower its dependencies'
 MSRV to Temiya's 1.85. Use clean, pinned source checkouts and distinct Cargo

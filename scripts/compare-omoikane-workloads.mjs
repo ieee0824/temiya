@@ -14,6 +14,9 @@ if (!directory || !temiya || !boaInfoFile || !Number.isInteger(samples) || sampl
   throw Error('set TEMIYA_REVISION; usage: compare-omoikane-workloads.mjs WORKLOAD_DIR TEMIYA_WORKER BOA_BUILD_INFO [SAMPLES=15] [PAIRS=3]');
 }
 const hash = value => createHash('sha256').update(value).digest('hex');
+if (os.platform() !== 'linux' || !/^VmRSS:/m.test(readFileSync('/proc/self/status', 'utf8'))) {
+  throw Error('this reference runner requires Linux /proc for its memory watchdog');
+}
 const manifest = JSON.parse(readFileSync(join(directory, 'manifest.json')));
 const boa = JSON.parse(readFileSync(boaInfoFile));
 if (manifest.revision !== revision || manifest.fixture_sha256 !== fixtureSha256 ||

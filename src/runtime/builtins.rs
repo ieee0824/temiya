@@ -4,9 +4,9 @@ use std::{cell::RefCell, rc::Rc};
 
 use super::{
     ArrayBuffer, ArrayObject, DataView, DateObject, HostHooks, IntrinsicId, IntrinsicRegistry,
-    JsString, Json, MapObject, Math, NumberObject, Object, PropertyDescriptor, PropertyKey, RegExp,
-    RuntimeError, RuntimeResult, SetObject, StringObject, TypedArray, Value, WeakMapObject,
-    WeakSetObject, parse_float, parse_int,
+    JsString, Json, MapObject, Math, NumberObject, Object, PropertyDescriptor, PropertyKey,
+    ProxyObject, RegExp, RuntimeError, RuntimeResult, SetObject, StringObject, TypedArray, Value,
+    WeakMapObject, WeakSetObject, parse_float, parse_int,
 };
 
 pub(super) fn initialize(
@@ -21,6 +21,32 @@ pub(super) fn initialize(
         .and_then(|()| install_numeric(intrinsics))
         .and_then(|()| install_collections(intrinsics))
         .and_then(|()| install_date_json(intrinsics, host_hooks))
+        .and_then(|()| install_proxy(intrinsics))
+}
+
+fn install_proxy(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {
+    let constructor = intrinsics.get(IntrinsicId::Proxy);
+    constructor.clear_native_call();
+    constructor.set_native_construct(|arguments, _| {
+        let target = object_arg(arguments.first(), "Proxy target")?;
+        let handler = object_arg(arguments.get(1), "Proxy handler")?;
+        Ok(ProxyObject::new(target, handler).object())
+    });
+    method(&constructor, "revocable", |_, arguments| {
+        let target = object_arg(arguments.first(), "Proxy target")?;
+        let handler = object_arg(arguments.get(1), "Proxy handler")?;
+        let proxy = ProxyObject::new(target, handler);
+        let revocable = Object::new();
+        revocable.create_data_property("proxy".into(), Value::Object(proxy.object()))?;
+        revocable.create_data_property(
+            "revoke".into(),
+            Value::Object(Object::native_function(move |_, _| {
+                proxy.revoke();
+                Ok(Value::Undefined)
+            })),
+        )?;
+        Ok(Value::Object(revocable))
+    })
 }
 
 fn install_date_json(intrinsics: &IntrinsicRegistry, host: HostHooks) -> RuntimeResult<()> {
@@ -552,19 +578,19 @@ fn install_object(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {
         let object = object_arg(arguments.first(), "Object.getOwnPropertyDescriptor target")?;
         let key = value_arg(arguments.get(1)).to_property_key()?;
         object
-            .get_own_property(&key)
+            .try_get_own_property(&key)?
             .map_or(Ok(Value::Undefined), |descriptor| {
                 descriptor.to_object().map(Value::Object)
             })
     })?;
     method(&constructor, "getPrototypeOf", |_, arguments| {
         let object = object_arg(arguments.first(), "Object.getPrototypeOf target")?;
-        Ok(object.prototype().map_or(Value::Null, Value::Object))
+        Ok(object.try_prototype()?.map_or(Value::Null, Value::Object))
     })?;
     method(&constructor, "setPrototypeOf", |_, arguments| {
         let object = object_arg(arguments.first(), "Object.setPrototypeOf target")?;
         let prototype = nullable_object(arguments.get(1))?;
-        if !object.set_prototype(prototype) {
+        if !object.try_set_prototype(prototype)? {
             return Err(RuntimeError::type_error(
                 "object prototype cannot be changed",
             ));
@@ -573,12 +599,12 @@ fn install_object(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {
     })?;
     method(&constructor, "preventExtensions", |_, arguments| {
         let object = object_arg(arguments.first(), "Object.preventExtensions target")?;
-        object.prevent_extensions();
+        object.try_prevent_extensions()?;
         Ok(Value::Object(object))
     })?;
     method(&constructor, "isExtensible", |_, arguments| {
         let object = object_arg(arguments.first(), "Object.isExtensible target")?;
-        Ok(Value::Boolean(object.is_extensible()))
+        Ok(Value::Boolean(object.try_is_extensible()?))
     })?;
     method(&object_prototype, "hasOwnProperty", |this, arguments| {
         let object = object_value(&this, "Object.prototype.hasOwnProperty receiver")?;
@@ -638,7 +664,7 @@ fn install_reflect(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {
         let object = object_arg(arguments.first(), "Reflect.getOwnPropertyDescriptor target")?;
         let key = value_arg(arguments.get(1)).to_property_key()?;
         object
-            .get_own_property(&key)
+            .try_get_own_property(&key)?
             .map_or(Ok(Value::Undefined), |descriptor| {
                 descriptor.to_object().map(Value::Object)
             })
@@ -672,12 +698,12 @@ fn install_reflect(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {
     method(&reflect, "deleteProperty", |_, arguments| {
         let object = object_arg(arguments.first(), "Reflect.deleteProperty target")?;
         let key = value_arg(arguments.get(1)).to_property_key()?;
-        Ok(Value::Boolean(object.delete(&key)))
+        Ok(Value::Boolean(object.try_delete(&key)?))
     })?;
     method(&reflect, "ownKeys", |_, arguments| {
         let object = object_arg(arguments.first(), "Reflect.ownKeys target")?;
         let values = object
-            .own_property_keys()
+            .try_own_property_keys()?
             .into_iter()
             .map(|key| match key {
                 PropertyKey::String(value) => Value::String(value),
@@ -688,22 +714,21 @@ fn install_reflect(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {
     })?;
     method(&reflect, "getPrototypeOf", |_, arguments| {
         let object = object_arg(arguments.first(), "Reflect.getPrototypeOf target")?;
-        Ok(object.prototype().map_or(Value::Null, Value::Object))
+        Ok(object.try_prototype()?.map_or(Value::Null, Value::Object))
     })?;
     method(&reflect, "setPrototypeOf", |_, arguments| {
         let object = object_arg(arguments.first(), "Reflect.setPrototypeOf target")?;
         let prototype = nullable_object(arguments.get(1))?;
-        Ok(Value::Boolean(object.set_prototype(prototype)))
+        Ok(Value::Boolean(object.try_set_prototype(prototype)?))
     })?;
     method(&reflect, "isExtensible", |_, arguments| {
         Ok(Value::Boolean(
-            object_arg(arguments.first(), "Reflect.isExtensible target")?.is_extensible(),
+            object_arg(arguments.first(), "Reflect.isExtensible target")?.try_is_extensible()?,
         ))
     })?;
     method(&reflect, "preventExtensions", |_, arguments| {
         let object = object_arg(arguments.first(), "Reflect.preventExtensions target")?;
-        object.prevent_extensions();
-        Ok(Value::Boolean(true))
+        Ok(Value::Boolean(object.try_prevent_extensions()?))
     })
 }
 

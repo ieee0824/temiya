@@ -285,6 +285,7 @@ pub(super) struct ObjectState {
     pub(super) weak_map_data: Option<super::collections::WeakMapSlot>,
     pub(super) weak_set_data: Option<super::collections::WeakSetSlot>,
     pub(super) date_value: Option<f64>,
+    pub(super) proxy: Option<super::proxy::ProxySlot>,
 }
 
 pub(super) fn ordinary_state() -> ObjectState {
@@ -379,70 +380,115 @@ impl Object {
     /// Returns this object's prototype.
     #[must_use]
     pub fn prototype(&self) -> Option<Self> {
-        self.0.state.borrow().prototype.clone()
+        self.try_prototype().ok().flatten()
+    }
+
+    /// Fallible `[[GetPrototypeOf]]`, including Proxy traps and invariants.
+    pub fn try_prototype(&self) -> RuntimeResult<Option<Self>> {
+        if self.0.state.borrow().proxy.is_some() {
+            return super::proxy::get_prototype_of(self);
+        }
+        Ok(self.0.state.borrow().prototype.clone())
     }
 
     /// Implements `[[SetPrototypeOf]]`, rejecting cycles and forbidden changes.
     pub fn set_prototype(&self, prototype: Option<Self>) -> bool {
+        self.try_set_prototype(prototype).unwrap_or(false)
+    }
+
+    /// Fallible `[[SetPrototypeOf]]`, including Proxy traps and invariants.
+    pub fn try_set_prototype(&self, prototype: Option<Self>) -> RuntimeResult<bool> {
+        if self.0.state.borrow().proxy.is_some() {
+            return super::proxy::set_prototype_of(self, prototype);
+        }
         let current = self.prototype();
         if same_optional_object(&current, &prototype) {
-            return true;
+            return Ok(true);
         }
         if !self.is_extensible() {
-            return false;
+            return Ok(false);
         }
         let mut candidate = prototype.clone();
         while let Some(object) = candidate {
             if object == *self {
-                return false;
+                return Ok(false);
             }
             candidate = object.prototype();
         }
         self.0.state.borrow_mut().prototype = prototype;
-        true
+        Ok(true)
     }
 
     /// Returns whether new own properties may be added.
     #[must_use]
     pub fn is_extensible(&self) -> bool {
-        self.0.state.borrow().extensible
+        self.try_is_extensible().unwrap_or(false)
+    }
+
+    /// Fallible `[[IsExtensible]]`, including Proxy invariants.
+    pub fn try_is_extensible(&self) -> RuntimeResult<bool> {
+        if self.0.state.borrow().proxy.is_some() {
+            return super::proxy::is_extensible(self);
+        }
+        Ok(self.0.state.borrow().extensible)
     }
 
     /// Prevents future extensions to this object.
     pub fn prevent_extensions(&self) {
+        let _ = self.try_prevent_extensions();
+    }
+
+    /// Fallible `[[PreventExtensions]]`, including Proxy traps and invariants.
+    pub fn try_prevent_extensions(&self) -> RuntimeResult<bool> {
+        if self.0.state.borrow().proxy.is_some() {
+            return super::proxy::prevent_extensions(self);
+        }
         self.0.state.borrow_mut().extensible = false;
+        Ok(true)
     }
 
     /// Implements `[[GetOwnProperty]]`.
     #[must_use]
     pub fn get_own_property(&self, key: &PropertyKey) -> Option<PropertyDescriptor> {
+        self.try_get_own_property(key).ok().flatten()
+    }
+
+    /// Fallible `[[GetOwnProperty]]`, including Proxy invariants.
+    pub fn try_get_own_property(
+        &self,
+        key: &PropertyKey,
+    ) -> RuntimeResult<Option<PropertyDescriptor>> {
+        if self.0.state.borrow().proxy.is_some() {
+            return super::proxy::get_own_property(self, key);
+        }
         if let Some(string) = &self.0.state.borrow().string_data {
             if matches!(key, PropertyKey::String(name) if name == &JsString::from("length")) {
-                return Some(PropertyDescriptor::data(
+                return Ok(Some(PropertyDescriptor::data(
                     Value::Number(string.code_units().len() as f64),
                     false,
                     false,
                     false,
-                ));
+                )));
             }
             if let Some(index) = key.array_index() {
                 if let Some(unit) = string.code_units().get(index as usize) {
-                    return Some(PropertyDescriptor::data(
+                    return Ok(Some(PropertyDescriptor::data(
                         Value::String(JsString::from_code_units(vec![*unit])),
                         false,
                         true,
                         false,
-                    ));
+                    )));
                 }
             }
         }
-        self.0
+        Ok(self
+            .0
             .state
             .borrow()
             .properties
             .iter()
             .find(|entry| entry.key == *key)
-            .map(|entry| entry.descriptor.clone())
+            .map(|entry| entry.descriptor.clone()))
     }
 
     /// Implements `[[DefineOwnProperty]]` and descriptor compatibility rules.
@@ -452,6 +498,9 @@ impl Object {
         descriptor: PropertyDescriptor,
     ) -> RuntimeResult<bool> {
         descriptor.validate()?;
+        if self.0.state.borrow().proxy.is_some() {
+            return super::proxy::define_own_property(self, key, descriptor);
+        }
         if self.0.state.borrow().string_data.is_some() {
             if let Some(current) = self.string_exotic_property(&key) {
                 return is_compatible_property_descriptor(false, &descriptor, Some(&current));
@@ -560,6 +609,9 @@ impl Object {
 
     /// Implements `HasProperty`, including the prototype chain.
     pub fn has_property(&self, key: &PropertyKey) -> RuntimeResult<bool> {
+        if self.0.state.borrow().proxy.is_some() {
+            return super::proxy::has(self, key);
+        }
         if self.get_own_property(key).is_some() {
             return Ok(true);
         }
@@ -574,6 +626,9 @@ impl Object {
 
     /// Implements ordinary `[[Get]]` with an explicit receiver.
     pub fn get_with_receiver(&self, key: &PropertyKey, receiver: Value) -> RuntimeResult<Value> {
+        if self.0.state.borrow().proxy.is_some() {
+            return super::proxy::get(self, key, receiver);
+        }
         let Some(descriptor) = self.get_own_property(key) else {
             return self.prototype().map_or(Ok(Value::Undefined), |prototype| {
                 prototype.get_with_receiver(key, receiver)
@@ -600,6 +655,9 @@ impl Object {
         value: Value,
         receiver: Value,
     ) -> RuntimeResult<bool> {
+        if self.0.state.borrow().proxy.is_some() {
+            return super::proxy::set(self, key, value, receiver);
+        }
         let descriptor = self.get_own_property(key);
         let Some(descriptor) = descriptor else {
             if let Some(prototype) = self.prototype() {
@@ -640,23 +698,39 @@ impl Object {
 
     /// Implements ordinary `[[Delete]]`.
     pub fn delete(&self, key: &PropertyKey) -> bool {
+        self.try_delete(key).unwrap_or(false)
+    }
+
+    /// Fallible `[[Delete]]`, including Proxy invariants.
+    pub fn try_delete(&self, key: &PropertyKey) -> RuntimeResult<bool> {
+        if self.0.state.borrow().proxy.is_some() {
+            return super::proxy::delete(self, key);
+        }
         if self.string_exotic_property(key).is_some() {
-            return false;
+            return Ok(false);
         }
         let mut state = self.0.state.borrow_mut();
         let Some(position) = state.properties.iter().position(|entry| entry.key == *key) else {
-            return true;
+            return Ok(true);
         };
         if state.properties[position].descriptor.configurable != Some(true) {
-            return false;
+            return Ok(false);
         }
         state.properties.remove(position);
-        true
+        Ok(true)
     }
 
     /// Implements ordinary `[[OwnPropertyKeys]]` ordering.
     #[must_use]
     pub fn own_property_keys(&self) -> Vec<PropertyKey> {
+        self.try_own_property_keys().unwrap_or_default()
+    }
+
+    /// Fallible `[[OwnPropertyKeys]]`, including Proxy invariants.
+    pub fn try_own_property_keys(&self) -> RuntimeResult<Vec<PropertyKey>> {
+        if self.0.state.borrow().proxy.is_some() {
+            return super::proxy::own_keys(self);
+        }
         let state = self.0.state.borrow();
         let string_keys = state.string_data.as_ref().map_or_else(Vec::new, |string| {
             (0..string.code_units().len())
@@ -691,7 +765,7 @@ impl Object {
                 PropertyKey::Symbol(_) => Some(entry.key.clone()),
                 PropertyKey::String(_) => None,
             });
-        string_keys
+        Ok(string_keys
             .into_iter()
             .chain(
                 indices
@@ -700,7 +774,7 @@ impl Object {
                     .chain(strings)
                     .chain(symbols),
             )
-            .collect()
+            .collect())
     }
 
     fn string_exotic_property(&self, key: &PropertyKey) -> Option<PropertyDescriptor> {

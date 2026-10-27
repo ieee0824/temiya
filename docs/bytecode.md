@@ -290,3 +290,45 @@ speedup or regression beyond that threshold is established on this runner.
 All 33 Boa pairs still find Temiya slower beyond the threshold. Both all-eleven
 speed gates remain false. Call-frame and iterator integration does not satisfy the Boa goal
 or complete #307/#427.
+
+## Loop control and per-iteration environments
+
+Classic for, do-while, while, labelled blocks/loops and break/continue lower to
+verified branches. Abrupt branches emit ExitScope for intervening lexical
+environments. Chained labels share one target; continue selects an iteration
+target, not a labelled block. Conditions and updates preserve normal source
+evaluation order; unreachable back edges are not emitted after terminal bodies.
+
+For a let head, CloneLoopBindings copies values into a fresh sibling declarative
+environment before the first condition and before each increment. Existing
+closures retain the previous environment. Scope entry PCs/slot descriptors stay
+stable while the runtime environment is replaced. Const heads are not cloned.
+The verifier rejects cloning a global/function scope, const bindings, or hoisted
+functions. Source compilation also validates early errors in owned ASTs before
+discarding unreachable code.
+
+Script loop/if completion values initialize to undefined as required by the
+[statement algorithms](https://tc39.es/ecma262/multipage/ecmascript-language-statements-and-declarations.html#sec-runtime-semantics-forbodyevaluation).
+Empty statements preserve the accumulated value; expression initializers,
+conditions and increments do not replace it. Compiled function bodies discard
+unused statement completions and do not allocate a completion local. This
+does not select bytecode execution in Engine.
+
+The public examples/backend_scope.rs demonstrates captured let bindings and
+nested labelled continue. Six direct regression groups also cover const/TDZ,
+initialization captures, terminal bodies, exact completion values, invalid
+targets in unreachable owned ASTs, malformed clone instructions, and exceptions.
+
+[Complete pinned audit](../test262/bytecode-loops-audit.json) retains the original
+24 Test262 programs /46 variants: baseline4 pass/42 fail becomes35 pass/11 fail,
+with31 new passes and no previous-pass regression. No test program is shortened,
+replaced, skipped, or sent to AST when VM lowering fails. Original sta/assert
+and include programs use the existing AST host harness.
+
+The35 loop-target variants all pass. Eleven dependency cases remain failing:
+eval(#305), array literals(#290), try/catch and sloppy block-function Annex B
+semantics. The complete selected gate remains false and its full opt-in test
+exits101. CI executes the same complete audit, then explicitly checks coverage,
+all35 target variants, and known dependency diagnostics; those11 failures are
+not counted as passes. Whole directory coverage, AST for-let correctness(#173),
+Engine backend integration and overall Boa superiority remain open.

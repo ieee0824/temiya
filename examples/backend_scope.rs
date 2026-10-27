@@ -80,6 +80,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "let compound=21; compound <<= 1; compound;",
         "let logical=null; logical ??= 42; logical ||= 99; logical;",
         "9007199254740993n > 9007199254740992 ? 42 : 0;",
+        "var loopGetter; for(let index=0;index<3;index++){loopGetter=()=>index;} loopGetter()+40;",
+        "var loopTotal=0;outer:for(let i=0;i<4;i++){for(let j=0;j<3;j++){if(j===1)continue outer;loopTotal+=i;}}loopTotal*7;",
     ] {
         let calls = BytecodeCompiler::compile(source)?;
         assert!(matches!(

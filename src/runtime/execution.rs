@@ -133,6 +133,23 @@ impl Realm {
         &self.0.intrinsics
     }
 
+    /// Creates a non-constructable native function with this Realm's Function.prototype.
+    /// The callback is stored directly; this method does not capture the Realm.
+    /// Low-level Object::native_function remains Realm-independent.
+    pub fn create_native_function(
+        &self,
+        name: &str,
+        length: u32,
+        callback: impl Fn(Value, &[Value]) -> RuntimeResult<Value> + 'static,
+    ) -> RuntimeResult<Object> {
+        super::native_function::create(
+            &self.intrinsic(IntrinsicId::FunctionPrototype),
+            name,
+            length,
+            callback,
+        )
+    }
+
     /// Returns one intrinsic object owned by this Realm.
     #[must_use]
     pub fn intrinsic(&self, id: IntrinsicId) -> Object {

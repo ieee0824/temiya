@@ -149,27 +149,30 @@ impl Engine {
         self.require_realm(realm)?;
         let engine_id = self.id;
         let realm_id = realm.realm_id;
-        let function = Object::native_function(move |this, arguments| {
-            let this = ValueHandle::new(engine_id, realm_id, this);
-            let arguments = arguments
-                .iter()
-                .cloned()
-                .map(|value| ValueHandle::new(engine_id, realm_id, value))
-                .collect();
-            let context = HostCallContext {
-                engine_id,
-                realm_id,
-            };
-            let result = catch_unwind(AssertUnwindSafe(|| callback(context, this, arguments)))
-                .map_err(|_| RuntimeError::internal_error("host function panicked"))?
-                .map_err(HostError::into_runtime)?;
-            if result.engine_id != engine_id || result.realm_id != realm_id {
-                return Err(RuntimeError::type_error(
-                    "host function returned a value from another engine or Realm",
-                ));
-            }
-            Ok(result.value)
-        });
+        let function = realm
+            .realm
+            .create_native_function(name, 0, move |this, arguments| {
+                let this = ValueHandle::new(engine_id, realm_id, this);
+                let arguments = arguments
+                    .iter()
+                    .cloned()
+                    .map(|value| ValueHandle::new(engine_id, realm_id, value))
+                    .collect();
+                let context = HostCallContext {
+                    engine_id,
+                    realm_id,
+                };
+                let result = catch_unwind(AssertUnwindSafe(|| callback(context, this, arguments)))
+                    .map_err(|_| RuntimeError::internal_error("host function panicked"))?
+                    .map_err(HostError::into_runtime)?;
+                if result.engine_id != engine_id || result.realm_id != realm_id {
+                    return Err(RuntimeError::type_error(
+                        "host function returned a value from another engine or Realm",
+                    ));
+                }
+                Ok(result.value)
+            })
+            .map_err(EmbedError::Host)?;
         realm
             .realm
             .global_object()

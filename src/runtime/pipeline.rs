@@ -394,6 +394,11 @@ impl SourceTextModule {
             let getter = Object::native_function(move |_, _| {
                 target.0.environment.get_binding_value(&binding, true)
             });
+            getter.initialize_prototype(Some(
+                self.0
+                    .realm
+                    .intrinsic(super::IntrinsicId::FunctionPrototype),
+            ));
             object.define_own_property(
                 PropertyKey::String(name),
                 PropertyDescriptor::accessor(Some(getter), None, true, false),

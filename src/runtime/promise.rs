@@ -35,6 +35,7 @@ struct PromiseData {
     settlement: Settlement,
     reactions: Vec<Reaction>,
     handled: bool,
+    function_prototype: Option<Object>,
 }
 
 /// A Promise object associated with a FIFO Job Queue.
@@ -61,12 +62,20 @@ impl Promise {
 
     /// Creates a pending Promise on the supplied queue.
     pub fn pending_on(queue: JobQueue) -> RuntimeResult<Self> {
+        Self::pending_with_function_prototype(queue, None)
+    }
+
+    fn pending_with_function_prototype(
+        queue: JobQueue,
+        function_prototype: Option<Object>,
+    ) -> RuntimeResult<Self> {
         let promise = Self {
             object: Object::new(),
             data: Rc::new(RefCell::new(PromiseData {
                 settlement: Settlement::Pending,
                 reactions: Vec::new(),
                 handled: false,
+                function_prototype,
             })),
             queue,
         };
@@ -154,19 +163,19 @@ impl Promise {
                     let thenable = object.clone();
                     self.queue.enqueue(move || {
                         let resolve_target = promise.clone();
-                        let resolve = Object::native_function(move |_, arguments| {
+                        let resolve = promise.native_function("", 1, move |_, arguments| {
                             resolve_target
                                 .resolve(arguments.first().cloned().unwrap_or(Value::Undefined))?;
                             Ok(Value::Undefined)
-                        });
+                        })?;
                         let reject_target = promise.clone();
-                        let reject = Object::native_function(move |_, arguments| {
+                        let reject = promise.native_function("", 1, move |_, arguments| {
                             let reason = arguments.first().cloned().unwrap_or(Value::Undefined);
                             reject_target.reject(RuntimeError::type_error(format!(
                                 "thenable rejected: {reason:?}"
                             )))?;
                             Ok(Value::Undefined)
-                        });
+                        })?;
                         if let Err(error) = then.call(
                             Value::Object(thenable),
                             &[Value::Object(resolve), Value::Object(reject)],
@@ -193,7 +202,8 @@ impl Promise {
         on_fulfilled: Option<Object>,
         on_rejected: Option<Object>,
     ) -> RuntimeResult<Self> {
-        let result = Self::pending_on(self.queue.clone())?;
+        let prototype = self.data.borrow().function_prototype.clone();
+        let result = Self::pending_with_function_prototype(self.queue.clone(), prototype)?;
         self.add_reaction(Reaction {
             on_fulfilled,
             on_rejected,
@@ -261,17 +271,30 @@ impl Promise {
         Ok(())
     }
 
+    fn native_function(
+        &self,
+        name: &str,
+        length: u32,
+        callback: impl Fn(Value, &[Value]) -> RuntimeResult<Value> + 'static,
+    ) -> RuntimeResult<Object> {
+        let prototype = self.data.borrow().function_prototype.clone();
+        match prototype {
+            Some(prototype) => super::native_function::create(&prototype, name, length, callback),
+            None => Ok(Object::native_function(callback)),
+        }
+    }
+
     fn install_methods(&self) -> RuntimeResult<()> {
         let source = self.clone();
         self.object.create_data_property(
             "then".into(),
-            Value::Object(Object::native_function(move |_, arguments| {
+            Value::Object(self.native_function("then", 2, move |_, arguments| {
                 let fulfilled = callable(arguments.first())?;
                 let rejected = callable(arguments.get(1))?;
                 source
                     .then(fulfilled, rejected)
                     .map(|promise| Value::Object(promise.object()))
-            })),
+            })?),
         )?;
         Ok(())
     }
@@ -357,13 +380,21 @@ fn enqueue_reaction(queue: JobQueue, settlement: Settlement, reaction: Reaction)
 }
 
 pub(super) fn settled_promise_object(
-    queue: JobQueue,
+    realm: &super::Realm,
     result: RuntimeResult<Value>,
 ) -> RuntimeResult<Object> {
-    let promise = match result {
-        Ok(value) => Promise::fulfilled_on(queue, value)?,
-        Err(error) => Promise::rejected_on(queue, error)?,
-    };
+    let promise = Promise::pending_with_function_prototype(
+        realm.job_queue(),
+        Some(realm.intrinsic(super::IntrinsicId::FunctionPrototype)),
+    )?;
+    match result {
+        Ok(value) => {
+            promise.resolve(value)?;
+        }
+        Err(error) => {
+            promise.reject(error)?;
+        }
+    }
     Ok(promise.object)
 }
 

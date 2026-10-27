@@ -212,39 +212,45 @@ pub(super) fn create_generator_object(
         delegating: false,
         returned: None,
     })));
-    generator_object(generator)
+    generator_object(generator, &closure.realm)
 }
 
-fn generator_object(generator: Generator) -> RuntimeResult<Object> {
+fn generator_object(generator: Generator, realm: &super::Realm) -> RuntimeResult<Object> {
     let object = Object::new();
     let next = generator.clone();
     object.create_data_property(
         "next".into(),
-        Value::Object(Object::native_function(move |_, arguments| {
-            iterator_result_object(
-                next.next(arguments.first().cloned().unwrap_or(Value::Undefined))?,
-            )
-            .map(Value::Object)
-        })),
+        Value::Object(
+            realm.create_native_function("next", 1, move |_, arguments| {
+                iterator_result_object(
+                    next.next(arguments.first().cloned().unwrap_or(Value::Undefined))?,
+                )
+                .map(Value::Object)
+            })?,
+        ),
     )?;
     let throw = generator.clone();
     object.create_data_property(
         "throw".into(),
-        Value::Object(Object::native_function(move |_, arguments| {
-            iterator_result_object(
-                throw.throw(arguments.first().cloned().unwrap_or(Value::Undefined))?,
-            )
-            .map(Value::Object)
-        })),
+        Value::Object(
+            realm.create_native_function("throw", 1, move |_, arguments| {
+                iterator_result_object(
+                    throw.throw(arguments.first().cloned().unwrap_or(Value::Undefined))?,
+                )
+                .map(Value::Object)
+            })?,
+        ),
     )?;
     object.create_data_property(
         "return".into(),
-        Value::Object(Object::native_function(move |_, arguments| {
-            iterator_result_object(
-                generator.return_(arguments.first().cloned().unwrap_or(Value::Undefined))?,
-            )
-            .map(Value::Object)
-        })),
+        Value::Object(
+            realm.create_native_function("return", 1, move |_, arguments| {
+                iterator_result_object(
+                    generator.return_(arguments.first().cloned().unwrap_or(Value::Undefined))?,
+                )
+                .map(Value::Object)
+            })?,
+        ),
     )?;
     Ok(object)
 }

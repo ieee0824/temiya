@@ -27,6 +27,7 @@ mod interpreter;
 mod intrinsics;
 pub(crate) mod iterator;
 mod job_queue;
+mod native_function;
 mod numeric;
 mod object;
 mod operators;

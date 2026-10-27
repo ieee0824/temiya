@@ -694,6 +694,7 @@ fn pop(stack: &mut Vec<Value>) -> RuntimeResult<Value> {
         .ok_or_else(|| RuntimeError::internal_error("verified stack was empty"))
 }
 
+#[inline]
 fn binary(
     stack: &mut Vec<Value>,
     operator: BinaryOperator,

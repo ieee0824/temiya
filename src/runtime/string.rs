@@ -237,6 +237,7 @@ impl From<String> for JsString {
     }
 }
 impl PartialEq for JsString {
+    #[inline]
     fn eq(&self, other: &Self) -> bool {
         match (&self.0, &other.0) {
             // Inline buffers are zero-padded by every constructor. Compare them

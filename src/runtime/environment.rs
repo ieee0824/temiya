@@ -195,6 +195,7 @@ impl Environment {
             .position(|binding| binding.name == *name)
     }
 
+    #[inline]
     pub(crate) fn get_function_binding_at(
         &self,
         name: &JsString,

@@ -450,4 +450,70 @@ mod auto_loop_tests {
         });
         assert!(!AUTO_LOOP_BYTECODE.with(std::cell::Cell::get));
     }
+
+    #[test]
+    #[ignore = "requires pinned Test262 corpus in TEST262_DIR"]
+    fn pinned_test262_original_function_loops() {
+        use crate::{
+            runtime::{Completion, Realm, ScriptRecord},
+            test262::{TEST262_REVISION, TestCase},
+        };
+        use std::process::Command;
+        let root = std::env::var("TEST262_DIR").expect("TEST262_DIR required");
+        let git = |args: &[&str]| {
+            let output = Command::new("git")
+                .args(["-c", &format!("safe.directory={root}"), "-C", &root])
+                .args(args)
+                .output()
+                .unwrap();
+            assert!(output.status.success());
+            String::from_utf8(output.stdout).unwrap()
+        };
+        assert_eq!(git(&["rev-parse", "HEAD"]).trim(), TEST262_REVISION);
+        let read = |path: &str| git(&["show", &format!("{TEST262_REVISION}:{path}")]);
+        let cases = [
+            "test/language/block-scope/leave/for-loop-block-let-declaration-only-shadows-outer-parameter-value-1.js",
+            "test/language/block-scope/leave/verify-context-in-for-loop-block.js",
+            "test/language/statements/return/12.9-1.js",
+        ];
+        let mut failures = Vec::new();
+        for path in cases {
+            let case = TestCase::parse(path, read(path)).unwrap();
+            let blob = git(&["rev-parse", &format!("{TEST262_REVISION}:{path}")]);
+            for variant in case.variants() {
+                for auto in [false, true] {
+                    let realm = Realm::ordinary();
+                    for harness in ["sta.js", "assert.js"]
+                        .into_iter()
+                        .chain(case.metadata.includes.iter().map(String::as_str))
+                    {
+                        let source = read(&format!("harness/{harness}"));
+                        let result = ScriptRecord::parse(realm.clone(), &source)
+                            .unwrap()
+                            .evaluate()
+                            .unwrap();
+                        assert!(
+                            matches!(result, Completion::Normal(_)),
+                            "harness {harness}: {result:?}"
+                        );
+                    }
+                    let script = ScriptRecord::parse(realm, &case.source_for(variant)).unwrap();
+                    LOOP_VM_ENTRIES.with(|count| count.set(0));
+                    let result = super::with_auto_loop_bytecode(auto, || script.evaluate());
+                    let entries = LOOP_VM_ENTRIES.with(|count| count.get());
+                    println!(
+                        "{path} blob={} {variant:?} auto={auto} vm_entries={entries} result={result:?}",
+                        blob.trim()
+                    );
+                    if !matches!(result, Ok(Completion::Normal(_)))
+                        || (auto && entries == 0)
+                        || (!auto && entries != 0)
+                    {
+                        failures.push(format!("{path} {variant:?} auto={auto}"));
+                    }
+                }
+            }
+        }
+        assert!(failures.is_empty(), "{failures:?}");
+    }
 }

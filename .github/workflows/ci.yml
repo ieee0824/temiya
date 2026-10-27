@@ -81,6 +81,10 @@ jobs:
           node scripts/check-numeric-allocations.mjs target/numeric-allocations.json
       - name: Fetch pinned Test262 regression corpus
         run: scripts/test262
+      - name: Check original Test262 function loops through the Auto tier
+        env:
+          TEST262_DIR: target/test262
+        run: cargo +${{ matrix.toolchain }} test --locked --lib pinned_test262_original_function_loops --all-features -- --ignored --nocapture
       - name: Run upstream exception regressions
         env:
           TEST262_DIR: target/test262

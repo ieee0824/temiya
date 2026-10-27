@@ -30,8 +30,7 @@ beyond the fixed noise threshold and 31 were within it; none were slower beyond
 it. The two faster pairs were string-concat pair 1 and primitive-string-property
 pair 0. Other repetitions of those workloads remained within threshold, so this
 is not evidence of a consistent speedup for either workload or all eleven.
-The all-eleven speed gate is false. This report does not compare Boa; the paired
-Boa and independent hosted x86-64 measurements are still running.
+The all-eleven speed gate is false. The completed Boa and hosted comparisons are recorded below.
 
 | Workload | After/before median ratios (three pairs) |
 | --- | --- |
@@ -52,3 +51,27 @@ Test262 regression selections, and the source revision's four CI and three
 security jobs passed. Skip/ignored full audits are not counted as passing.
 Broader conformance and the objective of beating actual omoikane Boa remain
 unproven and open.
+
+## Completed hosted and Boa comparisons
+
+The [hosted run](https://github.com/ieee0824/temiya/actions/runs/40439763739)
+used Rust 1.99.1 on x86-64 Intel Xeon Platinum 8573C (four logical CPUs),
+with the same original eleven inputs and fixed timing/resource protocol.
+All 66 runs / 1056 values passed in each mode. Hosted before/after classifications
+were all 33 within noise; there is no confirmed hosted invocation speedup.
+All 33 Boa comparisons were slower beyond threshold, with Temiya/Boa ratios
+1.625–4.127. Both all-eleven speed gates are false.
+
+The completed local ARM64 Boa mode also passed all 66 runs / 1056 values,
+but all 33 comparisons were slower beyond threshold (ratios 1.467–3.925).
+Do not infer cross-machine speed changes from these absolute timings.
+
+- [Hosted before/after raw data](../benchmarks/empty-block-hosted-beforeafter.json)
+- [Hosted Boa raw data](../benchmarks/empty-block-hosted-boa.json)
+- [ARM64 Boa raw data](../benchmarks/empty-block-arm64-boa.json)
+- [Source, build, artifact and verification provenance](../benchmarks/empty-block-hosted-provenance.json)
+
+All raw samples, startup/setup observations, medians/MAD and classifications
+are retained. Startup remains outside invocation samples. This report adds
+measurements to the already merged optimization; it does not complete the
+overall performance issue or establish Boa superiority.

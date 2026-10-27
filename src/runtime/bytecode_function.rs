@@ -1,7 +1,7 @@
 //! Bytecode-backed function objects. No AST body evaluation occurs here.
 use std::{cell::RefCell, rc::Rc};
 
-use crate::bytecode::{FunctionTemplate, VirtualMachine};
+use crate::bytecode::{Constant, FunctionTemplate, Instruction, VirtualMachine};
 
 use super::{
     Completion, Environment, IntrinsicId, Object, PropertyDescriptor, Realm, RuntimeError,
@@ -119,16 +119,37 @@ impl Closure {
         arguments: &[Value],
         new_target: Option<Object>,
     ) -> RuntimeResult<Value> {
-        let frame = Environment::function(
-            Some(self.environment.clone()),
-            function,
-            new_target,
-            if self.template.arrow {
-                ThisBindingStatus::Lexical
-            } else {
-                ThisBindingStatus::Uninitialized
-            },
-        );
+        let this_status = if self.template.arrow {
+            ThisBindingStatus::Lexical
+        } else {
+            ThisBindingStatus::Uninitialized
+        };
+        let frame = if !self.template.arguments_object {
+            let body = self.template.body.bytecode();
+            let capacity = match body.instructions.first() {
+                Some(Instruction::EnterScope(index)) => match &body.constants[*index as usize] {
+                    Constant::Scope(scope) => scope.bindings.len(),
+                    _ => 0,
+                },
+                _ => 0,
+            };
+            Environment::function_with_parameters(
+                Some(self.environment.clone()),
+                function,
+                new_target,
+                this_status,
+                &self.template.parameters,
+                arguments,
+                capacity,
+            )
+        } else {
+            Environment::function(
+                Some(self.environment.clone()),
+                function,
+                new_target,
+                this_status,
+            )
+        };
         if !self.template.arrow {
             let this = if self.template.strict {
                 this
@@ -142,13 +163,15 @@ impl Closure {
                 super::function::bind_arguments(&frame, arguments)?;
             }
         }
-        for (index, name) in self.template.parameters.iter().enumerate() {
-            let argument = arguments.get(index).cloned().unwrap_or(Value::Undefined);
-            if frame.has_binding(name)? {
-                frame.set_mutable_binding(name, argument, false)?;
-            } else {
-                frame.create_mutable_binding(name.clone(), false)?;
-                frame.initialize_binding(name, argument)?;
+        if self.template.arguments_object {
+            for (index, name) in self.template.parameters.iter().enumerate() {
+                let argument = arguments.get(index).cloned().unwrap_or(Value::Undefined);
+                if frame.has_binding(name)? {
+                    frame.set_mutable_binding(name, argument, false)?;
+                } else {
+                    frame.create_mutable_binding(name.clone(), false)?;
+                    frame.initialize_binding(name, argument)?;
+                }
             }
         }
         match VirtualMachine::execute_in_function(&self.template.body, &self.realm, &frame)? {

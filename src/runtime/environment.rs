@@ -302,6 +302,45 @@ impl Environment {
         )
     }
 
+    pub(crate) fn function_with_parameters(
+        outer: Option<Self>,
+        function_object: Object,
+        new_target: Option<Object>,
+        this_status: ThisBindingStatus,
+        parameters: &[JsString],
+        arguments: &[Value],
+        capacity: usize,
+    ) -> Self {
+        let mut bindings: Vec<Binding> = Vec::with_capacity(capacity.max(parameters.len()));
+        for (index, name) in parameters.iter().enumerate() {
+            let value = arguments.get(index).cloned().unwrap_or(Value::Undefined);
+            if let Some(binding) = bindings.iter_mut().find(|binding| binding.name == *name) {
+                // Sloppy duplicate parameters retain the last supplied value,
+                // including undefined when that occurrence has no argument.
+                binding.value = Some(value);
+            } else {
+                bindings.push(Binding {
+                    name: name.clone(),
+                    value: Some(value),
+                    mutable: true,
+                    strict: false,
+                    deletable: false,
+                });
+            }
+        }
+        Self::new(
+            outer,
+            EnvironmentRecord::Function(FunctionRecord {
+                declarative_record: DeclarativeRecord { bindings },
+                this_status,
+                this_value: (this_status == ThisBindingStatus::Initialized)
+                    .then_some(Value::Undefined),
+                function_object,
+                new_target,
+            }),
+        )
+    }
+
     /// Creates a module environment record.
     #[must_use]
     pub fn module(outer: Option<Self>) -> Self {
@@ -1099,6 +1138,39 @@ fn reference_error(name: &JsString, detail: &str) -> RuntimeError {
 #[cfg(test)]
 mod slot_hint_tests {
     use super::*;
+    #[test]
+    fn prepared_parameter_records_initialize_missing_and_duplicate_names() {
+        let names = [
+            JsString::from("a"),
+            JsString::from("a"),
+            JsString::from("b"),
+        ];
+        let env = Environment::function_with_parameters(
+            None,
+            Object::new(),
+            None,
+            ThisBindingStatus::Uninitialized,
+            &names,
+            &[Value::Number(1.0)],
+            3,
+        );
+        for name in [&names[0], &names[2]] {
+            assert!(
+                env.get_binding_value(name, false)
+                    .unwrap()
+                    .same_value(&Value::Undefined)
+            );
+            assert!(!env.delete_binding(name).unwrap());
+        }
+        env.set_mutable_binding(&names[0], Value::Number(42.0), true)
+            .unwrap();
+        assert!(
+            env.get_binding_value(&names[0], true)
+                .unwrap()
+                .same_value(&Value::Number(42.0))
+        );
+    }
+
     #[test]
     fn number_update_respects_ignored_and_throwing_immutable_writes() {
         let env =

@@ -30,6 +30,26 @@ fn function_and_arrow_bodies_execute_verified_bytecode_with_parameters() {
 }
 
 #[test]
+fn prepared_parameter_frames_preserve_duplicates_missing_arguments_and_captures() {
+    for source in [
+        "(function(a,a){return a;})(1,42);",
+        "(function(a,a){return typeof a==='undefined'?42:0;})(1);",
+        "(function(a){var a;return a;})(42,99);",
+        "(function(arguments){return arguments;})(42);",
+        "(function(a){function a(){return 42;}return a();})(0);",
+        "(function(a){return ()=>a;})(42)();",
+        "((a,b)=>a+b)(20,22);",
+        "function F(a){this.x=a;}var object=new F(42);object.x;",
+        "(function(a){return arguments.length===2 && a===20?42:0;})(20,22);",
+    ] {
+        assert!(
+            value(&Realm::ordinary(), source).same_value(&Value::Number(42.0)),
+            "{source}"
+        );
+    }
+}
+
+#[test]
 fn arguments_remain_visible_to_escaped_arrows_and_independent_calls() {
     for source in [
         "var f=(function(a){return ()=>arguments[0];})(42);f();",

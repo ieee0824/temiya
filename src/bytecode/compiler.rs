@@ -736,6 +736,22 @@ impl Compiler {
         ) {
             return Err(self.unsupported("assignment operator", span));
         }
+        // Function and lexical records keep their identity while the RHS runs.
+        // Retain the old value on the operand stack, then write the actual
+        // binding after conversion (which may reenter JavaScript). Globals and
+        // properties still require an observable reference resolved beforehand.
+        if !matches!(operator, "&&=" | "||=" | "??=") {
+            if let ExprKind::Identifier(name) = &unparenthesized(target).kind {
+                if let Some((scope, slot, _)) = self.local_binding(name) {
+                    self.code.push(Instruction::LoadBinding { scope, slot });
+                    self.expression(value)?;
+                    self.emit_binary(operator.strip_suffix('=').expect("compound suffix"), span)?;
+                    self.code.push(Instruction::Duplicate);
+                    self.code.push(Instruction::StoreBinding { scope, slot });
+                    return Ok(());
+                }
+            }
+        }
         self.resolve_update_reference(target)?;
         self.code.push(Instruction::LoadReference);
         if matches!(operator, "&&=" | "||=" | "??=") {

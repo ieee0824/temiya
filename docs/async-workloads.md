@@ -38,8 +38,33 @@ additional native sandbox remains recorded. RSS can overshoot between polls.
 Failures, unsupported behavior, timeouts and missing callbacks cannot be wins.
 The original 10% / three-MAD noise rule remains in force.
 
-Implementation is pending actual worker compilation, integration checks and
-measurements; Node syntax checks do not qualify this suite. No async speedup,
-full Promise/await conformance, garbage collection completion or application-wide
-advantage is established. Dedicated parse/startup/objects/RegExp/GC groups and
-the remaining SpiderMonkey checks remain separate work under #427.
+The actual release workers and all 14 native adapter checks passed in
+[run 40538696453](https://github.com/ieee0824/temiya/actions/runs/40538696453),
+measured at 010fcc45cb9231b44e0acec5fbf10a5290465a25 on Linux x64,
+AMD EPYC 7763 (four logical CPUs), rustc 1.99.1. All 18 workers and 288 results
+were correct; all nine comparisons were faster for Temiya beyond the fixed
+noise rule. Input hashes, independent oracles, unique full coverage, alternating
+order, compiler/adapter/binary identity, median/MAD and every comparison decision
+were independently verified. Temiya setup actually selected AST; the report
+also records invocation/completion backends and actual drained job counts.
+
+| Authored case | Temiya / actual Boa median elapsed ratio, three pairs |
+|---|---:|
+| Promise chain | 0.5595–0.6163 |
+| Promise fanout | 0.8043–0.8346 |
+| Numeric rejection recovery | 0.7108–0.7306 |
+
+Peak sampled Temiya HWM was 44,448–53,592 KiB for the chain, 95,172–101,140 KiB
+for fanout and 105,484–105,648 KiB for rejection recovery. Actual Boa ranged
+84,576–85,452 KiB across these cases. Temiya therefore used more observed process
+memory in two cases; the speed result is not a memory or collector advantage.
+Promise ownership and cyclic retention remain unfinished work, and no forced
+collection or missing job was substituted for actual execution.
+
+[Raw measurements](../benchmarks/async-checkpoint/async.json),
+[actual positive/negative adapter checks](../benchmarks/async-checkpoint/worker-checks.json)
+and [provenance](../benchmarks/async-checkpoint/provenance.json) retain the result.
+These three inputs do not cover pending-await suspension or the full Promise API,
+and establish no application-wide advantage. The separate Intel arithmetic
+shortfall (#510), dedicated parse/startup/objects/RegExp/GC groups and remaining
+SpiderMonkey checks remain work under #427.

@@ -43,7 +43,7 @@ remaining failures stay separate from normal tests and are not counted as skips.
 Shared function creation and builtin metadata affect setup and allocations, so
 this source requires its own comparative measurements. No Boa speedup is claimed.
 
-## Original upstream evidence
+## Earlier upstream snapshot (runtime 1090296)
 
 On stable and Rust 1.85.0, the unchanged 42-file/75-variant global selection
 advances from 53 pass / 22 fail to **61 / 14**. All eight original propertyHelper
@@ -57,5 +57,30 @@ recorded baseline revisions, not an isolated attribution to one added API.
 outcomes, fixture identities and status transitions for both toolchains. Remaining
 global and numeric failures remain recorded. Normal stable/MSRV all-target tests
 each pass **374 tests**, with 9 ignored; formatting and all-target/all-feature
-Clippy with warnings denied pass. Hosted CI/security and source-specific speed
-measurements remain required. Parent integration and its revalidation come next.
+Clippy with warnings denied pass. That snapshot predates parent integration; current results are recorded below.
+
+
+## Main integration and current validation
+
+The source integrates merged main `190b01f5de6ae323e0149ea4c164bdfa5b4f37b6`.
+Native method factory changes preserve the main branch’s bound-target and weak
+constructor-self behavior. Own-key queries return actual Array exotics: public
+Array.isArray and length-truncation behavior are tested, as well as their Realm
+Array.prototype. Registered host callback captures are released after their Realm
+handle is dropped; retained standalone callbacks still work after that drop.
+This remains separate from full intrinsic graph reclamation.
+
+Current stable/MSRV all-target suites each pass **438 tests**, with 12 ignored;
+final focused tests pass nine on both toolchains. Formatting and all-target/
+all-feature Clippy with warnings denied pass. The original numeric selection
+remains **58 pass / 4 fail**, the global selection **61 / 14**, and the binary
+selection **31 AST pass / 0 fail**, **21 VM pass / 0 fail / 10 unsupported**. All
+eight originally blocked global variants still pass. Full selections still exit
+101; no previous pass regresses and no case is skipped.
+
+[native-prototype-main-audit.json](../test262/native-prototype-main-audit.json)
+retains the post-integration reports and their exact source/baseline identities.
+Numeric a-z now reaches the missing String.fromCharCode API after the parent
+BigInt/Number comparison fix; Symbol-constructor prerequisites also remain. These
+failures are retained. This source needs its own hosted CI/security and original
+eleven-workload comparison; the older reports do not establish its throughput.

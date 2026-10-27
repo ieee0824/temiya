@@ -157,8 +157,21 @@ pub(super) fn method(
     Ok(())
 }
 
-fn key(index: u64) -> PropertyKey {
-    JsString::from(index.to_string()).into()
+fn key(mut index: u64) -> PropertyKey {
+    // Array algorithms use nonnegative integer keys, including generic
+    // array-like indices beyond u32::MAX. Write decimal UTF-16 directly so
+    // short keys use JsString's inline storage without a temporary String.
+    let mut units = [0u16; 20];
+    let mut start = units.len();
+    loop {
+        start -= 1;
+        units[start] = u16::from(b'0') + (index % 10) as u16;
+        index /= 10;
+        if index == 0 {
+            break;
+        }
+    }
+    JsString::from_code_units_slice(&units[start..]).into()
 }
 
 fn set(object: &Object, key: PropertyKey, value: Value) -> RuntimeResult<()> {
@@ -309,4 +322,33 @@ pub(super) fn iterator_boxing(
         to_string_tag: symbols.get(WellKnownSymbol::ToStringTag).into(),
     };
     move |value| coercion.object(value)
+}
+
+#[cfg(test)]
+mod key_tests {
+    use super::*;
+
+    #[test]
+    fn integer_keys_preserve_decimal_boundaries_without_number_rounding() {
+        for (index, expected) in [
+            (0, "0"),
+            (9, "9"),
+            (10, "10"),
+            (u64::from(u32::MAX), "4294967295"),
+            (MAX_LENGTH, "9007199254740991"),
+            (u64::MAX, "18446744073709551615"),
+        ] {
+            assert_eq!(key(index), PropertyKey::from(expected));
+        }
+        let mut power = 10u64;
+        loop {
+            for index in [power - 1, power, power + 1] {
+                assert_eq!(key(index), PropertyKey::from(index.to_string()));
+            }
+            let Some(next) = power.checked_mul(10) else {
+                break;
+            };
+            power = next;
+        }
+    }
 }

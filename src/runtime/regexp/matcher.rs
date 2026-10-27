@@ -15,10 +15,7 @@ use regex_syntax::hir::Hir;
 #[derive(Clone)]
 pub(super) enum Matcher {
     Meta(Regex),
-    Direct {
-        fast: BoundedBacktracker,
-        linear: PikeVM,
-    },
+    Direct { fast: BoundedBacktracker },
 }
 
 pub(super) enum Scratch {
@@ -28,7 +25,19 @@ pub(super) enum Scratch {
 
 pub(super) struct DirectScratch {
     fast: backtrack::Cache,
-    linear: Option<pikevm::Cache>,
+    linear: Option<Box<LinearScratch>>,
+}
+
+struct LinearScratch {
+    vm: PikeVM,
+    cache: pikevm::Cache,
+}
+
+// These immutable builders only wrap already compiled NFAs. Their internal
+// compilers never receive a pattern, so retained initialization is input independent.
+thread_local! {
+    static BACKTRACK_BUILDER: backtrack::Builder = BoundedBacktracker::builder();
+    static LINEAR_BUILDER: pikevm::Builder = PikeVM::builder();
 }
 
 impl Matcher {
@@ -43,13 +52,10 @@ impl Matcher {
             )
             .build_from_hir(hir)
             .map_err(|error| RuntimeError::syntax_error(error.to_string()))?;
-        let fast = BoundedBacktracker::builder()
-            .build_from_nfa(nfa.clone())
+        let fast = BACKTRACK_BUILDER
+            .with(|builder| builder.build_from_nfa(nfa))
             .map_err(|error| RuntimeError::syntax_error(error.to_string()))?;
-        let linear = PikeVM::builder()
-            .build_from_nfa(nfa)
-            .map_err(|error| RuntimeError::syntax_error(error.to_string()))?;
-        Ok(Self::Direct { fast, linear })
+        Ok(Self::Direct { fast })
     }
 
     pub(super) fn create_captures(&self) -> Captures {
@@ -72,12 +78,20 @@ impl Matcher {
     pub(super) fn search(&self, input: &Input<'_>, captures: &mut Captures, scratch: &mut Scratch) {
         match (self, scratch) {
             (Self::Meta(re), Scratch::Meta) => re.search_captures(input, captures),
-            (Self::Direct { fast, linear }, Scratch::Direct(scratch)) => {
+            (Self::Direct { fast }, Scratch::Direct(scratch)) => {
                 // The bounded engine can reject subjects larger than its visited
                 // bitmap. The same NFA then runs on the linear, unbounded-length VM.
                 if fast.try_search(&mut scratch.fast, input, captures).is_err() {
-                    let cache = scratch.linear.get_or_insert_with(|| linear.create_cache());
-                    linear.search(cache, input, captures);
+                    let linear = scratch.linear.get_or_insert_with(|| {
+                        // Both builders validate the same look set; the bounded
+                        // builder already accepted this immutable NFA.
+                        let vm = LINEAR_BUILDER
+                            .with(|builder| builder.build_from_nfa(fast.get_nfa().clone()))
+                            .expect("NFA already validated by bounded engine");
+                        let cache = vm.create_cache();
+                        Box::new(LinearScratch { vm, cache })
+                    });
+                    linear.vm.search(&mut linear.cache, input, captures);
                 }
             }
             _ => unreachable!("matcher and per-object scratch must agree"),

@@ -321,6 +321,84 @@ mod tests {
         }
     }
 
+    // Native combinatorial regression; fixed grammar cases also run under Miri.
+    #[test]
+    #[cfg(not(miri))]
+    fn generated_combinations_preserve_captures_and_all_scalar_start_offsets() {
+        let atoms = ["a", "b", "ab", "[a-b]", "(a)", "(?:b)"];
+        let repeats = ["", "?", "*", "+", "{0}", "{1,2}", "*?"];
+        let mut subjects = Vec::new();
+        for len in 0..=4 {
+            for bits in 0..(1 << len) {
+                subjects.push(
+                    (0..len)
+                        .map(|i| if bits & (1 << i) == 0 { 'a' } else { 'b' })
+                        .collect::<String>(),
+                );
+            }
+        }
+        subjects.extend(["😀a", "a😀b", "a\nb", "abb a"].map(str::to_owned));
+        let mut searches = 0;
+        for left in atoms {
+            for left_repeat in repeats {
+                for right in atoms {
+                    for right_repeat in repeats {
+                        let pattern = format!("({left}{left_repeat}|{right}{right_repeat})(a?)");
+                        for unicode in [false, true] {
+                            let fast = Matcher::from_hir(&parse(&pattern).unwrap()).unwrap();
+                            let reference = regex::RegexBuilder::new(&pattern)
+                                .unicode(unicode)
+                                .build()
+                                .unwrap();
+                            assert_eq!(
+                                fast.group_info().group_len(PatternID::ZERO),
+                                reference.captures_len(),
+                                "{pattern}"
+                            );
+                            let mut scratch = fast.create_scratch();
+                            let mut got = fast.create_captures();
+                            for input in &subjects {
+                                for start in input
+                                    .char_indices()
+                                    .map(|(i, _)| i)
+                                    .chain(std::iter::once(input.len()))
+                                {
+                                    fast.search(
+                                        &Input::new(input.as_str()).span(start..input.len()),
+                                        &mut got,
+                                        &mut scratch,
+                                    );
+                                    let expected = reference.captures_at(input, start);
+                                    assert_eq!(
+                                        got.is_match(),
+                                        expected.is_some(),
+                                        "{pattern:?} {input:?} start={start} unicode={unicode}"
+                                    );
+                                    if let Some(expected) = expected {
+                                        let a: Vec<_> = (0..got.group_len())
+                                            .map(|i| got.get_group(i).map(|m| (m.start, m.end)))
+                                            .collect();
+                                        let b: Vec<_> = (0..expected.len())
+                                            .map(|i| expected.get(i).map(|m| (m.start(), m.end())))
+                                            .collect();
+                                        assert_eq!(
+                                            a, b,
+                                            "{pattern:?} {input:?} start={start} unicode={unicode}"
+                                        );
+                                    }
+                                    searches += 1;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        println!(
+            "Generated 1764 patterns, both Unicode policies: {searches} searches agree with the full parser"
+        );
+    }
+
     #[test]
     fn unsupported_and_ambiguous_forms_keep_full_parser_validation() {
         for pattern in [

@@ -190,3 +190,23 @@ fn cached_matcher_preserves_utf16_boundaries_and_current_surrogate_errors() {
         RuntimeErrorKind::SyntaxError
     );
 }
+
+#[test]
+fn non_ascii_cache_keys_preserve_scalar_patterns_and_independent_state() {
+    for _ in 0..2 {
+        let astral = RegExp::new(JsString::from("😀"), "gu").unwrap();
+        let latin = RegExp::new(JsString::from("é"), "gu").unwrap();
+        let input = JsString::from("😀é");
+        assert_eq!(astral.source(), JsString::from("😀"));
+        assert_eq!(latin.source(), JsString::from("é"));
+        assert_eq!(astral.last_index(), 0);
+        assert_eq!(latin.last_index(), 0);
+        assert_eq!(astral.exec(&input).unwrap().unwrap().index, 0);
+        assert_eq!(astral.last_index(), 2);
+        assert_eq!(latin.exec(&input).unwrap().unwrap().index, 2);
+        assert_eq!(latin.last_index(), 3);
+        assert!(astral.exec(&input).unwrap().is_none());
+        assert_eq!(astral.last_index(), 0);
+        assert_eq!(latin.last_index(), 3);
+    }
+}

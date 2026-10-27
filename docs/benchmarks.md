@@ -33,6 +33,12 @@ the same inputs in both modes, but Temiya is slower in all 33 comparisons per
 mode. The SpiderMonkey speed target remains unmet; default-mode enabled JIT
 settings do not establish workload JIT execution.
 
+The additional [async checkpoint suite](async-workloads.md) measures real
+scheduling, public job draining and checked completion in three authored cases.
+The recorded AMD x64 run passed all nine actual-Boa comparisons, with higher
+Temiya process memory in two cases. It does not change the original eleven
+inputs or establish pending-await, collector or application-wide completeness.
+
 The initial application reference is omoikane revision
 `007556adccb8fb4329236932ca8175f8e8d119d2`, including its vendored `engine/boa`,
 vendored `engine/regress`, embedding configuration, and feature flags. Its

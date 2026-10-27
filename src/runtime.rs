@@ -20,6 +20,7 @@ mod elements;
 mod environment;
 mod execution;
 mod function;
+mod function_code;
 mod generator;
 mod host_data;
 mod indexed;

@@ -195,6 +195,7 @@ struct ScriptData {
     id: u64,
     realm: Realm,
     program: Program,
+    code_cache: super::function_code::FunctionCodeCache,
 }
 
 impl ScriptRecord {
@@ -206,7 +207,12 @@ impl ScriptRecord {
             id: next_id(&NEXT_ID, "Script Record"),
             realm,
             program,
+            code_cache: super::function_code::FunctionCodeCache::default(),
         }))
+    }
+
+    pub(super) fn function_code_cache(&self) -> super::function_code::FunctionCodeCache {
+        self.0.code_cache.clone()
     }
 
     /// Returns an engine-local identity for this Script Record.

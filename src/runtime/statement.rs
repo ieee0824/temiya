@@ -114,6 +114,14 @@ impl StatementEvaluator {
         }
     }
 
+    pub(super) fn with_function_code_cache(
+        mut self,
+        cache: Option<super::function_code::FunctionCodeCache>,
+    ) -> Self {
+        self.expression = self.expression.with_function_code_cache(cache);
+        self
+    }
+
     /// Evaluates a parsed program after declaration instantiation.
     pub fn evaluate_program(&self, program: &Program) -> RuntimeResult<Completion> {
         let mut evaluator = self.clone();

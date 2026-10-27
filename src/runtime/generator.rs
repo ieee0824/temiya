@@ -177,6 +177,7 @@ pub(super) fn create_generator_object(
         this_value.clone(),
         closure.code.strict,
     );
+    let evaluator = evaluator.with_function_code_cache(closure.code_cache.clone());
     bind_parameters(
         &evaluator,
         &environment,
@@ -201,6 +202,7 @@ pub(super) fn create_generator_object(
         this_value,
         closure.code.strict,
     );
+    let statements = statements.with_function_code_cache(closure.code_cache.clone());
     let generator = Generator(Rc::new(RefCell::new(GeneratorData {
         state: GeneratorState::SuspendedStart,
         evaluator,

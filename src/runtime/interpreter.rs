@@ -345,6 +345,7 @@ pub struct ExpressionEvaluator {
     pub(super) this_value: Value,
     pub(super) new_target: Option<Object>,
     pub(super) strict: bool,
+    pub(super) code_cache: Option<super::function_code::FunctionCodeCache>,
 }
 
 impl ExpressionEvaluator {
@@ -362,6 +363,7 @@ impl ExpressionEvaluator {
             this_value,
             new_target: None,
             strict: false,
+            code_cache: None,
         }
     }
 
@@ -379,7 +381,16 @@ impl ExpressionEvaluator {
             this_value,
             new_target: None,
             strict,
+            code_cache: None,
         }
+    }
+
+    pub(super) fn with_function_code_cache(
+        mut self,
+        cache: Option<super::function_code::FunctionCodeCache>,
+    ) -> Self {
+        self.code_cache = cache;
+        self
     }
 
     /// Supplies the active constructor's `new.target` value.

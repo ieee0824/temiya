@@ -32,7 +32,9 @@ impl ScriptRecord {
     /// Evaluates this Script in its Realm's global environment.
     pub fn evaluate(&self) -> RuntimeResult<Completion> {
         let realm = self.realm();
-        StatementEvaluator::new(realm).evaluate_program(self.program())
+        StatementEvaluator::new(realm)
+            .with_function_code_cache(Some(self.function_code_cache()))
+            .evaluate_program(self.program())
     }
 }
 

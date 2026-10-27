@@ -23,7 +23,8 @@ pub enum FunctionKind {
 
 #[derive(Clone)]
 pub(super) struct FunctionClosure {
-    pub(super) code: Function,
+    pub(super) code: super::function_code::FunctionCode,
+    pub(super) code_cache: Option<super::function_code::FunctionCodeCache>,
     pub(super) kind: FunctionKind,
     pub(super) realm: Realm,
     pub(super) environment: Environment,
@@ -52,7 +53,11 @@ pub(super) fn create_function(
             None
         };
     let closure = Rc::new(FunctionClosure {
-        code: code.clone(),
+        code: evaluator.code_cache.as_ref().map_or_else(
+            || super::function_code::FunctionCode::Owned(code.clone()),
+            |cache| cache.share(code),
+        ),
+        code_cache: evaluator.code_cache.clone(),
         kind,
         realm: evaluator.realm.clone(),
         environment: name_environment
@@ -187,7 +192,8 @@ fn call_function(
         this_value.clone(),
         closure.code.strict,
     )
-    .with_new_target(new_target);
+    .with_new_target(new_target)
+    .with_function_code_cache(closure.code_cache.clone());
     bind_parameters(
         &evaluator,
         &environment,
@@ -204,7 +210,8 @@ fn call_function(
                 environment,
                 this_value,
                 closure.code.strict,
-            );
+            )
+            .with_function_code_cache(closure.code_cache.clone());
             match statements.evaluate_statement(body)? {
                 Completion::Return(value) => Ok(value),
                 Completion::Normal(_) => Ok(Value::Undefined),

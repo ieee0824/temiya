@@ -21,8 +21,14 @@ counts must be reviewed alongside that manifest rather than mixed with timings.
 
 The performance target is to exceed the Boa version embedded in
 [omoikane](https://github.com/ieee0824/omoikane); exceeding SpiderMonkey is an
-additional target. Neither has been demonstrated. The current internal suite
-is insufficient evidence for either claim.
+additional target. The default Engine's [Auto Script comparison](auto-backend-integration.md)
+exceeds the actual pinned omoikane Boa on the original eleven workloads in all
+33 comparisons on both measured x64 and ARM64 machines. This is limited to
+those inputs and conditions, not complete application superiority.
+The [pinned native SpiderMonkey comparison](spidermonkey-workloads.md) completes
+the same inputs in both modes, but Temiya is slower in all 33 comparisons per
+mode. The SpiderMonkey speed target remains unmet; default-mode enabled JIT
+settings do not establish workload JIT execution.
 
 The initial application reference is omoikane revision
 `007556adccb8fb4329236932ca8175f8e8d119d2`, including its vendored `engine/boa`,

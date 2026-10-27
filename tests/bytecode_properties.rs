@@ -786,7 +786,7 @@ fn ordinary_array_push_keeps_prototype_setters_readonly_lengths_and_proxy_order(
             let realm = Realm::ordinary();
             execute(&realm, setup, false).unwrap();
             assert!(
-                result(&realm, source, vm).same_value(&expected),
+                value(execute(&realm, source, vm)).same_value(&expected),
                 "{setup} {source}"
             );
         }
@@ -799,10 +799,12 @@ fn ordinary_array_push_keeps_prototype_setters_readonly_lengths_and_proxy_order(
                 execute(&realm, source, vm).unwrap_err().kind(),
                 RuntimeErrorKind::TypeError
             );
-            assert!(result(&realm, "a.length;", vm).same_value(&Value::Number(0.0)));
-            assert!(result(&realm, "seen;", vm).same_value(&Value::Number(
-                if source == "a.push();" { 0.0 } else { 42.0 }
-            )));
+            assert!(value(execute(&realm, "a.length;", vm)).same_value(&Value::Number(0.0)));
+            assert!(
+                value(execute(&realm, "seen;", vm)).same_value(&Value::Number(
+                    if source == "a.push();" { 0.0 } else { 42.0 }
+                ))
+            );
         }
         let realm = Realm::ordinary();
         execute(&realm, "var a=[];a.length=4294967295;", false).unwrap();
@@ -811,8 +813,12 @@ fn ordinary_array_push_keeps_prototype_setters_readonly_lengths_and_proxy_order(
             RuntimeErrorKind::RangeError
         );
         assert!(
-            result(&realm, "a['4294967295']===42 && a.length===4294967295;", vm)
-                .same_value(&Value::Boolean(true))
+            value(execute(
+                &realm,
+                "a['4294967295']===42 && a.length===4294967295;",
+                vm
+            ))
+            .same_value(&Value::Boolean(true))
         );
     }
 }

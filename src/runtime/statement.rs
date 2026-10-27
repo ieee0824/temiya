@@ -717,11 +717,9 @@ impl StatementEvaluator {
             match kind {
                 VariableKind::Var => {
                     if let Some(init) = &declaration.init {
-                        self.variable_environment.set_mutable_binding(
-                            &name,
-                            self.expression.evaluate(init)?,
-                            self.expression.strict,
-                        )?;
+                        let reference = self.expression.evaluate_reference(&declaration.binding)?;
+                        let value = self.expression.evaluate(init)?;
+                        reference.put_value(value)?;
                     }
                 }
                 VariableKind::Let | VariableKind::Const => {

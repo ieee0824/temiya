@@ -71,7 +71,7 @@ jobs:
           const git = args => execFileSync('git', ['-C', checkout, ...args], { encoding: 'utf8' }).trim();
           if (git(['status', '--porcelain']) !== '') throw Error('baseline checkout changed');
           const info = {
-            name: 'Temiya', engine: 'Temiya', mode: 'AST interpreter', profile: 'release', features: [],
+            name: 'Temiya', engine: 'Temiya', mode: 'Auto Script+loop', profile: 'release', features: [],
             revision: git(['rev-parse', 'HEAD']), executable,
             executable_sha256: createHash('sha256').update(fs.readFileSync(executable)).digest('hex'),
             rustc: execFileSync('rustc', ['-Vv'], { encoding: 'utf8' }).trim(),

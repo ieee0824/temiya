@@ -265,6 +265,8 @@ pub enum Instruction {
     StoreBinding { scope: u32, slot: u32 },
     /// Resolve a string constant in the current environment chain and push its value.
     LoadName(u32),
+    /// Resolve a name and get its value using the source Reference's strictness.
+    GetName { name: u32, strict: bool },
     /// Resolve a name before its assignment RHS and retain its Reference.
     ResolveName { name: u32, strict: bool },
     /// Read the innermost Reference without consuming it.
@@ -380,6 +382,7 @@ impl Instruction {
             | Self::CloneLoopBindings
             | Self::ResolveName { .. }
             | Self::LoadBinding { .. }
+            | Self::GetName { .. }
             | Self::LoadName(_) => 0,
             Self::InitializeBinding { .. } | Self::StoreBinding { .. } | Self::StoreReference => 1,
             Self::LoadConstant(_) | Self::LoadLocal(_) | Self::Jump(_) => 0,
@@ -432,7 +435,7 @@ impl Instruction {
             | Self::ExitScope
             | Self::CloneLoopBindings
             | Self::ResolveName { .. } => 0,
-            Self::LoadBinding { .. } | Self::LoadName(_) => 1,
+            Self::LoadBinding { .. } | Self::LoadName(_) | Self::GetName { .. } => 1,
             Self::InitializeBinding { .. } | Self::StoreBinding { .. } | Self::StoreReference => -1,
             Self::LoadConstant(_) | Self::LoadLocal(_) | Self::Duplicate => 1,
             Self::StoreLocal(_)
@@ -729,7 +732,9 @@ fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
                     return Err(error(VerifyErrorKind::BindingOutOfBounds));
                 }
             }
-            Instruction::LoadName(index) | Instruction::ResolveName { name: index, .. } => {
+            Instruction::LoadName(index)
+            | Instruction::GetName { name: index, .. }
+            | Instruction::ResolveName { name: index, .. } => {
                 if !matches!(constant(index)?, Constant::String(_)) {
                     return Err(error(VerifyErrorKind::InvalidConstantKind));
                 }

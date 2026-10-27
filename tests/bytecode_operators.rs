@@ -304,3 +304,187 @@ fn computed_key_conversion_can_reenter_the_same_public_reference() {
     );
     assert_eq!(calls.get(), 2);
 }
+
+#[test]
+fn global_name_resolution_has_traps_precede_reads_and_initializer_values() {
+    use std::{cell::RefCell, rc::Rc};
+    use temiya::runtime::{Object, ProxyObject};
+    let mut failures = Vec::new();
+    for (source, expected) in [
+        ("var x=41;reset();x;", "HH"),
+        ("var x=41;reset();x=rhs();", "HR"),
+        ("var x=41;reset();var x=rhs();", "HR"),
+    ] {
+        for vm in [false, true] {
+            let log = Rc::new(RefCell::new(String::new()));
+            let target = Object::new();
+            let handler = Object::new();
+            let proxy = ProxyObject::new(target.clone(), handler.clone()).object();
+            let realm = Realm::new(proxy.clone(), Value::Object(proxy));
+            let observed = log.clone();
+            handler
+                .create_data_property(
+                    "has".into(),
+                    Value::Object(Object::native_function(move |_, args| {
+                        let Value::Object(target) = &args[0] else {
+                            panic!()
+                        };
+                        let key = args[1].to_property_key()?;
+                        if key == "x".into() {
+                            observed.borrow_mut().push('H');
+                        }
+                        Ok(Value::Boolean(target.has_property(&key)?))
+                    })),
+                )
+                .unwrap();
+            let reset = log.clone();
+            target
+                .create_data_property(
+                    "reset".into(),
+                    Value::Object(Object::native_function(move |_, _| {
+                        reset.borrow_mut().clear();
+                        Ok(Value::Undefined)
+                    })),
+                )
+                .unwrap();
+            let rhs = log.clone();
+            target
+                .create_data_property(
+                    "rhs".into(),
+                    Value::Object(Object::native_function(move |_, _| {
+                        rhs.borrow_mut().push('R');
+                        Ok(Value::Number(42.0))
+                    })),
+                )
+                .unwrap();
+            assert!(matches!(
+                execute(&realm, source, vm).unwrap(),
+                Completion::Normal(_)
+            ));
+            let actual = log.borrow().clone();
+            println!("source={source:?} vm={vm} expected={expected} actual={actual}");
+            if actual != expected {
+                failures.push(format!("{source}: vm={vm} {actual} != {expected}"));
+            }
+        }
+    }
+    assert!(failures.is_empty(), "{failures:?}");
+}
+
+#[test]
+fn var_initializer_uses_the_with_environment_reference_in_ast() {
+    assert!(
+        result(
+            &Realm::ordinary(),
+            "var x=1;var object={x:2};with(object){var x=3;}object.x===3&&x===1;",
+            false
+        )
+        .same_value(&Value::Boolean(true))
+    );
+}
+
+#[test]
+fn resolved_global_reference_retains_source_strictness_after_deletion() {
+    use std::{cell::Cell, rc::Rc};
+    use temiya::runtime::{Object, ProxyObject};
+    for strict in [false, true] {
+        for vm in [false, true] {
+            let target = Object::new();
+            target
+                .create_data_property("x".into(), Value::Number(42.0))
+                .unwrap();
+            let handler = Object::new();
+            let proxy = ProxyObject::new(target.clone(), handler.clone()).object();
+            let realm = Realm::new(proxy.clone(), Value::Object(proxy));
+            let reads = Rc::new(Cell::new(99));
+            let seen = reads.clone();
+            handler
+                .create_data_property(
+                    "has".into(),
+                    Value::Object(Object::native_function(move |_, args| {
+                        let Value::Object(target) = &args[0] else {
+                            panic!()
+                        };
+                        let key = args[1].to_property_key()?;
+                        if key == "x".into() {
+                            let count = seen.get();
+                            seen.set(count + 1);
+                            if count == 0 {
+                                assert!(target.delete(&key));
+                                return Ok(Value::Boolean(true));
+                            }
+                        }
+                        Ok(Value::Boolean(target.has_property(&key)?))
+                    })),
+                )
+                .unwrap();
+            let counter = reads.clone();
+            target
+                .create_data_property(
+                    "reset".into(),
+                    Value::Object(Object::native_function(move |_, _| {
+                        counter.set(0);
+                        Ok(Value::Undefined)
+                    })),
+                )
+                .unwrap();
+            let source = if strict {
+                "'use strict';var x;reset();x;"
+            } else {
+                "var x;reset();x;"
+            };
+            let value = execute(&realm, source, vm);
+            if strict {
+                assert_eq!(value.unwrap_err().kind(), RuntimeErrorKind::ReferenceError);
+            } else {
+                assert!(matches!(
+                    value.unwrap(),
+                    Completion::Normal(Some(Value::Undefined))
+                ));
+            }
+            assert_eq!(reads.get(), 2);
+        }
+    }
+}
+
+#[test]
+#[ignore = "requires pinned Test262 corpus in TEST262_DIR"]
+fn pinned_test262_var_binding_resolution() {
+    use std::process::Command;
+    use temiya::test262::TEST262_REVISION;
+    let root = std::env::var("TEST262_DIR").expect("TEST262_DIR required");
+    let git = |args: &[&str]| {
+        let out = Command::new("git")
+            .args(["-c", &format!("safe.directory={root}"), "-C", &root])
+            .args(args)
+            .output()
+            .unwrap();
+        assert!(out.status.success());
+        String::from_utf8(out.stdout).unwrap()
+    };
+    assert_eq!(git(&["rev-parse", "HEAD"]).trim(), TEST262_REVISION);
+    let read = |path: &str| git(&["show", &format!("{TEST262_REVISION}:{path}")]);
+    let path = "test/language/statements/variable/binding-resolution.js";
+    let realm = Realm::ordinary();
+    for name in ["sta.js", "assert.js"] {
+        assert!(matches!(
+            execute(&realm, &read(&format!("harness/{name}")), false).unwrap(),
+            Completion::Normal(_)
+        ));
+    }
+    let source = read(path);
+    assert!(matches!(
+        execute(&realm, &source, false).unwrap(),
+        Completion::Normal(_)
+    ));
+    let vm_error = BytecodeCompiler::compile(&source).unwrap_err();
+    assert!(
+        vm_error
+            .message()
+            .contains("unsupported bytecode statement")
+    );
+    println!(
+        "{path} blob={} AST pass; VM unsupported with: {vm_error}",
+        git(&["rev-parse", &format!("{TEST262_REVISION}:{path}")]).trim()
+    );
+}

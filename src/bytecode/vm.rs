@@ -194,6 +194,21 @@ impl VirtualMachine {
                             .get_identifier_value(name, true)?,
                     );
                 }
+                Instruction::GetName {
+                    name: index,
+                    strict,
+                } => {
+                    let Constant::String(name) = &body.constants[index as usize] else {
+                        unreachable!()
+                    };
+                    stack.push(
+                        scopes
+                            .last()
+                            .expect("verified active scope")
+                            .environment
+                            .get_identifier_value(name, strict)?,
+                    );
+                }
                 Instruction::ResolveName {
                     name: index,
                     strict,

@@ -1085,13 +1085,17 @@ impl Compiler {
                     self.code.push(Instruction::Duplicate);
                     shortcuts.push((self.emit(Instruction::JumpIfNullish(0)), 1));
                 }
-                self.member_property(property, *computed, !matches!(usage, ChainUse::Value))?;
-                if !matches!(usage, ChainUse::Value) {
-                    self.code.push(if matches!(usage, ChainUse::Delete) {
-                        Instruction::DeleteReference
-                    } else {
-                        Instruction::LoadReferenceCallTarget
-                    });
+                if matches!(usage, ChainUse::Callee) {
+                    // Preserve the receiver independently of the property read.
+                    // GetProperty keeps key conversion/getter order while a
+                    // retained assignment Reference is unnecessary for calls.
+                    self.code.push(Instruction::Duplicate);
+                    self.member_property(property, *computed, false)?;
+                } else {
+                    self.member_property(property, *computed, matches!(usage, ChainUse::Delete))?;
+                    if matches!(usage, ChainUse::Delete) {
+                        self.code.push(Instruction::DeleteReference);
+                    }
                 }
             }
             ExprKind::Call {
@@ -1126,12 +1130,17 @@ impl Compiler {
                 self.chain_value(inner, ChainUse::Callee)?;
             }
             ExprKind::Identifier(name) if matches!(usage, ChainUse::Callee) => {
-                let name = self.pool(Constant::String(name.as_str().into()))?;
-                self.code.push(Instruction::ResolveName {
-                    name,
-                    strict: self.strict,
-                });
-                self.code.push(Instruction::LoadReferenceCallTarget);
+                if let Some((scope, slot, _)) = self.local_binding(name) {
+                    self.code.push(Instruction::LoadBinding { scope, slot });
+                    self.code.push(Instruction::AsCallTarget);
+                } else {
+                    let name = self.pool(Constant::String(name.as_str().into()))?;
+                    self.code.push(Instruction::ResolveName {
+                        name,
+                        strict: self.strict,
+                    });
+                    self.code.push(Instruction::LoadReferenceCallTarget);
+                }
             }
             _ => {
                 self.expression(expression)?;

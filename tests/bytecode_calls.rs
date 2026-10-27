@@ -25,6 +25,53 @@ fn value(realm: &Realm, source: &str) -> Value {
 }
 
 #[test]
+fn direct_call_targets_snapshot_receivers_and_keep_key_getter_argument_order() {
+    for (key_setup, call, expected) in [
+        ("", "a.m(arg())", "42:GAC"),
+        (
+            "var key={toString:function(){log+='K';a={x:0};return 'm';}};",
+            "a[key](arg())",
+            "42:KGAC",
+        ),
+        ("", "(a.m)(arg())", "42:GAC"),
+    ] {
+        let realm = setup(&format!(
+            "var log='';var a={{x:40}};Object.defineProperty(a,'m',{{get:function(){{log+='G';a={{x:0}};return function(v){{log+='C';return this.x+v;}};}}}});function arg(){{log+='A';return 2;}}{key_setup}"
+        ));
+        assert!(
+            value(&realm, &format!("var n={call};n+':'+log;"))
+                .same_value(&Value::String(expected.into()))
+        );
+    }
+    let realm = setup(
+        "var log='';Object.defineProperty(String.prototype,'m',{get:function(){'use strict';log+='G';return function(v){'use strict';log+='C';return this==='abc'&&v===42;};}});function arg(){log+='A';return 42;}",
+    );
+    assert!(
+        value(&realm, "var n='abc'.m(arg());n+':'+log;")
+            .same_value(&Value::String("true:GAC".into()))
+    );
+    for source in [
+        "function f(){'use strict';var g=function(v){return this===undefined&&v===42;};return g(42);}f();",
+        "function f(){'use strict';{let g=function(){return this===undefined;};return g();}}f();",
+    ] {
+        assert!(value(&setup(""), source).same_value(&Value::Boolean(true)));
+    }
+    for (body, kind, calls) in [
+        ("g(calls++);let g;", RuntimeErrorKind::ReferenceError, 0.0),
+        ("var g;g(calls++);", RuntimeErrorKind::TypeError, 1.0),
+    ] {
+        let realm = setup("var calls=0;");
+        assert_eq!(
+            vm(&realm, &format!("function f(){{{body}}}f();"))
+                .unwrap_err()
+                .kind(),
+            kind
+        );
+        assert!(value(&realm, "calls;").same_value(&Value::Number(calls)));
+    }
+}
+
+#[test]
 fn inline_and_heap_argument_lists_preserve_nested_calls_receivers_and_constructors() {
     let realm = setup(
         "function count(){return arguments.length;}function f(a,b,c){return a+b+c;}function C(a,b,c){this.answer=a+b+c;}var o={x:40,m:function(a,b){return this.x+a+b;}};",

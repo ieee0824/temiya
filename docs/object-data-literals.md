@@ -38,3 +38,17 @@ initializer conformance.
 
 Primary semantics: [Object Initializer](https://tc39.es/ecma262/multipage/ecmascript-language-expressions.html#sec-object-initializer)
 and [CopyDataProperties](https://tc39.es/ecma262/multipage/abstract-operations.html#sec-copydataproperties).
+
+## Default AST performance observation
+
+[Hosted run 40472024686](https://github.com/ieee0824/temiya/actions/runs/40472024686)
+compared the default AST worker before/after on AMD EPYC 9V45, with the original
+11 workloads, 15 timed samples plus a checked warmup, three alternating pairs,
+and 512 MiB / 180-second guards. Both modes have 66 successful workers and 1056
+correct values. [Before/after](../benchmarks/object-data-hosted-beforeafter.json)
+has all 33 pairs within noise; [actual Boa](../benchmarks/object-data-hosted-boa.json)
+has all 33 pairs slower for Temiya. This records the effect on the default AST
+path, not VM throughput or overall Boa superiority. The
+[provenance record](../benchmarks/object-data-hosted-provenance.json) retains
+source/binary/build identities, machine data and hashes. All sample statistics
+and fixed classifications were independently recomputed.

@@ -237,7 +237,7 @@ impl From<String> for JsString {
     }
 }
 impl PartialEq for JsString {
-    #[inline]
+    #[inline(always)]
     fn eq(&self, other: &Self) -> bool {
         match (&self.0, &other.0) {
             // Inline buffers are zero-padded by every constructor. Compare them
@@ -251,9 +251,17 @@ impl PartialEq for JsString {
                     len: b,
                     units: right,
                 },
-            ) => {
-                return a == b && left == right;
-            }
+            ) => a == b && left == right,
+            _ => self.eq_other(other),
+        }
+    }
+}
+impl JsString {
+    // Keep the common inline-key comparison small enough to embed at call sites.
+    // Shared/mixed storage retains the same identity and exact UTF-16 checks.
+    #[inline(never)]
+    fn eq_other(&self, other: &Self) -> bool {
+        match (&self.0, &other.0) {
             (Storage::Shared(left), Storage::Shared(right)) if Arc::ptr_eq(left, right) => {
                 return true;
             }

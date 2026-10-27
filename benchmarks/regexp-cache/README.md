@@ -1,7 +1,7 @@
 # RegExp compilation cache evidence
 
-Partial evidence for PR #515 / issue #513. Hosted two-copy x64 run 40584186976
-and final validation are pending. No overall performance-goal completion is
+Evidence for PR #515 / issue #513. Hosted two-copy x64 run 40584186976
+is complete; final source validation is tracked on PR #515. No overall performance-goal completion is
 claimed. See [method, results and limits](../../docs/regexp-compilation-cache.md).
 
 `variants.json` identifies every measured source, executable hash and compiler.
@@ -47,8 +47,26 @@ node benchmarks/regexp-cache/verify-cold-unique.mjs
 node benchmarks/typed-number/verify-integrity.mjs benchmarks/regexp-cache
 ```
 
-There are currently 12 fixed-suite reports, 312 workers, 4,992 checked values and
-156 pair decisions, plus the separate cold/unique diagnostic's nine workers,
+There are 28 fixed-suite reports, 984 workers, 15,744 checked values and
+492 pair decisions, plus the separate cold/unique diagnostic's nine workers,
 144 checked values and six comparisons. `inventory.json` hashes every stored
 file except itself and also hashes decoded gzip payloads. Memory observations
 are sampled process HWM, including startup/setup/warmup; null is not zero.
+
+`cold-unique/profile/` preserves run 40586406012 / artifact 12771152716, optimized
+Callgrind diagnostics over the exact 2,048-construction input, including both
+checked passes. Inclusive counts overlap and are not native elapsed-speed wins.
+The binary is hashed by the job but is not distributed in this artifact. Verify:
+
+```sh
+node benchmarks/regexp-cache/verify-cold-profile.mjs
+```
+
+`hosted/` retains both AMD EPYC 7763 cohorts and all eight reports per cohort,
+including the one identical-binary array slowdown (ratio 1.420).
+`hosted-verification.json` checks source equivalence, the exact worker identities
+across both suites, real application provenance and observed Bytecode modes.
+`validation-*.json` and the compressed CI log record all four CI and all three
+security jobs for source 2b2a690, including the actual 64 fixed-corpus passes on
+both stable and MSRV. See PR #515 checks for validation of the final recording commit, including the
+later UTF-16 test.

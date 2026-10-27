@@ -2,7 +2,7 @@ use std::{cell::RefCell, rc::Rc};
 use temiya::{
     Engine,
     embedding::ScriptBackend,
-    runtime::{JsString, Object, RegExp, RuntimeError, Value},
+    runtime::{JsString, Object, RegExp, RuntimeError, RuntimeErrorKind, Value},
 };
 
 #[test]
@@ -156,5 +156,37 @@ fn reused_capture_storage_clears_unmatched_groups_and_old_inputs() {
             .unwrap()
             .captures[1],
         Some(JsString::from("a"))
+    );
+}
+
+#[test]
+fn cached_matcher_preserves_utf16_boundaries_and_current_surrogate_errors() {
+    let original = RegExp::new(JsString::from("(.)"), "gu").unwrap();
+    let cached = RegExp::new(JsString::from("(.)"), "gu").unwrap();
+    let lone = JsString::from_code_units(vec![0xd800]);
+    cached.set_last_index(1);
+    assert_eq!(
+        cached.exec(&lone).unwrap_err().kind(),
+        RuntimeErrorKind::TypeError
+    );
+    assert_eq!(cached.last_index(), 1);
+    let input = JsString::from("😀a");
+    assert!(cached.exec(&input).unwrap().is_none());
+    assert_eq!(cached.last_index(), 0);
+    let matched = cached.exec(&input).unwrap().unwrap();
+    assert_eq!(matched.index, 0);
+    assert_eq!(
+        matched.captures,
+        vec![Some(JsString::from("😀")), Some(JsString::from("😀"))]
+    );
+    assert_eq!(cached.last_index(), 2);
+    assert_eq!(original.last_index(), 0);
+    assert_eq!(
+        RegExp::new(lone.clone(), "u").unwrap_err().kind(),
+        RuntimeErrorKind::TypeError
+    );
+    assert_eq!(
+        RegExp::new(lone, "gg").unwrap_err().kind(),
+        RuntimeErrorKind::SyntaxError
     );
 }

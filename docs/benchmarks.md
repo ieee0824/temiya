@@ -577,4 +577,5 @@ and complete application/collector/SpiderMonkey superiority remain unfinished.
 The [RegExp compilation cache experiment](regexp-compilation-cache.md) records
 bounded matcher reuse, the complete rejected configurations, and separate warm
 and cold/unique measurements. Warm-suite ARM64 wins do not remove the recorded
-cold-construction gap against actual Boa; hosted x64 validation is pending.
+cold-construction gap against actual Boa (#516). Two independent x64 cohorts
+confirm the warm-suite wins; all negative control observations are retained.

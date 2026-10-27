@@ -1,0 +1,35 @@
+{
+  "fixture_kind": "authored-regexp",
+  "fixture_version": 1,
+  "reference_engine_revision": "007556adccb8fb4329236932ca8175f8e8d119d2",
+  "source": "Authored RegExp suite; original omoikane eleven unchanged",
+  "workloads": [
+    {
+      "name": "regexp-construction",
+      "group": "regexp",
+      "iterations": 128,
+      "expected": 1920,
+      "oracle": "128 matches, each full match length 8 plus captures of lengths 5 and 2: 128*15=1920. Pattern text varies; construction may use engine caches.",
+      "setup_sha256": "39330cd95d79e9c8f999d7017bc9a19cae52b801c7b1768ef4ea45d34edc08f4",
+      "invocation_sha256": "6b93e1f17160c4194579b10acf5493b31e568e40e6d60192dd111331687d4427"
+    },
+    {
+      "name": "regexp-global-exec",
+      "group": "regexp",
+      "iterations": 2048,
+      "expected": 18432,
+      "oracle": "Three matches of lengths 3,4,2 give 9*2048=18432. A failed exec terminates each scan and resets global state; a final non-match is checked.",
+      "setup_sha256": "6e30b3c703c2e0586daa20819e42421db75b72b4d2ea309ca199c8a008de065e",
+      "invocation_sha256": "62a421b7e3374d444d1eb2750453c0295a83216bfcfccd311bfd0bc9822220dc"
+    },
+    {
+      "name": "regexp-unicode-captures",
+      "group": "regexp",
+      "iterations": 2048,
+      "expected": 6144,
+      "oracle": "1024 astral matches contribute 2+2 UTF-16 units; 1024 ASCII matches contribute 1+1: 1024*6=6144.",
+      "setup_sha256": "0f2ba722bdbf988887302e4acac4c8d072c2f6456d54bc096e373543d241005e",
+      "invocation_sha256": "62a421b7e3374d444d1eb2750453c0295a83216bfcfccd311bfd0bc9822220dc"
+    }
+  ]
+}

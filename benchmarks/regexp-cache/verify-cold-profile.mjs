@@ -1,0 +1,17 @@
+import fs from 'node:fs';
+import {gunzipSync} from 'node:zlib';
+import {createHash} from 'node:crypto';
+const root=new URL('./cold-unique/profile/',import.meta.url);
+const hash=b=>createHash('sha256').update(b).digest('hex');
+const read=name=>fs.readFileSync(new URL(name,root));
+const need=(b,s)=>{if(!b)throw Error(s);};
+const input=read('diagnostic-input.json'),w=JSON.parse(input),p=JSON.parse(read('provenance.json')),m=JSON.parse(read('instrumented-worker-output.json'));
+need(input.equals(fs.readFileSync(new URL('./cold-unique/input.json',import.meta.url)))&&p.input_sha256===hash(input)&&p.setup_sha256===hash(w.setup)&&p.invocation_sha256===hash(w.invocation),'exact cold unique input');
+need(p.measured_revision==='7130f33d3ce466f9d61e344d1690659217dfe5e3'&&p.iterations===2048&&p.independent_expected===2048*(8+5+2),'source and independent oracle');
+need(m.expected===30720&&m.validated_passes===2&&m.samples_ns.length===1&&m.warmup_ns>0&&m.samples_ns[0]>0&&m.mode==='Auto Script'&&m.setup_backend==='Bytecode'&&m.invocation_backend==='Bytecode','two checked public Engine passes');
+need(p.build.profile==='release'&&p.build.release_debug===1&&p.build.rustflags==='-C dwarf-version=4'&&p.build.features.length===0,'diagnostic build');
+const raw=gunzipSync(read('callgrind.out.gz')).toString(),inc=gunzipSync(read('inclusive.txt.gz')).toString();
+need(/^summary: 593647915$/m.test(raw)&&/^totals: 593647915$/m.test(raw),'whole process instruction totals');
+for(const [count,needle]of [['349,983,727','<regex_automata::meta::regex::Builder>::build'],['108,999,858','<regex_syntax::ast::parse::Parser>::parse'],['58,951,246','<regex_syntax::hir::translate::Translator>::translate'],['91,633,554','<regex_automata::nfa::thompson::compiler::Compiler>::build_many_from_hir'],['50,966,838','compile_matcher::{closure#0}']])need(inc.split('\n').some(line=>line.startsWith(count.padStart(11))&&line.includes(' * ')&&line.includes(needle)),'inclusive attribution '+needle);
+need(inc.includes('Builder>::build (4,096x)'),'all fresh constructions profiled');
+console.log('Verified exact cold/unique input, two checked passes and recorded instruction attributions. Not an elapsed-speed result.');

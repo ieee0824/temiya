@@ -1,0 +1,8 @@
+{
+  "name": "regexp-cold-unique-diagnostic",
+  "iterations": 2048,
+  "expected": 30720,
+  "setup": "var uniqueSerial=0;function uniqueRegexpBody(count){var total=0;for(var i=0;i<count;i++){var pattern='([a-z]+)-([0-9]+)(?:unique'+(uniqueSerial++)+')?';var result=new RegExp(pattern).exec('alpha-42');if(result===null)return -1;total+=result[0].length+result[1].length+result[2].length;}return total;}",
+  "invocation": "uniqueRegexpBody(2048);",
+  "oracle": "2048*(8+5+2); serial pattern text never repeats within a worker, including warmup and samples"
+}

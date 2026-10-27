@@ -19,7 +19,7 @@ for(let i=0;i<16;i++)need(vm.runInContext(workload.invocation,context)===30720,'
 need(vm.runInContext('uniqueSerial;',context)===32768,'all patterns fresh across passes');
 const candidate=JSON.parse(readFileSync(candidateInfo)),baseline=JSON.parse(readFileSync(baselineInfo)),boa=JSON.parse(readFileSync(boaInfo));
 const rustc=execFileSync('rustc',['-Vv'],{encoding:'utf8'}).trim();
-for(const info of [candidate,baseline])need(info.profile==='release'&&info.mode==='Auto Script'&&info.features?.length===0&&/^[a-f0-9]{40}$/.test(info.revision??'')&&info.rustc===rustc&&info.executable_sha256===hash(readFileSync(info.executable)),'Temiya build/source/compiler/binary provenance');
+for(const info of [candidate,baseline])need(info.profile==='release'&&info.mode==='Auto Script'&&Array.isArray(info.features)&&info.features.length===0&&/^[a-f0-9]{40}$/.test(info.revision??'')&&info.rustc===rustc&&info.executable_sha256===hash(readFileSync(info.executable)),'Temiya build/source/compiler/binary provenance');
 const canonical=hash(readFileSync(new URL('../benchmarks/omoikane-worker/main.rs',import.meta.url)));
 const historical=boa.worker_source_sha256==='031ee68a56d3c61ec45ca8f7069526dae3fa6eda6adeb79e3f39e6c3539041a8';
 need(boa.worker_source_sha256===canonical||historical,'actual adapter identity');

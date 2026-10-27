@@ -68,11 +68,11 @@ thread_local! {
 fn compile_nfa(
     hir: &Hir,
     source_units: usize,
-) -> Result<NFA, regex_automata::nfa::thompson::BuildError> {
+) -> Result<NFA, Box<regex_automata::nfa::thompson::BuildError>> {
     if source_units <= SMALL_SOURCE_UNITS {
         let result = SMALL_COMPILER.with(|slot| {
             let mut small = slot.borrow_mut();
-            let result = small.build_from_hir(hir);
+            let result = small.build_from_hir(hir).map_err(Box::new);
             if result.is_err() {
                 *small = compiler(SMALL_NFA_BYTES);
             }
@@ -84,7 +84,9 @@ fn compile_nfa(
         #[cfg(test)]
         SMALL_FALLBACKS.with(|count| count.set(count.get() + 1));
     }
-    compiler(FULL_NFA_BYTES).build_from_hir(hir)
+    compiler(FULL_NFA_BYTES)
+        .build_from_hir(hir)
+        .map_err(Box::new)
 }
 
 impl Matcher {
@@ -92,7 +94,7 @@ impl Matcher {
         let nfa = compile_nfa(hir, source_units)
             .map_err(|error| RuntimeError::syntax_error(error.to_string()))?;
         let fast = BACKTRACK_BUILDER
-            .with(|builder| builder.build_from_nfa(nfa))
+            .with(|builder| builder.build_from_nfa(nfa).map_err(Box::new))
             .map_err(|error| RuntimeError::syntax_error(error.to_string()))?;
         Ok(Self::Direct { fast })
     }
@@ -124,9 +126,11 @@ impl Matcher {
                     let linear = scratch.linear.get_or_insert_with(|| {
                         // Both builders validate the same look set; the bounded
                         // builder already accepted this immutable NFA.
-                        let vm = LINEAR_BUILDER
-                            .with(|builder| builder.build_from_nfa(fast.get_nfa().clone()))
-                            .expect("NFA already validated by bounded engine");
+                        let vm = LINEAR_BUILDER.with(|builder| {
+                            builder
+                                .build_from_nfa(fast.get_nfa().clone())
+                                .expect("NFA already validated by bounded engine")
+                        });
                         let cache = vm.create_cache();
                         Box::new(LinearScratch { vm, cache })
                     });

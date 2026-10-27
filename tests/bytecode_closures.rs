@@ -40,6 +40,12 @@ fn arguments_remain_visible_to_escaped_arrows_and_independent_calls() {
         "(function(){let arguments=42;return ()=>arguments;})()();",
         "(function(){'use strict';return arguments[0];})(42);",
         "(function(){return ()=>typeof arguments;})()() === 'object' ? 42 : 0;",
+        "(function(){var arguments;return arguments[0];})(42);",
+        "(function(){return arguments[0];var arguments;})(42);",
+        "(function(){if(true){var arguments;}return arguments[0];})(42);",
+        "(function(arguments){var arguments;return arguments;})(42);",
+        "(function(){var arguments=42;return arguments;})();",
+        "(function(){function arguments(){return 42;}return arguments();})();",
     ] {
         assert!(
             value(&Realm::ordinary(), source).same_value(&Value::Number(42.0)),

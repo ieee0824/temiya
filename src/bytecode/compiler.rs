@@ -1371,10 +1371,25 @@ fn bytecode_may_observe_arguments(body: &VerifiedBytecode) -> bool {
                     || name.code_units().iter().copied().eq("eval".encode_utf16())
             }
             Constant::Function(template) => bytecode_may_observe_arguments(&template.body),
-            Constant::Scope(scope) => scope
-                .functions
-                .iter()
-                .any(|function| bytecode_may_observe_arguments(&function.template.body)),
+            Constant::Scope(scope) => {
+                scope.bindings.iter().any(|binding| {
+                    binding
+                        .name
+                        .code_units()
+                        .iter()
+                        .copied()
+                        .eq("arguments".encode_utf16())
+                        || binding
+                            .name
+                            .code_units()
+                            .iter()
+                            .copied()
+                            .eq("eval".encode_utf16())
+                }) || scope
+                    .functions
+                    .iter()
+                    .any(|function| bytecode_may_observe_arguments(&function.template.body))
+            }
             _ => false,
         })
 }

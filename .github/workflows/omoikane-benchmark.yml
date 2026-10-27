@@ -70,8 +70,12 @@ jobs:
           const executable = path.join(process.env.RUNNER_TEMP, 'temiya-baseline-target/release/examples/measure_workload');
           const git = args => execFileSync('git', ['-C', checkout, ...args], { encoding: 'utf8' }).trim();
           if (git(['status', '--porcelain']) !== '') throw Error('baseline checkout changed');
+          const probePath = path.join(process.env.RUNNER_TEMP, 'temiya-mode-probe.json');
+          fs.writeFileSync(probePath, JSON.stringify({name:'mode-probe',setup:'',invocation:'40+2;',expected:42,iterations:1}));
+          const probe = JSON.parse(execFileSync(executable, [probePath, '1'], {encoding:'utf8',timeout:60000}));
+          if (!['AST interpreter','Auto Script','Auto Script+loop'].includes(probe.mode) || probe.validated_passes !== 2) throw Error('baseline mode probe failed');
           const info = {
-            name: 'Temiya', engine: 'Temiya', mode: 'AST interpreter', profile: 'release', features: [],
+            name: 'Temiya', engine: 'Temiya', mode: probe.mode, profile: 'release', features: [], mode_probe: probe,
             revision: git(['rev-parse', 'HEAD']), executable,
             executable_sha256: createHash('sha256').update(fs.readFileSync(executable)).digest('hex'),
             rustc: execFileSync('rustc', ['-Vv'], { encoding: 'utf8' }).trim(),

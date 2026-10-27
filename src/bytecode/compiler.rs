@@ -394,27 +394,6 @@ impl Compiler {
     fn expression(&mut self, expression: &Expr) -> Result<(), CompileError> {
         match &expression.kind {
             ExprKind::Literal(literal) => self.literal(literal, expression.span),
-            ExprKind::Array { elements, .. } => {
-                self.code.push(Instruction::CreateArray);
-                for element in elements {
-                    match element {
-                        Some(Expr {
-                            kind: ExprKind::Spread(value),
-                            ..
-                        }) => {
-                            self.expression(value)?;
-                            self.code.push(Instruction::SpreadArray);
-                        }
-                        Some(value) => {
-                            self.expression(value)?;
-                            self.code.push(Instruction::AppendArray);
-                        }
-                        None => self.code.push(Instruction::ElideArray),
-                    }
-                }
-                self.code.push(Instruction::FinishArray);
-                Ok(())
-            }
             ExprKind::Object(properties) => {
                 self.code.push(Instruction::CreateObject);
                 for property in properties {
@@ -450,6 +429,27 @@ impl Compiler {
                         prototype_setter: !property.computed && !property.shorthand && proto_name,
                     });
                 }
+                Ok(())
+            }
+            ExprKind::Array { elements, .. } => {
+                self.code.push(Instruction::CreateArray);
+                for element in elements {
+                    match element {
+                        Some(Expr {
+                            kind: ExprKind::Spread(value),
+                            ..
+                        }) => {
+                            self.expression(value)?;
+                            self.code.push(Instruction::SpreadArray);
+                        }
+                        Some(value) => {
+                            self.expression(value)?;
+                            self.code.push(Instruction::AppendArray);
+                        }
+                        None => self.code.push(Instruction::ElideArray),
+                    }
+                }
+                self.code.push(Instruction::FinishArray);
                 Ok(())
             }
             ExprKind::Identifier(name) => {
@@ -503,10 +503,7 @@ impl Compiler {
                         optional: false,
                     } => {
                         self.expression(object)?;
-                        self.property_key(property, *computed)?;
-                        self.code.push(Instruction::ResolveProperty {
-                            strict: self.strict,
-                        });
+                        self.member_property(property, *computed, true)?;
                         None
                     }
                     _ => return Err(self.unsupported("assignment target", target.span)),
@@ -566,11 +563,25 @@ impl Compiler {
                 if !matches!(operator.as_str(), "++" | "--") {
                     return Err(self.unsupported("update operator", expression.span));
                 }
-                self.resolve_update_reference(argument)?;
-                self.code.push(Instruction::UpdateReference {
-                    increment: operator == "++",
-                    prefix: *prefix,
-                });
+                let binding = match &unparenthesized(argument).kind {
+                    ExprKind::Identifier(name) => self.local_binding(name),
+                    _ => None,
+                };
+                if let Some((scope, slot, _)) = binding {
+                    self.code.push(Instruction::UpdateBinding {
+                        scope,
+                        slot,
+                        strict: self.strict,
+                        increment: operator == "++",
+                        prefix: *prefix,
+                    });
+                } else {
+                    self.resolve_update_reference(argument)?;
+                    self.code.push(Instruction::UpdateReference {
+                        increment: operator == "++",
+                        prefix: *prefix,
+                    });
+                }
                 Ok(())
             }
             ExprKind::Unary { operator, argument }
@@ -679,6 +690,26 @@ impl Compiler {
         value: &Expr,
         span: Span,
     ) -> Result<(), CompileError> {
+        let append = match (
+            operator,
+            &unparenthesized(target).kind,
+            &unparenthesized(value).kind,
+        ) {
+            (
+                "+=",
+                ExprKind::Identifier(name),
+                ExprKind::Literal(Literal::String { value, .. }),
+            ) => self
+                .local_binding(name)
+                .map(|(scope, slot, _)| (scope, slot, JsString::from_code_units_slice(value))),
+            _ => None,
+        };
+        if let Some((scope, slot, value)) = append {
+            let value = self.pool(Constant::String(value))?;
+            self.code
+                .push(Instruction::AppendStringBinding { scope, slot, value });
+            return Ok(());
+        }
         if !matches!(
             operator,
             "+=" | "-="
@@ -697,6 +728,22 @@ impl Compiler {
                 | "??="
         ) {
             return Err(self.unsupported("assignment operator", span));
+        }
+        // Function and lexical records keep their identity while the RHS runs.
+        // Retain the old value on the operand stack, then write the actual
+        // binding after conversion (which may reenter JavaScript). Globals and
+        // properties still require an observable reference resolved beforehand.
+        if !matches!(operator, "&&=" | "||=" | "??=") {
+            if let ExprKind::Identifier(name) = &unparenthesized(target).kind {
+                if let Some((scope, slot, _)) = self.local_binding(name) {
+                    self.code.push(Instruction::LoadBinding { scope, slot });
+                    self.expression(value)?;
+                    self.emit_binary(operator.strip_suffix('=').expect("compound suffix"), span)?;
+                    self.code.push(Instruction::Duplicate);
+                    self.code.push(Instruction::StoreBinding { scope, slot });
+                    return Ok(());
+                }
+            }
         }
         self.resolve_update_reference(target)?;
         self.code.push(Instruction::LoadReference);
@@ -743,11 +790,23 @@ impl Compiler {
         let target = unparenthesized(target);
         match &target.kind {
             ExprKind::Identifier(name) => {
-                let name = self.pool(Constant::String(name.as_str().into()))?;
-                self.code.push(Instruction::ResolveName {
-                    name,
-                    strict: self.strict,
-                });
+                if let Some((scope, slot, _)) = self.binding(name).filter(|(scope, _, _)| {
+                    self.scopes
+                        .iter()
+                        .any(|s| s.entry == *scope && s.kind != ScopeKind::Global)
+                }) {
+                    self.code.push(Instruction::ResolveBinding {
+                        scope,
+                        slot,
+                        strict: self.strict,
+                    });
+                } else {
+                    let name = self.pool(Constant::String(name.as_str().into()))?;
+                    self.code.push(Instruction::ResolveName {
+                        name,
+                        strict: self.strict,
+                    });
+                }
             }
             ExprKind::Member {
                 object,
@@ -756,10 +815,7 @@ impl Compiler {
                 optional: false,
             } => {
                 self.expression(object)?;
-                self.property_key(property, *computed)?;
-                self.code.push(Instruction::ResolveProperty {
-                    strict: self.strict,
-                });
+                self.member_property(property, *computed, true)?;
             }
             _ => return Err(self.unsupported("update target", target.span)),
         }
@@ -867,18 +923,20 @@ impl Compiler {
             None => None,
             _ => return Err(self.unsupported("function name", function.span)),
         };
+        let body = compiler.finish()?;
         Ok(FunctionTemplate {
             self_binding: name.is_some() && !arrow,
             arguments_object: !arrow
                 && !parameters
                     .iter()
                     .any(|name| name.code_units() == JsString::from("arguments").code_units())
-                && !body_shadows_arguments(function),
+                && !body_shadows_arguments(function)
+                && bytecode_may_observe_arguments(&body),
             name,
             parameters,
             arrow,
             strict,
-            body: compiler.finish()?,
+            body,
         })
     }
 
@@ -907,13 +965,54 @@ impl Compiler {
         if computed {
             return self.expression(property);
         }
+        let name = self.named_property_constant(property)?;
+        self.code.push(Instruction::LoadConstant(name));
+        Ok(())
+    }
+
+    fn named_property_constant(&mut self, property: &Expr) -> Result<u32, CompileError> {
         match &property.kind {
-            ExprKind::Identifier(name) => self.constant(Constant::String(name.as_str().into())),
+            ExprKind::Identifier(name) => self.pool(Constant::String(name.as_str().into())),
             ExprKind::Literal(Literal::String { value, .. }) => {
-                self.constant(Constant::String(JsString::from_code_units_slice(value)))
+                self.pool(Constant::String(JsString::from_code_units_slice(value)))
             }
             _ => Err(self.unsupported("property name", property.span)),
         }
+    }
+
+    fn member_property(
+        &mut self,
+        property: &Expr,
+        computed: bool,
+        resolve: bool,
+    ) -> Result<(), CompileError> {
+        let instruction = if computed {
+            self.expression(property)?;
+            if resolve {
+                Instruction::ResolveProperty {
+                    strict: self.strict,
+                }
+            } else {
+                Instruction::GetProperty {
+                    strict: self.strict,
+                }
+            }
+        } else {
+            let name = self.named_property_constant(property)?;
+            if resolve {
+                Instruction::ResolveNamedProperty {
+                    name,
+                    strict: self.strict,
+                }
+            } else {
+                Instruction::GetNamedProperty {
+                    name,
+                    strict: self.strict,
+                }
+            }
+        };
+        self.code.push(instruction);
+        Ok(())
     }
 
     fn member_value(&mut self, member: &Expr, delete: bool) -> Result<(), CompileError> {
@@ -979,20 +1078,17 @@ impl Compiler {
                     self.code.push(Instruction::Duplicate);
                     shortcuts.push((self.emit(Instruction::JumpIfNullish(0)), 1));
                 }
-                self.property_key(property, *computed)?;
-                if matches!(usage, ChainUse::Value) {
-                    self.code.push(Instruction::GetProperty {
-                        strict: self.strict,
-                    });
+                if matches!(usage, ChainUse::Callee) {
+                    // Preserve the receiver independently of the property read.
+                    // GetProperty keeps key conversion/getter order while a
+                    // retained assignment Reference is unnecessary for calls.
+                    self.code.push(Instruction::Duplicate);
+                    self.member_property(property, *computed, false)?;
                 } else {
-                    self.code.push(Instruction::ResolveProperty {
-                        strict: self.strict,
-                    });
-                    self.code.push(if matches!(usage, ChainUse::Delete) {
-                        Instruction::DeleteReference
-                    } else {
-                        Instruction::LoadReferenceCallTarget
-                    });
+                    self.member_property(property, *computed, matches!(usage, ChainUse::Delete))?;
+                    if matches!(usage, ChainUse::Delete) {
+                        self.code.push(Instruction::DeleteReference);
+                    }
                 }
             }
             ExprKind::Call {
@@ -1027,12 +1123,17 @@ impl Compiler {
                 self.chain_value(inner, ChainUse::Callee)?;
             }
             ExprKind::Identifier(name) if matches!(usage, ChainUse::Callee) => {
-                let name = self.pool(Constant::String(name.as_str().into()))?;
-                self.code.push(Instruction::ResolveName {
-                    name,
-                    strict: self.strict,
-                });
-                self.code.push(Instruction::LoadReferenceCallTarget);
+                if let Some((scope, slot, _)) = self.local_binding(name) {
+                    self.code.push(Instruction::LoadBinding { scope, slot });
+                    self.code.push(Instruction::AsCallTarget);
+                } else {
+                    let name = self.pool(Constant::String(name.as_str().into()))?;
+                    self.code.push(Instruction::ResolveName {
+                        name,
+                        strict: self.strict,
+                    });
+                    self.code.push(Instruction::LoadReferenceCallTarget);
+                }
             }
             _ => {
                 self.expression(expression)?;
@@ -1270,6 +1371,45 @@ fn scope_bindings(
         }));
     }
     Ok(bindings)
+}
+
+// Constants conservatively cover all identifier/property spellings, including
+// captured uses in nested arrows. Retain arguments for eval as well, so adding
+// direct eval cannot silently invalidate this elision. False positives are safe.
+fn bytecode_may_observe_arguments(body: &VerifiedBytecode) -> bool {
+    body.bytecode()
+        .constants
+        .iter()
+        .any(|constant| match constant {
+            Constant::String(name) => {
+                name.code_units()
+                    .iter()
+                    .copied()
+                    .eq("arguments".encode_utf16())
+                    || name.code_units().iter().copied().eq("eval".encode_utf16())
+            }
+            Constant::Function(template) => bytecode_may_observe_arguments(&template.body),
+            Constant::Scope(scope) => {
+                scope.bindings.iter().any(|binding| {
+                    binding
+                        .name
+                        .code_units()
+                        .iter()
+                        .copied()
+                        .eq("arguments".encode_utf16())
+                        || binding
+                            .name
+                            .code_units()
+                            .iter()
+                            .copied()
+                            .eq("eval".encode_utf16())
+                }) || scope
+                    .functions
+                    .iter()
+                    .any(|function| bytecode_may_observe_arguments(&function.template.body))
+            }
+            _ => false,
+        })
 }
 
 fn unparenthesized(mut expression: &Expr) -> &Expr {

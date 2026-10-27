@@ -1,5 +1,8 @@
 # Portable bytecode
 
+The current integration candidate defaults Engine to whole-Script Auto selection: supported Scripts use verified bytecode and unsupported Scripts use AST before any observable execution. Explicit Ast and Bytecode selections remain available. Earlier sections describe historical implementation stages, including the former AST default. No AST-function loop tier is enabled by this integration. Final default-API performance qualification is pending; see [integration scope](auto-backend-integration.md).
+
+
 `temiya::bytecode::Bytecode` is a pointer-free stack IR. Constants contain only
 portable ECMAScript primitives and immutable scope/function descriptors; instruction operands are fixed-width `u32`
 indices, and branch operands are absolute instruction indices. Runtime objects,

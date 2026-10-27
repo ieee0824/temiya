@@ -30,6 +30,51 @@ fn function_and_arrow_bodies_execute_verified_bytecode_with_parameters() {
 }
 
 #[test]
+fn prepared_parameter_frames_preserve_duplicates_missing_arguments_and_captures() {
+    for source in [
+        "(function(a,a){return a;})(1,42);",
+        "(function(a,a){return typeof a==='undefined'?42:0;})(1);",
+        "(function(a){var a;return a;})(42,99);",
+        "(function(arguments){return arguments;})(42);",
+        "(function(a){function a(){return 42;}return a();})(0);",
+        "(function(a){return ()=>a;})(42)();",
+        "((a,b)=>a+b)(20,22);",
+        "function F(a){this.x=a;}var object=new F(42);object.x;",
+        "(function(a){return arguments.length===2 && a===20?42:0;})(20,22);",
+    ] {
+        assert!(
+            value(&Realm::ordinary(), source).same_value(&Value::Number(42.0)),
+            "{source}"
+        );
+    }
+}
+
+#[test]
+fn arguments_remain_visible_to_escaped_arrows_and_independent_calls() {
+    for source in [
+        "var f=(function(a){return ()=>arguments[0];})(42);f();",
+        "var f=(function(a){return ()=>()=>arguments[0];})(42);f()();",
+        "function outer(a){function inner(){return ()=>arguments[0];}return inner(a);}outer(42)();",
+        "function f(a){return ()=>arguments[0];}var x=f(20);var y=f(22);x()+y();",
+        "(function(arguments){return ()=>arguments;})(42)();",
+        "(function(){let arguments=42;return ()=>arguments;})()();",
+        "(function(){'use strict';return arguments[0];})(42);",
+        "(function(){return ()=>typeof arguments;})()() === 'object' ? 42 : 0;",
+        "(function(){var arguments;return arguments[0];})(42);",
+        "(function(){return arguments[0];var arguments;})(42);",
+        "(function(){if(true){var arguments;}return arguments[0];})(42);",
+        "(function(arguments){var arguments;return arguments;})(42);",
+        "(function(){var arguments=42;return arguments;})();",
+        "(function(){function arguments(){return 42;}return arguments();})();",
+    ] {
+        assert!(
+            value(&Realm::ordinary(), source).same_value(&Value::Number(42.0)),
+            "{source}"
+        );
+    }
+}
+
+#[test]
 fn escaped_captures_share_mutations_and_outlive_code_and_realm_handles() {
     let closure = {
         let realm = Realm::ordinary();

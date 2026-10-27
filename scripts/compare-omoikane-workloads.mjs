@@ -24,7 +24,7 @@ const manifest = JSON.parse(readFileSync(join(directory, 'manifest.json')));
 const boa = JSON.parse(readFileSync(boaInfoFile));
 if (manifest.revision !== revision || manifest.fixture_sha256 !== fixtureSha256) throw Error('fixture provenance mismatch');
 if (beforeAfter) {
-  if (boa.name !== 'Temiya' || boa.mode !== 'AST interpreter' || boa.profile !== 'release' ||
+  if (boa.name !== 'Temiya' || !['AST interpreter', 'Auto Script', 'Auto Script+loop'].includes(boa.mode) || boa.profile !== 'release' ||
       !Array.isArray(boa.features) || boa.features.length !== 0 || !/^[a-f0-9]{40}$/.test(boa.revision ?? '') ||
       boa.executable_sha256 !== hash(readFileSync(boa.executable))) throw Error('Temiya baseline provenance mismatch');
 } else if (boa.omoikane_revision !== manifest.revision || !boa.checkout_clean ||
@@ -32,11 +32,11 @@ if (beforeAfter) {
 const rustc = execFileSync('rustc', ['-Vv'], { encoding: 'utf8' }).trim();
 if (boa.rustc !== rustc) throw Error('use the same Rust compiler for both workers');
 const workers = beforeAfter ? [
-  { name: 'Temiya after', engine: 'Temiya', executable: temiya, revision: process.env.TEMIYA_REVISION, mode: 'AST interpreter',
+  { name: 'Temiya after', engine: 'Temiya', executable: temiya, revision: process.env.TEMIYA_REVISION, mode: 'Auto Script',
     executable_sha256: hash(readFileSync(temiya)), features: [], profile: 'release' },
   { ...boa, name: 'Temiya before', engine: 'Temiya' },
 ] : [
-  { name: 'Temiya', executable: temiya, revision: process.env.TEMIYA_REVISION, mode: 'AST interpreter',
+  { name: 'Temiya', executable: temiya, revision: process.env.TEMIYA_REVISION, mode: 'Auto Script',
     executable_sha256: hash(readFileSync(temiya)), features: [], profile: 'release' },
   { name: 'omoikane vendored Boa', executable: boa.executable, revision: boa.omoikane_revision,
     mode: 'interpreter', build: boa },

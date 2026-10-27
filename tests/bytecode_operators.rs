@@ -1,8 +1,162 @@
 use temiya::{
-    bytecode::{BytecodeCompiler, VirtualMachine},
+    bytecode::{BytecodeCompiler, Constant, Instruction, VirtualMachine},
     parser::parse_script,
     runtime::{Completion, Realm, RuntimeErrorKind, StatementEvaluator, Value},
 };
+
+#[test]
+fn local_number_updates_preserve_signed_zero_nonfinite_and_fallback_types() {
+    for source in [
+        "(function(){var x=-0;var old=x++;return 1/old===-Infinity && x===1;})();",
+        "(function(){let x=0;var a=--x;var b=x--;return a===-1 && b===-1 && x===-2;})();",
+        "(function(){var x=Infinity;var old=x++;return old===Infinity && x===Infinity;})();",
+        "(function(){var x=NaN;var old=x++;return old!==old && x!==x;})();",
+        "(function(){var x='41';var old=x++;return old===41 && x===42;})();",
+        "(function(){var x=41n;var old=x++;return old===41n && x===42n;})();",
+    ] {
+        for vm in [false, true] {
+            assert!(
+                result(&Realm::ordinary(), source, vm).same_value(&Value::Boolean(true)),
+                "{source}"
+            );
+        }
+    }
+    for vm in [false, true] {
+        let realm = Realm::ordinary();
+        let source = "var read;function f(){const x=41;read=function(){return x;};x++;}f();";
+        assert_eq!(
+            execute(&realm, source, vm).unwrap_err().kind(),
+            RuntimeErrorKind::TypeError
+        );
+        assert!(result(&realm, "read();", vm).same_value(&Value::Number(41.0)));
+    }
+}
+
+#[test]
+fn lexical_updates_capture_verified_binding_before_numeric_coercion() {
+    let source = "var calls=0;function f(){var x=new Object();x.valueOf=function(){calls++;x=99;return 41;};for(var i=0;i<1;i++){var old=x++;}return old+':'+x+':'+calls;}f();";
+    let code = BytecodeCompiler::compile(source).unwrap();
+    assert!(code.bytecode().constants.iter().any(|constant| {
+        match constant {
+            Constant::Function(template) => {
+                template.body.bytecode().instructions.iter().any(|op| {
+                    matches!(
+                        op,
+                        Instruction::ResolveBinding { .. } | Instruction::UpdateBinding { .. }
+                    )
+                })
+            }
+            Constant::Scope(scope) => scope.functions.iter().any(|declaration| {
+                declaration
+                    .template
+                    .body
+                    .bytecode()
+                    .instructions
+                    .iter()
+                    .any(|op| {
+                        matches!(
+                            op,
+                            Instruction::ResolveBinding { .. } | Instruction::UpdateBinding { .. }
+                        )
+                    })
+            }),
+            _ => false,
+        }
+    }));
+    for vm in [false, true] {
+        assert!(
+            result(&Realm::ordinary(), source, vm).same_value(&Value::String("41:42:1".into()))
+        );
+    }
+}
+
+#[test]
+fn local_compound_assignments_snapshot_values_and_preserve_abrupt_ordering() {
+    for source in [
+        "(function(){var x=20;var y=(x+=(x=100,22));return x===42&&y===42;})();",
+        "(function(){let x=20;function rhs(){x=100;return 22;}return (x+=rhs())===42&&x===42;})();",
+        "(function(){var x={valueOf:function(){x=99;return 40;}};var y={valueOf:function(){x=100;return 2;}};return (x+=y)===42&&x===42;})();",
+        "(function(){let x=43;x-=1;x*=2;x/=2;x%=100;x**=1;x|=0;x&=63;x^=0;x<<=1;x>>=1;x>>>=0;return x===42;})();",
+        "(function(){var x=41n;return (x+=1n)===42n&&x===42n;})();",
+        "(function(){var x='old';return (x+=(x='changed','!'))==='old!'&&x==='old!';})();",
+    ] {
+        for vm in [false, true] {
+            assert!(
+                result(&Realm::ordinary(), source, vm).same_value(&Value::Boolean(true)),
+                "{source}"
+            );
+        }
+    }
+    for vm in [false, true] {
+        let realm = Realm::ordinary();
+        let source = "var calls=0;function f(){const x=41;x+=(calls++,1);}f();";
+        assert_eq!(
+            execute(&realm, source, vm).unwrap_err().kind(),
+            RuntimeErrorKind::TypeError
+        );
+        assert!(result(&realm, "calls;", vm).same_value(&Value::Number(1.0)));
+        let realm = Realm::ordinary();
+        let source = "var calls=0;function f(){x+=(calls++,1);let x;}f();";
+        assert_eq!(
+            execute(&realm, source, vm).unwrap_err().kind(),
+            RuntimeErrorKind::ReferenceError
+        );
+        assert!(result(&realm, "calls;", vm).same_value(&Value::Number(0.0)));
+    }
+}
+
+#[test]
+fn loop_compound_binding_retains_identity_across_coercion_and_capture() {
+    let source = "var calls=0;function f(){var x={valueOf:function(){calls++;x=99;return 41;}};function read(){return x;}for(var i=0;i<1;i++){x+=1;}return read()+':'+calls;}f();";
+    for vm in [false, true] {
+        assert!(result(&Realm::ordinary(), source, vm).same_value(&Value::String("42:1".into())));
+    }
+}
+
+#[test]
+fn global_update_observes_proxy_has_trap() {
+    use std::{cell::Cell, rc::Rc};
+    use temiya::runtime::{Object, ProxyObject};
+    for vm in [false, true] {
+        let count = Rc::new(Cell::new(0));
+        let target = Object::new();
+        let handler = Object::new();
+        let proxy = ProxyObject::new(target.clone(), handler.clone()).object();
+        let realm = Realm::new(proxy.clone(), Value::Object(proxy));
+        let observed = count.clone();
+        handler
+            .create_data_property(
+                "has".into(),
+                Value::Object(Object::native_function(move |_, args| {
+                    let Value::Object(target) = &args[0] else {
+                        panic!("target expected")
+                    };
+                    let key = args[1].to_property_key()?;
+                    if key == "x".into() {
+                        observed.set(observed.get() + 1);
+                    }
+                    Ok(Value::Boolean(target.has_property(&key)?))
+                })),
+            )
+            .unwrap();
+        let reset = count.clone();
+        target
+            .create_data_property(
+                "reset".into(),
+                Value::Object(Object::native_function(move |_, _| {
+                    reset.set(0);
+                    Ok(Value::Undefined)
+                })),
+            )
+            .unwrap();
+        let source = "var x=41;reset();x++;";
+        assert!(result(&realm, source, vm).same_value(&Value::Number(41.0)));
+        assert!(
+            count.get() > 0,
+            "global name lookup must invoke the Proxy has trap"
+        );
+    }
+}
 
 fn execute(
     realm: &Realm,

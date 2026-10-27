@@ -62,8 +62,82 @@ impl ReferencedName {
 #[derive(Clone, Debug)]
 enum ReferenceBase {
     Environment(Environment),
+    FunctionBinding(Environment, usize),
     Property(Value),
     Unresolvable(Object),
+}
+
+#[cfg(test)]
+mod function_reference_tests {
+    use super::*;
+    use crate::runtime::ThisBindingStatus;
+
+    #[test]
+    fn function_hint_does_not_enlarge_reference_base() {
+        #[allow(dead_code)]
+        enum PreviousBase {
+            Environment(Environment),
+            Property(Value),
+            Unresolvable(Object),
+        }
+        assert_eq!(
+            std::mem::size_of::<ReferenceBase>(),
+            std::mem::size_of::<PreviousBase>()
+        );
+    }
+
+    #[test]
+    fn retained_function_hint_survives_binding_vector_changes() {
+        let environment =
+            Environment::function(None, Object::new(), None, ThisBindingStatus::Uninitialized);
+        let prefix: JsString = "prefix".into();
+        let value: JsString = "value".into();
+        environment
+            .create_mutable_binding(prefix.clone(), true)
+            .unwrap();
+        environment
+            .initialize_binding(&prefix, Value::Null)
+            .unwrap();
+        environment
+            .create_mutable_binding(value.clone(), false)
+            .unwrap();
+        environment
+            .initialize_binding(&value, Value::Number(41.0))
+            .unwrap();
+        let reference = Reference::function_binding(
+            environment.clone(),
+            value.clone(),
+            false,
+            environment.function_binding_index(&value),
+        );
+        assert!(environment.delete_binding(&prefix).unwrap());
+        let other: JsString = "other".into();
+        environment
+            .create_mutable_binding(other.clone(), false)
+            .unwrap();
+        environment
+            .initialize_binding(&other, Value::Number(99.0))
+            .unwrap();
+        assert!(
+            reference
+                .get_value()
+                .unwrap()
+                .same_value(&Value::Number(41.0))
+        );
+        reference.put_value(Value::Number(42.0)).unwrap();
+        assert!(
+            environment
+                .get_binding_value(&value, false)
+                .unwrap()
+                .same_value(&Value::Number(42.0))
+        );
+        assert!(
+            environment
+                .get_binding_value(&other, false)
+                .unwrap()
+                .same_value(&Value::Number(99.0))
+        );
+    }
 }
 
 // Primitive names need no observable conversion state. Only object-valued
@@ -131,6 +205,26 @@ pub struct Reference {
 }
 
 impl Reference {
+    // Only VM-verified function slots provide hints. Each read/write validates
+    // the name again, so reentrant deletion or insertion cannot retarget it.
+    pub(crate) fn function_binding(
+        environment: Environment,
+        name: JsString,
+        strict: bool,
+        index: Option<usize>,
+    ) -> Self {
+        Self {
+            base: match index {
+                Some(index) => ReferenceBase::FunctionBinding(environment, index),
+                None => ReferenceBase::Environment(environment),
+            },
+            name: ReferenceName::Plain(ReferencedName::PropertyKey(PropertyKey::String(name))),
+            strict,
+            this_value: None,
+            primitive_prototype: None,
+        }
+    }
+
     /// Creates a resolved environment reference.
     #[must_use]
     pub fn environment(environment: Environment, name: JsString, strict: bool) -> Self {
@@ -219,7 +313,8 @@ impl Reference {
             ReferenceBase::Property(base) => {
                 Some(self.this_value.clone().unwrap_or_else(|| base.clone()))
             }
-            ReferenceBase::Environment(environment) => {
+            ReferenceBase::Environment(environment)
+            | ReferenceBase::FunctionBinding(environment, _) => {
                 environment.with_base_object().map(Value::Object)
             }
             ReferenceBase::Unresolvable(_) => None,
@@ -232,6 +327,8 @@ impl Reference {
             ReferenceBase::Environment(environment) => {
                 environment.get_binding_value(&self.name.binding_name()?, self.strict)
             }
+            ReferenceBase::FunctionBinding(environment, index) => environment
+                .get_function_binding_at(&self.name.binding_name()?, Some(*index), self.strict),
             ReferenceBase::Unresolvable(_) => Err(RuntimeError::reference_error(format!(
                 "{} is not defined",
                 self.name.binding_name()?.to_string_lossy()
@@ -253,6 +350,13 @@ impl Reference {
             ReferenceBase::Environment(environment) => {
                 environment.set_mutable_binding(&self.name.binding_name()?, value, self.strict)
             }
+            ReferenceBase::FunctionBinding(environment, index) => environment
+                .set_function_binding_at(
+                    &self.name.binding_name()?,
+                    Some(*index),
+                    value,
+                    self.strict,
+                ),
             ReferenceBase::Unresolvable(global) if !self.strict => {
                 let key = self.name.property_key()?;
                 if global.set(&key, value)? {
@@ -286,7 +390,8 @@ impl Reference {
     pub fn delete(&self) -> RuntimeResult<bool> {
         match &self.base {
             ReferenceBase::Unresolvable(_) => Ok(true),
-            ReferenceBase::Environment(environment) => {
+            ReferenceBase::Environment(environment)
+            | ReferenceBase::FunctionBinding(environment, _) => {
                 if self.strict {
                     Err(RuntimeError::syntax_error(
                         "cannot delete an unqualified identifier in strict mode",
@@ -921,7 +1026,25 @@ pub(crate) fn binary_values(operator: &str, left: Value, right: Value) -> Runtim
             "-" => Some(Value::Number(a - b)),
             "*" => Some(Value::Number(a * b)),
             "/" => Some(Value::Number(a / b)),
-            "%" => Some(Value::Number(a % b)),
+            "%" => Some(Value::Number(number_remainder(*a, *b))),
+            "&" => Some(Value::Number(f64::from(
+                number_operand_u32(*a) as i32 & number_operand_u32(*b) as i32,
+            ))),
+            "|" => Some(Value::Number(f64::from(
+                number_operand_u32(*a) as i32 | number_operand_u32(*b) as i32,
+            ))),
+            "^" => Some(Value::Number(f64::from(
+                number_operand_u32(*a) as i32 ^ number_operand_u32(*b) as i32,
+            ))),
+            "<<" => Some(Value::Number(f64::from(
+                (number_operand_u32(*a) as i32).wrapping_shl(number_operand_u32(*b) & 31),
+            ))),
+            ">>" => Some(Value::Number(f64::from(
+                (number_operand_u32(*a) as i32).wrapping_shr(number_operand_u32(*b) & 31),
+            ))),
+            ">>>" => Some(Value::Number(f64::from(
+                number_operand_u32(*a).wrapping_shr(number_operand_u32(*b) & 31),
+            ))),
             "<" => Some(Value::Boolean(a < b)),
             ">" => Some(Value::Boolean(a > b)),
             "<=" => Some(Value::Boolean(a <= b)),
@@ -933,6 +1056,13 @@ pub(crate) fn binary_values(operator: &str, left: Value, right: Value) -> Runtim
         if let Some(result) = result {
             return Ok(result);
         }
+    } else if operator == "+" && matches!((&left, &right), (Value::String(_), Value::String(_))) {
+        // Both operands are already primitive strings. Consume them without
+        // cloning through ToPrimitive and ToString; mixed pairs keep that path.
+        let (Value::String(left), Value::String(right)) = (left, right) else {
+            unreachable!()
+        };
+        return Ok(Value::String(left.concat(right)));
     }
     match operator {
         "+" => {
@@ -969,6 +1099,33 @@ pub(crate) fn binary_values(operator: &str, left: Value, right: Value) -> Runtim
             "unsupported binary operator {operator}"
         ))),
     }
+}
+
+fn number_operand_u32(value: f64) -> u32 {
+    // Already-primitive Numbers need no observable coercion. In this bounded
+    // interval truncation fits i64 and retaining low bits is exactly ToUint32.
+    // Nonfinite and larger inputs retain the existing general conversion.
+    const MODULUS: f64 = 4_294_967_296.0;
+    if (-MODULUS..MODULUS).contains(&value) {
+        (value as i64) as u32
+    } else {
+        to_u32(value)
+    }
+}
+
+fn number_remainder(left: f64, right: f64) -> f64 {
+    // In this range integral operands and their remainder are exact binary64
+    // integers, and signed i64 division cannot overflow. All other pairs keep
+    // IEEE remainder semantics, including zero divisors and non-finite values.
+    const MAX_EXACT_INTEGER: f64 = 9_007_199_254_740_991.0;
+    if left.abs() <= MAX_EXACT_INTEGER && right.abs() <= MAX_EXACT_INTEGER {
+        let dividend = left as i64;
+        let divisor = right as i64;
+        if divisor != 0 && dividend as f64 == left && divisor as f64 == right {
+            return ((dividend % divisor) as f64).copysign(left);
+        }
+    }
+    left % right
 }
 
 fn numeric_binary(operator: &str, left: Value, right: Value) -> RuntimeResult<Value> {

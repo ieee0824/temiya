@@ -1,5 +1,5 @@
 //! Match the public omoikane worker's parse-plus-invocation timing boundary.
-use std::{env, fs, time::Instant};
+use std::{cell::Cell, env, fs, time::Instant};
 
 use temiya::{Engine, runtime::Value};
 
@@ -29,12 +29,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let realm = engine.create_realm();
     let startup_ns = start.elapsed().as_nanos();
     let start = Instant::now();
-    engine.evaluate(&engine.compile(&realm, setup)?)?;
+    let setup_script = engine.compile(&realm, setup)?;
+    let setup_backend = setup_script.backend();
+    engine.evaluate(&setup_script)?;
+    drop(setup_script);
+    drop(setup_script);
     let setup_ns = start.elapsed().as_nanos();
+    let invocation_backend = Cell::new(None);
     let evaluate = || -> Result<u64, Box<dyn std::error::Error>> {
         let start = Instant::now();
-        let value = engine.evaluate(&engine.compile(&realm, invocation)?)?;
+        let script = engine.compile(&realm, invocation)?;
+        let backend = script.backend();
+        let value = engine.evaluate(&script)?;
+        drop(script);
         let elapsed = u64::try_from(start.elapsed().as_nanos())?;
+        invocation_backend.set(Some(backend));
         if !value.value().same_value(&Value::Number(expected)) {
             return Err(format!("expected {expected}, got {:?}", value.value()).into());
         }
@@ -47,11 +56,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!(
         "{}",
         serde_json::json!({
-            "engine": "Temiya", "mode": "AST interpreter",
+            "engine": "Temiya", "mode": "Auto Script",
             "scope": "parse+evaluate invocation; function setup excluded",
             "profile": "release", "architecture": env::consts::ARCH,
             "expected": expected, "validated_passes": samples + 1,
             "startup_ns": startup_ns, "setup_ns": setup_ns,
+            "setup_backend": format!("{setup_backend:?}"),
+            "invocation_backend": invocation_backend.get().map(|backend| format!("{backend:?}")),
             "warmup_ns": warmup_ns, "samples_ns": samples_ns,
             "sandbox": null,
         })

@@ -19,11 +19,11 @@ use crate::runtime::{
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum ScriptBackend {
     /// Execute Scripts with the AST interpreter.
-    #[default]
     Ast,
     /// Compile the whole Script to verified bytecode or return a diagnostic.
     Bytecode,
     /// Use bytecode when the whole Script is supported, otherwise use the AST.
+    #[default]
     Auto,
 }
 
@@ -48,7 +48,7 @@ impl EngineBuilder {
         Self {
             options: EngineOptions::default(),
             host_state: None,
-            backend: ScriptBackend::Ast,
+            backend: ScriptBackend::Auto,
         }
     }
 
@@ -106,7 +106,7 @@ impl Engine {
     /// Creates an engine with the supplied configuration.
     #[must_use]
     pub fn new(options: EngineOptions) -> Self {
-        Self::from_parts(options, None, ScriptBackend::Ast)
+        Self::from_parts(options, None, ScriptBackend::Auto)
     }
 
     /// Starts configuring an engine.

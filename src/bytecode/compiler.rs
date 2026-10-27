@@ -381,6 +381,27 @@ impl Compiler {
     fn expression(&mut self, expression: &Expr) -> Result<(), CompileError> {
         match &expression.kind {
             ExprKind::Literal(literal) => self.literal(literal, expression.span),
+            ExprKind::Array { elements, .. } => {
+                self.code.push(Instruction::CreateArray);
+                for element in elements {
+                    match element {
+                        Some(Expr {
+                            kind: ExprKind::Spread(value),
+                            ..
+                        }) => {
+                            self.expression(value)?;
+                            self.code.push(Instruction::SpreadArray);
+                        }
+                        Some(value) => {
+                            self.expression(value)?;
+                            self.code.push(Instruction::AppendArray);
+                        }
+                        None => self.code.push(Instruction::ElideArray),
+                    }
+                }
+                self.code.push(Instruction::FinishArray);
+                Ok(())
+            }
             ExprKind::Object(properties) => {
                 self.code.push(Instruction::CreateObject);
                 for property in properties {

@@ -32,6 +32,15 @@ pub(crate) fn spread_arguments(
     value: Value,
     arguments: &mut Vec<Value>,
 ) -> RuntimeResult<()> {
+    consume_iterable(realm, value, |value| push_argument(arguments, value))
+}
+
+/// Consume a synchronous iterator without materializing an intermediate list.
+pub(crate) fn consume_iterable(
+    realm: &Realm,
+    value: Value,
+    mut append: impl FnMut(Value) -> RuntimeResult<()>,
+) -> RuntimeResult<()> {
     let method = Reference::property_in_realm(
         realm,
         value.clone(),
@@ -63,8 +72,8 @@ pub(crate) fn spread_arguments(
             return Ok(());
         }
         let value = result.get(&"value".into())?;
-        if let Err(error) = push_argument(arguments, value) {
-            // An implementation argument limit interrupts consumption. Close the
+        if let Err(error) = append(value) {
+            // A consumer error (including the argument limit) interrupts consumption. Close the
             // iterator with a throw completion; that completion takes priority
             // over return getter/call failures (IteratorClose steps 3–5).
             if let Ok(Value::Object(return_method)) = iterator.get(&"return".into()) {

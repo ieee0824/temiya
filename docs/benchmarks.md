@@ -564,3 +564,12 @@ identify the earlier delay's cause or prove that an isolated regression was
 fixed. Both reports, full samples, median/MAD and classifications remain available.
 The full Boa speed objective remains unmet. The subsequent native prototype PR
 #476 has its own source-specific comparison and is not included in revision 190b01f.
+
+## Authored RegExp group
+
+The [RegExp suite](regexp-workloads.md) adds construction, global execution and
+Unicode capture inputs through real public embeddings, separate from the original
+eleven. All initial 288 values are correct; six execution pairs beat actual Boa,
+but all three construction pairs are slower (8.68–8.94 times elapsed). The full
+RegExp gate is false and its construction cost needs profiling. Other #427 groups
+and complete application/collector/SpiderMonkey superiority remain unfinished.

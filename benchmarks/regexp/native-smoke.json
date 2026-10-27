@@ -1,0 +1,164 @@
+{
+  "qualification": "Correctness smoke only; one sample plus warmup, not a speed comparison or acceptance result",
+  "checks": [
+    {
+      "worker": "Temiya",
+      "executable": "/tmp/temiya-typed-inline-worker-37e0996",
+      "workload": "regexp-construction",
+      "pass": true,
+      "exit_status": 0,
+      "measurement": {
+        "architecture": "aarch64",
+        "engine": "Temiya",
+        "expected": 1920,
+        "invocation_backend": "Bytecode",
+        "mode": "Auto Script",
+        "profile": "release",
+        "samples_ns": [
+          5630277
+        ],
+        "sandbox": null,
+        "scope": "parse+evaluate invocation; function setup excluded",
+        "setup_backend": "Bytecode",
+        "setup_ns": 115917,
+        "startup_ns": 129042,
+        "validated_passes": 2,
+        "warmup_ns": 6314240
+      },
+      "diagnostic": ""
+    },
+    {
+      "worker": "Temiya",
+      "executable": "/tmp/temiya-typed-inline-worker-37e0996",
+      "workload": "regexp-global-exec",
+      "pass": true,
+      "exit_status": 0,
+      "measurement": {
+        "architecture": "aarch64",
+        "engine": "Temiya",
+        "expected": 18432,
+        "invocation_backend": "Bytecode",
+        "mode": "Auto Script",
+        "profile": "release",
+        "samples_ns": [
+          7533496
+        ],
+        "sandbox": null,
+        "scope": "parse+evaluate invocation; function setup excluded",
+        "setup_backend": "Bytecode",
+        "setup_ns": 136043,
+        "startup_ns": 93751,
+        "validated_passes": 2,
+        "warmup_ns": 7823330
+      },
+      "diagnostic": ""
+    },
+    {
+      "worker": "Temiya",
+      "executable": "/tmp/temiya-typed-inline-worker-37e0996",
+      "workload": "regexp-unicode-captures",
+      "pass": true,
+      "exit_status": 0,
+      "measurement": {
+        "architecture": "aarch64",
+        "engine": "Temiya",
+        "expected": 6144,
+        "invocation_backend": "Bytecode",
+        "mode": "Auto Script",
+        "profile": "release",
+        "samples_ns": [
+          2755847
+        ],
+        "sandbox": null,
+        "scope": "parse+evaluate invocation; function setup excluded",
+        "setup_backend": "Bytecode",
+        "setup_ns": 187626,
+        "startup_ns": 72750,
+        "validated_passes": 2,
+        "warmup_ns": 2746180
+      },
+      "diagnostic": ""
+    },
+    {
+      "worker": "actual pinned Boa",
+      "executable": "/tmp/temiya-omoikane-worker-target/release/omoikane-workload-worker",
+      "workload": "regexp-construction",
+      "pass": true,
+      "exit_status": 0,
+      "measurement": {
+        "architecture": "aarch64",
+        "engine": "omoikane vendored Boa",
+        "expected": 1920,
+        "mode": "interpreter",
+        "profile": "release",
+        "samples_ns": [
+          552836
+        ],
+        "sandbox": {
+          "max_loop_iterations": 100000000,
+          "timeout_seconds": 60
+        },
+        "scope": "parse+evaluate invocation; function setup excluded",
+        "setup_ns": 102083,
+        "startup_ns": 147313097,
+        "validated_passes": 2,
+        "warmup_ns": 582170
+      },
+      "diagnostic": ""
+    },
+    {
+      "worker": "actual pinned Boa",
+      "executable": "/tmp/temiya-omoikane-worker-target/release/omoikane-workload-worker",
+      "workload": "regexp-global-exec",
+      "pass": true,
+      "exit_status": 0,
+      "measurement": {
+        "architecture": "aarch64",
+        "engine": "omoikane vendored Boa",
+        "expected": 18432,
+        "mode": "interpreter",
+        "profile": "release",
+        "samples_ns": [
+          10580594
+        ],
+        "sandbox": {
+          "max_loop_iterations": 100000000,
+          "timeout_seconds": 60
+        },
+        "scope": "parse+evaluate invocation; function setup excluded",
+        "setup_ns": 126376,
+        "startup_ns": 143296703,
+        "validated_passes": 2,
+        "warmup_ns": 17037626
+      },
+      "diagnostic": ""
+    },
+    {
+      "worker": "actual pinned Boa",
+      "executable": "/tmp/temiya-omoikane-worker-target/release/omoikane-workload-worker",
+      "workload": "regexp-unicode-captures",
+      "pass": true,
+      "exit_status": 0,
+      "measurement": {
+        "architecture": "aarch64",
+        "engine": "omoikane vendored Boa",
+        "expected": 6144,
+        "mode": "interpreter",
+        "profile": "release",
+        "samples_ns": [
+          9677131
+        ],
+        "sandbox": {
+          "max_loop_iterations": 100000000,
+          "timeout_seconds": 60
+        },
+        "scope": "parse+evaluate invocation; function setup excluded",
+        "setup_ns": 139667,
+        "startup_ns": 151547327,
+        "validated_passes": 2,
+        "warmup_ns": 3397309
+      },
+      "diagnostic": ""
+    }
+  ]
+}

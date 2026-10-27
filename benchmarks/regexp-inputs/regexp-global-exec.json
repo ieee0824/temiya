@@ -1,0 +1,9 @@
+{
+  "name": "regexp-global-exec",
+  "group": "regexp",
+  "iterations": 2048,
+  "expected": 18432,
+  "setup": "var regexpGlobal=new RegExp('[a-z]+','g');function __temiyaRegexpBody(count){var total=0;for(var i=0;i<count;i++){var result;while((result=regexpGlobal.exec('abc 12 defg 345 hi'))!==null){total+=result[0].length;}}if(regexpGlobal.exec('1234')!==null)return -1;return total;}",
+  "invocation": "__temiyaRegexpBody(2048);",
+  "oracle": "Three matches of lengths 3,4,2 give 9*2048=18432. A failed exec terminates each scan and resets global state; a final non-match is checked."
+}

@@ -1,0 +1,229 @@
+[
+  {
+    "label": "arm-final",
+    "run": null,
+    "artifact": null,
+    "current": "a80697ecc96ded51ad46d6d6200d9e374b4f398b",
+    "baseline": "def9649b99ccf382aa96117871b6107e05fe8456",
+    "baseline_equivalent_main": "fdd4ac6d1d5b4bd3b3287d0943557c9ea1d6496c",
+    "reports": {
+      "beforeafter": {
+        "sha256": "22cf8cdeb6c869dce221e041926f31625cb7038d0a33903b5c357413c0734791",
+        "workers": [
+          {
+            "name": "Temiya after",
+            "engine": "Temiya",
+            "executable": "/tmp/temiya-numeric-constant-worker-a80697e",
+            "revision": "a80697ecc96ded51ad46d6d6200d9e374b4f398b",
+            "mode": "Auto Script",
+            "executable_sha256": "f1d748cc36d2f3bbfdddea0c8dcc9d3adf662b3802b76298587e5b3ca2c689da",
+            "features": [],
+            "profile": "release"
+          },
+          {
+            "name": "Temiya before",
+            "executable": "/tmp/temiya-rejection-worker-def9649",
+            "revision": "def9649b99ccf382aa96117871b6107e05fe8456",
+            "mode": "Auto Script",
+            "executable_sha256": "f87354d1dc0d5f4901c0e8d0b34efc75bf3d780c643325861e7b2cc3aad29ebc",
+            "features": [],
+            "profile": "release",
+            "engine": "Temiya",
+            "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)\nbinary: rustc\ncommit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67\ncommit-date: 2026-10-13\nhost: aarch64-unknown-linux-gnu\nrelease: 1.99.1\nLLVM version: 23.1.1",
+            "source_equivalent_main_revision": "fdd4ac6d1d5b4bd3b3287d0943557c9ea1d6496c",
+            "runtime_worker_dependencies_diff_empty": true
+          }
+        ],
+        "outcomes": {
+          "after faster beyond threshold": 21,
+          "within noise threshold": 12
+        }
+      },
+      "boa": {
+        "sha256": "4f84a1b5bd7cccb7f634b134d0e55b1adbd7bdf8e479561bfee8868fd66ec644",
+        "workers": [
+          {
+            "name": "Temiya",
+            "executable": "/tmp/temiya-numeric-constant-worker-a80697e",
+            "revision": "a80697ecc96ded51ad46d6d6200d9e374b4f398b",
+            "mode": "Auto Script",
+            "executable_sha256": "f1d748cc36d2f3bbfdddea0c8dcc9d3adf662b3802b76298587e5b3ca2c689da",
+            "features": [],
+            "profile": "release"
+          },
+          {
+            "name": "omoikane vendored Boa",
+            "executable": "/tmp/temiya-omoikane-worker-target/release/omoikane-workload-worker",
+            "revision": "007556adccb8fb4329236932ca8175f8e8d119d2",
+            "mode": "interpreter",
+            "build": {
+              "recorded_at": "2026-10-26T12:31:23.767Z",
+              "omoikane_revision": "007556adccb8fb4329236932ca8175f8e8d119d2",
+              "checkout_clean": true,
+              "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)\nbinary: rustc\ncommit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67\ncommit-date: 2026-10-13\nhost: aarch64-unknown-linux-gnu\nrelease: 1.99.1\nLLVM version: 23.1.1",
+              "cargo": "cargo 1.99.1 (5f94df478 2026-08-27)",
+              "profile": "release",
+              "cargo_args": [
+                "build",
+                "--locked",
+                "--release"
+              ],
+              "rustflags": "",
+              "features": {
+                "omoikane": [],
+                "boa_engine": [
+                  "annex-b",
+                  "default",
+                  "experimental",
+                  "float16",
+                  "intl",
+                  "intl_bundled",
+                  "temporal",
+                  "xsum"
+                ],
+                "regress": [
+                  "backend-pikevm",
+                  "default",
+                  "std",
+                  "utf16"
+                ]
+              },
+              "original_lock_sha256": "f3988c4d9b0ecc28560df18df1cae7760c7c55a016318ea3e31f3ebbfcaea211",
+              "adapter_lock_sha256": "6b4debb1e4368b52de4586b7b30c3d4b6b8882a1bd4ee87d78aa488a252517e7",
+              "worker_source_sha256": "031ee68a56d3c61ec45ca8f7069526dae3fa6eda6adeb79e3f39e6c3539041a8",
+              "executable": "/tmp/temiya-omoikane-worker-target/release/omoikane-workload-worker",
+              "executable_sha256": "1c01cec06abbaa2bbe7ee3ce724a764770007168190daafb5d4eb63717ac874d",
+              "execution_mode": "interpreter; baseline-jit feature absent",
+              "note": "Initial diagnostic build; repeated measurements use the scripted independent build."
+            }
+          }
+        ],
+        "outcomes": {
+          "Temiya faster beyond threshold": 33
+        }
+      },
+      "baseline-boa": {
+        "sha256": "c33c9573b1992d39cd8cbaec9f4eac338120261254efc856f594023234e91b90",
+        "workers": [
+          {
+            "name": "Temiya",
+            "executable": "/tmp/temiya-rejection-worker-def9649",
+            "revision": "def9649b99ccf382aa96117871b6107e05fe8456",
+            "mode": "Auto Script",
+            "executable_sha256": "f87354d1dc0d5f4901c0e8d0b34efc75bf3d780c643325861e7b2cc3aad29ebc",
+            "features": [],
+            "profile": "release"
+          },
+          {
+            "name": "omoikane vendored Boa",
+            "executable": "/tmp/temiya-omoikane-worker-target/release/omoikane-workload-worker",
+            "revision": "007556adccb8fb4329236932ca8175f8e8d119d2",
+            "mode": "interpreter",
+            "build": {
+              "recorded_at": "2026-10-26T12:31:23.767Z",
+              "omoikane_revision": "007556adccb8fb4329236932ca8175f8e8d119d2",
+              "checkout_clean": true,
+              "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)\nbinary: rustc\ncommit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67\ncommit-date: 2026-10-13\nhost: aarch64-unknown-linux-gnu\nrelease: 1.99.1\nLLVM version: 23.1.1",
+              "cargo": "cargo 1.99.1 (5f94df478 2026-08-27)",
+              "profile": "release",
+              "cargo_args": [
+                "build",
+                "--locked",
+                "--release"
+              ],
+              "rustflags": "",
+              "features": {
+                "omoikane": [],
+                "boa_engine": [
+                  "annex-b",
+                  "default",
+                  "experimental",
+                  "float16",
+                  "intl",
+                  "intl_bundled",
+                  "temporal",
+                  "xsum"
+                ],
+                "regress": [
+                  "backend-pikevm",
+                  "default",
+                  "std",
+                  "utf16"
+                ]
+              },
+              "original_lock_sha256": "f3988c4d9b0ecc28560df18df1cae7760c7c55a016318ea3e31f3ebbfcaea211",
+              "adapter_lock_sha256": "6b4debb1e4368b52de4586b7b30c3d4b6b8882a1bd4ee87d78aa488a252517e7",
+              "worker_source_sha256": "031ee68a56d3c61ec45ca8f7069526dae3fa6eda6adeb79e3f39e6c3539041a8",
+              "executable": "/tmp/temiya-omoikane-worker-target/release/omoikane-workload-worker",
+              "executable_sha256": "1c01cec06abbaa2bbe7ee3ce724a764770007168190daafb5d4eb63717ac874d",
+              "execution_mode": "interpreter; baseline-jit feature absent",
+              "note": "Initial diagnostic build; repeated measurements use the scripted independent build."
+            }
+          }
+        ],
+        "outcomes": {
+          "Temiya faster beyond threshold": 33
+        }
+      },
+      "same-binary-control": {
+        "sha256": "ca7ab3700065f636cc6d5a32048946b12bd1f2a08520805e0c2ab4e4631c4e8c",
+        "workers": [
+          {
+            "name": "Temiya after",
+            "engine": "Temiya",
+            "executable": "/tmp/temiya-numeric-constant-worker-a80697e",
+            "revision": "a80697ecc96ded51ad46d6d6200d9e374b4f398b",
+            "mode": "Auto Script",
+            "executable_sha256": "f1d748cc36d2f3bbfdddea0c8dcc9d3adf662b3802b76298587e5b3ca2c689da",
+            "features": [],
+            "profile": "release"
+          },
+          {
+            "name": "Temiya before",
+            "engine": "Temiya",
+            "revision": "a80697ecc96ded51ad46d6d6200d9e374b4f398b",
+            "mode": "Auto Script",
+            "profile": "release",
+            "features": [],
+            "executable": "/tmp/temiya-numeric-constant-worker-a80697e",
+            "executable_sha256": "f1d748cc36d2f3bbfdddea0c8dcc9d3adf662b3802b76298587e5b3ca2c689da",
+            "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)\nbinary: rustc\ncommit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67\ncommit-date: 2026-10-13\nhost: aarch64-unknown-linux-gnu\nrelease: 1.99.1\nLLVM version: 23.1.1",
+            "mode_probe": {
+              "architecture": "aarch64",
+              "engine": "Temiya",
+              "expected": 42,
+              "invocation_backend": "Bytecode",
+              "mode": "Auto Script",
+              "profile": "release",
+              "samples_ns": [
+                2375
+              ],
+              "sandbox": null,
+              "scope": "parse+evaluate invocation; function setup excluded",
+              "setup_backend": "Bytecode",
+              "setup_ns": 22958,
+              "startup_ns": 198751,
+              "validated_passes": 2,
+              "warmup_ns": 39167
+            },
+            "qualification": "same-executable metadata"
+          }
+        ],
+        "outcomes": {
+          "within noise threshold": 32,
+          "after faster beyond threshold": 1
+        }
+      }
+    },
+    "machine": {
+      "platform": "linux",
+      "release": "6.8.0-100-generic",
+      "architecture": "arm64",
+      "cpu_models": [
+        "unknown"
+      ],
+      "logical_cpus": 4
+    },
+    "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)\nbinary: rustc\ncommit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67\ncommit-date: 2026-10-13\nhost: aarch64-unknown-linux-gnu\nrelease: 1.99.1\nLLVM version: 23.1.1"
+  }
+]

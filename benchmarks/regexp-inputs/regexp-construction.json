@@ -1,0 +1,9 @@
+{
+  "name": "regexp-construction",
+  "group": "regexp",
+  "iterations": 128,
+  "expected": 1920,
+  "setup": "function __temiyaRegexpBody(count){var total=0;for(var i=0;i<count;i++){var pattern='([a-z]+)-([0-9]+)(?:x{'+i+'})?';var result=new RegExp(pattern).exec('alpha-42');if(result===null)return -1;total+=result[0].length+result[1].length+result[2].length;}return total;}",
+  "invocation": "__temiyaRegexpBody(128);",
+  "oracle": "128 matches, each full match length 8 plus captures of lengths 5 and 2: 128*15=1920. Pattern text varies; construction may use engine caches."
+}

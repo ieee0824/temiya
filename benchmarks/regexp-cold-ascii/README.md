@@ -66,7 +66,7 @@ cold and macro statistics, fixed oracles, checked counts and decisions.
 A valid report with a false speed gate remains false. For a single cold report,
 run node benchmarks/regexp-cold-ascii/verify-cold-report.mjs PATH.
 
-The inventory covers 318 files, 37 cold reports and 29 macro reports. Macro
+The inventory covers 370 files, 45 cold reports and 29 macro reports. Macro
 coverage is 1434 workers, 22944 checked results and 717 decisions. This is an
 archive verification, not a new timing experiment, binary rebuild, whole-app
 throughput claim, full-conformance claim or hard process-RSS bound. Compressed
@@ -76,7 +76,11 @@ The single-borrow ordinary lookup candidate 6702d00 passes all three local
 Boa comparisons, ratios 0.837020/0.834102/0.850284, under the unchanged
 noise thresholds. Full native release/all-features has 529 passes in 83
 suites (19 ignored); the selected RegExp Test262 corpus separately has 64
-passes. Full ARM64/x64 qualification is running as 40604058677 on four
-independent runners; its final-source macros and controls are still required.
+passes. Full ARM64/x64 qualification run 40604058677 has early cold reports from
+all four runners. Both x64 cohorts pass all initial/repeated Boa decisions.
+ARM64 copy 1 misses initial0.902731 and repeated0.903459; copy 2 passes
+all initial decisions but misses repeated0.900208. All identical-executable
+controls are within noise. The overall ARM64 speed condition is not met,
+and same-source macro comparisons remain running. No threshold is relaxed.
 The earlier UTF-16-key instruction profile is retained in profile-utf16-keys/;
 its instrumentation results are not speed qualification.

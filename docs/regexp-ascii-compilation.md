@@ -107,3 +107,10 @@ release tests and selected RegExp Test262; its local cold gate passes all
 three Boa comparisons. Four-runner final-source qualification run 40604058677
 records cold first passes, warm/original-eleven regressions and exact-binary
 controls. Adoption still requires those results and latest CI/security.
+
+The early cold reports from 40604058677 retain an ARM64 miss despite the
+local pass: copy 1 has initial ratio 0.902731 and repeat 0.903459 within noise;
+copy 2 has repeat 0.900208 within noise. Both x64 cohorts pass all initial and
+repeat decisions; all identical-executable controls are within noise. The
+unchanged all-three criterion is not satisfied across the measured ARM64
+cohorts. Same-source macro regressions continue; these misses remain recorded.

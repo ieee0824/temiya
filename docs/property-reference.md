@@ -82,3 +82,42 @@ files / 19 variants and compiler/fixture identities. AST changes from 14 pass /
 missing-eval failures remain. Bytecode has zero passes and 19 unsupported whole
 programs in both runs. The audit command exits 101. Those are separate from the
 direct API regression tests; no unsupported program is included in a pass count.
+
+
+## Hosted x86_64 property-Reference comparison
+
+[Run 40404879412](https://github.com/ieee0824/temiya/actions/runs/40404879412)
+completed on Ubuntu 24.04, four logical CPUs. The
+[provenance record](../benchmarks/bytecode-properties-hosted-provenance.json) retains
+build identity and the original artifact reference. Both
+[before/after](../benchmarks/bytecode-properties-hosted-beforeafter.json) and
+[Boa](../benchmarks/bytecode-properties-hosted-boa.json) use the original eleven
+workloads, 15 timed samples, one checked warmup and three alternating pairs.
+Each mode has 66 successful runs and 1056 validated values. They run serially
+after all builds, with the same compiler and existing 512 MiB/180-second guards.
+
+The measured revision is `85d262ed7ce00e3b184678d30c88d55557b2050f`;
+the baseline is `c34c797cbb717b96efb3c952c9655baa38637c41`. The measured
+runtime is identical to code revision `51174e5a69caa57961650d3083d8b369247fc1b7`.
+Later result-only commits do not modify executable source, worker scripts,
+dependencies or the measurement workflow. Architectures are reported separately.
+
+| Workload | Changed / prior Temiya time | Changed Temiya / Boa time |
+| --- | ---: | ---: |
+| arith | 1.04–1.07× | 3.38–3.53× |
+| prop-mono | 1.03–1.05× | 2.45–2.55× |
+| prop-mega | 1.02–1.05× | 2.27–2.31× |
+| call | 1.00–1.02× | 2.36–2.55× |
+| closure-alloc | 1.00–1.02× | 1.83–1.91× |
+| object-alloc | 1.00–1.04× | 1.73–1.77× |
+| string-concat | 0.98–1.00× | 3.03–3.06× |
+| array | 1.02–1.04× | 2.20–2.23× |
+| primitive-string-property | 1.04–1.07× | 2.72–2.77× |
+| primitive-string-method | 1.04–1.07× | 1.98–2.08× |
+| proto-method | 0.99–1.01× | 2.18–2.26× |
+
+All 33 before/after pairs remain within the noise threshold; no throughput
+speedup or regression beyond that threshold is established on this runner.
+All 33 Boa pairs still find Temiya slower beyond the threshold. Both all-eleven
+speed gates remain false. Correct property Reference behavior does not satisfy the Boa goal
+or complete #307/#427.

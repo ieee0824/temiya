@@ -233,7 +233,7 @@ and spread combined). Overflow returns RangeError, closes a still-active iterato
 and drops pending invocation roots; the original overflow takes precedence over
 return getter/call failures. Iterator-step/done/value failures propagate without
 an extra return call, as required by ArgumentListEvaluation. These guards and
-added intrinsic objects require new performance measurements before merge.
+added intrinsic objects are included in the hosted comparison recorded below.
 
 This implements argument spread and Array values/String iterator prerequisites,
 not full iterator/builtin conformance: Array keys/entries, TypedArray-specific
@@ -242,11 +242,49 @@ Iterator constructor/helpers, cross-Realm symbol identity, and the older AST
 array-literal spread algorithm remain separate unfinished areas. The required original Test262 call/construct suite has
 not yet been run for this work; local integration tests do not satisfy that gate.
 Issue #291 remains incomplete. The added shared Object-call guard changes the AST
-hot path and requires fresh comparative performance evidence before merge; #469's
-measurement does not include this work. No speed improvement is claimed.
+hot path; the hosted call-frame comparison below records the required fresh
+comparative evidence. #469's measurement does not include this work. No speed improvement is claimed.
 
 Function expression/arrow lowering is in progress in #292; see [bytecode closures](bytecode-closures.md) for actual execution, ownership, tests and unfinished gates. The full parameter/arguments contract and sloppy block declarations remain incomplete.
 
 Operator lowering and computed-Reference conversion fixes are in progress in #287;
 see [unary/update operators](bytecode-operators.md) and
 [binary/compound operators](bytecode-binary.md) for execution semantics and unfinished gates.
+Unary/update lowering and computed-Reference conversion fixes are in progress in #287; see [bytecode operators](bytecode-operators.md) for execution semantics and unfinished gates.
+## Hosted x86_64 call-frame and iterator comparison
+
+[Run 40409675780](https://github.com/ieee0824/temiya/actions/runs/40409675780)
+completed on Ubuntu 24.04, four logical CPUs. The
+[provenance record](../benchmarks/bytecode-calls-hosted-provenance.json) retains
+build identity and the original artifact reference. Both
+[before/after](../benchmarks/bytecode-calls-hosted-beforeafter.json) and
+[Boa](../benchmarks/bytecode-calls-hosted-boa.json) use the original eleven
+workloads, 15 timed samples, one checked warmup and three alternating pairs.
+Each mode has 66 successful runs and 1056 validated values. They run serially
+after all builds, with the same compiler and existing 512 MiB/180-second guards.
+
+The measured revision is `c0f163b21ab5c75ada809f6fb8de484d48568405`;
+the baseline is `85d262ed7ce00e3b184678d30c88d55557b2050f`. The measured
+runtime is identical to code revision `c0f163b21ab5c75ada809f6fb8de484d48568405`.
+Later result-only commits do not modify executable source, worker scripts,
+dependencies or the measurement workflow. Architectures are reported separately.
+
+| Workload | Changed / prior Temiya time | Changed Temiya / Boa time |
+| --- | ---: | ---: |
+| arith | 1.01–1.02× | 3.35–3.37× |
+| prop-mono | 1.00–1.02× | 2.46–2.63× |
+| prop-mega | 1.01–1.03× | 2.33–2.38× |
+| call | 1.06–1.06× | 2.49–2.64× |
+| closure-alloc | 1.02–1.03× | 1.81–1.86× |
+| object-alloc | 1.01–1.03× | 1.70–1.76× |
+| string-concat | 0.96–1.00× | 3.02–3.32× |
+| array | 1.02–1.04× | 2.08–2.28× |
+| primitive-string-property | 0.99–1.05× | 2.77–2.82× |
+| primitive-string-method | 1.01–1.03× | 1.97–2.09× |
+| proto-method | 1.04–1.05× | 2.33–2.48× |
+
+All 33 before/after pairs remain within the noise threshold; no throughput
+speedup or regression beyond that threshold is established on this runner.
+All 33 Boa pairs still find Temiya slower beyond the threshold. Both all-eleven
+speed gates remain false. Call-frame and iterator integration does not satisfy the Boa goal
+or complete #307/#427.

@@ -655,7 +655,7 @@ fn install_object(
         let prototype = intrinsics.get(IntrinsicId::ArrayPrototype);
         method(intrinsics, &constructor, name, 1, move |_, arguments| {
             let source = property_source(value_arg(arguments.first()))?;
-            let keys = source
+            let keys: Vec<Value> = source
                 .try_own_property_keys()?
                 .into_iter()
                 .filter_map(|key| match key {
@@ -664,10 +664,13 @@ fn install_object(
                     _ => None,
                 })
                 .collect();
-            let Value::Object(array) = array_value(keys)? else {
-                unreachable!()
-            };
+            let length = u32::try_from(keys.len())
+                .map_err(|_| RuntimeError::range_error("too many own property keys"))?;
+            let array = ArrayObject::new(length)?.object();
             array.initialize_prototype(Some(prototype.clone()));
+            for (index, key) in keys.into_iter().enumerate() {
+                array.create_data_property(JsString::from(index.to_string()).into(), key)?;
+            }
             Ok(Value::Object(array))
         })?;
     }

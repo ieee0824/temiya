@@ -113,8 +113,11 @@ fn builtin_metadata_and_method_constructability_are_preserved() {
 fn registered_host_function_and_low_level_native_allocation_have_distinct_contracts() {
     let engine = Engine::default();
     let realm = engine.create_realm();
+    let marker = Rc::new(());
+    let weak = Rc::downgrade(&marker);
     engine
-        .register_global_function(&realm, "answer", |context, _, arguments| {
+        .register_global_function(&realm, "answer", move |context, _, arguments| {
+            let _ = &marker;
             Ok(context.value(Value::Number(40.0 + arguments.len() as f64)))
         })
         .unwrap();
@@ -137,6 +140,9 @@ fn registered_host_function_and_low_level_native_allocation_have_distinct_contra
             .prototype()
             .is_none()
     );
+    assert!(weak.upgrade().is_some());
+    drop(realm);
+    assert!(weak.upgrade().is_none());
 }
 #[test]
 fn realm_native_callbacks_and_bound_constructors_release_captured_host_state() {
@@ -251,7 +257,7 @@ fn own_property_key_queries_preserve_order_brands_and_proxy_errors() {
     use temiya::runtime::{JsString, PropertyDescriptor, PropertyKey, RuntimeErrorKind, Symbol};
     assert!(matches!(
         evaluate(
-            "let keys=Object.getOwnPropertyNames('ab'); Object.getOwnPropertyNames({a:1})[0]==='a' && keys.length===3 && keys[0]==='0' && keys[1]==='1' && keys[2]==='length';"
+            "let keys=Object.getOwnPropertyNames('ab'); Array.isArray(keys) && Array.isArray(Object.getOwnPropertySymbols({})) && Object.getOwnPropertyNames({a:1})[0]==='a' && keys.length===3 && keys[0]==='0' && keys[1]==='1' && keys[2]==='length';"
         ),
         Value::Boolean(true)
     ));
@@ -296,6 +302,8 @@ fn own_property_key_queries_preserve_order_brands_and_proxy_errors() {
                 .same_value(&Value::String(expected.into()))
         );
     }
+    assert!(list.set(&"length".into(), Value::Number(1.0)).unwrap());
+    assert!(list.get_own_property(&"1".into()).is_none());
     let Value::Object(list) = symbols
         .call(Value::Undefined, &[Value::Object(source)])
         .unwrap()

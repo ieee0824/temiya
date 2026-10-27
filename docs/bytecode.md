@@ -344,3 +344,9 @@ bytecode for a supported whole Script and falls back to AST otherwise;
 AST. Selection applies to Scripts compiled by that Engine, not modules or
 functions previously created by the AST interpreter. A VM runtime exception
 is propagated and never triggers AST re-execution.
+
+
+### Array literals and iterable spread
+
+[Array literal operations](array-literals.md) describe accumulation, holes,
+iterator errors, operand checks and the scoped upstream observations.

@@ -12,6 +12,58 @@ fn verify(instructions: Vec<Instruction>) -> Result<usize, VerifyErrorKind> {
 }
 
 #[test]
+fn named_property_opcodes_validate_constant_kind_scope_and_operands() {
+    use temiya::bytecode::{ScopeDescriptor, ScopeKind};
+    for resolve in [false, true] {
+        for (name, scoped, has_base, expected) in [
+            (2, true, true, VerifyErrorKind::InvalidConstantKind),
+            (99, true, true, VerifyErrorKind::ConstantOutOfBounds),
+            (1, false, true, VerifyErrorKind::ScopeMismatch),
+            (1, true, false, VerifyErrorKind::StackUnderflow),
+        ] {
+            let mut instructions = vec![];
+            if scoped {
+                instructions.push(Instruction::EnterScope(0));
+            }
+            if has_base {
+                instructions.push(Instruction::LoadConstant(2));
+            }
+            instructions.push(if resolve {
+                Instruction::ResolveNamedProperty {
+                    name,
+                    strict: false,
+                }
+            } else {
+                Instruction::GetNamedProperty {
+                    name,
+                    strict: false,
+                }
+            });
+            if resolve {
+                instructions.push(Instruction::LoadReference);
+                instructions.push(Instruction::DiscardReference);
+            }
+            instructions.push(Instruction::Complete);
+            let code = Bytecode {
+                constants: vec![
+                    Constant::Scope(ScopeDescriptor {
+                        kind: ScopeKind::Global,
+                        strict: false,
+                        bindings: vec![],
+                        functions: vec![],
+                    }),
+                    Constant::String("x".into()),
+                    Constant::Number(1.0),
+                ],
+                instructions,
+                local_count: 0,
+            };
+            assert_eq!(code.verify().unwrap_err().kind(), expected);
+        }
+    }
+}
+
+#[test]
 fn computes_stack_bound_across_branches_and_locals() {
     let bytecode = Bytecode {
         constants: vec![

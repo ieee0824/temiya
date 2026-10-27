@@ -25,6 +25,27 @@ fn assert_value(actual: Value, expected: &Value) {
 }
 
 #[test]
+fn static_and_computed_method_names_retain_receiver_across_getter_reentry() {
+    for vm in [false, true] {
+        for call in ["obj.method()", "obj['method']()"] {
+            let realm = Realm::ordinary();
+            setup(
+                &realm,
+                "var log='';var other={x:2};var obj={x:1,get method(){log+='G';obj=other;return function(){return this.x;};}};",
+            );
+            assert_value(
+                value(execute(
+                    &realm,
+                    &format!("var r={call};log+':'+r+':'+obj.x;"),
+                    vm,
+                )),
+                &Value::String("G:1:2".into()),
+            );
+        }
+    }
+}
+
+#[test]
 fn member_reads_writes_and_parentheses_match_ast() {
     for vm in [false, true] {
         let realm = Realm::ordinary();

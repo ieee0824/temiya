@@ -308,6 +308,25 @@ impl VirtualMachine {
                         .expect("verified reference stack")
                         .put_value(pop(&mut stack)?)?;
                 }
+                Instruction::GetNamedProperty { name, strict }
+                | Instruction::ResolveNamedProperty { name, strict } => {
+                    let Constant::String(name) = &body.constants[name as usize] else {
+                        unreachable!()
+                    };
+                    let reference = Reference::property_in_realm(
+                        realm.expect("verified scoped property access"),
+                        pop(&mut stack)?,
+                        ReferencedName::PropertyKey(crate::runtime::PropertyKey::String(
+                            name.clone(),
+                        )),
+                        strict,
+                    );
+                    if matches!(instruction, Instruction::GetNamedProperty { .. }) {
+                        stack.push(reference.get_value()?);
+                    } else {
+                        references.push(reference);
+                    }
+                }
                 Instruction::GetProperty { strict } | Instruction::ResolveProperty { strict } => {
                     let key = pop(&mut stack)?;
                     let base = pop(&mut stack)?;

@@ -510,10 +510,7 @@ impl Compiler {
                         optional: false,
                     } => {
                         self.expression(object)?;
-                        self.property_key(property, *computed)?;
-                        self.code.push(Instruction::ResolveProperty {
-                            strict: self.strict,
-                        });
+                        self.member_property(property, *computed, true)?;
                         None
                     }
                     _ => return Err(self.unsupported("assignment target", target.span)),
@@ -789,10 +786,7 @@ impl Compiler {
                 optional: false,
             } => {
                 self.expression(object)?;
-                self.property_key(property, *computed)?;
-                self.code.push(Instruction::ResolveProperty {
-                    strict: self.strict,
-                });
+                self.member_property(property, *computed, true)?;
             }
             _ => return Err(self.unsupported("update target", target.span)),
         }
@@ -942,13 +936,54 @@ impl Compiler {
         if computed {
             return self.expression(property);
         }
+        let name = self.named_property_constant(property)?;
+        self.code.push(Instruction::LoadConstant(name));
+        Ok(())
+    }
+
+    fn named_property_constant(&mut self, property: &Expr) -> Result<u32, CompileError> {
         match &property.kind {
-            ExprKind::Identifier(name) => self.constant(Constant::String(name.as_str().into())),
+            ExprKind::Identifier(name) => self.pool(Constant::String(name.as_str().into())),
             ExprKind::Literal(Literal::String { value, .. }) => {
-                self.constant(Constant::String(JsString::from_code_units_slice(value)))
+                self.pool(Constant::String(JsString::from_code_units_slice(value)))
             }
             _ => Err(self.unsupported("property name", property.span)),
         }
+    }
+
+    fn member_property(
+        &mut self,
+        property: &Expr,
+        computed: bool,
+        resolve: bool,
+    ) -> Result<(), CompileError> {
+        let instruction = if computed {
+            self.expression(property)?;
+            if resolve {
+                Instruction::ResolveProperty {
+                    strict: self.strict,
+                }
+            } else {
+                Instruction::GetProperty {
+                    strict: self.strict,
+                }
+            }
+        } else {
+            let name = self.named_property_constant(property)?;
+            if resolve {
+                Instruction::ResolveNamedProperty {
+                    name,
+                    strict: self.strict,
+                }
+            } else {
+                Instruction::GetNamedProperty {
+                    name,
+                    strict: self.strict,
+                }
+            }
+        };
+        self.code.push(instruction);
+        Ok(())
     }
 
     fn member_value(&mut self, member: &Expr, delete: bool) -> Result<(), CompileError> {
@@ -1014,15 +1049,8 @@ impl Compiler {
                     self.code.push(Instruction::Duplicate);
                     shortcuts.push((self.emit(Instruction::JumpIfNullish(0)), 1));
                 }
-                self.property_key(property, *computed)?;
-                if matches!(usage, ChainUse::Value) {
-                    self.code.push(Instruction::GetProperty {
-                        strict: self.strict,
-                    });
-                } else {
-                    self.code.push(Instruction::ResolveProperty {
-                        strict: self.strict,
-                    });
+                self.member_property(property, *computed, !matches!(usage, ChainUse::Value))?;
+                if !matches!(usage, ChainUse::Value) {
                     self.code.push(if matches!(usage, ChainUse::Delete) {
                         Instruction::DeleteReference
                     } else {

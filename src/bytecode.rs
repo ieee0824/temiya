@@ -287,8 +287,12 @@ pub enum Instruction {
     StoreReference,
     /// Pop base and key values; push GetValue with the original receiver.
     GetProperty { strict: bool },
+    /// Pop a base and read a statically named property from a String constant.
+    GetNamedProperty { name: u32, strict: bool },
     /// Pop base and key values; retain their property Reference before the RHS.
     ResolveProperty { strict: bool },
+    /// Pop a base and retain its statically named property Reference.
+    ResolveNamedProperty { name: u32, strict: bool },
     /// Consume a retained Reference, update its Number/BigInt, push prefix/postfix result.
     UpdateReference { increment: bool, prefix: bool },
     /// Consume a retained Reference and implement typeof, including unresolvable names.
@@ -384,6 +388,7 @@ impl Instruction {
             | Self::AppendArgument
             | Self::SpreadArguments => 1,
             Self::GetProperty { .. } | Self::ResolveProperty { .. } => 2,
+            Self::GetNamedProperty { .. } | Self::ResolveNamedProperty { .. } => 1,
             Self::DeleteReference | Self::UpdateReference { .. } | Self::TypeOfReference => 0,
             Self::TypeOf | Self::UnaryNumeric(_) => 1,
             Self::JumpIfNullish(_) => 1,
@@ -442,6 +447,8 @@ impl Instruction {
             | Self::UpdateReference { .. }
             | Self::TypeOfReference => 1,
             Self::GetProperty { .. } | Self::JumpIfNullish(_) => -1,
+            Self::GetNamedProperty { .. } => 0,
+            Self::ResolveNamedProperty { .. } => -1,
             Self::ResolveProperty { .. } => -2,
             Self::EnterScope(_)
             | Self::ExitScope
@@ -768,14 +775,19 @@ fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
             }
             Instruction::LoadName(index)
             | Instruction::GetName { name: index, .. }
-            | Instruction::ResolveName { name: index, .. } => {
+            | Instruction::ResolveName { name: index, .. }
+            | Instruction::GetNamedProperty { name: index, .. }
+            | Instruction::ResolveNamedProperty { name: index, .. } => {
                 if !matches!(constant(index)?, Constant::String(_)) {
                     return Err(error(VerifyErrorKind::InvalidConstantKind));
                 }
                 if state.scopes.is_empty() {
                     return Err(error(VerifyErrorKind::ScopeMismatch));
                 }
-                if matches!(instruction, Instruction::ResolveName { .. }) {
+                if matches!(
+                    instruction,
+                    Instruction::ResolveName { .. } | Instruction::ResolveNamedProperty { .. }
+                ) {
                     state.references.push(
                         u32::try_from(offset).map_err(|_| error(VerifyErrorKind::ScopeMismatch))?,
                     );

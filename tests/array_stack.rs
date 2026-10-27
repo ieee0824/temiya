@@ -12,6 +12,25 @@ fn check(source: &str) {
 }
 
 #[test]
+fn packed_numbers_preserve_descriptors_holes_and_inherited_getters() {
+    check(
+        "var a=[1,2,3]; Object.defineProperty(a,'1',{writable:false,configurable:false}); \
+         var d=Object.getOwnPropertyDescriptor(a,'1'); \
+         d.value===2 && !d.writable && d.enumerable && !d.configurable && \
+         !(delete a[1]) && a[1]===2;",
+    );
+    check(
+        "var a=[1,2,3]; Object.setPrototypeOf(a, Object.create(Array.prototype, \
+         {1:{get:function(){return 40;},configurable:true}})); delete a[1]; \
+         a[1]===40 && !Object.prototype.hasOwnProperty.call(a,'1') && a.length===3;",
+    );
+    check(
+        "var a=[1,2,3]; a[1]='text'; a[4]=5; \
+         a[0]===1 && a[1]==='text' && a[2]===3 && !(3 in a) && a[4]===5 && a.length===5;",
+    );
+}
+
+#[test]
 fn literal_constructor_and_array_prototype_are_connected() {
     check(
         "var a = []; var b = new Array(); \

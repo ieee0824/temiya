@@ -610,7 +610,7 @@ impl Object {
         }
         if let Some(elements) = &self.0.state.borrow().elements {
             if let Some(index) = key.array_index() {
-                return Ok(elements.get(index).cloned());
+                return Ok(elements.get(index).map(std::borrow::Cow::into_owned));
             }
         }
         Ok(self
@@ -667,8 +667,9 @@ impl Object {
         if state.array {
             if let Some(index) = key.array_index() {
                 let elements = state.elements.as_ref().expect("array elements");
+                let current = elements.get(index);
                 let Some(updated) =
-                    validate_and_apply(elements.get(index), state.extensible, &descriptor)
+                    validate_and_apply(current.as_deref(), state.extensible, &descriptor)
                 else {
                     return Ok(false);
                 };

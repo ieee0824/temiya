@@ -2,11 +2,13 @@
 //! Complete descriptors survive every representation change. No method here
 //! invokes JavaScript; callers perform descriptor/prototype/Proxy checks.
 
-use std::collections::BTreeMap;
+use std::{borrow::Cow, collections::BTreeMap};
 
-use super::PropertyDescriptor;
+use super::{PropertyDescriptor, Value};
 
 pub(super) enum Elements {
+    /// Contiguous ordinary writable/enumerable/configurable numeric data.
+    PackedNumbers(Vec<f64>),
     Packed(Vec<PropertyDescriptor>),
     Holey {
         slots: Vec<Option<PropertyDescriptor>>,
@@ -22,17 +24,45 @@ impl Default for Elements {
 }
 
 impl Elements {
-    pub(super) fn get(&self, index: u32) -> Option<&PropertyDescriptor> {
+    pub(super) fn get(&self, index: u32) -> Option<Cow<'_, PropertyDescriptor>> {
         match self {
-            Self::Packed(slots) => slots.get(index as usize),
-            Self::Holey { slots, .. } => slots.get(index as usize).and_then(Option::as_ref),
-            Self::Sparse(slots) => slots.get(&index),
+            Self::PackedNumbers(slots) => slots
+                .get(index as usize)
+                .map(|&value| Cow::Owned(number_descriptor(value))),
+            Self::Packed(slots) => slots.get(index as usize).map(Cow::Borrowed),
+            Self::Holey { slots, .. } => slots
+                .get(index as usize)
+                .and_then(Option::as_ref)
+                .map(Cow::Borrowed),
+            Self::Sparse(slots) => slots.get(&index).map(Cow::Borrowed),
         }
     }
 
     pub(super) fn insert(&mut self, index: u32, descriptor: PropertyDescriptor) {
         let position = index as usize;
+        if let Self::PackedNumbers(slots) = self {
+            if let Some(value) = ordinary_number(&descriptor) {
+                if position < slots.len() {
+                    slots[position] = value;
+                    return;
+                }
+                if position == slots.len() {
+                    slots.push(value);
+                    return;
+                }
+            }
+            self.expand_numbers();
+        }
+        if let Self::Packed(slots) = self {
+            if slots.is_empty() && position == 0 {
+                if let Some(value) = ordinary_number(&descriptor) {
+                    *self = Self::PackedNumbers(vec![value]);
+                    return;
+                }
+            }
+        }
         match self {
+            Self::PackedNumbers(_) => unreachable!(),
             Self::Packed(slots) if position < slots.len() => slots[position] = descriptor,
             Self::Packed(slots) if position == slots.len() => slots.push(descriptor),
             Self::Packed(slots) if dense_enough(position + 1, slots.len() + 1) => {
@@ -70,7 +100,19 @@ impl Elements {
     /// Delete an already-validated configurable property (or a missing index).
     pub(super) fn remove(&mut self, index: u32) {
         let position = index as usize;
+        if let Self::PackedNumbers(slots) = self {
+            if position >= slots.len() {
+                return;
+            }
+            if position + 1 == slots.len() {
+                slots.pop();
+                self.compact();
+                return;
+            }
+            self.expand_numbers();
+        }
         match self {
+            Self::PackedNumbers(_) => unreachable!(),
             Self::Packed(slots) if position >= slots.len() => return,
             Self::Packed(slots) if position + 1 == slots.len() => {
                 slots.pop();
@@ -98,6 +140,7 @@ impl Elements {
     pub(super) fn shrink(&mut self, length: u32) -> Option<u32> {
         let mut blocked = None;
         match self {
+            Self::PackedNumbers(slots) => slots.truncate(length as usize),
             Self::Packed(slots) => {
                 while slots.len() > length as usize {
                     if slots.last().unwrap().configurable != Some(true) {
@@ -138,6 +181,7 @@ impl Elements {
 
     pub(super) fn indices(&self) -> Vec<u32> {
         match self {
+            Self::PackedNumbers(slots) => (0..slots.len() as u32).collect(),
             Self::Packed(slots) => (0..slots.len() as u32).collect(),
             Self::Holey { slots, .. } => slots
                 .iter()
@@ -150,6 +194,11 @@ impl Elements {
 
     fn make_sparse(&mut self) {
         let slots = match std::mem::take(self) {
+            Self::PackedNumbers(slots) => slots
+                .into_iter()
+                .enumerate()
+                .map(|(index, value)| (index as u32, number_descriptor(value)))
+                .collect(),
             Self::Packed(slots) => slots
                 .into_iter()
                 .enumerate()
@@ -167,6 +216,7 @@ impl Elements {
 
     fn compact(&mut self) {
         match self {
+            Self::PackedNumbers(slots) => release_excess(slots),
             Self::Packed(slots) => release_excess(slots),
             Self::Holey { slots, present } => {
                 while slots.last().is_some_and(Option::is_none) {
@@ -205,6 +255,35 @@ impl Elements {
             }
         }
     }
+
+    fn expand_numbers(&mut self) {
+        if let Self::PackedNumbers(slots) = self {
+            *self = Self::Packed(
+                std::mem::take(slots)
+                    .into_iter()
+                    .map(number_descriptor)
+                    .collect(),
+            );
+        }
+    }
+}
+
+fn ordinary_number(descriptor: &PropertyDescriptor) -> Option<f64> {
+    match descriptor {
+        PropertyDescriptor {
+            value: Some(Value::Number(value)),
+            writable: Some(true),
+            get: None,
+            set: None,
+            enumerable: Some(true),
+            configurable: Some(true),
+        } => Some(*value),
+        _ => None,
+    }
+}
+
+fn number_descriptor(value: f64) -> PropertyDescriptor {
+    PropertyDescriptor::data(Value::Number(value), true, true, true)
 }
 
 fn dense_enough(span: usize, present: usize) -> bool {
@@ -223,6 +302,43 @@ fn release_excess<T>(slots: &mut Vec<T>) {
 mod tests {
     use super::*;
     use crate::runtime::Value;
+
+    #[test]
+    fn numeric_packing_preserves_bits_and_expands_for_holes_and_attributes() {
+        let mut elements = Elements::default();
+        let nan = f64::from_bits(0x7ff8_1234_5678_9abc);
+        for (index, value) in [0.0, -0.0, nan, f64::INFINITY].into_iter().enumerate() {
+            elements.insert(index as u32, number_descriptor(value));
+        }
+        assert!(matches!(&elements, Elements::PackedNumbers(slots) if slots.len() == 4));
+        for (index, value) in [0.0, -0.0, nan, f64::INFINITY].into_iter().enumerate() {
+            let descriptor = elements.get(index as u32).unwrap();
+            let Some(Value::Number(actual)) = &descriptor.value else {
+                panic!("number expected")
+            };
+            assert_eq!(actual.to_bits(), value.to_bits());
+            assert_eq!(
+                (
+                    descriptor.writable,
+                    descriptor.enumerable,
+                    descriptor.configurable
+                ),
+                (Some(true), Some(true), Some(true))
+            );
+        }
+        elements.remove(1);
+        assert!(matches!(elements, Elements::Holey { .. }));
+        assert!(elements.get(1).is_none());
+        elements.insert(1, number_descriptor(42.0));
+        let frozen = PropertyDescriptor::data(Value::Number(7.0), false, true, false);
+        elements.insert(0, frozen);
+        assert_eq!(elements.shrink(0), Some(0));
+        let first = elements.get(0).unwrap();
+        assert_eq!(
+            (first.writable, first.configurable),
+            (Some(false), Some(false))
+        );
+    }
 
     #[test]
     fn representation_changes_and_storage_stays_bounded_after_clear() {

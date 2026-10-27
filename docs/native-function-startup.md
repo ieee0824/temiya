@@ -51,7 +51,8 @@ successfully. Every median/MAD, ratio and threshold was independently recomputed
 All six startup comparisons are within the original noise rule
 max(0.10, 3 * (after MAD/median + before MAD/median)); both startup gates are
 false. Lower medians do not establish a confirmed latency improvement.
-Issue #478 remains open, including its startup-improvement acceptance condition.
+These ARM64 diagnostics do not establish the startup-improvement condition;
+separate hosted evidence is recorded below.
 
 Short-lived startup probes can finish before RSS polling. Zero in the repeated
 recording is an unobserved sentinel; null in the first-startup recording means
@@ -77,5 +78,31 @@ regressions also passed locally in release. The [original numeric audit](../test
 retains all 62 variants and fixture blob identities: 58 pass, four known failures,
 zero skips, and every outcome unchanged from the existing main audit. Its full
 opt-in gate still exits 101; failures and ignored tests are not passing coverage.
-The independent hosted eleven-workload comparison is still running. No overall
-Boa superiority or whole-engine conformance is established.
+The completed hosted comparison is recorded below. No overall Boa superiority
+or whole-engine conformance is established.
+
+## Hosted x86-64 follow-up
+
+The [completed run](https://github.com/ieee0824/temiya/actions/runs/40441559544)
+used the same two revisions, Rust 1.99.1 and AMD EPYC 7763 (four logical CPUs).
+Both modes completed all original eleven workloads: 66 worker runs and 1056
+checked values each, with the original 15 samples / three alternating pairs /
+512 MiB / 180 second protocol. All 33 invocation before/after comparisons are
+within noise; all 33 Boa comparisons are slower beyond threshold. Both
+all-eleven invocation speed gates remain false.
+
+Separately, the 33 single first-startup observations per worker have median/MAD
+193720/7373 ns before and 161020/2906 ns after. Their median ratio is
+0.8311996696262647, a 16.8800% reduction. The unchanged noise formula gives
+16.8323%, so the observed reduction exceeds the threshold narrowly, by about
+0.048 percentage points. This is evidence for this single hosted x64
+environment. It is not confirmation on ARM64, an invocation speedup, or proof
+of restoring the pre-metadata cost on a different CPU.
+
+- [Complete hosted invocation before/after](../benchmarks/native-function-initialization-hosted-beforeafter.json)
+- [Complete hosted actual Boa comparison](../benchmarks/native-function-initialization-hosted-boa.json)
+- [All startup values, recomputed statistics, artifact/build identities and limits](../benchmarks/native-function-initialization-hosted-provenance.json)
+
+Together with the allocation profiles and compatibility regressions above,
+this records the scoped startup optimization requested in #478. Its broader
+parent #427 and the goal of beating actual omoikane Boa remain open.

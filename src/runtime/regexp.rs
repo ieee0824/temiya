@@ -10,6 +10,8 @@ use regex_automata::{
 
 use super::{JsString, Object, RuntimeError, RuntimeResult};
 
+mod ascii_hir;
+
 /// Parsed ECMAScript regular-expression flags.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct RegExpFlags {
@@ -105,8 +107,8 @@ fn compile_matcher(source: &str, flags: RegExpFlags) -> RuntimeResult<Regex> {
     }) {
         return Ok(matcher);
     }
-    let translated = translate_named_groups(source);
-    let matcher = Regex::builder()
+    let mut builder = Regex::builder();
+    builder
         // Preserve the limits and UTF-8 policies of regex::RegexBuilder.
         .configure(
             Regex::config()
@@ -121,9 +123,15 @@ fn compile_matcher(source: &str, flags: RegExpFlags) -> RuntimeResult<Regex> {
                 .multi_line(flags.multiline)
                 .dot_matches_new_line(flags.dot_all)
                 .unicode(flags.unicode),
-        )
-        .build(&translated)
-        .map_err(|error| RuntimeError::syntax_error(error.to_string()))?;
+        );
+    let direct = (!flags.ignore_case)
+        .then(|| ascii_hir::parse(source))
+        .flatten();
+    let matcher = match direct {
+        Some(hir) => builder.build_from_hir(&hir),
+        None => builder.build(&translate_named_groups(source)),
+    }
+    .map_err(|error| RuntimeError::syntax_error(error.to_string()))?;
     let bytes = matcher
         .memory_usage()
         .saturating_add(matcher.create_cache().memory_usage())

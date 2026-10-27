@@ -30,6 +30,25 @@ fn function_and_arrow_bodies_execute_verified_bytecode_with_parameters() {
 }
 
 #[test]
+fn arguments_remain_visible_to_escaped_arrows_and_independent_calls() {
+    for source in [
+        "var f=(function(a){return ()=>arguments[0];})(42);f();",
+        "var f=(function(a){return ()=>()=>arguments[0];})(42);f()();",
+        "function outer(a){function inner(){return ()=>arguments[0];}return inner(a);}outer(42)();",
+        "function f(a){return ()=>arguments[0];}var x=f(20);var y=f(22);x()+y();",
+        "(function(arguments){return ()=>arguments;})(42)();",
+        "(function(){let arguments=42;return ()=>arguments;})()();",
+        "(function(){'use strict';return arguments[0];})(42);",
+        "(function(){return ()=>typeof arguments;})()() === 'object' ? 42 : 0;",
+    ] {
+        assert!(
+            value(&Realm::ordinary(), source).same_value(&Value::Number(42.0)),
+            "{source}"
+        );
+    }
+}
+
+#[test]
 fn escaped_captures_share_mutations_and_outlive_code_and_realm_handles() {
     let closure = {
         let realm = Realm::ordinary();

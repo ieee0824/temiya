@@ -886,18 +886,20 @@ impl Compiler {
             None => None,
             _ => return Err(self.unsupported("function name", function.span)),
         };
+        let body = compiler.finish()?;
         Ok(FunctionTemplate {
             self_binding: name.is_some() && !arrow,
             arguments_object: !arrow
                 && !parameters
                     .iter()
                     .any(|name| name.code_units() == JsString::from("arguments").code_units())
-                && !body_shadows_arguments(function),
+                && !body_shadows_arguments(function)
+                && bytecode_may_observe_arguments(&body),
             name,
             parameters,
             arrow,
             strict,
-            body: compiler.finish()?,
+            body,
         })
     }
 
@@ -1289,6 +1291,30 @@ fn scope_bindings(
         }));
     }
     Ok(bindings)
+}
+
+// Constants conservatively cover all identifier/property spellings, including
+// captured uses in nested arrows. Retain arguments for eval as well, so adding
+// direct eval cannot silently invalidate this elision. False positives are safe.
+fn bytecode_may_observe_arguments(body: &VerifiedBytecode) -> bool {
+    body.bytecode()
+        .constants
+        .iter()
+        .any(|constant| match constant {
+            Constant::String(name) => {
+                name.code_units()
+                    .iter()
+                    .copied()
+                    .eq("arguments".encode_utf16())
+                    || name.code_units().iter().copied().eq("eval".encode_utf16())
+            }
+            Constant::Function(template) => bytecode_may_observe_arguments(&template.body),
+            Constant::Scope(scope) => scope
+                .functions
+                .iter()
+                .any(|function| bytecode_may_observe_arguments(&function.template.body)),
+            _ => false,
+        })
 }
 
 fn unparenthesized(mut expression: &Expr) -> &Expr {

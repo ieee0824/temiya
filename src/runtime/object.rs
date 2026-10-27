@@ -402,6 +402,45 @@ impl Object {
         object
     }
 
+    pub(super) fn native_function_with_metadata(
+        prototype: &Object,
+        name: &str,
+        length: u32,
+        callback: impl Fn(Value, &[Value]) -> RuntimeResult<Value> + 'static,
+    ) -> Self {
+        // This fresh ordinary object has no existing descriptors, exotic hooks,
+        // or observable identity. Seed complete properties in insertion order
+        // without descriptor validation or a Vec growth allocation for four
+        // entries when only two are needed. Later mutations use normal methods.
+        let object = Self::new();
+        {
+            let mut state = object.0.state.borrow_mut();
+            state.prototype = Some(prototype.clone());
+            state.callable = Some(Rc::new(callback));
+            state.properties = vec![
+                PropertyEntry {
+                    key: "name".into(),
+                    descriptor: PropertyDescriptor::data(
+                        Value::String(name.into()),
+                        false,
+                        false,
+                        true,
+                    ),
+                },
+                PropertyEntry {
+                    key: "length".into(),
+                    descriptor: PropertyDescriptor::data(
+                        Value::Number(f64::from(length)),
+                        false,
+                        false,
+                        true,
+                    ),
+                },
+            ];
+        }
+        object
+    }
+
     /// Allocates a constructable object backed by a native Rust closure.
     #[must_use]
     pub fn native_constructor(

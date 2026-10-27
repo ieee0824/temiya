@@ -1,0 +1,120 @@
+{
+  "recorded_at": "2026-10-27T03:42:01.842Z",
+  "runtime_revision": "9c9e6c59ce675f2c81e788230e4871c61fb1b5d8",
+  "baseline_revision": "d2d12825f349cd37933d65c0dbde96b29971c105",
+  "profile": "release",
+  "features": [],
+  "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)\nbinary: rustc\ncommit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67\ncommit-date: 2026-10-13\nhost: aarch64-unknown-linux-gnu\nrelease: 1.99.1\nLLVM version: 23.1.1",
+  "machine": {
+    "architecture": "arm64",
+    "logical_cpus": 4,
+    "cpu_models": [
+      "unknown"
+    ]
+  },
+  "probe_sha256": "6a185a8de491c538c35614230a6a6b6b69ba7dedb79f6a878b614b222b17a440",
+  "probe_added_identically_to_baseline": true,
+  "recording_scripts": {
+    "repeated_sha256": "55e9fd5abe59a16e01212070e1a9292cd708ea6d83917e5c996cb041b957a435",
+    "cold_sha256": "25ad76f0f82c18f125c3a9187d930afce45ccbd6c3bc07822dba05f1cedc58db"
+  },
+  "allocation_profiles": {
+    "before": {
+      "native": [
+        {
+          "allocations": {
+            "allocation_requests": 2000,
+            "requested_bytes": 360000
+          },
+          "case": "raw native callable; no Realm prototype or metadata",
+          "iterations": 1000
+        },
+        {
+          "case": "native callable with actual name/length descriptors",
+          "generic_definition": {
+            "allocation_requests": 3000,
+            "requested_bytes": 744000
+          },
+          "iterations": 1000,
+          "name": "short",
+          "realm_factory": {
+            "allocation_requests": 3000,
+            "requested_bytes": 744000
+          },
+          "validated_metadata": true
+        },
+        {
+          "case": "native callable with actual name/length descriptors",
+          "generic_definition": {
+            "allocation_requests": 5000,
+            "requested_bytes": 888000
+          },
+          "iterations": 1000,
+          "name": "native method with a long UTF-16 name: 日本語😀",
+          "realm_factory": {
+            "allocation_requests": 5000,
+            "requested_bytes": 888000
+          },
+          "validated_metadata": true
+        }
+      ],
+      "realm": {
+        "allocations": {
+          "allocation_requests": 6440,
+          "requested_bytes": 1325540
+        },
+        "iterations": 10
+      }
+    },
+    "after": {
+      "native": [
+        {
+          "allocations": {
+            "allocation_requests": 2000,
+            "requested_bytes": 360000
+          },
+          "case": "raw native callable; no Realm prototype or metadata",
+          "iterations": 1000
+        },
+        {
+          "case": "native callable with actual name/length descriptors",
+          "generic_definition": {
+            "allocation_requests": 3000,
+            "requested_bytes": 744000
+          },
+          "iterations": 1000,
+          "name": "short",
+          "realm_factory": {
+            "allocation_requests": 3000,
+            "requested_bytes": 552000
+          },
+          "validated_metadata": true
+        },
+        {
+          "case": "native callable with actual name/length descriptors",
+          "generic_definition": {
+            "allocation_requests": 5000,
+            "requested_bytes": 888000
+          },
+          "iterations": 1000,
+          "name": "native method with a long UTF-16 name: 日本語😀",
+          "realm_factory": {
+            "allocation_requests": 5000,
+            "requested_bytes": 696000
+          },
+          "validated_metadata": true
+        }
+      ],
+      "realm": {
+        "allocations": {
+          "allocation_requests": 6440,
+          "requested_bytes": 1166180
+        },
+        "iterations": 10
+      }
+    }
+  },
+  "independent_verification": "All raw startup medians/MAD/ratios/fixed noise thresholds recomputed; all six classifications within noise; six repeated-profile processes and 150 cold-process workers completed successfully. Both repeated allocation profiles deterministic across three processes. Current worker binary hashes checked. Original 62 numeric variants and blobs unchanged: 58 pass / 4 known failures, no skips; full opt-in audit exits101.",
+  "resource_qualification": "Repeated probe processes finish before the 25ms poll; their initial HWM zero is an unobserved sentinel, not a measured zero or proof of a resource bound. Cold diagnostic uses null for unavailable short-lived process HWM. Full original eleven-workload resource-guard comparisons run separately; these startup diagnostics do not replace them.",
+  "startup_claim": "ARM64 cold/repeated diagnostics remain inconclusive. Separate hosted x64 aggregate33 startup observations/worker show16.88% median reduction versus fixed16.83% noise threshold; margin0.048 percentage points. See hosted-provenance for complete data and qualifications. No invocation/Boa superiority claim."
+}

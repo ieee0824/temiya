@@ -913,6 +913,27 @@ pub(crate) fn parse_numeric_literal(raw: &str, kind: NumberKind) -> RuntimeResul
 }
 
 pub(crate) fn binary_values(operator: &str, left: Value, right: Value) -> RuntimeResult<Value> {
+    // Primitive Numbers require no coercion or observable callback. Keep the
+    // general path for every other pair, including mixed Number/BigInt values.
+    if let (Value::Number(a), Value::Number(b)) = (&left, &right) {
+        let result = match operator {
+            "+" => Some(Value::Number(a + b)),
+            "-" => Some(Value::Number(a - b)),
+            "*" => Some(Value::Number(a * b)),
+            "/" => Some(Value::Number(a / b)),
+            "%" => Some(Value::Number(a % b)),
+            "<" => Some(Value::Boolean(a < b)),
+            ">" => Some(Value::Boolean(a > b)),
+            "<=" => Some(Value::Boolean(a <= b)),
+            ">=" => Some(Value::Boolean(a >= b)),
+            "==" | "===" => Some(Value::Boolean(a == b)),
+            "!=" | "!==" => Some(Value::Boolean(a != b)),
+            _ => None,
+        };
+        if let Some(result) = result {
+            return Ok(result);
+        }
+    }
     match operator {
         "+" => {
             let left = left.to_primitive(super::PrimitiveHint::Default)?;

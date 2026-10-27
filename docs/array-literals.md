@@ -28,8 +28,8 @@ an active Realm scope. Malformed operand types are runtime errors.
 Tests compare AST and explicit VM for holes, trailing commas, empty/nested
 spreads, astral strings, custom iterators, next replacement, abrupt completion,
 and length overflow. [Pinned observations](../test262/array-literals-audit.json)
-retain six complete Test262 programs in strict/sloppy variants under both AST
-and explicit VM (24 outcomes per toolchain), all passing on stable and Rust
+retain seven complete Test262 programs (including a custom iterator) in strict/sloppy variants under both AST
+and explicit VM (28 outcomes per toolchain), all passing on stable and Rust
 1.85. The original sta/assert harnesses run in AST; no original program is
 wrapped, shortened, skipped or redirected to AST on lowering failure.
 
@@ -42,3 +42,7 @@ runtime iterator integration (#161/#172), object method/HomeObject support
 
 Primary semantics: [ArrayAccumulation](https://tc39.es/ecma262/multipage/ecmascript-language-expressions.html#sec-runtime-semantics-arrayaccumulation)
 and [ArgumentListEvaluation](https://tc39.es/ecma262/multipage/ecmascript-language-expressions.html#sec-argument-lists-runtime-semantics-argumentlistevaluation).
+
+The original six-file observation is retained in the audit record. The seventh
+custom-iterator program was added after integration with object data lowering;
+its whole original source now compiles to VM without AST fallback.

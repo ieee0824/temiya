@@ -49,6 +49,32 @@ enum Storage {
 pub struct JsString(Storage);
 
 impl JsString {
+    // Mutation is private to a binding update. Shared snapshots remain immutable;
+    // only Arc::get_mut permits reusing an existing UTF-16 buffer.
+    pub(crate) fn append_owned(&mut self, right: &Self) {
+        if right.is_empty() {
+            return;
+        }
+        let len = self
+            .len()
+            .checked_add(right.len())
+            .expect("string length overflow");
+        if let Storage::Shared(units) = &mut self.0 {
+            if let Some(units) = Arc::get_mut(units) {
+                units.extend_from_slice(right.code_units());
+                return;
+            }
+        }
+        if matches!(&self.0, Storage::Rope(rope) if Arc::strong_count(rope) == 1) {
+            let mut units = Vec::with_capacity(len);
+            self.append_to(&mut units);
+            right.append_to(&mut units);
+            self.0 = Storage::Shared(Arc::new(units));
+            return;
+        }
+        *self = self.clone().concat(right.clone());
+    }
+
     /// Concatenates exact UTF-16 sequences, sharing long operands until needed.
     #[must_use]
     pub fn concat(self, right: Self) -> Self {
@@ -264,6 +290,21 @@ impl fmt::Debug for JsString {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn owned_append_preserves_shared_rope_snapshots_and_utf16() {
+        let mut current = JsString::from_code_units(vec![0xd800; 300])
+            .concat(JsString::from_code_units(vec![0xdc00; 300]));
+        let snapshot = current.clone();
+        let previous = snapshot.code_units().to_vec();
+        for _ in 0..100 {
+            current.append_owned(&JsString::from_code_units_slice(&[0xdfff, 97]));
+        }
+        assert_eq!(snapshot.code_units(), previous.as_slice());
+        assert_eq!(&current.code_units()[..600], previous.as_slice());
+        assert_eq!(current.len(), 800);
+        assert_eq!(&current.code_units()[798..], &[0xdfff, 97]);
+    }
 
     #[test]
     fn lengths_and_shared_equality_do_not_flatten_rope_children() {

@@ -223,6 +223,36 @@ impl VirtualMachine {
                         prefix,
                     )?);
                 }
+                Instruction::AppendStringBinding { scope, slot, value } => {
+                    let frame = binding_frame(&scopes, scope);
+                    let name = &frame.plan.bindings[slot as usize].name;
+                    let hint = frame
+                        .binding_hints
+                        .as_ref()
+                        .and_then(|hints| hints[slot as usize]);
+                    let Constant::String(suffix) = &body.constants[value as usize] else {
+                        unreachable!()
+                    };
+                    if let Some(value) = frame.environment.append_string_binding(name, hint, suffix)
+                    {
+                        stack.push(value);
+                    } else {
+                        let reference = Reference::function_binding(
+                            frame.environment.clone(),
+                            name.clone(),
+                            frame.plan.strict,
+                            hint,
+                        );
+                        let value = binary_values_in_realm(
+                            realm.expect("scoped string append Realm"),
+                            "+",
+                            reference.get_value()?,
+                            Value::String(suffix.clone()),
+                        )?;
+                        reference.put_value(value.clone())?;
+                        stack.push(value);
+                    }
+                }
                 Instruction::InitializeBinding { scope, slot } => {
                     let frame = binding_frame(&scopes, scope);
                     frame.environment.initialize_binding(

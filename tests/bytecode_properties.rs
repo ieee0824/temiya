@@ -25,6 +25,46 @@ fn assert_value(actual: Value, expected: &Value) {
 }
 
 #[test]
+fn literal_string_compound_assignment_preserves_captures_results_and_coercion() {
+    for vm in [false, true] {
+        for (source, expected) in [
+            (
+                "function f(){var s='a';var first=(s+='b');var second=(s+='c');return first+':'+second+':'+s;}f();",
+                "ab:abc:abc",
+            ),
+            (
+                "function f(){var s={valueOf:function(){s='changed';return 'old';}};var r=(s+='!');return r+':'+s;}f();",
+                "old!:old!",
+            ),
+            (
+                "function f(){var s=41;var r=(s+='x');return r+':'+s;}f();",
+                "41x:41x",
+            ),
+            ("function f(){let s='a';s+='';return s;}f();", "a"),
+        ] {
+            assert_value(
+                value(execute(&Realm::ordinary(), source, vm)),
+                &Value::String(expected.into()),
+            );
+        }
+        for suffix in ["", "b"] {
+            let realm = Realm::ordinary();
+            let source = format!(
+                "var read;function f(){{const s='a';read=function(){{return s;}};s+='{suffix}';}}f();"
+            );
+            assert_eq!(
+                execute(&realm, &source, vm).unwrap_err().kind(),
+                RuntimeErrorKind::TypeError
+            );
+            assert_value(
+                value(execute(&realm, "read();", vm)),
+                &Value::String("a".into()),
+            );
+        }
+    }
+}
+
+#[test]
 fn primitive_string_concat_preserves_snapshots_utf16_and_evaluation_order() {
     for vm in [false, true] {
         for source in [

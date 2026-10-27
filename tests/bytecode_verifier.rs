@@ -12,6 +12,66 @@ fn verify(instructions: Vec<Instruction>) -> Result<usize, VerifyErrorKind> {
 }
 
 #[test]
+fn string_append_binding_verifies_slots_constants_and_instruction_size() {
+    use temiya::bytecode::{BindingKind, ScopeBinding, ScopeDescriptor, ScopeKind};
+    assert_eq!(std::mem::size_of::<Instruction>(), 16);
+    for (kind, scope, slot, value, expected) in [
+        (
+            ScopeKind::Function,
+            99,
+            0,
+            1,
+            VerifyErrorKind::BindingOutOfBounds,
+        ),
+        (
+            ScopeKind::Function,
+            0,
+            1,
+            1,
+            VerifyErrorKind::BindingOutOfBounds,
+        ),
+        (
+            ScopeKind::Function,
+            0,
+            0,
+            2,
+            VerifyErrorKind::InvalidConstantKind,
+        ),
+        (
+            ScopeKind::Function,
+            0,
+            0,
+            99,
+            VerifyErrorKind::ConstantOutOfBounds,
+        ),
+        (ScopeKind::Global, 0, 0, 1, VerifyErrorKind::ScopeMismatch),
+    ] {
+        let code = Bytecode {
+            constants: vec![
+                Constant::Scope(ScopeDescriptor {
+                    kind,
+                    strict: false,
+                    functions: vec![],
+                    bindings: vec![ScopeBinding {
+                        name: "x".into(),
+                        kind: BindingKind::Var,
+                    }],
+                }),
+                Constant::String("suffix".into()),
+                Constant::Number(1.0),
+            ],
+            instructions: vec![
+                Instruction::EnterScope(0),
+                Instruction::AppendStringBinding { scope, slot, value },
+                Instruction::Return,
+            ],
+            local_count: 0,
+        };
+        assert_eq!(code.verify().unwrap_err().kind(), expected);
+    }
+}
+
+#[test]
 fn named_property_opcodes_validate_constant_kind_scope_and_operands() {
     use temiya::bytecode::{ScopeDescriptor, ScopeKind};
     for resolve in [false, true] {

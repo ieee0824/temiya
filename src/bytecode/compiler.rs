@@ -697,6 +697,26 @@ impl Compiler {
         value: &Expr,
         span: Span,
     ) -> Result<(), CompileError> {
+        let append = match (
+            operator,
+            &unparenthesized(target).kind,
+            &unparenthesized(value).kind,
+        ) {
+            (
+                "+=",
+                ExprKind::Identifier(name),
+                ExprKind::Literal(Literal::String { value, .. }),
+            ) => self
+                .local_binding(name)
+                .map(|(scope, slot, _)| (scope, slot, JsString::from_code_units_slice(value))),
+            _ => None,
+        };
+        if let Some((scope, slot, value)) = append {
+            let value = self.pool(Constant::String(value))?;
+            self.code
+                .push(Instruction::AppendStringBinding { scope, slot, value });
+            return Ok(());
+        }
         if !matches!(
             operator,
             "+=" | "-="

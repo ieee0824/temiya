@@ -265,6 +265,9 @@ pub enum Instruction {
     StoreBinding { scope: u32, slot: u32 },
     /// Capture a statically resolved active binding as a Reference.
     ResolveBinding { scope: u32, slot: u32, strict: bool },
+    /// Append a String constant to a local binding, using its scope's strictness.
+    /// Push the assignment value; non-String/immutable bindings use ordinary semantics.
+    AppendStringBinding { scope: u32, slot: u32, value: u32 },
     /// Update a statically resolved non-global binding and push its numeric result.
     UpdateBinding {
         scope: u32,
@@ -396,6 +399,7 @@ impl Instruction {
             | Self::ExitScope
             | Self::CloneLoopBindings
             | Self::ResolveBinding { .. }
+            | Self::AppendStringBinding { .. }
             | Self::UpdateBinding { .. }
             | Self::ResolveName { .. }
             | Self::LoadBinding { .. }
@@ -456,6 +460,7 @@ impl Instruction {
             | Self::ResolveBinding { .. }
             | Self::ResolveName { .. } => 0,
             Self::LoadBinding { .. }
+            | Self::AppendStringBinding { .. }
             | Self::UpdateBinding { .. }
             | Self::LoadName(_)
             | Self::GetName { .. } => 1,
@@ -746,6 +751,7 @@ fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
             | Instruction::InitializeBinding { scope, slot }
             | Instruction::StoreBinding { scope, slot }
             | Instruction::ResolveBinding { scope, slot, .. }
+            | Instruction::AppendStringBinding { scope, slot, .. }
             | Instruction::UpdateBinding { scope, slot, .. } => {
                 let (_, index) = state
                     .scopes
@@ -757,7 +763,9 @@ fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
                 };
                 if matches!(
                     instruction,
-                    Instruction::ResolveBinding { .. } | Instruction::UpdateBinding { .. }
+                    Instruction::ResolveBinding { .. }
+                        | Instruction::UpdateBinding { .. }
+                        | Instruction::AppendStringBinding { .. }
                 ) && plan.kind == ScopeKind::Global
                 {
                     return Err(error(VerifyErrorKind::ScopeMismatch));
@@ -766,6 +774,11 @@ fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
                     .bindings
                     .get(slot as usize)
                     .ok_or_else(|| error(VerifyErrorKind::BindingOutOfBounds))?;
+                if let Instruction::AppendStringBinding { value, .. } = instruction {
+                    if !matches!(constant(value)?, Constant::String(_)) {
+                        return Err(error(VerifyErrorKind::InvalidConstantKind));
+                    }
+                }
                 if matches!(instruction, Instruction::InitializeBinding { .. })
                     && binding.kind == BindingKind::Var
                 {

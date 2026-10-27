@@ -108,6 +108,42 @@ struct ImportBinding {
 }
 
 impl Environment {
+    pub(crate) fn append_string_binding(
+        &self,
+        name: &JsString,
+        hint: Option<usize>,
+        suffix: &JsString,
+    ) -> Option<Value> {
+        let mut record = self.0.record.borrow_mut();
+        let record = match &mut *record {
+            EnvironmentRecord::Function(record) => &mut record.declarative_record,
+            EnvironmentRecord::Declarative(record) => record,
+            _ => return None,
+        };
+        let index = hint
+            .filter(|index| {
+                record
+                    .bindings
+                    .get(*index)
+                    .is_some_and(|binding| binding.name == *name)
+            })
+            .or_else(|| {
+                record
+                    .bindings
+                    .iter()
+                    .position(|binding| binding.name == *name)
+            })?;
+        let binding = &mut record.bindings[index];
+        if !binding.mutable {
+            return None;
+        }
+        let Some(Value::String(string)) = &mut binding.value else {
+            return None;
+        };
+        string.append_owned(suffix);
+        Some(Value::String(string.clone()))
+    }
+
     pub(crate) fn function_binding_index(&self, name: &JsString) -> Option<usize> {
         let record = self.0.record.borrow();
         let EnvironmentRecord::Function(record) = &*record else {

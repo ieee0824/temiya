@@ -1,6 +1,7 @@
 //! Array-initializer accumulation shared by AST and VM.
 use super::{
-    ArrayObject, IntrinsicId, Object, PropertyDescriptor, Realm, RuntimeError, RuntimeResult, Value,
+    ArrayObject, IntrinsicId, JsString, Object, PropertyDescriptor, Realm, RuntimeError,
+    RuntimeResult, Value,
 };
 
 pub(crate) fn create(realm: &Realm) -> RuntimeResult<Object> {
@@ -18,7 +19,7 @@ pub(crate) fn elide(next: &mut u64) -> RuntimeResult<()> {
     Ok(())
 }
 pub(crate) fn append(object: &Object, next: &mut u64, value: Value) -> RuntimeResult<()> {
-    if !object.create_data_property(next.to_string().into(), value)? {
+    if !object.create_data_property(JsString::from(next.to_string()).into(), value)? {
         return Err(RuntimeError::type_error(
             "array initializer property was rejected",
         ));

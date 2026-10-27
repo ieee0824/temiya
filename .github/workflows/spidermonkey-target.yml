@@ -42,7 +42,7 @@ jobs:
       - name: Bootstrap and build actual selected shell
         working-directory: spidermonkey
         run: |
-          ./mach bootstrap --application-choice js --no-interactive
+          ./mach --no-interactive bootstrap --application-choice js
           ./mach build
           ./mach environment > "$RUNNER_TEMP/spidermonkey-evidence/environment.txt"
       - name: Verify source, release configuration and actual CLI behavior

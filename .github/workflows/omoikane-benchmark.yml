@@ -1,4 +1,4 @@
-name: Omoikane benchmark measurements
+name: Intel numeric constant qualification with eight hardware probes
 
 on:
   workflow_dispatch:
@@ -9,35 +9,29 @@ on:
         type: string
       include_controls:
         description: Also compare baseline with Boa and candidate with itself
-        default: false
-        type: boolean
-      two_runners:
-        description: Record two independent hosted machines without selecting a CPU
-        default: false
+        default: true
         type: boolean
       required_cpu_model:
         description: Optional CPU-model substring; unavailable hardware is not a measurement pass
-        default: ''
+        default: 'Intel(R) Xeon(R) 6973P-C'
         type: string
-  pull_request:
-    types: [labeled]
 
 permissions:
   contents: read
 
 concurrency:
-  group: omoikane-benchmark-${{ github.event.pull_request.number || github.ref }}
+  group: intel-constant-qualification-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   measure:
-    if: github.event_name == 'workflow_dispatch' || github.event.label.name == 'benchmark-omoikane'
+    if: github.event_name == 'workflow_dispatch'
     name: Record comparisons, copy ${{ matrix.copy }} (speed gates separate)
     strategy:
       fail-fast: false
       matrix:
-        copy: ${{ fromJSON(inputs.two_runners && '[1,2]' || '[1]') }}
-    runs-on: ubuntu-24.04
+        copy: [1, 2, 3, 4, 5, 6, 7, 8]
+    runs-on: ubuntu-latest
     timeout-minutes: 90
     defaults:
       run:
@@ -191,7 +185,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: omoikane-comparison-${{ github.run_id }}-${{ github.run_attempt }}${{ inputs.two_runners && format('-copy-{0}', matrix.copy) || '' }}
+          name: omoikane-comparison-${{ github.run_id }}-${{ github.run_attempt }}-copy-${{ matrix.copy }}
           path: ${{ runner.temp }}/comparison-output
           if-no-files-found: error
           retention-days: 30

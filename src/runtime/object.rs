@@ -643,11 +643,19 @@ impl Object {
         &self,
         key: &PropertyKey,
     ) -> RuntimeResult<Option<PropertyDescriptor>> {
-        if self.0.state.borrow().proxy.is_some() {
+        let mut state = self.0.state.borrow();
+        if state.proxy.is_some() {
+            drop(state);
             return super::proxy::get_own_property(self, key);
         }
-        self.materialize_function_prototype(key)?;
-        if let Some(string) = &self.0.state.borrow().string_data {
+        if state.lazy_function_prototype.is_some() {
+            // Materialization can mutate this object. Release the borrow first;
+            // ordinary objects keep one read borrow for the complete lookup.
+            drop(state);
+            self.materialize_function_prototype(key)?;
+            state = self.0.state.borrow();
+        }
+        if let Some(string) = &state.string_data {
             if matches!(key, PropertyKey::String(name) if name == &JsString::from("length")) {
                 return Ok(Some(PropertyDescriptor::data(
                     Value::Number(string.len() as f64),
@@ -667,12 +675,11 @@ impl Object {
                 }
             }
         }
-        if let Some(elements) = &self.0.state.borrow().elements {
+        if let Some(elements) = &state.elements {
             if let Some(index) = key.array_index() {
                 return Ok(elements.get(index).cloned());
             }
         }
-        let state = self.0.state.borrow();
         if let Some(entry) = state
             .properties
             .get(state.last_property.get())

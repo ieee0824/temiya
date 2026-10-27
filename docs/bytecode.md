@@ -11,6 +11,11 @@ native addresses, and platform-sized operands are intentionally excluded.
 | `EnterScope(i)`, `ExitScope` | `0` | valid scope descriptor and nesting |
 | `LoadBinding {scope,slot}`, `LoadName(i)` | `+1` | active scope and valid slot/string name |
 | `InitializeBinding`, `StoreBinding`, `StoreReference` | `-1` | one input and valid binding/reference |
+| `GetProperty {strict}` | `-1` | base/key and active scope |
+| `ResolveProperty {strict}` | `-2` | base/key; retain Reference |
+| `DeleteReference` | `+1` | retained Reference |
+| `LoadThis` | `+1` | active lexical this context |
+| `JumpIfNullish(target)` | `-1` | one input and valid target |
 | `LoadLocal(i)` | `+1` | `i < local_count` |
 | `StoreLocal(i)` | `-1` | one input and valid local |
 | `Duplicate` | `+1` | one input |
@@ -28,7 +33,8 @@ rejects unreachable instructions, and computes the maximum stack allocation.
 Only the resulting `VerifiedBytecode` is intended for execution by the VM.
 
 `BytecodeCompiler` lowers the baseline AST subset (primitive literals, scoped bindings,
-assignment, arithmetic and strict equality, conditional expressions, blocks,
+assignment, property get/set/delete, optional member chains, BigInt literals,
+arithmetic and strict equality, conditional expressions, blocks,
 `if`, `while`, `return`, and `throw`) and immediately verifies its output.
 Unsupported syntax returns a source-spanned `CompileError` rather than falling
 back silently. `VirtualMachine` accepts only `VerifiedBytecode`, evaluates
@@ -158,3 +164,7 @@ speedup or regression beyond that threshold is established on this runner.
 All 33 Boa pairs still find Temiya slower beyond the threshold. Both all-eleven
 speed gates remain false. Bytecode scope support does not satisfy the Boa goal
 or complete #307/#427.
+
+Property Reference execution and its current upstream frontend gaps are described
+in [property-reference.md](property-reference.md). #288 remains open until the
+original upstream programs can be validated through the complete bytecode path.

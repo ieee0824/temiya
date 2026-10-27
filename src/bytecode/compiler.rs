@@ -303,23 +303,45 @@ impl Compiler {
                 self.load_name(name)?;
                 Ok(())
             }
+            ExprKind::This => {
+                self.code.push(Instruction::LoadThis);
+                Ok(())
+            }
+            ExprKind::Member { .. } => self.member_value(expression, false),
             ExprKind::Parenthesized(inner) => self.expression(inner),
             ExprKind::Assignment {
                 operator,
                 target,
                 value,
             } if operator == "=" => {
-                let ExprKind::Identifier(name) = &target.kind else {
-                    return Err(self.unsupported("assignment target", target.span));
+                let target = unparenthesized(target);
+                let binding = match &target.kind {
+                    ExprKind::Identifier(name) => {
+                        let binding = self.binding(name);
+                        if binding.is_none() {
+                            let name = self.pool(Constant::String(name.as_str().into()))?;
+                            self.code.push(Instruction::ResolveName {
+                                name,
+                                strict: self.strict,
+                            });
+                        }
+                        binding
+                    }
+                    ExprKind::Member {
+                        object,
+                        property,
+                        computed,
+                        optional: false,
+                    } => {
+                        self.expression(object)?;
+                        self.property_key(property, *computed)?;
+                        self.code.push(Instruction::ResolveProperty {
+                            strict: self.strict,
+                        });
+                        None
+                    }
+                    _ => return Err(self.unsupported("assignment target", target.span)),
                 };
-                let binding = self.binding(name);
-                if binding.is_none() {
-                    let index = self.pool(Constant::String(name.as_str().into()))?;
-                    self.code.push(Instruction::ResolveName {
-                        name: index,
-                        strict: self.strict,
-                    });
-                }
                 self.expression(value)?;
                 self.code.push(Instruction::Duplicate);
                 self.code.push(if let Some((scope, slot, _)) = binding {
@@ -344,6 +366,26 @@ impl Compiler {
                     _ => Instruction::StrictEqual,
                 });
                 Ok(())
+            }
+            ExprKind::Unary { operator, argument } if operator == "delete" => {
+                let argument = unparenthesized(argument);
+                match &argument.kind {
+                    ExprKind::Member { .. } => self.member_value(argument, true),
+                    ExprKind::Identifier(name) => {
+                        let name = self.pool(Constant::String(name.as_str().into()))?;
+                        self.code.push(Instruction::ResolveName {
+                            name,
+                            strict: self.strict,
+                        });
+                        self.code.push(Instruction::DeleteReference);
+                        Ok(())
+                    }
+                    _ => {
+                        self.expression(argument)?;
+                        self.code.push(Instruction::Pop);
+                        self.constant(Constant::Boolean(true))
+                    }
+                }
             }
             ExprKind::Unary { operator, argument } if operator == "!" => {
                 self.expression(argument)?;
@@ -379,6 +421,80 @@ impl Compiler {
         }
     }
 
+    fn property_key(&mut self, property: &Expr, computed: bool) -> Result<(), CompileError> {
+        if computed {
+            return self.expression(property);
+        }
+        match &property.kind {
+            ExprKind::Identifier(name) => self.constant(Constant::String(name.as_str().into())),
+            ExprKind::Literal(Literal::String { value, .. }) => {
+                self.constant(Constant::String(JsString::from_code_units_slice(value)))
+            }
+            _ => Err(self.unsupported("property name", property.span)),
+        }
+    }
+
+    fn member_value(&mut self, member: &Expr, delete: bool) -> Result<(), CompileError> {
+        let mut shortcuts = vec![];
+        self.member_chain(member, delete, &mut shortcuts)?;
+        if !shortcuts.is_empty() {
+            let end = self.emit(Instruction::Jump(0));
+            let short = self.offset()?;
+            self.code.push(Instruction::Pop);
+            self.constant(if delete {
+                Constant::Boolean(true)
+            } else {
+                Constant::Undefined
+            })?;
+            let finished = self.offset()?;
+            self.patch(end, finished);
+            for branch in shortcuts {
+                self.patch(branch, short);
+            }
+        }
+        Ok(())
+    }
+
+    fn member_chain(
+        &mut self,
+        member: &Expr,
+        delete: bool,
+        shortcuts: &mut Vec<usize>,
+    ) -> Result<(), CompileError> {
+        let ExprKind::Member {
+            object,
+            property,
+            computed,
+            optional,
+        } = &member.kind
+        else {
+            unreachable!("member chain")
+        };
+        if matches!(object.kind, ExprKind::Member { .. }) {
+            self.member_chain(object, false, shortcuts)?;
+        } else {
+            // Parentheses terminate an optional chain, while ordinary members
+            // propagate its short circuit through the remaining accesses.
+            self.expression(object)?;
+        }
+        if *optional {
+            self.code.push(Instruction::Duplicate);
+            shortcuts.push(self.emit(Instruction::JumpIfNullish(0)));
+        }
+        self.property_key(property, *computed)?;
+        if delete {
+            self.code.push(Instruction::ResolveProperty {
+                strict: self.strict,
+            });
+            self.code.push(Instruction::DeleteReference);
+        } else {
+            self.code.push(Instruction::GetProperty {
+                strict: self.strict,
+            });
+        }
+        Ok(())
+    }
+
     fn literal(&mut self, literal: &Literal, span: Span) -> Result<(), CompileError> {
         let constant = match literal {
             Literal::Null => Constant::Null,
@@ -390,7 +506,8 @@ impl Compiler {
                 .map_err(|error| CompileError::new(error.to_string(), Some(span)))?
             {
                 Value::Number(value) => Constant::Number(value),
-                _ => return Err(self.unsupported("BigInt literal", span)),
+                Value::BigInt(value) => Constant::BigInt(value),
+                _ => return Err(self.unsupported("numeric literal", span)),
             },
             Literal::RegExp(_) => return Err(self.unsupported("RegExp literal", span)),
         };
@@ -443,6 +560,7 @@ impl Compiler {
         self.code[offset] = match self.code[offset] {
             Instruction::Jump(_) => Instruction::Jump(target),
             Instruction::JumpIfFalse(_) => Instruction::JumpIfFalse(target),
+            Instruction::JumpIfNullish(_) => Instruction::JumpIfNullish(target),
             _ => unreachable!("only branches are patched"),
         };
     }
@@ -545,4 +663,11 @@ fn scope_bindings(
         }));
     }
     Ok(bindings)
+}
+
+fn unparenthesized(mut expression: &Expr) -> &Expr {
+    while let ExprKind::Parenthesized(inner) = &expression.kind {
+        expression = inner;
+    }
+    expression
 }

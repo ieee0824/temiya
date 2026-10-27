@@ -64,6 +64,8 @@ pub enum Constant {
     Number(f64),
     /// Exact UTF-16 string, including lone surrogates.
     String(JsString),
+    /// Arbitrary-precision integer literal.
+    BigInt(num_bigint::BigInt),
     /// Scope metadata, usable only by `EnterScope`, never `LoadConstant`.
     Scope(ScopeDescriptor),
 }
@@ -87,6 +89,16 @@ pub enum Instruction {
     ResolveName { name: u32, strict: bool },
     /// Pop an assigned value and the innermost retained Reference, then PutValue.
     StoreReference,
+    /// Pop base and key values; push GetValue with the original receiver.
+    GetProperty { strict: bool },
+    /// Pop base and key values; retain their property Reference before the RHS.
+    ResolveProperty { strict: bool },
+    /// Consume a retained Reference and push the deletion result.
+    DeleteReference,
+    /// Push the current lexical this binding.
+    LoadThis,
+    /// Pop a condition and jump if null or undefined.
+    JumpIfNullish(u32),
     /// Push constant-pool entry `index` (`+1`).
     LoadConstant(u32),
     /// Push local slot `index` (`+1`).
@@ -124,6 +136,10 @@ pub enum Instruction {
 impl Instruction {
     fn required_stack(self) -> usize {
         match self {
+            Self::LoadThis => 0,
+            Self::GetProperty { .. } | Self::ResolveProperty { .. } => 2,
+            Self::DeleteReference => 0,
+            Self::JumpIfNullish(_) => 1,
             Self::EnterScope(_)
             | Self::ExitScope
             | Self::ResolveName { .. }
@@ -145,6 +161,9 @@ impl Instruction {
 
     fn stack_delta(self) -> isize {
         match self {
+            Self::LoadThis | Self::DeleteReference => 1,
+            Self::GetProperty { .. } | Self::JumpIfNullish(_) => -1,
+            Self::ResolveProperty { .. } => -2,
             Self::EnterScope(_) | Self::ExitScope | Self::ResolveName { .. } => 0,
             Self::LoadBinding { .. } | Self::LoadName(_) => 1,
             Self::InitializeBinding { .. } | Self::StoreBinding { .. } | Self::StoreReference => -1,
@@ -231,7 +250,7 @@ pub enum VerifyErrorKind {
     InvalidScopeDescriptor,
     /// A metadata constant was used as a value, or a name operand is not a String.
     InvalidConstantKind,
-    /// Active scopes differ at a join, are unbalanced, or have invalid nesting.
+    /// Scopes or retained References mismatch, underflow, or nest incorrectly.
     ScopeMismatch,
     /// A binding references an inactive scope, invalid slot, or var initialization.
     BindingOutOfBounds,
@@ -395,7 +414,19 @@ fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
                     );
                 }
             }
-            Instruction::StoreReference => {
+            Instruction::GetProperty { .. }
+            | Instruction::ResolveProperty { .. }
+            | Instruction::LoadThis => {
+                if state.scopes.is_empty() {
+                    return Err(error(VerifyErrorKind::ScopeMismatch));
+                }
+                if matches!(instruction, Instruction::ResolveProperty { .. }) {
+                    state.references.push(
+                        u32::try_from(offset).map_err(|_| error(VerifyErrorKind::ScopeMismatch))?,
+                    );
+                }
+            }
+            Instruction::StoreReference | Instruction::DeleteReference => {
                 state
                     .references
                     .pop()
@@ -411,7 +442,9 @@ fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
             {
                 return Err(error(VerifyErrorKind::LocalOutOfBounds));
             }
-            Instruction::Jump(target) | Instruction::JumpIfFalse(target)
+            Instruction::Jump(target)
+            | Instruction::JumpIfFalse(target)
+            | Instruction::JumpIfNullish(target)
                 if target as usize >= length =>
             {
                 return Err(error(VerifyErrorKind::JumpOutOfBounds));
@@ -440,7 +473,7 @@ fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
         match instruction {
             Instruction::Return | Instruction::Complete | Instruction::Throw => {}
             Instruction::Jump(target) => work.push_back((target as usize, state)),
-            Instruction::JumpIfFalse(target) => {
+            Instruction::JumpIfFalse(target) | Instruction::JumpIfNullish(target) => {
                 work.push_back((target as usize, state.clone()));
                 enqueue_fallthrough(offset, length, state, &mut work)?;
             }

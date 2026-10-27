@@ -1076,10 +1076,6 @@ fn to_u32(value: f64) -> u32 {
 fn to_i32(value: f64) -> i32 {
     to_u32(value) as i32
 }
-fn index_key(index: u32) -> PropertyKey {
-    PropertyKey::String(JsString::from(index.to_string()))
-}
-
 #[inline]
 pub(crate) fn binary_values_in_realm(
     realm: &Realm,

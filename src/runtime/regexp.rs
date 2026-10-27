@@ -1,8 +1,8 @@
 //! String exotic objects and a non-JIT regular-expression matcher.
 
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, collections::VecDeque, rc::Rc};
 
-use regex::{Regex, RegexBuilder};
+use regex_automata::{Input, PatternID, meta::Regex, util::syntax};
 
 use super::{JsString, Object, RuntimeError, RuntimeResult};
 
@@ -62,6 +62,89 @@ struct RegExpData {
     last_index: RefCell<usize>,
 }
 
+// Only immutable compiled strategies are reused. Templates are never searched;
+// cloning a meta Regex creates a separate search-cache pool for the new object.
+// The dependency reports approximate heap usage, so this is an accounting
+// budget, not a hard process-memory limit. Entry count separately bounds keys.
+const MATCHER_CACHE_BYTES: usize = 8 * 1024 * 1024;
+const MATCHER_CACHE_ENTRIES: usize = 256;
+
+struct CachedMatcher {
+    source: String,
+    flags: RegExpFlags,
+    matcher: Regex,
+    bytes: usize,
+}
+
+#[derive(Default)]
+struct MatcherCache {
+    entries: VecDeque<CachedMatcher>,
+    bytes: usize,
+}
+
+thread_local! {
+    static MATCHERS: RefCell<MatcherCache> = RefCell::new(MatcherCache::default());
+}
+
+fn compile_matcher(source: &str, flags: RegExpFlags) -> RuntimeResult<Regex> {
+    if let Some(matcher) = MATCHERS.with(|cache| {
+        let mut cache = cache.borrow_mut();
+        let index = cache
+            .entries
+            .iter()
+            .position(|entry| entry.flags == flags && entry.source == source)?;
+        let entry = cache.entries.remove(index).expect("existing cache entry");
+        let matcher = entry.matcher.clone();
+        cache.entries.push_front(entry);
+        Some(matcher)
+    }) {
+        return Ok(matcher);
+    }
+    let translated = translate_named_groups(source);
+    let matcher = Regex::builder()
+        // Preserve the limits and UTF-8 policies of regex::RegexBuilder.
+        .configure(
+            Regex::config()
+                .nfa_size_limit(Some(10 * (1 << 20)))
+                .hybrid_cache_capacity(2 * (1 << 20))
+                .utf8_empty(true),
+        )
+        .syntax(
+            syntax::Config::new()
+                .utf8(true)
+                .case_insensitive(flags.ignore_case)
+                .multi_line(flags.multiline)
+                .dot_matches_new_line(flags.dot_all)
+                .unicode(flags.unicode),
+        )
+        .build(&translated)
+        .map_err(|error| RuntimeError::syntax_error(error.to_string()))?;
+    let bytes = matcher
+        .memory_usage()
+        .saturating_add(matcher.create_cache().memory_usage())
+        .saturating_add(source.len())
+        .saturating_add(std::mem::size_of::<CachedMatcher>());
+    if bytes <= MATCHER_CACHE_BYTES {
+        MATCHERS.with(|cache| {
+            let mut cache = cache.borrow_mut();
+            while cache.entries.len() >= MATCHER_CACHE_ENTRIES
+                || cache.bytes.saturating_add(bytes) > MATCHER_CACHE_BYTES
+            {
+                let entry = cache.entries.pop_back().expect("nonempty cache");
+                cache.bytes -= entry.bytes;
+            }
+            cache.entries.push_front(CachedMatcher {
+                source: source.to_owned(),
+                flags,
+                matcher: matcher.clone(),
+                bytes,
+            });
+            cache.bytes += bytes;
+        });
+    }
+    Ok(matcher)
+}
+
 /// One successful regular-expression match and its captures.
 #[derive(Clone, Debug, PartialEq)]
 pub struct RegExpMatch {
@@ -82,14 +165,7 @@ impl RegExp {
     pub fn new(pattern: JsString, flags: &str) -> RuntimeResult<Self> {
         let flags = RegExpFlags::parse(flags)?;
         let source = scalar_string(&pattern)?;
-        let translated = translate_named_groups(&source);
-        let matcher = RegexBuilder::new(&translated)
-            .case_insensitive(flags.ignore_case)
-            .multi_line(flags.multiline)
-            .dot_matches_new_line(flags.dot_all)
-            .unicode(flags.unicode)
-            .build()
-            .map_err(|error| RuntimeError::syntax_error(error.to_string()))?;
+        let matcher = compile_matcher(&source, flags)?;
         let object = Object::new();
         object.0.state.borrow_mut().regexp = Some(RegExpSlot(Rc::new(RegExpData {
             source: pattern,
@@ -158,49 +234,51 @@ impl RegExp {
             }
             return Ok(None);
         };
-        let captures = slot.0.matcher.captures_at(&text, start_byte);
-        let Some(captures) = captures.filter(|captures| {
-            !slot.0.flags.sticky
-                || captures
-                    .get(0)
-                    .is_some_and(|value| value.start() == start_byte)
-        }) else {
+        let mut captures = slot.0.matcher.create_captures();
+        slot.0.matcher.search_captures(
+            &Input::new(&text).span(start_byte..text.len()),
+            &mut captures,
+        );
+        if !captures.is_match()
+            || (slot.0.flags.sticky
+                && !captures
+                    .get_group(0)
+                    .is_some_and(|value| value.start == start_byte))
+        {
             if stateful {
                 *slot.0.last_index.borrow_mut() = 0;
             }
             return Ok(None);
-        };
-        let whole = captures.get(0).expect("capture zero");
-        let index = byte_to_utf16(&text, whole.start());
-        let values = (0..captures.len())
+        }
+        let whole = captures.get_group(0).expect("capture zero");
+        let index = byte_to_utf16(&text, whole.start);
+        let values = (0..captures.group_len())
             .map(|index| {
                 captures
-                    .get(index)
-                    .map(|value| JsString::from(value.as_str()))
+                    .get_group(index)
+                    .map(|value| JsString::from(&text[value.range()]))
             })
             .collect();
         let named_captures = slot
             .0
             .matcher
-            .capture_names()
+            .group_info()
+            .pattern_names(PatternID::ZERO)
             .flatten()
             .map(|name| {
                 (
                     name.to_owned(),
                     captures
-                        .name(name)
-                        .map(|value| JsString::from(value.as_str())),
+                        .get_group_by_name(name)
+                        .map(|value| JsString::from(&text[value.range()])),
                 )
             })
             .collect();
         if stateful {
-            let mut end = byte_to_utf16(&text, whole.end());
-            if whole.start() == whole.end() {
+            let mut end = byte_to_utf16(&text, whole.end);
+            if whole.start == whole.end {
                 end += if slot.0.flags.unicode {
-                    text[whole.end()..]
-                        .chars()
-                        .next()
-                        .map_or(1, char::len_utf16)
+                    text[whole.end..].chars().next().map_or(1, char::len_utf16)
                 } else {
                     1
                 };
@@ -305,4 +383,47 @@ fn utf16_range(text: &str, start: usize, end: usize) -> RuntimeResult<String> {
     let end = utf16_to_byte(text, end)
         .ok_or_else(|| RuntimeError::range_error("invalid UTF-16 boundary"))?;
     Ok(text[start..end].to_owned())
+}
+
+#[cfg(test)]
+mod cache_tests {
+    use super::*;
+
+    #[test]
+    fn unique_patterns_evict_without_changing_live_objects() {
+        MATCHERS.with(|cache| *cache.borrow_mut() = MatcherCache::default());
+        let original = RegExp::new(JsString::from("(?<keep>a+)"), "g").unwrap();
+        let input = JsString::from("aa aa");
+        original.exec(&input).unwrap().unwrap();
+        for i in 0..MATCHER_CACHE_ENTRIES * 2 {
+            let pattern = format!("prefix{i}([a-z]+)");
+            let regexp = RegExp::new(JsString::from(pattern), "").unwrap();
+            assert!(
+                regexp
+                    .exec(&JsString::from(format!("prefix{i}word")))
+                    .unwrap()
+                    .is_some()
+            );
+            MATCHERS.with(|cache| {
+                let cache = cache.borrow();
+                assert!(cache.entries.len() <= MATCHER_CACHE_ENTRIES);
+                assert!(cache.bytes <= MATCHER_CACHE_BYTES);
+            });
+        }
+        MATCHERS.with(|cache| {
+            assert!(
+                !cache
+                    .borrow()
+                    .entries
+                    .iter()
+                    .any(|entry| entry.source == "(?<keep>a+)")
+            )
+        });
+        let matched = original.exec(&input).unwrap().unwrap();
+        assert_eq!(matched.index, 3);
+        assert_eq!(matched.named_captures[0].1, Some(JsString::from("aa")));
+        let rebuilt = RegExp::new(JsString::from("(?<keep>a+)"), "g").unwrap();
+        assert_eq!(rebuilt.last_index(), 0);
+        assert_eq!(rebuilt.exec(&input).unwrap().unwrap().index, 0);
+    }
 }

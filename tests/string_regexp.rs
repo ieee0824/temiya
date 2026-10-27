@@ -38,6 +38,54 @@ fn unicode_global_match_tracks_utf16_last_index() {
 }
 
 #[test]
+fn repeated_construction_keeps_objects_state_flags_and_errors_independent() {
+    let pattern = JsString::from("(?<letter>a)");
+    let first = RegExp::new(pattern.clone(), "g").unwrap();
+    let input = JsString::from("aa");
+    first.exec(&input).unwrap().unwrap();
+    let second = RegExp::new(pattern.clone(), "g").unwrap();
+    assert_ne!(first.object(), second.object());
+    assert_eq!(second.last_index(), 0);
+    assert_eq!(second.exec(&input).unwrap().unwrap().index, 0);
+    assert_eq!(first.exec(&input).unwrap().unwrap().index, 1);
+    second.set_last_index(99);
+    assert_eq!(first.last_index(), 2);
+    assert!(second.exec(&input).unwrap().is_none());
+    assert_eq!(second.last_index(), 0);
+    assert!(
+        RegExp::new(pattern.clone(), "")
+            .unwrap()
+            .exec(&JsString::from("A"))
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        RegExp::new(pattern, "i")
+            .unwrap()
+            .exec(&JsString::from("A"))
+            .unwrap()
+            .is_some()
+    );
+    for _ in 0..2 {
+        assert_eq!(
+            RegExp::new(JsString::from("["), "").unwrap_err().kind(),
+            RuntimeErrorKind::SyntaxError
+        );
+        assert_eq!(
+            RegExp::new(JsString::from("a"), "gg").unwrap_err().kind(),
+            RuntimeErrorKind::SyntaxError
+        );
+        assert!(
+            RegExp::new(JsString::from("a"), "")
+                .unwrap()
+                .exec(&JsString::from("a"))
+                .unwrap()
+                .is_some()
+        );
+    }
+}
+
+#[test]
 fn named_captures_and_replace_callback_are_observable() {
     let regexp = RegExp::new(JsString::from("(?<word>[a-z]+)"), "g").unwrap();
     let seen = Rc::new(RefCell::new(Vec::new()));

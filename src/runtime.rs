@@ -31,6 +31,7 @@ mod job_queue;
 mod native_function;
 mod numeric;
 mod object;
+pub(crate) mod object_literal;
 mod operators;
 mod pipeline;
 mod promise;

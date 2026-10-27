@@ -350,3 +350,8 @@ is propagated and never triggers AST re-execution.
 
 [Array literal operations](array-literals.md) describe accumulation, holes,
 iterator errors, operand checks and the scoped upstream observations.
+### Object initializer data properties
+
+See [object data literals](object-data-literals.md) for bytecode instructions,
+key/value ordering, prototype setters, object spread, scoped upstream tests
+and remaining method/HomeObject limits.

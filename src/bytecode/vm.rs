@@ -95,6 +95,45 @@ impl VirtualMachine {
                     crate::runtime::array_literal::finish(&object, next)?;
                     stack.push(Value::Object(object));
                 }
+                Instruction::CreateObject => stack.push(Value::Object(
+                    crate::runtime::object_literal::create(realm.expect("verified object Realm")),
+                )),
+                Instruction::CoercePropertyKey => {
+                    let key = crate::runtime::object_literal::property_key(
+                        realm.expect("verified object Realm"),
+                        pop(&mut stack)?,
+                    )?;
+                    stack.push(match key {
+                        crate::runtime::PropertyKey::String(name) => Value::String(name),
+                        crate::runtime::PropertyKey::Symbol(symbol) => Value::Symbol(symbol),
+                    });
+                }
+                Instruction::DefineObjectProperty { prototype_setter } => {
+                    let value = pop(&mut stack)?;
+                    let key = pop(&mut stack)?.to_property_key()?;
+                    let Value::Object(object) = pop(&mut stack)? else {
+                        return Err(RuntimeError::type_error(
+                            "object initializer target is not an object",
+                        ));
+                    };
+                    crate::runtime::object_literal::define_data(
+                        &object,
+                        key,
+                        value,
+                        prototype_setter,
+                    )?;
+                    stack.push(Value::Object(object));
+                }
+                Instruction::SpreadObject => {
+                    let source = pop(&mut stack)?;
+                    let Value::Object(object) = pop(&mut stack)? else {
+                        return Err(RuntimeError::type_error(
+                            "object spread target is not an object",
+                        ));
+                    };
+                    crate::runtime::object_literal::spread(&object, source)?;
+                    stack.push(Value::Object(object));
+                }
                 Instruction::EnterScope(index) => {
                     let Constant::Scope(plan) = &body.constants[index as usize] else {
                         unreachable!()

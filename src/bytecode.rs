@@ -236,6 +236,9 @@ pub enum Instruction {
     EnterScope(u32),
     /// Leave the innermost active scope, preserving the operand stack.
     ExitScope,
+    /// Copy the current let-only block's bindings into a fresh sibling environment.
+    /// The scope entry identity and operand stack are preserved.
+    CloneLoopBindings,
     /// Push a value from an active scope entry PC and binding slot.
     LoadBinding { scope: u32, slot: u32 },
     /// Initialize an active lexical binding from the stack.
@@ -349,6 +352,7 @@ impl Instruction {
             Self::JumpIfNullish(_) => 1,
             Self::EnterScope(_)
             | Self::ExitScope
+            | Self::CloneLoopBindings
             | Self::ResolveName { .. }
             | Self::LoadBinding { .. }
             | Self::LoadName(_) => 0,
@@ -392,7 +396,10 @@ impl Instruction {
             | Self::TypeOfReference => 1,
             Self::GetProperty { .. } | Self::JumpIfNullish(_) => -1,
             Self::ResolveProperty { .. } => -2,
-            Self::EnterScope(_) | Self::ExitScope | Self::ResolveName { .. } => 0,
+            Self::EnterScope(_)
+            | Self::ExitScope
+            | Self::CloneLoopBindings
+            | Self::ResolveName { .. } => 0,
             Self::LoadBinding { .. } | Self::LoadName(_) => 1,
             Self::InitializeBinding { .. } | Self::StoreBinding { .. } | Self::StoreReference => -1,
             Self::LoadConstant(_) | Self::LoadLocal(_) | Self::Duplicate => 1,
@@ -653,6 +660,21 @@ fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
                     .scopes
                     .pop()
                     .ok_or_else(|| error(VerifyErrorKind::ScopeMismatch))?;
+            }
+            Instruction::CloneLoopBindings => {
+                let (_, index) = state
+                    .scopes
+                    .last()
+                    .ok_or_else(|| error(VerifyErrorKind::ScopeMismatch))?;
+                let Constant::Scope(plan) = &bytecode.constants[*index as usize] else {
+                    unreachable!()
+                };
+                if plan.kind != ScopeKind::Block
+                    || !plan.functions.is_empty()
+                    || plan.bindings.iter().any(|b| b.kind != BindingKind::Let)
+                {
+                    return Err(error(VerifyErrorKind::ScopeMismatch));
+                }
             }
             Instruction::LoadBinding { scope, slot }
             | Instruction::InitializeBinding { scope, slot }

@@ -70,7 +70,10 @@ warm RegExp measurements have five faster and four within-noise decisions.
 The completed local identical-binary control has 29 within-noise, two faster
 and two slower decisions; object-alloc is within noise in all three pairs.
 This demonstrates process variability but does not clear the retained source
-regression. Hosted original-eleven regressions and controls are still running.
+regression. Hosted a8 original-eleven regressions and controls are complete on all four
+ARM64/x64 hosts: all candidate/Boa comparisons are faster and all
+before/after and identical-binary comparisons are within noise. These
+observations do not qualify subsequent production sources.
 
 The subsequent short-ASCII subject experiment (581265a) avoids an intermediate
 UTF-8 allocation for at most 64 ASCII code units, preserving the existing
@@ -95,3 +98,12 @@ are never cached. Proxy/exotic operations and lazy prototype materialization
 retain their earlier ordering. Deletion/redefinition/accessor/Symbol coverage
 and the full native suite pass. Local cold results are correct but within
 noise versus Boa; hosted final-source measurements remain necessary.
+
+Candidate 6702d00 retains one read borrow for ordinary own-property lookup.
+Proxy dispatch and lazy function-prototype materialization release that borrow
+before any operation that can reenter or mutate the object. Full-key position
+checks and current descriptor reads remain unchanged. It passes full native
+release tests and selected RegExp Test262; its local cold gate passes all
+three Boa comparisons. Four-runner final-source qualification run 40604058677
+records cold first passes, warm/original-eleven regressions and exact-binary
+controls. Adoption still requires those results and latest CI/security.

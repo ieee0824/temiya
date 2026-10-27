@@ -421,14 +421,30 @@ impl RegExp {
         finish: impl FnOnce(usize, &str, &Captures, &Matcher) -> T,
     ) -> RuntimeResult<Option<T>> {
         let slot = self.slot();
-        let text = scalar_string(input)?;
+        let units = input.code_units();
+        let mut ascii = [0_u8; 64];
+        let short_ascii = units.len() <= ascii.len()
+            && units.iter().zip(ascii.iter_mut()).all(|(unit, byte)| {
+                if *unit >= 128 {
+                    return false;
+                }
+                *byte = *unit as u8;
+                true
+            });
+        let owned;
+        let text = if short_ascii {
+            std::str::from_utf8(&ascii[..units.len()]).expect("validated ASCII input")
+        } else {
+            owned = scalar_string(input)?;
+            owned.as_str()
+        };
         let stateful = slot.0.flags.global || slot.0.flags.sticky;
         let start_utf16 = if stateful {
             *slot.0.last_index.borrow()
         } else {
             0
         };
-        let Some(start_byte) = utf16_to_byte(&text, start_utf16) else {
+        let Some(start_byte) = utf16_to_byte(text, start_utf16) else {
             if stateful {
                 *slot.0.last_index.borrow_mut() = 0;
             }
@@ -436,7 +452,7 @@ impl RegExp {
         };
         let mut captures = slot.0.captures.borrow_mut();
         slot.0.matcher.search(
-            &Input::new(&text).span(start_byte..text.len()),
+            &Input::new(text).span(start_byte..text.len()),
             &mut captures,
             &mut slot.0.scratch.borrow_mut(),
         );
@@ -452,7 +468,7 @@ impl RegExp {
             return Ok(None);
         }
         let whole = captures.get_group(0).expect("capture zero");
-        let index = byte_to_utf16(&text, whole.start);
+        let index = byte_to_utf16(text, whole.start);
         if stateful {
             let mut end = byte_to_utf16(&text, whole.end);
             if whole.start == whole.end {
@@ -464,7 +480,7 @@ impl RegExp {
             }
             *slot.0.last_index.borrow_mut() = end;
         }
-        Ok(Some(finish(index, &text, &captures, &slot.0.matcher)))
+        Ok(Some(finish(index, text, &captures, &slot.0.matcher)))
     }
 
     /// Replaces matches, invoking a callback with the matched text and capture values.

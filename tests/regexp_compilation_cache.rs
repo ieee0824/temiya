@@ -237,3 +237,30 @@ fn builtin_exec_owns_each_capture_array_and_clears_optional_groups() {
         }
     }
 }
+
+#[test]
+fn short_ascii_input_and_unicode_fallback_keep_owned_captures_at_buffer_boundary() {
+    for len in [63, 64, 65] {
+        let input = JsString::from("a".repeat(len));
+        let regexp = RegExp::new(JsString::from("(a+)"), "gu").unwrap();
+        let found = regexp.exec(&input).unwrap().unwrap();
+        assert_eq!(found.index, 0);
+        assert_eq!(
+            found.captures,
+            vec![Some(input.clone()), Some(input.clone())]
+        );
+        assert_eq!(regexp.last_index(), len);
+        assert!(regexp.exec(&input).unwrap().is_none());
+        assert_eq!(regexp.last_index(), 0);
+        assert_eq!(found.captures[0], Some(input));
+    }
+    let input = JsString::from(format!("{}😀{}", "a".repeat(31), "a".repeat(31)));
+    assert_eq!(input.code_units().len(), 64);
+    let regexp = RegExp::new(JsString::from("(?<value>.)"), "gu").unwrap();
+    regexp.set_last_index(31);
+    let found = regexp.exec(&input).unwrap().unwrap();
+    assert_eq!(found.index, 31);
+    assert_eq!(found.captures[0], Some(JsString::from("😀")));
+    assert_eq!(found.named_captures[0].1, Some(JsString::from("😀")));
+    assert_eq!(regexp.last_index(), 33);
+}

@@ -1,0 +1,9 @@
+{
+  "name": "regexp-unicode-captures",
+  "group": "regexp",
+  "iterations": 2048,
+  "expected": 6144,
+  "setup": "var regexpUnicode=new RegExp('(.)','u');function __temiyaRegexpBody(count){var total=0;for(var i=0;i<count;i++){var input=i%2===0?'😀':'a';var result=regexpUnicode.exec(input);if(result===null)return -1;total+=result[0].length+result[1].length;}return total;}",
+  "invocation": "__temiyaRegexpBody(2048);",
+  "oracle": "1024 astral matches contribute 2+2 UTF-16 units; 1024 ASCII matches contribute 1+1: 1024*6=6144."
+}

@@ -7,8 +7,11 @@ import { join } from 'node:path';
 import os from 'node:os';
 import {fileURLToPath} from 'node:url';
 import { revision, fixtureSha256, oracle } from './omoikane-benchmark-reference.mjs';
+import { regexpFixtureVersion, regexpWorkloads } from './regexp-benchmark-reference.mjs';
 
 const args = process.argv.slice(2);
+const regexpSuite = args[0] === '--regexp';
+if (regexpSuite) args.shift();
 const beforeAfter = args[0] === '--temiya-baseline';
 if (beforeAfter) args.shift();
 const spiderMonkey = args[0] === '--spidermonkey';
@@ -18,6 +21,7 @@ if (spiderMonkey) {
   spiderMode = args.shift();
   if (beforeAfter || !['interpreter', 'default'].includes(spiderMode)) throw Error('select one comparison and a valid SpiderMonkey mode');
 }
+if (regexpSuite && spiderMonkey) throw Error('Authored RegExp comparison currently supports actual Boa and Temiya; RegExp backend modes need separate verification.');
 const [directory, temiya, boaInfoFile, samplesText = '15', pairsText = '3'] = args;
 const samples = Number(samplesText), pairs = Number(pairsText);
 if (!directory || !temiya || !boaInfoFile || !Number.isInteger(samples) || samples < 1 || samples > 1000 ||
@@ -30,7 +34,9 @@ if (os.platform() !== 'linux' || !/^VmRSS:/m.test(readFileSync('/proc/self/statu
 }
 const manifest = JSON.parse(readFileSync(join(directory, 'manifest.json')));
 const boa = JSON.parse(readFileSync(boaInfoFile));
-if (manifest.revision !== revision || manifest.fixture_sha256 !== fixtureSha256) throw Error('fixture provenance mismatch');
+if (regexpSuite) {
+  if (manifest.fixture_kind !== 'authored-regexp' || manifest.fixture_version !== regexpFixtureVersion || manifest.reference_engine_revision !== revision) throw Error('RegExp fixture provenance mismatch');
+} else if (manifest.revision !== revision || manifest.fixture_sha256 !== fixtureSha256) throw Error('fixture provenance mismatch');
 const selectedSpider = JSON.parse(readFileSync(new URL('../benchmarks/targets/spidermonkey.json', import.meta.url)));
 if (spiderMonkey) {
   if (JSON.stringify(boa.target) !== JSON.stringify(selectedSpider) || !boa.source_clean ||
@@ -44,7 +50,7 @@ if (spiderMonkey) {
   if (boa.name !== 'Temiya' || !['AST interpreter', 'Auto Script', 'Auto Script+loop'].includes(boa.mode) || boa.profile !== 'release' ||
       !Array.isArray(boa.features) || boa.features.length !== 0 || !/^[a-f0-9]{40}$/.test(boa.revision ?? '') ||
       boa.executable_sha256 !== hash(readFileSync(boa.executable))) throw Error('Temiya baseline provenance mismatch');
-} else if (boa.omoikane_revision !== manifest.revision || !boa.checkout_clean ||
+} else if (boa.omoikane_revision !== (regexpSuite ? manifest.reference_engine_revision : manifest.revision) || !boa.checkout_clean ||
     boa.executable_sha256 !== hash(readFileSync(boa.executable))) throw Error('Boa build provenance mismatch');
 const rustc = execFileSync('rustc', ['-Vv'], { encoding: 'utf8' }).trim();
 if (!spiderMonkey && boa.rustc !== rustc) throw Error('use the same Rust compiler for both workers');
@@ -63,11 +69,15 @@ const workers = beforeAfter ? [
   } : { name: 'omoikane vendored Boa', executable: boa.executable, revision: boa.omoikane_revision,
     mode: 'interpreter', build: boa },
 ];
-if (manifest.workloads.length !== oracle.length || manifest.fixture_version !== 2) throw Error('incomplete workload manifest');
+if (regexpSuite) {
+  if (manifest.workloads.length !== regexpWorkloads.length) throw Error('incomplete RegExp workload manifest');
+} else if (manifest.workloads.length !== oracle.length || manifest.fixture_version !== 2) throw Error('incomplete workload manifest');
 const workloads = manifest.workloads.map((entry, index) => {
-  if (JSON.stringify([entry.name, entry.iterations, entry.expected]) !== JSON.stringify(oracle[index])) throw Error('workload oracle mismatch');
+  const expected = regexpSuite ? [regexpWorkloads[index].name, regexpWorkloads[index].iterations, regexpWorkloads[index].expected] : oracle[index];
+  if (JSON.stringify([entry.name, entry.iterations, entry.expected]) !== JSON.stringify(expected)) throw Error('workload oracle mismatch');
   const path = join(directory, `${entry.name}.json`);
   const workload = JSON.parse(readFileSync(path));
+  if (regexpSuite && (JSON.stringify(workload) !== JSON.stringify(regexpWorkloads[index]) || entry.group !== 'regexp' || entry.oracle !== regexpWorkloads[index].oracle)) throw Error('authored RegExp input/oracle changed');
   if (workload.name !== entry.name || workload.iterations !== entry.iterations || workload.expected !== entry.expected ||
       hash(workload.setup) !== entry.setup_sha256 || hash(workload.invocation) !== entry.invocation_sha256) throw Error(`input changed: ${entry.name}`);
   return { ...entry, path };
@@ -76,6 +86,7 @@ const timeout_ms = 180_000, rss_limit_kib = 512 * 1024;
 const report = {
   comparison_kind: beforeAfter ? 'Temiya before/after' : spiderMonkey ? 'Temiya versus SpiderMonkey' : 'Temiya versus omoikane Boa',
   recorded_at: new Date().toISOString(), rustc, manifest, workers, samples, pairs,
+  ...(regexpSuite ? {authored_reference_sha256:hash(readFileSync(new URL('./regexp-benchmark-reference.mjs',import.meta.url))),comparison_script_sha256:hash(readFileSync(fileURLToPath(import.meta.url)))} : {}),
   measurement_scope: 'Function/shared setup once per process; each timed pass parses and evaluates the same invocation; startup/setup/warmup excluded from samples',
   qualification: samples >= 15 && pairs >= 3 ? 'repeated comparison' : 'diagnostic only; insufficient samples/pairs for performance acceptance',
   notes: process.env.BENCH_NOTES ?? '',
@@ -162,8 +173,9 @@ for (const workload of workloads) {
   }
 }
 report.all_workloads_valid = report.runs.every(result => result.status === 'pass');
-report[beforeAfter ? 'all_eleven_workloads_after_faster_beyond_threshold' : 'all_eleven_workloads_faster_beyond_threshold'] = samples >= 15 && pairs >= 3 && report.all_workloads_valid &&
+report[beforeAfter ? (regexpSuite ? 'all_authored_regexp_workloads_after_faster_beyond_threshold' : 'all_eleven_workloads_after_faster_beyond_threshold') : (regexpSuite ? 'all_authored_regexp_workloads_faster_beyond_threshold' : 'all_eleven_workloads_faster_beyond_threshold')] = samples >= 15 && pairs >= 3 && report.all_workloads_valid &&
   report.comparisons.every(result => result.outcome === (beforeAfter ? 'after faster beyond threshold' : 'Temiya faster beyond threshold'));
 report.scope_note = beforeAfter ? 'Temiya-only before/after comparison of eleven microbenchmarks; this does not measure Boa or SpiderMonkey or establish complete application compatibility.' : 'Eleven microbenchmarks only; even a passing comparison does not establish complete application compatibility or superiority on arbitrary JavaScript.';
+if (regexpSuite) report.scope_note = 'Three authored normal-case RegExp inputs, separate from the original eleven; not full ECMAScript RegExp, GC or application superiority. Construction can include engine caches. No RegExp backend/JIT execution claim.';
 console.log(JSON.stringify(report, null, 2));
 if (!report.all_workloads_valid) process.exitCode = 2;

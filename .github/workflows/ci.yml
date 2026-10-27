@@ -43,6 +43,8 @@ jobs:
         run: cargo +stable fmt --all --check
       - name: Check external benchmark adapter formatting
         run: rustfmt +stable --edition 2024 --check benchmarks/omoikane-worker/main.rs
+      - name: Check authored RegExp input contracts
+        run: node scripts/check-regexp-workloads.mjs
       - name: Run Clippy
         run: cargo +stable clippy --locked --all-targets --all-features -- -D warnings
 

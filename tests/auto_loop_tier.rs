@@ -42,6 +42,21 @@ fn auto_function_tier_matches_ast_on_nested_control_and_captures() {
             "f(2);",
             10.0,
         ),
+        (
+            "var i=0; while(i<2){i++;} return arguments[0]+i;",
+            "f(40);",
+            42.0,
+        ),
+        (
+            "'use strict'; var i=0; while(i<2){i++;} return this.x+i;",
+            "f.call({x:40}, 1);",
+            42.0,
+        ),
+        (
+            "var i=0; while(i<2){i++;} function g(){return n+i;} return g();",
+            "f(40);",
+            42.0,
+        ),
     ] {
         for backend in [ScriptBackend::Ast, ScriptBackend::Auto] {
             assert!(

@@ -921,7 +921,7 @@ pub(crate) fn binary_values(operator: &str, left: Value, right: Value) -> Runtim
             "-" => Some(Value::Number(a - b)),
             "*" => Some(Value::Number(a * b)),
             "/" => Some(Value::Number(a / b)),
-            "%" => Some(Value::Number(a % b)),
+            "%" => Some(Value::Number(number_remainder(*a, *b))),
             "<" => Some(Value::Boolean(a < b)),
             ">" => Some(Value::Boolean(a > b)),
             "<=" => Some(Value::Boolean(a <= b)),
@@ -969,6 +969,21 @@ pub(crate) fn binary_values(operator: &str, left: Value, right: Value) -> Runtim
             "unsupported binary operator {operator}"
         ))),
     }
+}
+
+fn number_remainder(left: f64, right: f64) -> f64 {
+    // In this range integral operands and their remainder are exact binary64
+    // integers, and signed i64 division cannot overflow. All other pairs keep
+    // IEEE remainder semantics, including zero divisors and non-finite values.
+    const MAX_EXACT_INTEGER: f64 = 9_007_199_254_740_991.0;
+    if left.abs() <= MAX_EXACT_INTEGER && right.abs() <= MAX_EXACT_INTEGER {
+        let dividend = left as i64;
+        let divisor = right as i64;
+        if divisor != 0 && dividend as f64 == left && divisor as f64 == right {
+            return ((dividend % divisor) as f64).copysign(left);
+        }
+    }
+    left % right
 }
 
 fn numeric_binary(operator: &str, left: Value, right: Value) -> RuntimeResult<Value> {

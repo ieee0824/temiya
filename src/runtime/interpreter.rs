@@ -1027,6 +1027,24 @@ pub(crate) fn binary_values(operator: &str, left: Value, right: Value) -> Runtim
             "*" => Some(Value::Number(a * b)),
             "/" => Some(Value::Number(a / b)),
             "%" => Some(Value::Number(number_remainder(*a, *b))),
+            "&" => Some(Value::Number(f64::from(
+                number_operand_u32(*a) as i32 & number_operand_u32(*b) as i32,
+            ))),
+            "|" => Some(Value::Number(f64::from(
+                number_operand_u32(*a) as i32 | number_operand_u32(*b) as i32,
+            ))),
+            "^" => Some(Value::Number(f64::from(
+                number_operand_u32(*a) as i32 ^ number_operand_u32(*b) as i32,
+            ))),
+            "<<" => Some(Value::Number(f64::from(
+                (number_operand_u32(*a) as i32).wrapping_shl(number_operand_u32(*b) & 31),
+            ))),
+            ">>" => Some(Value::Number(f64::from(
+                (number_operand_u32(*a) as i32).wrapping_shr(number_operand_u32(*b) & 31),
+            ))),
+            ">>>" => Some(Value::Number(f64::from(
+                number_operand_u32(*a).wrapping_shr(number_operand_u32(*b) & 31),
+            ))),
             "<" => Some(Value::Boolean(a < b)),
             ">" => Some(Value::Boolean(a > b)),
             "<=" => Some(Value::Boolean(a <= b)),
@@ -1080,6 +1098,18 @@ pub(crate) fn binary_values(operator: &str, left: Value, right: Value) -> Runtim
         _ => Err(RuntimeError::syntax_error(format!(
             "unsupported binary operator {operator}"
         ))),
+    }
+}
+
+fn number_operand_u32(value: f64) -> u32 {
+    // Already-primitive Numbers need no observable coercion. In this bounded
+    // interval truncation fits i64 and retaining low bits is exactly ToUint32.
+    // Nonfinite and larger inputs retain the existing general conversion.
+    const MODULUS: f64 = 4_294_967_296.0;
+    if (-MODULUS..MODULUS).contains(&value) {
+        (value as i64) as u32
+    } else {
+        to_u32(value)
     }
 }
 

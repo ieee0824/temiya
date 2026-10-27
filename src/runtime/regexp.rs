@@ -396,6 +396,32 @@ fn utf16_range(text: &str, start: usize, end: usize) -> RuntimeResult<String> {
 mod cache_tests {
     use super::*;
 
+    // This allocates hundreds of thousands of automaton states to exercise the
+    // byte budget. The smaller-pattern eviction/state test also runs in Miri.
+    #[test]
+    #[cfg(not(miri))]
+    fn compiled_size_budget_evicts_before_the_entry_limit() {
+        MATCHERS.with(|cache| *cache.borrow_mut() = MatcherCache::default());
+        for i in 0..32 {
+            RegExp::new(JsString::from(format!("a{{16384}}suffix{i}")), "").unwrap();
+            MATCHERS.with(|cache| {
+                let cache = cache.borrow();
+                assert!(cache.bytes <= MATCHER_CACHE_BYTES);
+                assert!(cache.entries.len() <= MATCHER_CACHE_ENTRIES);
+            });
+        }
+        MATCHERS.with(|cache| {
+            let cache = cache.borrow();
+            assert!(!cache.entries.is_empty());
+            assert!(cache.entries.len() < 32, "byte budget must cause eviction");
+            println!(
+                "byte-budget stress: {} entries, {} accounted bytes",
+                cache.entries.len(),
+                cache.bytes
+            );
+        });
+    }
+
     #[test]
     fn unique_patterns_evict_without_changing_live_objects() {
         MATCHERS.with(|cache| *cache.borrow_mut() = MatcherCache::default());

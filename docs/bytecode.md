@@ -340,7 +340,20 @@ Engine backend integration and overall Boa superiority remain open.
 Script to verified bytecode before execution. Unsupported syntax returns an
 `EmbedError::Bytecode` diagnostic without executing the Script. `Auto` selects
 bytecode for a supported whole Script and falls back to AST otherwise;
-`CompiledScript::backend()` reports the actual choice. The default remains
-AST. Selection applies to Scripts compiled by that Engine, not modules or
-functions previously created by the AST interpreter. A VM runtime exception
-is propagated and never triggers AST re-execution.
+`CompiledScript::backend()` reports this whole-Script choice. During an Auto
+evaluation, an ordinary AST-created function containing a `for`, `while`, or
+`do` loop is also eligible for bytecode. After its existing this, arguments,
+parameter and environment setup, the whole function body is compiled once and
+cached on that function object. Unsupported bodies run as AST, selected before
+body effects. Async functions, generators, arrows, methods, and functions
+without their own loop keep their existing path. A VM runtime exception is
+propagated and never triggers AST re-execution.
+
+The default remains AST. Automatic function tiering is scoped to an Auto
+Script evaluation; direct runtime calls, jobs, and module evaluation retain
+their existing behavior. A scoped guard restores the caller's selection after
+nested or failed evaluations. The benchmark record in
+[three experiment comparisons](three-experiment-comparisons.md) reports the
+explicit Auto mode separately from the default; it does not establish Boa
+superiority. Test262 coverage is limited to the three original function-loop
+files exercised in both strict and sloppy variants by CI.

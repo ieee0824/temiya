@@ -57,6 +57,9 @@ impl VirtualMachine {
         let mut calls: Vec<Invocation> = vec![];
         let mut stack = Vec::with_capacity(bytecode.max_stack());
         let mut locals = vec![Value::Undefined; body.local_count as usize];
+        let mut property_hints = bytecode
+            .has_own_property_cache()
+            .then(|| vec![None; body.instructions.len()]);
         let mut pc = 0;
         loop {
             let instruction = body.instructions[pc];
@@ -313,12 +316,25 @@ impl VirtualMachine {
                     let Constant::String(name) = &body.constants[name as usize] else {
                         unreachable!()
                     };
+                    let base = pop(&mut stack)?;
+                    let key = crate::runtime::PropertyKey::String(name.clone());
+                    if matches!(instruction, Instruction::GetNamedProperty { .. }) {
+                        if let (Some(hints), Value::Object(object)) = (&mut property_hints, &base) {
+                            let hint = &mut hints[pc - 1];
+                            if let Some((value, index)) =
+                                object.own_data_value_with_hint(&key, *hint)
+                            {
+                                *hint = Some(index);
+                                stack.push(value);
+                                continue;
+                            }
+                            *hint = None;
+                        }
+                    }
                     let reference = Reference::property_in_realm(
                         realm.expect("verified scoped property access"),
-                        pop(&mut stack)?,
-                        ReferencedName::PropertyKey(crate::runtime::PropertyKey::String(
-                            name.clone(),
-                        )),
+                        base,
+                        ReferencedName::PropertyKey(key),
                         strict,
                     );
                     if matches!(instruction, Instruction::GetNamedProperty { .. }) {

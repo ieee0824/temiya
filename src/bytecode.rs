@@ -502,9 +502,13 @@ pub struct VerifiedBytecode {
     bytecode: Bytecode,
     max_stack: usize,
     has_backedge: bool,
+    has_own_property_cache: bool,
 }
 
 impl VerifiedBytecode {
+    pub(crate) fn has_own_property_cache(&self) -> bool {
+        self.has_own_property_cache
+    }
     pub(crate) fn has_backedge(&self) -> bool {
         self.has_backedge
     }
@@ -955,10 +959,16 @@ fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
     let has_backedge = bytecode.instructions.iter().enumerate().any(|(offset, op)| {
         matches!(op, Instruction::Jump(target) | Instruction::JumpIfFalse(target) | Instruction::JumpIfNullish(target) if (*target as usize) <= offset)
     });
+    let has_own_property_cache = has_backedge
+        && bytecode
+            .instructions
+            .iter()
+            .any(|op| matches!(op, Instruction::GetNamedProperty { .. }));
     Ok(VerifiedBytecode {
         bytecode,
         max_stack,
         has_backedge,
+        has_own_property_cache,
     })
 }
 

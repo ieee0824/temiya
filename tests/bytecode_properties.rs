@@ -25,6 +25,18 @@ fn assert_value(actual: Value, expected: &Value) {
 }
 
 #[test]
+fn loop_named_reads_observe_reordering_accessors_and_prototype_changes() {
+    for vm in [false, true] {
+        let realm = Realm::ordinary();
+        let source = "var log='';var obj={prefix:0,x:1};var sum=0;for(var i=0;i<4;i++){sum+=obj.x;if(i===0){delete obj.prefix;obj.other=99;}if(i===1){delete obj.x;Object.defineProperty(obj,'x',{get:function(){log+='G';return this.other===99?4:400;},configurable:true});}if(i===2){delete obj.x;Object.setPrototypeOf(obj,{x:8});}}sum+':'+log;";
+        assert_value(
+            value(execute(&realm, source, vm)),
+            &Value::String("14:G".into()),
+        );
+    }
+}
+
+#[test]
 fn static_and_computed_method_names_retain_receiver_across_getter_reentry() {
     for vm in [false, true] {
         for call in ["obj.method()", "obj['method']()"] {

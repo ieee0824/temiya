@@ -330,7 +330,104 @@ pub(super) fn ordinary_state() -> ObjectState {
     }
 }
 
+#[cfg(test)]
+mod own_data_hint_tests {
+    use super::*;
+
+    #[test]
+    fn own_data_hint_rechecks_keys_descriptors_and_exotic_objects() {
+        let object = Object::new();
+        let prefix: PropertyKey = "prefix".into();
+        let key: PropertyKey = "x".into();
+        object
+            .create_data_property(prefix.clone(), Value::Null)
+            .unwrap();
+        object
+            .create_data_property(key.clone(), Value::Number(41.0))
+            .unwrap();
+        let (_, hint) = object.own_data_value_with_hint(&key, None).unwrap();
+        assert!(object.try_delete(&prefix).unwrap());
+        object
+            .create_data_property("other".into(), Value::Number(99.0))
+            .unwrap();
+        assert!(
+            object
+                .own_data_value_with_hint(&key, Some(hint))
+                .unwrap()
+                .0
+                .same_value(&Value::Number(41.0))
+        );
+        let getter = Object::native_function(|_, _| Ok(Value::Number(42.0)));
+        assert!(
+            object
+                .define_own_property(
+                    key.clone(),
+                    PropertyDescriptor::accessor(Some(getter), None, true, true)
+                )
+                .unwrap()
+        );
+        assert!(object.own_data_value_with_hint(&key, Some(hint)).is_none());
+        assert!(object.get(&key).unwrap().same_value(&Value::Number(42.0)));
+
+        let proxy = crate::runtime::ProxyObject::new(object.clone(), Object::new()).object();
+        assert!(proxy.own_data_value_with_hint(&key, None).is_none());
+        assert!(proxy.get(&key).unwrap().same_value(&Value::Number(42.0)));
+        let string = crate::runtime::StringObject::new("abc".into()).object();
+        assert!(
+            string
+                .own_data_value_with_hint(&"length".into(), None)
+                .is_none()
+        );
+        assert!(
+            string
+                .get(&"length".into())
+                .unwrap()
+                .same_value(&Value::Number(3.0))
+        );
+    }
+}
+
 impl Object {
+    // A hint identifies a position, never a cached Value or assumed shape.
+    // Validate the current key/descriptor under one borrow before returning.
+    pub(crate) fn own_data_value_with_hint(
+        &self,
+        key: &PropertyKey,
+        hint: Option<usize>,
+    ) -> Option<(Value, usize)> {
+        let state = self.0.state.borrow();
+        if state.proxy.is_some()
+            || state.lazy_function_prototype.is_some()
+            || state.string_data.is_some()
+            || state.elements.is_some()
+            || state.view.is_some()
+            || state.buffer.is_some()
+        {
+            return None;
+        }
+        let (index, entry) = hint
+            .and_then(|index| {
+                state
+                    .properties
+                    .get(index)
+                    .filter(|entry| entry.key == *key)
+                    .map(|entry| (index, entry))
+            })
+            .or_else(|| {
+                state
+                    .properties
+                    .iter()
+                    .enumerate()
+                    .find(|(_, entry)| entry.key == *key)
+            })?;
+        entry.descriptor.is_data_descriptor().then(|| {
+            (
+                entry.descriptor.value.clone().unwrap_or(Value::Undefined),
+                index,
+            )
+        })
+    }
+
     pub(super) fn install_lazy_function_prototype(
         &self,
         object_prototype: Object,

@@ -32,11 +32,11 @@ if (beforeAfter) {
 const rustc = execFileSync('rustc', ['-Vv'], { encoding: 'utf8' }).trim();
 if (boa.rustc !== rustc) throw Error('use the same Rust compiler for both workers');
 const workers = beforeAfter ? [
-  { name: 'Temiya after', engine: 'Temiya', executable: temiya, revision: process.env.TEMIYA_REVISION, mode: 'AST interpreter',
+  { name: 'Temiya after', engine: 'Temiya', executable: temiya, revision: process.env.TEMIYA_REVISION, mode: 'Auto Script+loop',
     executable_sha256: hash(readFileSync(temiya)), features: [], profile: 'release' },
   { ...boa, name: 'Temiya before', engine: 'Temiya' },
 ] : [
-  { name: 'Temiya', executable: temiya, revision: process.env.TEMIYA_REVISION, mode: 'AST interpreter',
+  { name: 'Temiya', executable: temiya, revision: process.env.TEMIYA_REVISION, mode: 'Auto Script+loop',
     executable_sha256: hash(readFileSync(temiya)), features: [], profile: 'release' },
   { name: 'omoikane vendored Boa', executable: boa.executable, revision: boa.omoikane_revision,
     mode: 'interpreter', build: boa },

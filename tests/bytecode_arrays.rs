@@ -220,3 +220,23 @@ fn pinned_test262_array_literals() {
     }
     assert!(outcomes.iter().all(|x| x["status"] == "pass"));
 }
+
+#[test]
+fn engine_bytecode_backend_executes_array_literals() {
+    use temiya::{Engine, embedding::ScriptBackend};
+    let engine = Engine::builder()
+        .script_backend(ScriptBackend::Bytecode)
+        .build();
+    let realm = engine.create_realm();
+    let script = engine
+        .compile(
+            &realm,
+            "var a=[1,,3,...[4]];a.length===4&&!(1 in a)&&a[3]===4;",
+        )
+        .unwrap();
+    assert_eq!(script.backend(), ScriptBackend::Bytecode);
+    assert!(matches!(
+        engine.evaluate(&script).unwrap().value(),
+        Value::Boolean(true)
+    ));
+}

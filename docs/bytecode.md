@@ -364,3 +364,9 @@ files exercised in both strict and sloppy variants by CI.
 See [object data literals](object-data-literals.md) for bytecode instructions,
 key/value ordering, prototype setters, object spread, scoped upstream tests
 and remaining method/HomeObject limits.
+
+
+### Array literals and iterable spread
+
+[Array literal operations](array-literals.md) describe accumulation, holes,
+iterator errors, operand checks and the scoped upstream observations.

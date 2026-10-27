@@ -41,12 +41,21 @@ fn literal_string_compound_assignment_preserves_captures_results_and_coercion() 
                 "41x:41x",
             ),
             ("function f(){let s='a';s+='';return s;}f();", "a"),
+            ("function f(){let s='a';s+='b';return s;}f();", "ab"),
         ] {
             assert_value(
                 value(execute(&Realm::ordinary(), source, vm)),
                 &Value::String(expected.into()),
             );
         }
+        assert_value(
+            value(execute(
+                &Realm::ordinary(),
+                "(function(){var s='';var alias='';for(var i=0;i<200;i++){s+='ab';if(i===100)alias=s;}var second=s;for(var j=0;j<100;j++)s+='cd';return alias.length===202 && second.length===400 && s.length===600 && alias.charCodeAt(201)===98 && second.charCodeAt(399)===98 && s.charCodeAt(400)===99;})();",
+                vm,
+            )),
+            &Value::Boolean(true),
+        );
         for suffix in ["", "b"] {
             let realm = Realm::ordinary();
             let source = format!(

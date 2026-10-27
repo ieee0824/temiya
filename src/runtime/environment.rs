@@ -1061,6 +1061,48 @@ fn reference_error(name: &JsString, detail: &str) -> RuntimeError {
 mod slot_hint_tests {
     use super::*;
     #[test]
+    fn string_append_rechecks_shifted_slots_and_preserves_readonly_bindings() {
+        let env =
+            Environment::function(None, Object::new(), None, ThisBindingStatus::Uninitialized);
+        let prefix: JsString = "prefix".into();
+        let name: JsString = "value".into();
+        env.create_mutable_binding(prefix.clone(), true).unwrap();
+        env.initialize_binding(&prefix, Value::Null).unwrap();
+        env.create_mutable_binding(name.clone(), false).unwrap();
+        env.initialize_binding(&name, Value::String("left_".into()))
+            .unwrap();
+        let hint = env.function_binding_index(&name);
+        assert!(env.delete_binding(&prefix).unwrap());
+        let other: JsString = "other".into();
+        env.create_mutable_binding(other.clone(), false).unwrap();
+        env.initialize_binding(&other, Value::String("other".into()))
+            .unwrap();
+        assert!(
+            env.append_string_binding(&name, hint, &"right".into())
+                .unwrap()
+                .same_value(&Value::String("left_right".into()))
+        );
+        assert!(
+            env.get_binding_value(&other, false)
+                .unwrap()
+                .same_value(&Value::String("other".into()))
+        );
+        let fixed: JsString = "fixed".into();
+        env.create_immutable_binding(fixed.clone(), true).unwrap();
+        env.initialize_binding(&fixed, Value::String("fixed".into()))
+            .unwrap();
+        assert!(
+            env.append_string_binding(&fixed, None, &"suffix".into())
+                .is_none()
+        );
+        assert!(
+            env.get_binding_value(&fixed, false)
+                .unwrap()
+                .same_value(&Value::String("fixed".into()))
+        );
+    }
+
+    #[test]
     fn stale_function_slot_hints_preserve_binding_identity_and_checks() {
         let env =
             Environment::function(None, Object::new(), None, ThisBindingStatus::Uninitialized);

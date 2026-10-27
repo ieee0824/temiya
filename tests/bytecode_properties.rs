@@ -25,6 +25,23 @@ fn assert_value(actual: Value, expected: &Value) {
 }
 
 #[test]
+fn primitive_string_concat_preserves_snapshots_utf16_and_evaluation_order() {
+    for vm in [false, true] {
+        for source in [
+            r#"var log='';function left(){log+='L';return 'A\ud800';}function right(){log+='R';return '\udc00B';}var joined=left()+right();joined.length===4 && joined.charCodeAt(1)===55296 && joined.charCodeAt(2)===56320 && log==='LR';"#,
+            "var left='a';function right(){left='z';return 'b';}var joined=left+right();joined==='ab' && left==='z';",
+            "var s='';var alias='';for(var i=0;i<200;i++){s+='ab';if(i===100)alias=s;}var appended=s+'!';s.length===400 && alias.length===202 && appended.length===401 && alias.charCodeAt(201)===98;",
+            "var s='ab';var alias=s;s+='';s.length===2 && alias==='ab' && (s+'cd').length===4;",
+        ] {
+            assert_value(
+                value(execute(&Realm::ordinary(), source, vm)),
+                &Value::Boolean(true),
+            );
+        }
+    }
+}
+
+#[test]
 fn numeric_array_reads_preserve_canonical_keys_holes_and_getters() {
     for vm in [false, true] {
         let realm = Realm::ordinary();

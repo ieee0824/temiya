@@ -317,6 +317,12 @@ impl VirtualMachine {
                         unreachable!()
                     };
                     let base = pop(&mut stack)?;
+                    if matches!(instruction, Instruction::GetNamedProperty { .. }) {
+                        if let Some(value) = primitive_named_value(&base, name) {
+                            stack.push(value);
+                            continue;
+                        }
+                    }
                     let key = crate::runtime::PropertyKey::String(name.clone());
                     if matches!(instruction, Instruction::GetNamedProperty { .. }) {
                         if let (Some(hints), Value::Object(object)) = (&mut property_hints, &base) {
@@ -559,6 +565,21 @@ impl VirtualMachine {
                 Instruction::Throw => return Ok(Completion::Throw(pop(&mut stack)?)),
             }
         }
+    }
+}
+
+fn primitive_named_value(base: &Value, name: &crate::runtime::JsString) -> Option<Value> {
+    match base {
+        Value::String(string)
+            if name
+                .code_units()
+                .iter()
+                .copied()
+                .eq("length".encode_utf16()) =>
+        {
+            Some(Value::Number(string.len() as f64))
+        }
+        _ => None,
     }
 }
 

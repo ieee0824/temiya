@@ -1038,6 +1038,13 @@ pub(crate) fn binary_values(operator: &str, left: Value, right: Value) -> Runtim
         if let Some(result) = result {
             return Ok(result);
         }
+    } else if operator == "+" && matches!((&left, &right), (Value::String(_), Value::String(_))) {
+        // Both operands are already primitive strings. Consume them without
+        // cloning through ToPrimitive and ToString; mixed pairs keep that path.
+        let (Value::String(left), Value::String(right)) = (left, right) else {
+            unreachable!()
+        };
+        return Ok(Value::String(left.concat(right)));
     }
     match operator {
         "+" => {

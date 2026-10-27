@@ -9,10 +9,23 @@ use std::{
     sync::atomic::{AtomicU64, Ordering},
 };
 
+use crate::bytecode::{BytecodeCompiler, CompileError, VerifiedBytecode, VirtualMachine};
 use crate::runtime::{
     Completion, JsString, ModuleGraph, Object, Realm, RuntimeError, RuntimeErrorKind, ScriptRecord,
     SourceTextModule, Value,
 };
+
+/// Script execution backend selected when an engine is built.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum ScriptBackend {
+    /// Execute Scripts with the AST interpreter.
+    #[default]
+    Ast,
+    /// Compile the whole Script to verified bytecode or return a diagnostic.
+    Bytecode,
+    /// Use bytecode when the whole Script is supported, otherwise use the AST.
+    Auto,
+}
 
 /// Configuration used when constructing an [`Engine`].
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -25,6 +38,7 @@ pub struct EngineOptions {
 pub struct EngineBuilder {
     options: EngineOptions,
     host_state: Option<Box<dyn Any>>,
+    backend: ScriptBackend,
 }
 
 impl EngineBuilder {
@@ -34,7 +48,15 @@ impl EngineBuilder {
         Self {
             options: EngineOptions::default(),
             host_state: None,
+            backend: ScriptBackend::Ast,
         }
+    }
+
+    /// Selects how Scripts compiled by this engine are executed.
+    #[must_use]
+    pub fn script_backend(mut self, backend: ScriptBackend) -> Self {
+        self.backend = backend;
+        self
     }
 
     /// Enables or disables additional development checks.
@@ -57,7 +79,7 @@ impl EngineBuilder {
     /// Builds a thread-confined engine.
     #[must_use]
     pub fn build(self) -> Engine {
-        Engine::from_parts(self.options, self.host_state)
+        Engine::from_parts(self.options, self.host_state, self.backend)
     }
 }
 
@@ -76,6 +98,7 @@ pub struct Engine {
     id: u64,
     options: EngineOptions,
     host_state: Option<Box<dyn Any>>,
+    backend: ScriptBackend,
     thread_confined: PhantomData<Rc<()>>,
 }
 
@@ -83,7 +106,7 @@ impl Engine {
     /// Creates an engine with the supplied configuration.
     #[must_use]
     pub fn new(options: EngineOptions) -> Self {
-        Self::from_parts(options, None)
+        Self::from_parts(options, None, ScriptBackend::Ast)
     }
 
     /// Starts configuring an engine.
@@ -92,12 +115,17 @@ impl Engine {
         EngineBuilder::new()
     }
 
-    fn from_parts(options: EngineOptions, host_state: Option<Box<dyn Any>>) -> Self {
+    fn from_parts(
+        options: EngineOptions,
+        host_state: Option<Box<dyn Any>>,
+        backend: ScriptBackend,
+    ) -> Self {
         static NEXT_ENGINE: AtomicU64 = AtomicU64::new(1);
         Self {
             id: NEXT_ENGINE.fetch_add(1, Ordering::Relaxed),
             options,
             host_state,
+            backend,
             thread_confined: PhantomData,
         }
     }
@@ -311,13 +339,22 @@ impl Engine {
     /// Compiles Script source for a Realm, rejecting cross-engine handles.
     pub fn compile(&self, realm: &RealmHandle, source: &str) -> Result<CompiledScript, EmbedError> {
         self.require_engine(realm.engine_id)?;
-        ScriptRecord::parse(realm.realm.clone(), source)
-            .map(|script| CompiledScript {
-                engine_id: self.id,
-                realm_id: realm.realm_id,
-                script,
-            })
-            .map_err(EmbedError::Compile)
+        let script =
+            ScriptRecord::parse(realm.realm.clone(), source).map_err(EmbedError::Compile)?;
+        let bytecode = match self.backend {
+            ScriptBackend::Ast => None,
+            ScriptBackend::Bytecode => Some(
+                BytecodeCompiler::compile_program(script.program())
+                    .map_err(EmbedError::Bytecode)?,
+            ),
+            ScriptBackend::Auto => BytecodeCompiler::compile_program(script.program()).ok(),
+        };
+        Ok(CompiledScript {
+            engine_id: self.id,
+            realm_id: realm.realm_id,
+            script,
+            bytecode,
+        })
     }
 
     /// Evaluates a compiled Script and returns an owned value or exception.
@@ -327,10 +364,11 @@ impl Engine {
                 "compiled script belongs to another engine",
             ));
         }
-        match script
-            .script
-            .evaluate()
-            .map_err(|error| Exception::runtime(error, self.id, script.realm_id))?
+        match match &script.bytecode {
+            Some(bytecode) => VirtualMachine::execute_in_realm(bytecode, &script.script.realm()),
+            None => script.script.evaluate(),
+        }
+        .map_err(|error| Exception::runtime(error, self.id, script.realm_id))?
         {
             Completion::Normal(value) => Ok(ValueHandle {
                 engine_id: self.id,
@@ -404,6 +442,19 @@ pub struct CompiledScript {
     engine_id: u64,
     realm_id: u64,
     script: ScriptRecord,
+    bytecode: Option<VerifiedBytecode>,
+}
+
+impl CompiledScript {
+    /// Returns the execution backend chosen for this Script.
+    #[must_use]
+    pub fn backend(&self) -> ScriptBackend {
+        if self.bytecode.is_some() {
+            ScriptBackend::Bytecode
+        } else {
+            ScriptBackend::Ast
+        }
+    }
 }
 
 /// Owned loaded module tied to its creating engine and Realm.
@@ -472,6 +523,8 @@ pub enum EmbedError {
     EngineMismatch,
     /// Parsing or static semantics rejected source text.
     Compile(RuntimeError),
+    /// The bytecode compiler rejected unsupported or invalid Script syntax.
+    Bytecode(CompileError),
     /// A host object, module, or Realm operation failed.
     Host(RuntimeError),
 }
@@ -481,6 +534,7 @@ impl fmt::Display for EmbedError {
         match self {
             Self::EngineMismatch => formatter.write_str("handle belongs to another engine"),
             Self::Compile(error) => write!(formatter, "compile failed: {error}"),
+            Self::Bytecode(error) => write!(formatter, "bytecode compile failed: {error}"),
             Self::Host(error) => write!(formatter, "host integration failed: {error}"),
         }
     }

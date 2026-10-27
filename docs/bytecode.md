@@ -312,7 +312,7 @@ Script loop/if completion values initialize to undefined as required by the
 Empty statements preserve the accumulated value; expression initializers,
 conditions and increments do not replace it. Compiled function bodies discard
 unused statement completions and do not allocate a completion local. This
-does not select bytecode execution in Engine.
+is separate from the Engine selection described below.
 
 The public examples/backend_scope.rs demonstrates captured let bindings and
 nested labelled continue. Six direct regression groups also cover const/TDZ,
@@ -332,3 +332,15 @@ exits101. CI executes the same complete audit, then explicitly checks coverage,
 all35 target variants, and known dependency diagnostics; those11 failures are
 not counted as passes. Whole directory coverage, AST for-let correctness(#173),
 Engine backend integration and overall Boa superiority remain open.
+
+
+### Engine Script backend selection
+
+`Engine::builder().script_backend(ScriptBackend::Bytecode)` compiles the entire
+Script to verified bytecode before execution. Unsupported syntax returns an
+`EmbedError::Bytecode` diagnostic without executing the Script. `Auto` selects
+bytecode for a supported whole Script and falls back to AST otherwise;
+`CompiledScript::backend()` reports the actual choice. The default remains
+AST. Selection applies to Scripts compiled by that Engine, not modules or
+functions previously created by the AST interpreter. A VM runtime exception
+is propagated and never triggers AST re-execution.

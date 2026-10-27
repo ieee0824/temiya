@@ -4,6 +4,7 @@ use num_bigint::BigInt;
 use std::cell::RefCell;
 
 use crate::ast::{Expr, ExprKind, Literal, MethodKind, NumberKind};
+use crate::bytecode::BinaryOperator;
 
 use super::{
     Environment, FunctionKind, JsString, Numeric, Object, PropertyKey, Realm, RuntimeError,
@@ -1017,42 +1018,49 @@ pub(crate) fn parse_numeric_literal(raw: &str, kind: NumberKind) -> RuntimeResul
         .ok_or_else(|| RuntimeError::syntax_error("invalid numeric literal"))
 }
 
+// Shared primitive-Number semantics; the VM already has a typed operator.
+#[inline]
+pub(crate) fn binary_number(operator: BinaryOperator, a: f64, b: f64) -> Option<Value> {
+    match operator {
+        BinaryOperator::Add => Some(Value::Number(a + b)),
+        BinaryOperator::Subtract => Some(Value::Number(a - b)),
+        BinaryOperator::Multiply => Some(Value::Number(a * b)),
+        BinaryOperator::Divide => Some(Value::Number(a / b)),
+        BinaryOperator::Remainder => Some(Value::Number(number_remainder(a, b))),
+        BinaryOperator::BitAnd => Some(Value::Number(f64::from(
+            number_operand_u32(a) as i32 & number_operand_u32(b) as i32,
+        ))),
+        BinaryOperator::BitOr => Some(Value::Number(f64::from(
+            number_operand_u32(a) as i32 | number_operand_u32(b) as i32,
+        ))),
+        BinaryOperator::BitXor => Some(Value::Number(f64::from(
+            number_operand_u32(a) as i32 ^ number_operand_u32(b) as i32,
+        ))),
+        BinaryOperator::LeftShift => Some(Value::Number(f64::from(
+            (number_operand_u32(a) as i32).wrapping_shl(number_operand_u32(b) & 31),
+        ))),
+        BinaryOperator::RightShift => Some(Value::Number(f64::from(
+            (number_operand_u32(a) as i32).wrapping_shr(number_operand_u32(b) & 31),
+        ))),
+        BinaryOperator::UnsignedRightShift => Some(Value::Number(f64::from(
+            number_operand_u32(a).wrapping_shr(number_operand_u32(b) & 31),
+        ))),
+        BinaryOperator::Less => Some(Value::Boolean(a < b)),
+        BinaryOperator::Greater => Some(Value::Boolean(a > b)),
+        BinaryOperator::LessEqual => Some(Value::Boolean(a <= b)),
+        BinaryOperator::GreaterEqual => Some(Value::Boolean(a >= b)),
+        BinaryOperator::Equal | BinaryOperator::StrictEqual => Some(Value::Boolean(a == b)),
+        BinaryOperator::NotEqual | BinaryOperator::StrictNotEqual => Some(Value::Boolean(a != b)),
+        _ => None,
+    }
+}
+
 pub(crate) fn binary_values(operator: &str, left: Value, right: Value) -> RuntimeResult<Value> {
     // Primitive Numbers require no coercion or observable callback. Keep the
     // general path for every other pair, including mixed Number/BigInt values.
     if let (Value::Number(a), Value::Number(b)) = (&left, &right) {
-        let result = match operator {
-            "+" => Some(Value::Number(a + b)),
-            "-" => Some(Value::Number(a - b)),
-            "*" => Some(Value::Number(a * b)),
-            "/" => Some(Value::Number(a / b)),
-            "%" => Some(Value::Number(number_remainder(*a, *b))),
-            "&" => Some(Value::Number(f64::from(
-                number_operand_u32(*a) as i32 & number_operand_u32(*b) as i32,
-            ))),
-            "|" => Some(Value::Number(f64::from(
-                number_operand_u32(*a) as i32 | number_operand_u32(*b) as i32,
-            ))),
-            "^" => Some(Value::Number(f64::from(
-                number_operand_u32(*a) as i32 ^ number_operand_u32(*b) as i32,
-            ))),
-            "<<" => Some(Value::Number(f64::from(
-                (number_operand_u32(*a) as i32).wrapping_shl(number_operand_u32(*b) & 31),
-            ))),
-            ">>" => Some(Value::Number(f64::from(
-                (number_operand_u32(*a) as i32).wrapping_shr(number_operand_u32(*b) & 31),
-            ))),
-            ">>>" => Some(Value::Number(f64::from(
-                number_operand_u32(*a).wrapping_shr(number_operand_u32(*b) & 31),
-            ))),
-            "<" => Some(Value::Boolean(a < b)),
-            ">" => Some(Value::Boolean(a > b)),
-            "<=" => Some(Value::Boolean(a <= b)),
-            ">=" => Some(Value::Boolean(a >= b)),
-            "==" | "===" => Some(Value::Boolean(a == b)),
-            "!=" | "!==" => Some(Value::Boolean(a != b)),
-            _ => None,
-        };
+        let result = BinaryOperator::from_spelling(operator)
+            .and_then(|operator| binary_number(operator, *a, *b));
         if let Some(result) = result {
             return Ok(result);
         }

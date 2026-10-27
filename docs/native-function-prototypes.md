@@ -84,3 +84,42 @@ Numeric a-z now reaches the missing String.fromCharCode API after the parent
 BigInt/Number comparison fix; Symbol-constructor prerequisites also remain. These
 failures are retained. This source needs its own hosted CI/security and original
 eleven-workload comparison; the older reports do not establish its throughput.
+
+
+## Hosted x86_64 native function prototype comparison
+
+[Run 40431339090](https://github.com/ieee0824/temiya/actions/runs/40431339090)
+completed on Ubuntu 24.04, AMD EPYC 9V45 96-Core Processor, four logical CPUs. The
+[provenance record](../benchmarks/native-prototypes-hosted-provenance.json) retains
+build identity and the original artifact reference. Both
+[before/after](../benchmarks/native-prototypes-hosted-beforeafter.json) and
+[Boa](../benchmarks/native-prototypes-hosted-boa.json) use the original eleven
+workloads, 15 timed samples, one checked warmup and three alternating pairs.
+Each mode has 66 successful runs and 1056 validated values. They run serially
+after all builds, with the same compiler and existing 512 MiB/180-second guards.
+
+The measured revision is `28d23cd276528df755955d5bb3392566cea89cb5`;
+the baseline is `190b01f5de6ae323e0149ea4c164bdfa5b4f37b6`. The measured
+runtime is identical to code revision `28d23cd276528df755955d5bb3392566cea89cb5`.
+Later result-only commits do not modify executable source, worker scripts,
+dependencies or the measurement workflow. Architectures are reported separately.
+
+| Workload | Changed / prior Temiya time | Changed Temiya / Boa time |
+| --- | ---: | ---: |
+| arith | 0.95–1.00× | 3.23–4.42× |
+| prop-mono | 0.97–0.99× | 2.37–2.46× |
+| prop-mega | 0.97–0.98× | 2.21–2.23× |
+| call | 1.02–1.03× | 2.32–2.94× |
+| closure-alloc | 1.00–1.01× | 1.86–1.95× |
+| object-alloc | 1.00–1.01× | 1.76–2.11× |
+| string-concat | 0.97–0.99× | 2.85–3.56× |
+| array | 0.98–1.00× | 2.05–2.26× |
+| primitive-string-property | 0.95–1.00× | 2.61–3.20× |
+| primitive-string-method | 0.96–0.99× | 2.02–2.41× |
+| proto-method | 0.97–1.01× | 2.19–2.61× |
+
+All 33 before/after pairs remain within the noise threshold; no throughput
+speedup or regression beyond that threshold is established on this runner.
+All 33 Boa pairs still find Temiya slower beyond the threshold. Both all-eleven
+speed gates remain false. Native function prototype integration does not satisfy the Boa goal
+or complete #307/#427.

@@ -1,9 +1,13 @@
 use crate::runtime::{
     ArrayObject, Completion, Environment, EnvironmentKind, Object, Realm, Reference,
-    ReferencedName, RuntimeError, RuntimeResult, Value, binary_values, binary_values_in_realm,
+    ReferencedName, RuntimeError, RuntimeResult, Value, binary_number, binary_values,
+    binary_values_in_realm,
 };
 
-use super::{BindingKind, Constant, Instruction, ScopeDescriptor, ScopeKind, VerifiedBytecode};
+use super::{
+    BinaryOperator, BindingKind, Constant, Instruction, ScopeDescriptor, ScopeKind,
+    VerifiedBytecode,
+};
 
 /// Baseline stack VM dispatching only verifier-approved bytecode.
 #[derive(Clone, Copy, Debug, Default)]
@@ -588,12 +592,12 @@ impl VirtualMachine {
                 Instruction::Pop => {
                     pop(&mut stack)?;
                 }
-                Instruction::Binary(operator) => binary(&mut stack, operator.spelling(), realm)?,
-                Instruction::Add => binary(&mut stack, "+", realm)?,
-                Instruction::Subtract => binary(&mut stack, "-", realm)?,
-                Instruction::Multiply => binary(&mut stack, "*", realm)?,
-                Instruction::Divide => binary(&mut stack, "/", realm)?,
-                Instruction::StrictEqual => binary(&mut stack, "===", realm)?,
+                Instruction::Binary(operator) => binary(&mut stack, operator, realm)?,
+                Instruction::Add => binary(&mut stack, BinaryOperator::Add, realm)?,
+                Instruction::Subtract => binary(&mut stack, BinaryOperator::Subtract, realm)?,
+                Instruction::Multiply => binary(&mut stack, BinaryOperator::Multiply, realm)?,
+                Instruction::Divide => binary(&mut stack, BinaryOperator::Divide, realm)?,
+                Instruction::StrictEqual => binary(&mut stack, BinaryOperator::StrictEqual, realm)?,
                 Instruction::LogicalNot => {
                     let value = pop(&mut stack)?;
                     stack.push(Value::Boolean(!value.to_boolean()));
@@ -690,13 +694,28 @@ fn pop(stack: &mut Vec<Value>) -> RuntimeResult<Value> {
         .ok_or_else(|| RuntimeError::internal_error("verified stack was empty"))
 }
 
-fn binary(stack: &mut Vec<Value>, operator: &str, realm: Option<&Realm>) -> RuntimeResult<()> {
+#[inline]
+fn binary(
+    stack: &mut Vec<Value>,
+    operator: BinaryOperator,
+    realm: Option<&Realm>,
+) -> RuntimeResult<()> {
+    // Primitive Number operations cannot call user code. Reuse their operand
+    // slots, preserving any roots below them and avoiding a pop/pop/push cycle.
+    if let Some([Value::Number(left), Value::Number(right)]) = stack.last_chunk::<2>() {
+        if let Some(value) = binary_number(operator, *left, *right) {
+            let result_slot = stack.len() - 2;
+            stack.truncate(result_slot + 1);
+            stack[result_slot] = value;
+            return Ok(());
+        }
+    }
     let right = pop(stack)?;
     let left = pop(stack)?;
     stack.push(if let Some(realm) = realm {
-        binary_values_in_realm(realm, operator, left, right)?
+        binary_values_in_realm(realm, operator.spelling(), left, right)?
     } else {
-        binary_values(operator, left, right)?
+        binary_values(operator.spelling(), left, right)?
     });
     Ok(())
 }

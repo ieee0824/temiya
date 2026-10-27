@@ -1,0 +1,39 @@
+{
+  "fixture_version": 1,
+  "source": "Authored async checkpoint suite; original omoikane eleven unchanged",
+  "workloads": [
+    {
+      "name": "promise-chain",
+      "group": "async",
+      "iterations": 2048,
+      "expected": 2048,
+      "before_drain_expected": -1,
+      "oracle": "2048 chained increments from zero; completion remains -1 before the checkpoint",
+      "setup_sha256": "9ff7c20abddd670c54faf40e0bd927da586a98d40d5af33a411e82deac47da46",
+      "invocation_sha256": "bbe8cc02544363ae5197b869ab35ba6a6bec27d9e502e47e485385df742f7460",
+      "completion_sha256": "29fb8579102fad801c89d45cf0454842b3c895473e606d409a4826984642f7cb"
+    },
+    {
+      "name": "promise-fanout",
+      "group": "async",
+      "iterations": 2048,
+      "expected": 2096128,
+      "before_drain_expected": 0,
+      "oracle": "Sum of integers 0..2047 is 2048*2047/2, with exactly 2048 completed reactions",
+      "setup_sha256": "9dbe6f36e8af95db3a72e8be3e37fb576f9666cb1849b097d233d18d691e2138",
+      "invocation_sha256": "bbe8cc02544363ae5197b869ab35ba6a6bec27d9e502e47e485385df742f7460",
+      "completion_sha256": "1039c18af2bb48b8d6c3405cc5ed3ebdd3d84d650f9ecef4cf4befc20cc50966"
+    },
+    {
+      "name": "promise-rejection-chain",
+      "group": "async",
+      "iterations": 2048,
+      "expected": 2048,
+      "before_drain_expected": -1,
+      "oracle": "2048 increments carried as numeric rejection reasons and recovered unchanged",
+      "setup_sha256": "206eed6da5a6812b83120ab4ebbd727eb59c03b22b72b5c708c1bf5407bef500",
+      "invocation_sha256": "bbe8cc02544363ae5197b869ab35ba6a6bec27d9e502e47e485385df742f7460",
+      "completion_sha256": "29fb8579102fad801c89d45cf0454842b3c895473e606d409a4826984642f7cb"
+    }
+  ]
+}

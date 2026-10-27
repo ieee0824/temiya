@@ -195,6 +195,7 @@ impl Environment {
             .position(|binding| binding.name == *name)
     }
 
+    #[inline]
     pub(crate) fn get_function_binding_at(
         &self,
         name: &JsString,
@@ -1035,6 +1036,12 @@ impl DeclarativeRecord {
 
 impl Binding {
     fn read(&self) -> RuntimeResult<Value> {
+        // Copy immutable primitive bits without dispatching the full Value
+        // clone. Name checks and record borrowing still occur in the caller;
+        // an uninitialized binding continues through the TDZ error below.
+        if let Some(Value::Number(value)) = &self.value {
+            return Ok(Value::Number(*value));
+        }
         self.value
             .clone()
             .ok_or_else(|| reference_error(&self.name, "is in the temporal dead zone"))

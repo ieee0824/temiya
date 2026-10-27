@@ -53,7 +53,7 @@ pub use indexed::{ArrayBuffer, ArrayObject, DataView, TypedArray};
 pub(crate) use interpreter::unary_numeric_value;
 pub use interpreter::{ExpressionEvaluator, Reference, ReferencedName};
 pub(crate) use interpreter::{
-    binary_values, binary_values_in_realm, parse_numeric_literal, type_of,
+    binary_number, binary_values, binary_values_in_realm, parse_numeric_literal, type_of,
     update_reference_in_realm,
 };
 pub use intrinsics::{IntrinsicId, IntrinsicRegistry, WellKnownSymbol, WellKnownSymbols};

@@ -1,0 +1,18 @@
+import fs from 'node:fs';import{createHash}from'node:crypto';
+const [dir,repository='/tmp/temiya-typed-number-dispatch',historicalSource]=process.argv.slice(2);
+const read=n=>JSON.parse(fs.readFileSync(dir+'/'+n+'.json'));
+const before=read('beforeafter'),boa=read('boa'),baseline=read('baseline-boa'),same=read('same-binary-control');
+const require=(v,s)=>{if(!v)throw Error(s);};
+const current=before.workers[0].executable_sha256,old=before.workers[1].executable_sha256;
+for(const r of [before,boa,same])require(r.workers[0].executable_sha256===current,'candidate binary changed within cohort');
+require(baseline.workers[0].executable_sha256===old,'baseline binary changed within cohort');
+require(same.workers[1].executable_sha256===current,'control is not the identical executable');
+require(JSON.stringify(boa.workers[1].build)===JSON.stringify(baseline.workers[1].build),'actual Boa build changed within cohort');
+const b=boa.workers[1].build;
+const hash=bytes=>createHash('sha256').update(bytes).digest('hex');
+const adapter=historicalSource?fs.readFileSync(historicalSource):fs.readFileSync(repository+'/benchmarks/omoikane-worker/main.rs');
+require(b.worker_source_sha256===hash(adapter),'actual application adapter source mismatch');
+const historical=historicalSource&&b.worker_source_sha256==='031ee68a56d3c61ec45ca8f7069526dae3fa6eda6adeb79e3f39e6c3539041a8';
+require(b.omoikane_revision==='007556adccb8fb4329236932ca8175f8e8d119d2'&&(b.workload_kind==='sync'||(historical&&b.workload_kind===undefined))&&b.checkout_clean&&b.profile==='release'&&b.rustflags===''&&b.original_lock_sha256==='f3988c4d9b0ecc28560df18df1cae7760c7c55a016318ea3e31f3ebbfcaea211','actual pinned application build');
+require(b.execution_mode==='interpreter; baseline-jit feature absent'&&!b.features.boa_engine.includes('baseline-jit')&&b.features.regress.includes('utf16'),'actual fork features/mode');
+console.log(JSON.stringify({directory:dir,current_sha256:current,baseline_sha256:old,actual_boa_sha256:b.executable_sha256,consistent_reports:4,adapter_source_sha256:b.worker_source_sha256}));

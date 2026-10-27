@@ -28,6 +28,12 @@ limited to those inputs and conditions, not complete application superiority.
 A [subsequent Intel follow-up](promise-rejection-performance.md) did not pass
 the all-eleven gate: arithmetic was slower than actual Boa in three pairs.
 That target remains open in #510, alongside the separately preserved ARM result.
+The later [typed Number and binding-read comparison](typed-number-dispatch.md)
+records source 37e09968 faster than actual Boa in all 99 original-eleven pairs
+on its two AMD x64 hosts and ARM64 host, with no before/after slower decisions.
+Earlier Intel arithmetic remains below its acceptance condition; these AMD/ARM
+results do not close #510. All raw cohorts and same-executable controls remain
+available, including the controls with variability beyond the fixed threshold.
 The [pinned native SpiderMonkey comparison](spidermonkey-workloads.md) completes
 the same inputs in both modes, but Temiya is slower in all 33 comparisons per
 mode. The SpiderMonkey speed target remains unmet; default-mode enabled JIT
@@ -38,6 +44,8 @@ scheduling, public job draining and checked completion in three authored cases.
 The recorded AMD x64 run passed all nine actual-Boa comparisons, with higher
 Temiya process memory in two cases. It does not change the original eleven
 inputs or establish pending-await, collector or application-wide completeness.
+Later source-specific [async records](typed-number-dispatch.md) also retain
+six-faster/three-noise outcomes; an all-nine gate is not universal across hosts.
 
 The initial application reference is omoikane revision
 `007556adccb8fb4329236932ca8175f8e8d119d2`, including its vendored `engine/boa`,

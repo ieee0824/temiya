@@ -1,6 +1,6 @@
-# Whole-Script Auto integration candidate
+# Whole-Script Auto integration
 
-This branch integrates verified VM optimizations into the current main and makes
+This integration makes
 Engine::default, Engine::new and the default builder choose Auto. A supported
 whole Script executes as verified bytecode; an unsupported Script is selected
 for AST execution before any observable effect. Runtime errors are propagated
@@ -27,8 +27,45 @@ elapsed timestamps. Reports use mode Auto Script; the older experimental
 Auto Script+loop reports are different source combinations and are not final
 performance acceptance for this branch.
 
-This candidate is not adopted until its own CI/security and unchanged original
-11-workload before/after plus actual omoikane Boa measurements have been checked.
-Older x64 results (31 faster / 2 within noise) and the ARM64 primitive-String-method
-slow pair remain observations of the earlier candidate, not proof for this one.
-#427, #291/#292 and the outstanding original-suite/compatibility work remain open.
+## Measured default API
+
+Measured source 351de1ce4f69c8f60d89a3cae7054e41fecc1c28 uses Engine::default,
+without the AST-function loop tier. Every Temiya worker reports Bytecode for
+both setup and invocation. Counts below are faster / within noise / slower
+using the fixed max(0.10, 3 * (MADa/mediana + MADb/medianb)) threshold.
+
+| Machine | Before/after | Actual omoikane Boa |
+| --- | --- | --- |
+| hosted x64 | 33 / 0 / 0 | 33 / 0 / 0 |
+| ARM64 | 33 / 0 / 0 | 33 / 0 / 0 |
+
+All four all-eleven gates pass. Hosted baseline is AST at
+2603ecb0ec01ecdbf625f94daf80b2ec9917658d; ARM64 baseline is AST at
+a23e82b8cd8230e4924747e5f09a55007024e550. These baseline runtimes are identical;
+the intervening changes retain measurement records only.
+
+[Hosted run](https://github.com/ieee0824/temiya/actions/runs/40519128128) and the
+ARM64 run retain the original eleven workload bodies, iteration counts and
+oracles from omoikane 007556adccb8fb4329236932ca8175f8e8d119d2, fifteen timed
+samples plus one checked warmup, three alternating serial pairs, and common
+512 MiB / 180-second guards. The actual Boa worker retains the application
+embedding, lockfile and features. All builds finish before timing. ARM64 runs
+Boa first, then before/after, with the same within-comparison protocol.
+
+All 264 workers and 4,224 results passed validation; medians/MADs and all 132
+pair decisions were independently recomputed. Original manifest/oracles, full
+unique coverage, limits, modes, actual backends, compiler/build identities,
+exact hosted workflow head/artifact and local executable hashes were verified.
+[Provenance](../benchmarks/default-auto-provenance.json) records source/baseline,
+worker identities, run/artifact links and raw report hashes. Raw files use
+default-auto-hosted or default-auto-arm64 plus -beforeafter.json or -boa.json.
+
+Source CI40517251027, PR CI40521487933 and security40519122873/40521488447 passed.
+ARM64 release all-features tests passed; opt-in corpus tests not executed locally
+are not counted as passes. The following evidence/documentation commit changes
+no runtime, worker or comparison implementation; final-head CI is rerun.
+
+This is a result for the original eleven workloads on these machines, not a
+whole-application or every-program speed claim. Earlier experimental regressions
+remain recorded. #427, #291/#292, async/RegExp/GC/SpiderMonkey comparisons and
+outstanding original-suite/compatibility work remain open.

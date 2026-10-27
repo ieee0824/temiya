@@ -57,9 +57,11 @@ The tracing collector, debugger, and optimizing-tier contracts are development
 components; their APIs do not imply a collecting heap, debugger, or optimizing
 tier integrated into `Engine`. Runtime objects currently use `Rc` ownership,
 which does not reclaim reference cycles. The Test262 tooling records corpus
-metadata but does not yet establish whole-engine conformance. There is no
-measured claim that Temiya outperforms Boa or SpiderMonkey; see the
-[performance comparison requirements](docs/benchmarks.md#cross-engine-targets).
+metadata but does not yet establish whole-engine conformance. The default API
+passes the fixed original-eleven omoikane Boa comparison on the recorded x64
+and ARM64 machines; see [results and scope](docs/auto-backend-integration.md).
+Broader application performance, async/RegExp/GC suites and SpiderMonkey
+comparisons remain unverified.
 
 An initial lexer is available as `temiya::lexer::tokenize`; its supported subset
 and next steps are documented in [docs/lexer.md](docs/lexer.md).

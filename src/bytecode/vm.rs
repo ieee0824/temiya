@@ -346,6 +346,12 @@ impl VirtualMachine {
                 Instruction::GetProperty { strict } | Instruction::ResolveProperty { strict } => {
                     let key = pop(&mut stack)?;
                     let base = pop(&mut stack)?;
+                    if matches!(instruction, Instruction::GetProperty { .. }) {
+                        if let Some(value) = indexed_value(&base, &key) {
+                            stack.push(value);
+                            continue;
+                        }
+                    }
                     let reference = Reference::property_in_realm(
                         realm.expect("verified scoped property access"),
                         base,
@@ -553,6 +559,27 @@ impl VirtualMachine {
                 Instruction::Throw => return Ok(Completion::Throw(pop(&mut stack)?)),
             }
         }
+    }
+}
+
+fn indexed_value(base: &Value, key: &Value) -> Option<Value> {
+    let Value::Number(index) = key else {
+        return None;
+    };
+    if !(*index >= 0.0 && *index < f64::from(u32::MAX)) {
+        return None;
+    }
+    let integer = *index as u32;
+    if f64::from(integer) != *index {
+        return None;
+    }
+    match base {
+        Value::Object(object) => object.own_element_value(integer),
+        Value::String(string) => string
+            .code_units()
+            .get(integer as usize)
+            .map(|unit| Value::String(crate::runtime::JsString::from_code_units_slice(&[*unit]))),
+        _ => None,
     }
 }
 

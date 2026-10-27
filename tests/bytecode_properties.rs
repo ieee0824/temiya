@@ -25,6 +25,54 @@ fn assert_value(actual: Value, expected: &Value) {
 }
 
 #[test]
+fn numeric_array_reads_preserve_canonical_keys_holes_and_getters() {
+    for vm in [false, true] {
+        let realm = Realm::ordinary();
+        setup(
+            &realm,
+            "var calls=0;var array=[11,undefined];array['-0']=90;array[-1]=91;array[1.5]=92;array[4294967295]=93;array[NaN]=94;array[Infinity]=95;Object.setPrototypeOf(array,{get 1(){calls++;return this[0]+20;}});",
+        );
+        assert_value(
+            value(execute(
+                &realm,
+                "array[-0]===11 && array[1]===undefined && calls===0 && array['-0']===90 && array[-1]===91 && array[1.5]===92 && array[4294967295]===93 && array[4294967294]===undefined && array[NaN]===94 && array[Infinity]===95 && array.length===2;",
+                vm,
+            )),
+            &Value::Boolean(true),
+        );
+        assert_value(
+            value(execute(&realm, "delete array[1];array[1];", vm)),
+            &Value::Number(31.0),
+        );
+        setup(
+            &realm,
+            "Object.defineProperty(array,'0',{get:function(){calls++;return 7;},configurable:true});",
+        );
+        assert_value(value(execute(&realm, "array[0];", vm)), &Value::Number(7.0));
+        assert_value(value(execute(&realm, "calls;", vm)), &Value::Number(2.0));
+    }
+}
+
+#[test]
+fn numeric_string_reads_return_utf16_units_and_keep_prototype_fallback_receiver() {
+    for vm in [false, true] {
+        let realm = Realm::ordinary();
+        setup(
+            &realm,
+            "var calls=0;var s='A😀';Object.defineProperty(String.prototype,'0',{get:function(){calls++;return 'wrong';},configurable:true});Object.defineProperty(String.prototype,'4',{get:function(){'use strict';calls++;return typeof this+':'+this.length;},configurable:true});",
+        );
+        assert_value(
+            value(execute(
+                &realm,
+                "s[-0]==='A' && s[1].charCodeAt(0)===55357 && s[2].charCodeAt(0)===56832 && s[3]===undefined && s['-0']===undefined && s[1.5]===undefined && s[4]==='string:3' && calls===1;",
+                vm,
+            )),
+            &Value::Boolean(true),
+        );
+    }
+}
+
+#[test]
 fn loop_named_reads_observe_reordering_accessors_and_prototype_changes() {
     for vm in [false, true] {
         let realm = Realm::ordinary();

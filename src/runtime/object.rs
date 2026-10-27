@@ -331,6 +331,22 @@ pub(super) fn ordinary_state() -> ObjectState {
 }
 
 impl Object {
+    pub(crate) fn own_element_value(&self, index: u32) -> Option<Value> {
+        let state = self.0.state.borrow();
+        if !state.array
+            || state.proxy.is_some()
+            || state.string_data.is_some()
+            || state.view.is_some()
+            || state.buffer.is_some()
+        {
+            return None;
+        }
+        let descriptor = state.elements.as_ref()?.get(index)?;
+        descriptor
+            .is_data_descriptor()
+            .then(|| descriptor.value.clone().unwrap_or(Value::Undefined))
+    }
+
     // A hint identifies a position, never a cached Value or assumed shape.
     // Validate the current key/descriptor under one borrow before returning.
     pub(crate) fn own_data_value_with_hint(

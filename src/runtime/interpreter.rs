@@ -1093,6 +1093,13 @@ pub(crate) fn type_of(value: &Value) -> &'static str {
 fn to_u32(value: f64) -> u32 {
     if !value.is_finite() || value == 0.0 {
         0
+    } else if value >= i64::MIN as f64 && value < -(i64::MIN as f64) {
+        // In this exact signed-64 range, truncation followed by retaining the
+        // low 32 bits is the required modulo 2^32. The upper bound is strict:
+        // i64::MAX rounds to 2^63 as f64 and Rust's saturating cast at that
+        // value would produce the wrong low bits. Larger finite values retain
+        // the general floating-point reduction below.
+        (value as i64) as u32
     } else {
         value.trunc().rem_euclid(4_294_967_296.0) as u32
     }

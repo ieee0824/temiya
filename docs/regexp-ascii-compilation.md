@@ -87,3 +87,11 @@ The inline-scratch variant (40a4f58) keeps the bounded cache directly inside
 the per-object search state, removing a separate Box allocation. Internal
 RegExp tests and all-target/all-feature Clippy pass; its local cold report
 passes correctness but misses the overall Boa gate (one faster, two noise).
+
+The final instruction profile also identifies ordinary-property lookup cost.
+Variant831dc98 adds a single position hint per object; every read rechecks
+bounds and the full current key, then clones the current descriptor. Values
+are never cached. Proxy/exotic operations and lazy prototype materialization
+retain their earlier ordering. Deletion/redefinition/accessor/Symbol coverage
+and the full native suite pass. Local cold results are correct but within
+noise versus Boa; hosted final-source measurements remain necessary.

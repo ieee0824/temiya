@@ -33,7 +33,7 @@ for (const file of recorded.filter(p => /\/(cold-report|cold|cold-same-binary)\.
   reports++;
 }
 const macros = execFileSync(process.execPath, [
-  path.join(root, '../regexp-cache/verify-recorded-timing.mjs'), path.join(root, 'additional'),
+  path.join(root, '../regexp-cache/verify-recorded-timing.mjs'), root,
 ], {encoding: 'utf8'});
 process.stdout.write(macros);
 console.log(JSON.stringify({files: recorded.length, cold_reports: reports,

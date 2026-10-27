@@ -15,7 +15,7 @@ Local absolute paths identify historical files, not portable executable location
 
 ## Results and source identity
 
-local/ retains all eleven successive local cold reports, per-source build metadata
+local/ retains all twelve successive local cold reports, per-source build metadata
 and compressed production patches against main 5616425. None passes all three
 actual-Boa speed comparisons. Source and binary hashes must remain distinct.
 
@@ -55,3 +55,16 @@ is 88125528 references; these counts overlap and are not elapsed-time wins.
 The subsequent inline-scratch variant 40a4f58 removes one per-object heap
 allocation. Its fixed-input local report is valid but has only one faster
 and two within-noise Boa decisions, so its overall speed gate remains false.
+
+Final x64 copy1 (Intel8370C, runtime a8a824d) has complete macro observations:
+original-eleven candidate/Boa and baseline/Boa are each33 faster, before/after
+and same-binary each33 within noise, warm RegExp/Boa9 faster, warm before/after
+3 faster and6 within noise. Its cold gate remains false. These observations
+do not qualify subsequent sources or the exact Intel6973 target in #510.
+
+Property-hint variant831dc98 remembers only a validated ordinary-property
+position, never a descriptor/value. Bounds/full-key checks preserve deletion
+and redefinition; exotic/proxy handling still precedes this path. Native
+all-feature release checks have529 passes in83 suites,19 ignored, with64
+selected RegExp Test262 executions separately passing. Its local exact cold
+report has three Boa decisions within noise and does not pass the speed gate.

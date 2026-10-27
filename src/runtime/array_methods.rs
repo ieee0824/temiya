@@ -343,7 +343,10 @@ mod key_tests {
         let mut power = 10u64;
         loop {
             for index in [power - 1, power, power + 1] {
-                assert_eq!(key(index), PropertyKey::from(index.to_string()));
+                assert_eq!(
+                    key(index),
+                    PropertyKey::from(JsString::from(index.to_string()))
+                );
             }
             let Some(next) = power.checked_mul(10) else {
                 break;

@@ -67,7 +67,7 @@ pub struct ScopeDescriptor {
 /// Immutable executable function metadata; contains no runtime environment.
 #[derive(Clone, Debug, PartialEq)]
 pub struct FunctionTemplate {
-    /// Explicit function-expression name, if any.
+    /// Explicit function name, if any.
     pub name: Option<JsString>,
     /// Whether an explicit expression name creates a private self binding.
     pub self_binding: bool,
@@ -125,6 +125,110 @@ impl UnaryNumericOperator {
     }
 }
 
+/// Non-short-circuit binary operations shared with the AST runtime.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum BinaryOperator {
+    /// JavaScript `+`.
+    Add,
+    /// JavaScript `-`.
+    Subtract,
+    /// JavaScript `*`.
+    Multiply,
+    /// JavaScript `/`.
+    Divide,
+    /// JavaScript `%`.
+    Remainder,
+    /// JavaScript `**`.
+    Power,
+    /// JavaScript `&`.
+    BitAnd,
+    /// JavaScript `|`.
+    BitOr,
+    /// JavaScript `^`.
+    BitXor,
+    /// JavaScript `<<`.
+    LeftShift,
+    /// JavaScript `>>`.
+    RightShift,
+    /// JavaScript `>>>`.
+    UnsignedRightShift,
+    /// JavaScript `===`.
+    StrictEqual,
+    /// JavaScript `!==`.
+    StrictNotEqual,
+    /// JavaScript `==`.
+    Equal,
+    /// JavaScript `!=`.
+    NotEqual,
+    /// JavaScript `<`.
+    Less,
+    /// JavaScript `>`.
+    Greater,
+    /// JavaScript `<=`.
+    LessEqual,
+    /// JavaScript `>=`.
+    GreaterEqual,
+    /// JavaScript `in`.
+    In,
+    /// JavaScript `instanceof`.
+    InstanceOf,
+}
+impl BinaryOperator {
+    pub(crate) fn from_spelling(operator: &str) -> Option<Self> {
+        Some(match operator {
+            "+" => Self::Add,
+            "-" => Self::Subtract,
+            "*" => Self::Multiply,
+            "/" => Self::Divide,
+            "%" => Self::Remainder,
+            "**" => Self::Power,
+            "&" => Self::BitAnd,
+            "|" => Self::BitOr,
+            "^" => Self::BitXor,
+            "<<" => Self::LeftShift,
+            ">>" => Self::RightShift,
+            ">>>" => Self::UnsignedRightShift,
+            "===" => Self::StrictEqual,
+            "!==" => Self::StrictNotEqual,
+            "==" => Self::Equal,
+            "!=" => Self::NotEqual,
+            "<" => Self::Less,
+            ">" => Self::Greater,
+            "<=" => Self::LessEqual,
+            ">=" => Self::GreaterEqual,
+            "in" => Self::In,
+            "instanceof" => Self::InstanceOf,
+            _ => return None,
+        })
+    }
+    pub(crate) fn spelling(self) -> &'static str {
+        match self {
+            Self::Add => "+",
+            Self::Subtract => "-",
+            Self::Multiply => "*",
+            Self::Divide => "/",
+            Self::Remainder => "%",
+            Self::Power => "**",
+            Self::BitAnd => "&",
+            Self::BitOr => "|",
+            Self::BitXor => "^",
+            Self::LeftShift => "<<",
+            Self::RightShift => ">>",
+            Self::UnsignedRightShift => ">>>",
+            Self::StrictEqual => "===",
+            Self::StrictNotEqual => "!==",
+            Self::Equal => "==",
+            Self::NotEqual => "!=",
+            Self::Less => "<",
+            Self::Greater => ">",
+            Self::LessEqual => "<=",
+            Self::GreaterEqual => ">=",
+            Self::In => "in",
+            Self::InstanceOf => "instanceof",
+        }
+    }
+}
+
 /// Portable instruction with fixed-width integer operands.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Instruction {
@@ -142,6 +246,10 @@ pub enum Instruction {
     LoadName(u32),
     /// Resolve a name before its assignment RHS and retain its Reference.
     ResolveName { name: u32, strict: bool },
+    /// Read the innermost Reference without consuming it.
+    LoadReference,
+    /// Discard a retained Reference after logical assignment short-circuits.
+    DiscardReference,
     /// Pop an assigned value and the innermost retained Reference, then PutValue.
     StoreReference,
     /// Pop base and key values; push GetValue with the original receiver.
@@ -194,6 +302,8 @@ pub enum Instruction {
     Duplicate,
     /// Discard the stack top (`-1`).
     Pop,
+    /// Pop two operands and apply the shared binary runtime operation.
+    Binary(BinaryOperator),
     /// Pop two operands and push their numeric sum (`-1`).
     Add,
     /// Pop two operands and push their numeric difference (`-1`).
@@ -221,7 +331,7 @@ pub enum Instruction {
 impl Instruction {
     fn required_stack(self) -> usize {
         match self {
-            Self::LoadReferenceCallTarget => 0,
+            Self::LoadReference | Self::DiscardReference | Self::LoadReferenceCallTarget => 0,
             Self::AsCallTarget => 1,
             Self::BeginMethodCall => 2,
             Self::CreateFunction(_)
@@ -252,12 +362,19 @@ impl Instruction {
             | Self::Return
             | Self::Complete
             | Self::Throw => 1,
-            Self::Add | Self::Subtract | Self::Multiply | Self::Divide | Self::StrictEqual => 2,
+            Self::Binary(_)
+            | Self::Add
+            | Self::Subtract
+            | Self::Multiply
+            | Self::Divide
+            | Self::StrictEqual => 2,
         }
     }
 
     fn stack_delta(self) -> isize {
         match self {
+            Self::LoadReference => 1,
+            Self::DiscardReference => 0,
             Self::LoadReferenceCallTarget => 2,
             Self::AsCallTarget => 1,
             Self::BeginMethodCall => -2,
@@ -285,7 +402,12 @@ impl Instruction {
             | Self::Return
             | Self::Complete
             | Self::Throw => -1,
-            Self::Add | Self::Subtract | Self::Multiply | Self::Divide | Self::StrictEqual => -1,
+            Self::Binary(_)
+            | Self::Add
+            | Self::Subtract
+            | Self::Multiply
+            | Self::Divide
+            | Self::StrictEqual => -1,
             Self::Jump(_) | Self::LogicalNot | Self::TypeOf | Self::UnaryNumeric(_) => 0,
         }
     }
@@ -633,7 +755,13 @@ fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
                     state.calls.pop();
                 }
             }
-            Instruction::StoreReference
+            Instruction::LoadReference => {
+                if state.references.is_empty() {
+                    return Err(error(VerifyErrorKind::ScopeMismatch));
+                }
+            }
+            Instruction::DiscardReference
+            | Instruction::StoreReference
             | Instruction::DeleteReference
             | Instruction::UpdateReference { .. }
             | Instruction::TypeOfReference => {

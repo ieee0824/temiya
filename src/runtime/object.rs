@@ -302,6 +302,7 @@ pub(super) struct ObjectState {
     extensible: bool,
     properties: Vec<PropertyEntry>,
     callable: Option<NativeCall>,
+    pub(super) bound_target: Option<Object>,
     construct: Option<NativeConstruct>,
     // The own data property already exists. Only its initial object value is
     // deferred until an operation observes or redefines that descriptor.
@@ -454,6 +455,13 @@ impl Object {
         })?;
         let _depth = CallDepthGuard::enter()?;
         callback(arguments, new_target)
+    }
+
+    /// Initializes an unexposed fresh ordinary object's prototype. Creation is
+    /// not SetPrototypeOf: no cycle walk or user Proxy callbacks are required.
+    pub(super) fn initialize_prototype(&self, prototype: Option<Self>) {
+        debug_assert!(self.0.state.borrow().prototype.is_none());
+        self.0.state.borrow_mut().prototype = prototype;
     }
 
     /// Returns this object's prototype.

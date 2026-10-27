@@ -953,9 +953,9 @@ pub(crate) fn binary_values(operator: &str, left: Value, right: Value) -> Runtim
         }
         "===" => Ok(Value::Boolean(strict_equal(&left, &right))),
         "!==" => Ok(Value::Boolean(!strict_equal(&left, &right))),
-        "==" => Ok(Value::Boolean(abstract_equal(left, right)?)),
-        "!=" => Ok(Value::Boolean(!abstract_equal(left, right)?)),
-        "<" | ">" | "<=" | ">=" => relational(operator, left, right),
+        "==" => Ok(Value::Boolean(super::operators::equal(None, left, right)?)),
+        "!=" => Ok(Value::Boolean(!super::operators::equal(None, left, right)?)),
+        "<" | ">" | "<=" | ">=" => super::operators::relational(None, operator, left, right),
         "in" => {
             let Value::Object(object) = right else {
                 return Err(RuntimeError::type_error(
@@ -966,7 +966,7 @@ pub(crate) fn binary_values(operator: &str, left: Value, right: Value) -> Runtim
                 object.has_property(&left.to_property_key()?)?,
             ))
         }
-        "instanceof" => instance_of(left, right).map(Value::Boolean),
+        "instanceof" => super::operators::instance_of(left, right, None).map(Value::Boolean),
         "&&" | "||" | "??" => Ok(right),
         _ => Err(RuntimeError::syntax_error(format!(
             "unsupported binary operator {operator}"
@@ -975,14 +975,22 @@ pub(crate) fn binary_values(operator: &str, left: Value, right: Value) -> Runtim
 }
 
 fn numeric_binary(operator: &str, left: Value, right: Value) -> RuntimeResult<Value> {
-    match (left.to_numeric()?, right.to_numeric()?) {
+    numeric_binary_result(operator, left.to_numeric()?, right.to_numeric()?)
+}
+
+pub(super) fn numeric_binary_result(
+    operator: &str,
+    left: Numeric,
+    right: Numeric,
+) -> RuntimeResult<Value> {
+    match (left, right) {
         (Numeric::Number(a), Numeric::Number(b)) => Ok(Value::Number(match operator {
             "+" => a + b,
             "-" => a - b,
             "*" => a * b,
             "/" => a / b,
             "%" => a % b,
-            "**" => a.powf(b),
+            "**" => super::operators::number_power(a, b),
             "&" => f64::from(to_i32(a) & to_i32(b)),
             "|" => f64::from(to_i32(a) | to_i32(b)),
             "^" => f64::from(to_i32(a) ^ to_i32(b)),
@@ -1005,18 +1013,29 @@ fn numeric_binary(operator: &str, left: Value, right: Value) -> RuntimeResult<Va
                 }
                 "%" => a % b,
                 "**" => {
-                    let exponent = bigint_shift(&b)?;
                     if b < BigInt::from(0) {
                         return Err(RuntimeError::range_error("negative BigInt exponent"));
                     }
-                    a.pow(exponent)
+                    if b == BigInt::from(0) {
+                        BigInt::from(1)
+                    } else if a == BigInt::from(0) || a == BigInt::from(1) {
+                        a
+                    } else if a == BigInt::from(-1) {
+                        if (&b & BigInt::from(1)) == BigInt::from(0) {
+                            BigInt::from(1)
+                        } else {
+                            BigInt::from(-1)
+                        }
+                    } else {
+                        a.pow(bigint_shift(&b)?)
+                    }
                 }
                 "&" => a & b,
                 "|" => a | b,
                 "^" => a ^ b,
                 "<<" => {
                     if b < BigInt::from(0) {
-                        a >> bigint_shift(&(-b))?
+                        super::operators::right_shift(a, -b)?
                     } else {
                         a << bigint_shift(&b)?
                     }
@@ -1025,7 +1044,7 @@ fn numeric_binary(operator: &str, left: Value, right: Value) -> RuntimeResult<Va
                     if b < BigInt::from(0) {
                         a << bigint_shift(&(-b))?
                     } else {
-                        a >> bigint_shift(&b)?
+                        super::operators::right_shift(a, b)?
                     }
                 }
                 ">>>" => {
@@ -1055,91 +1074,6 @@ pub(super) fn strict_equal(left: &Value, right: &Value) -> bool {
         (Value::Number(a), Value::Number(b)) => !a.is_nan() && !b.is_nan() && a == b,
         _ => left.same_value(right),
     }
-}
-
-fn abstract_equal(left: Value, right: Value) -> RuntimeResult<bool> {
-    if std::mem::discriminant(&left) == std::mem::discriminant(&right) {
-        return Ok(strict_equal(&left, &right));
-    }
-    match (left, right) {
-        (Value::Null, Value::Undefined) | (Value::Undefined, Value::Null) => Ok(true),
-        (Value::Number(a), Value::String(b)) | (Value::String(b), Value::Number(a)) => {
-            Ok(!a.is_nan() && a == Value::String(b).to_number()?)
-        }
-        (Value::Boolean(a), b) => abstract_equal(Value::Number(if a { 1.0 } else { 0.0 }), b),
-        (a, Value::Boolean(b)) => abstract_equal(a, Value::Number(if b { 1.0 } else { 0.0 })),
-        (Value::Object(a), b) => abstract_equal(
-            Value::Object(a).to_primitive(super::PrimitiveHint::Default)?,
-            b,
-        ),
-        (a, Value::Object(b)) => abstract_equal(
-            a,
-            Value::Object(b).to_primitive(super::PrimitiveHint::Default)?,
-        ),
-        (Value::BigInt(a), Value::String(b)) | (Value::String(b), Value::BigInt(a)) => {
-            Ok(Value::String(b).to_bigint().is_ok_and(|b| a == b))
-        }
-        (Value::BigInt(a), Value::Number(b)) | (Value::Number(b), Value::BigInt(a)) => {
-            Ok(b.is_finite() && b.fract() == 0.0 && a.to_string() == format!("{b:.0}"))
-        }
-        _ => Ok(false),
-    }
-}
-
-fn relational(operator: &str, left: Value, right: Value) -> RuntimeResult<Value> {
-    let left = left.to_primitive(super::PrimitiveHint::Number)?;
-    let right = right.to_primitive(super::PrimitiveHint::Number)?;
-    let less = if let (Value::String(a), Value::String(b)) = (&left, &right) {
-        a < b
-    } else {
-        let a = left.to_number()?;
-        let b = right.to_number()?;
-        if a.is_nan() || b.is_nan() {
-            return Ok(Value::Boolean(false));
-        }
-        a < b
-    };
-    let equal = strict_equal(&left, &right)
-        || (!matches!((&left, &right), (Value::String(_), Value::String(_)))
-            && left.to_number()? == right.to_number()?);
-    Ok(Value::Boolean(match operator {
-        "<" => less,
-        ">" => !less && !equal,
-        "<=" => less || equal,
-        ">=" => !less,
-        _ => unreachable!(),
-    }))
-}
-
-fn instance_of(left: Value, right: Value) -> RuntimeResult<bool> {
-    let Value::Object(constructor) = right else {
-        return Err(RuntimeError::type_error(
-            "right-hand side of instanceof is not an object",
-        ));
-    };
-    if !constructor.is_callable() {
-        return Err(RuntimeError::type_error(
-            "right-hand side of instanceof is not callable",
-        ));
-    }
-    let Value::Object(prototype) =
-        constructor.get(&PropertyKey::String(JsString::from("prototype")))?
-    else {
-        return Err(RuntimeError::type_error(
-            "constructor prototype is not an object",
-        ));
-    };
-    let Value::Object(object) = left else {
-        return Ok(false);
-    };
-    let mut current = object.prototype();
-    while let Some(candidate) = current {
-        if candidate == prototype {
-            return Ok(true);
-        }
-        current = candidate.prototype();
-    }
-    Ok(false)
 }
 
 pub(crate) fn type_of(value: &Value) -> &'static str {
@@ -1201,21 +1135,10 @@ pub(crate) fn binary_values_in_realm(
     left: Value,
     right: Value,
 ) -> RuntimeResult<Value> {
-    if (matches!(left, Value::Object(_)) || matches!(right, Value::Object(_))) && operator == "+" {
-        return addition_with_objects(realm, left, right);
+    if matches!(left, Value::Object(_)) || matches!(right, Value::Object(_)) {
+        return super::operators::object_binary(realm, operator, left, right);
     }
     binary_values(operator, left, right)
-}
-
-#[cold]
-#[inline(never)]
-fn addition_with_objects(realm: &Realm, left: Value, right: Value) -> RuntimeResult<Value> {
-    let key = realm
-        .well_known_symbol(super::WellKnownSymbol::ToPrimitive)
-        .into();
-    let left = super::coercion::primitive_with_hint(&left, &key, super::PrimitiveHint::Default)?;
-    let right = super::coercion::primitive_with_hint(&right, &key, super::PrimitiveHint::Default)?;
-    binary_values("+", left, right)
 }
 
 /// Performs the complete update on one retained Reference, including Realm-aware

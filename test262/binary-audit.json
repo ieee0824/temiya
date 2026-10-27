@@ -1,0 +1,2123 @@
+{
+  "schema": 1,
+  "recorded_at": "2026-10-26T23:44:33.428Z",
+  "baseline_revision": "c84c88fb456c9b485a4c9350410efe29878968af",
+  "runtime_revision": "1651f139fad3664d2cc29ffda5e72202e82967c2",
+  "before": {
+    "stable": {
+      "AST": {
+        "compile_unsupported": 0,
+        "fail": 16,
+        "pass": 15,
+        "skipped": 0
+      },
+      "bytecode": {
+        "compile_unsupported": 31,
+        "fail": 0,
+        "pass": 0,
+        "skipped": 0
+      },
+      "fixture_git_blobs": {
+        "harness/assert.js": "55a0e2a32f2e6259a1b445a9d924f61261e2ca5f",
+        "harness/sta.js": "d291a94f46234908009a7ee909cf9d66034c73fe",
+        "test/language/expressions/equals/bigint-and-number-extremes.js": "ee799196ae7306baaf4528fcaec2864cd92a3bea",
+        "test/language/expressions/equals/bigint-and-object.js": "ab52deea30761a93be56b31691e142cac5885301",
+        "test/language/expressions/equals/bigint-and-string.js": "d998ed0e3560f1fb32dc9096e4f6c1a8fcc23587",
+        "test/language/expressions/equals/coerce-symbol-to-prim-return-prim.js": "5e19118611bd79cf6cedc749c9c7f7be788a05d3",
+        "test/language/expressions/exponentiation/bigint-arithmetic.js": "2ab0d90b08551f3cc263c4264585ef49b4673955",
+        "test/language/expressions/exponentiation/bigint-negative-exponent-throws.js": "ae49cb2b290afcea17403f5a09e7d83e4a9bd33d",
+        "test/language/expressions/exponentiation/bigint-wrapped-values.js": "13fd85202cf3f832398baaac80cb000695368d0e",
+        "test/language/expressions/greater-than/bigint-and-incomparable-string.js": "c7554e3e8afd888875c7cb15f14661b3b498b65a",
+        "test/language/expressions/greater-than/bigint-and-number-extremes.js": "658d3e567b9887b5170a88d9bdd4e0d2100653ec",
+        "test/language/expressions/instanceof/symbol-hasinstance-invocation.js": "3f38294a5d2009364e2f61add06f4d41c83fd02c",
+        "test/language/expressions/instanceof/symbol-hasinstance-not-callable.js": "a5317c4e7b72adb793c876ef878bc04a0382e30e",
+        "test/language/expressions/less-than/bigint-and-number.js": "8a6e2e7069da5601fd777b8f8005bfe99275cf35",
+        "test/language/expressions/logical-assignment/lgcl-and-assignment-operator-unresolved-lhs.js": "984df2abcf83f44cfd7f9147e062de0934c5e57a",
+        "test/language/expressions/logical-assignment/lgcl-nullish-assignment-operator-unresolved-rhs-put.js": "e91c973f049ea7705c50e7bc8bffeeb6a7ce4924",
+        "test/language/expressions/logical-assignment/lgcl-or-assignment-operator-unresolved-rhs.js": "653ac81d9b805fcb148a49abe734b9d0f11e164f",
+        "test/language/expressions/unsigned-right-shift/bigint-and-number.js": "9751553cc06fd7cbaeb049b647aa5abda2206175"
+      },
+      "outcomes": [
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/equals/bigint-and-number-extremes.js",
+          "status": "pass",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode expression at bytes 513..535",
+          "path": "test/language/expressions/equals/bigint-and-number-extremes.js",
+          "status": "compile_unsupported",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/equals/bigint-and-number-extremes.js",
+          "status": "pass",
+          "variant": "Strict"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode expression at bytes 527..549",
+          "path": "test/language/expressions/equals/bigint-and-number-extremes.js",
+          "status": "compile_unsupported",
+          "variant": "Strict"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/equals/bigint-and-string.js",
+          "status": "pass",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode expression at bytes 351..359",
+          "path": "test/language/expressions/equals/bigint-and-string.js",
+          "status": "compile_unsupported",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/equals/bigint-and-string.js",
+          "status": "pass",
+          "variant": "Strict"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode expression at bytes 365..373",
+          "path": "test/language/expressions/equals/bigint-and-string.js",
+          "status": "compile_unsupported",
+          "variant": "Strict"
+        },
+        {
+          "backend": "AST",
+          "message": "evaluation: RuntimeError { kind: ThrownValue, message: \"JavaScript throw completion\", thrown: Some(Object(Object { identity: 942, .. })) }; thrown message: The result of (0n == Object(0n)) is true Expected SameValue(«false», «true») to be true",
+          "path": "test/language/expressions/equals/bigint-and-object.js",
+          "status": "fail",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode expression at bytes 983..999",
+          "path": "test/language/expressions/equals/bigint-and-object.js",
+          "status": "compile_unsupported",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": "evaluation: RuntimeError { kind: ThrownValue, message: \"JavaScript throw completion\", thrown: Some(Object(Object { identity: 1101, .. })) }; thrown message: The result of (0n == Object(0n)) is true Expected SameValue(«false», «true») to be true",
+          "path": "test/language/expressions/equals/bigint-and-object.js",
+          "status": "fail",
+          "variant": "Strict"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode expression at bytes 997..1013",
+          "path": "test/language/expressions/equals/bigint-and-object.js",
+          "status": "compile_unsupported",
+          "variant": "Strict"
+        },
+        {
+          "backend": "AST",
+          "message": "evaluation: RuntimeError { kind: ThrownValue, message: \"JavaScript throw completion\", thrown: Some(Object(Object { identity: 1263, .. })) }; thrown message: number primitive (equal) Expected SameValue(«false», «true») to be true",
+          "path": "test/language/expressions/equals/coerce-symbol-to-prim-return-prim.js",
+          "status": "fail",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode expression at bytes 984..986",
+          "path": "test/language/expressions/equals/coerce-symbol-to-prim-return-prim.js",
+          "status": "compile_unsupported",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": "evaluation: RuntimeError { kind: ThrownValue, message: \"JavaScript throw completion\", thrown: Some(Object(Object { identity: 1425, .. })) }; thrown message: number primitive (equal) Expected SameValue(«false», «true») to be true",
+          "path": "test/language/expressions/equals/coerce-symbol-to-prim-return-prim.js",
+          "status": "fail",
+          "variant": "Strict"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode expression at bytes 998..1000",
+          "path": "test/language/expressions/equals/coerce-symbol-to-prim-return-prim.js",
+          "status": "compile_unsupported",
+          "variant": "Strict"
+        },
+        {
+          "backend": "AST",
+          "message": "evaluation: RuntimeError { kind: TypeError, message: \"cannot convert BigInt to Number\", thrown: None }; thrown message: ",
+          "path": "test/language/expressions/greater-than/bigint-and-number-extremes.js",
+          "status": "fail",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode expression at bytes 927..948",
+          "path": "test/language/expressions/greater-than/bigint-and-number-extremes.js",
+          "status": "compile_unsupported",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": "evaluation: RuntimeError { kind: TypeError, message: \"cannot convert BigInt to Number\", thrown: None }; thrown message: ",
+          "path": "test/language/expressions/greater-than/bigint-and-number-extremes.js",
+          "status": "fail",
+          "variant": "Strict"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode expression at bytes 941..962",
+          "path": "test/language/expressions/greater-than/bigint-and-number-extremes.js",
+          "status": "compile_unsupported",
+          "variant": "Strict"
+        },
+        {
+          "backend": "AST",
+          "message": "evaluation: RuntimeError { kind: TypeError, message: \"cannot convert BigInt to Number\", thrown: None }; thrown message: ",
+          "path": "test/language/expressions/greater-than/bigint-and-incomparable-string.js",
+          "status": "fail",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode expression at bytes 279..288",
+          "path": "test/language/expressions/greater-than/bigint-and-incomparable-string.js",
+          "status": "compile_unsupported",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": "evaluation: RuntimeError { kind: TypeError, message: \"cannot convert BigInt to Number\", thrown: None }; thrown message: ",
+          "path": "test/language/expressions/greater-than/bigint-and-incomparable-string.js",
+          "status": "fail",
+          "variant": "Strict"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode expression at bytes 293..302",
+          "path": "test/language/expressions/greater-than/bigint-and-incomparable-string.js",
+          "status": "compile_unsupported",
+          "variant": "Strict"
+        },
+        {
+          "backend": "AST",
+          "message": "evaluation: RuntimeError { kind: TypeError, message: \"cannot convert BigInt to Number\", thrown: None }; thrown message: ",
+          "path": "test/language/expressions/less-than/bigint-and-number.js",
+          "status": "fail",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode expression at bytes 932..938",
+          "path": "test/language/expressions/less-than/bigint-and-number.js",
+          "status": "compile_unsupported",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": "evaluation: RuntimeError { kind: TypeError, message: \"cannot convert BigInt to Number\", thrown: None }; thrown message: ",
+          "path": "test/language/expressions/less-than/bigint-and-number.js",
+          "status": "fail",
+          "variant": "Strict"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode expression at bytes 946..952",
+          "path": "test/language/expressions/less-than/bigint-and-number.js",
+          "status": "compile_unsupported",
+          "variant": "Strict"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/exponentiation/bigint-arithmetic.js",
+          "status": "pass",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode expression at bytes 296..312",
+          "path": "test/language/expressions/exponentiation/bigint-arithmetic.js",
+          "status": "compile_unsupported",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/exponentiation/bigint-arithmetic.js",
+          "status": "pass",
+          "variant": "Strict"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode expression at bytes 310..326",
+          "path": "test/language/expressions/exponentiation/bigint-arithmetic.js",
+          "status": "compile_unsupported",
+          "variant": "Strict"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/exponentiation/bigint-negative-exponent-throws.js",
+          "status": "pass",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode expression at bytes 588..597",
+          "path": "test/language/expressions/exponentiation/bigint-negative-exponent-throws.js",
+          "status": "compile_unsupported",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/exponentiation/bigint-negative-exponent-throws.js",
+          "status": "pass",
+          "variant": "Strict"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode expression at bytes 602..611",
+          "path": "test/language/expressions/exponentiation/bigint-negative-exponent-throws.js",
+          "status": "compile_unsupported",
+          "variant": "Strict"
+        },
+        {
+          "backend": "AST",
+          "message": "evaluation: RuntimeError { kind: TypeError, message: \"cannot mix BigInt and Number operands\", thrown: None }; thrown message: ",
+          "path": "test/language/expressions/exponentiation/bigint-wrapped-values.js",
+          "status": "fail",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode expression at bytes 355..371",
+          "path": "test/language/expressions/exponentiation/bigint-wrapped-values.js",
+          "status": "compile_unsupported",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": "evaluation: RuntimeError { kind: TypeError, message: \"cannot mix BigInt and Number operands\", thrown: None }; thrown message: ",
+          "path": "test/language/expressions/exponentiation/bigint-wrapped-values.js",
+          "status": "fail",
+          "variant": "Strict"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode expression at bytes 369..385",
+          "path": "test/language/expressions/exponentiation/bigint-wrapped-values.js",
+          "status": "compile_unsupported",
+          "variant": "Strict"
+        },
+        {
+          "backend": "AST",
+          "message": "evaluation: RuntimeError { kind: ThrownValue, message: \"JavaScript throw completion\", thrown: Some(Object(Object { identity: 3523, .. })) }; thrown message: Object(1n) >>> 1 throws TypeError Expected a undefined to be thrown but no exception was thrown at all",
+          "path": "test/language/expressions/unsigned-right-shift/bigint-and-number.js",
+          "status": "fail",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode expression at bytes 517..525",
+          "path": "test/language/expressions/unsigned-right-shift/bigint-and-number.js",
+          "status": "compile_unsupported",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": "evaluation: RuntimeError { kind: ThrownValue, message: \"JavaScript throw completion\", thrown: Some(Object(Object { identity: 3687, .. })) }; thrown message: Object(1n) >>> 1 throws TypeError Expected a undefined to be thrown but no exception was thrown at all",
+          "path": "test/language/expressions/unsigned-right-shift/bigint-and-number.js",
+          "status": "fail",
+          "variant": "Strict"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode expression at bytes 531..539",
+          "path": "test/language/expressions/unsigned-right-shift/bigint-and-number.js",
+          "status": "compile_unsupported",
+          "variant": "Strict"
+        },
+        {
+          "backend": "AST",
+          "message": "evaluation: RuntimeError { kind: TypeError, message: \"right-hand side of instanceof is not callable\", thrown: None }; thrown message: ",
+          "path": "test/language/expressions/instanceof/symbol-hasinstance-invocation.js",
+          "status": "fail",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode expression at bytes 572..574",
+          "path": "test/language/expressions/instanceof/symbol-hasinstance-invocation.js",
+          "status": "compile_unsupported",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": "evaluation: RuntimeError { kind: TypeError, message: \"right-hand side of instanceof is not callable\", thrown: None }; thrown message: ",
+          "path": "test/language/expressions/instanceof/symbol-hasinstance-invocation.js",
+          "status": "fail",
+          "variant": "Strict"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode expression at bytes 586..588",
+          "path": "test/language/expressions/instanceof/symbol-hasinstance-invocation.js",
+          "status": "compile_unsupported",
+          "variant": "Strict"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/instanceof/symbol-hasinstance-not-callable.js",
+          "status": "pass",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode expression at bytes 640..642",
+          "path": "test/language/expressions/instanceof/symbol-hasinstance-not-callable.js",
+          "status": "compile_unsupported",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/instanceof/symbol-hasinstance-not-callable.js",
+          "status": "pass",
+          "variant": "Strict"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode expression at bytes 654..656",
+          "path": "test/language/expressions/instanceof/symbol-hasinstance-not-callable.js",
+          "status": "compile_unsupported",
+          "variant": "Strict"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/logical-assignment/lgcl-or-assignment-operator-unresolved-rhs.js",
+          "status": "pass",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode expression at bytes 492..512",
+          "path": "test/language/expressions/logical-assignment/lgcl-or-assignment-operator-unresolved-rhs.js",
+          "status": "compile_unsupported",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/logical-assignment/lgcl-or-assignment-operator-unresolved-rhs.js",
+          "status": "pass",
+          "variant": "Strict"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode expression at bytes 506..526",
+          "path": "test/language/expressions/logical-assignment/lgcl-or-assignment-operator-unresolved-rhs.js",
+          "status": "compile_unsupported",
+          "variant": "Strict"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/logical-assignment/lgcl-and-assignment-operator-unresolved-lhs.js",
+          "status": "pass",
+          "variant": "Strict"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode expression at bytes 485..501",
+          "path": "test/language/expressions/logical-assignment/lgcl-and-assignment-operator-unresolved-lhs.js",
+          "status": "compile_unsupported",
+          "variant": "Strict"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/logical-assignment/lgcl-nullish-assignment-operator-unresolved-rhs-put.js",
+          "status": "pass",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode expression at bytes 520..540",
+          "path": "test/language/expressions/logical-assignment/lgcl-nullish-assignment-operator-unresolved-rhs-put.js",
+          "status": "compile_unsupported",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/logical-assignment/lgcl-nullish-assignment-operator-unresolved-rhs-put.js",
+          "status": "pass",
+          "variant": "Strict"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode expression at bytes 534..554",
+          "path": "test/language/expressions/logical-assignment/lgcl-nullish-assignment-operator-unresolved-rhs-put.js",
+          "status": "compile_unsupported",
+          "variant": "Strict"
+        }
+      ],
+      "revision": "d53ebc8b1931d9f1541e43d59650776e4b766248",
+      "scope": "Original whole test programs compiled/executed independently in AST and VM, fresh Realms. Original sta/assert/includes execute as AST-backed host harness for both backends; no test-program AST fallback or assertion stripping. Unsupported/skipped are not pass.",
+      "selected_files": 16
+    },
+    "msrv": {
+      "AST": {
+        "compile_unsupported": 0,
+        "fail": 16,
+        "pass": 15,
+        "skipped": 0
+      },
+      "bytecode": {
+        "compile_unsupported": 31,
+        "fail": 0,
+        "pass": 0,
+        "skipped": 0
+      },
+      "fixture_git_blobs": {
+        "harness/assert.js": "55a0e2a32f2e6259a1b445a9d924f61261e2ca5f",
+        "harness/sta.js": "d291a94f46234908009a7ee909cf9d66034c73fe",
+        "test/language/expressions/equals/bigint-and-number-extremes.js": "ee799196ae7306baaf4528fcaec2864cd92a3bea",
+        "test/language/expressions/equals/bigint-and-object.js": "ab52deea30761a93be56b31691e142cac5885301",
+        "test/language/expressions/equals/bigint-and-string.js": "d998ed0e3560f1fb32dc9096e4f6c1a8fcc23587",
+        "test/language/expressions/equals/coerce-symbol-to-prim-return-prim.js": "5e19118611bd79cf6cedc749c9c7f7be788a05d3",
+        "test/language/expressions/exponentiation/bigint-arithmetic.js": "2ab0d90b08551f3cc263c4264585ef49b4673955",
+        "test/language/expressions/exponentiation/bigint-negative-exponent-throws.js": "ae49cb2b290afcea17403f5a09e7d83e4a9bd33d",
+        "test/language/expressions/exponentiation/bigint-wrapped-values.js": "13fd85202cf3f832398baaac80cb000695368d0e",
+        "test/language/expressions/greater-than/bigint-and-incomparable-string.js": "c7554e3e8afd888875c7cb15f14661b3b498b65a",
+        "test/language/expressions/greater-than/bigint-and-number-extremes.js": "658d3e567b9887b5170a88d9bdd4e0d2100653ec",
+        "test/language/expressions/instanceof/symbol-hasinstance-invocation.js": "3f38294a5d2009364e2f61add06f4d41c83fd02c",
+        "test/language/expressions/instanceof/symbol-hasinstance-not-callable.js": "a5317c4e7b72adb793c876ef878bc04a0382e30e",
+        "test/language/expressions/less-than/bigint-and-number.js": "8a6e2e7069da5601fd777b8f8005bfe99275cf35",
+        "test/language/expressions/logical-assignment/lgcl-and-assignment-operator-unresolved-lhs.js": "984df2abcf83f44cfd7f9147e062de0934c5e57a",
+        "test/language/expressions/logical-assignment/lgcl-nullish-assignment-operator-unresolved-rhs-put.js": "e91c973f049ea7705c50e7bc8bffeeb6a7ce4924",
+        "test/language/expressions/logical-assignment/lgcl-or-assignment-operator-unresolved-rhs.js": "653ac81d9b805fcb148a49abe734b9d0f11e164f",
+        "test/language/expressions/unsigned-right-shift/bigint-and-number.js": "9751553cc06fd7cbaeb049b647aa5abda2206175"
+      },
+      "outcomes": [
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/equals/bigint-and-number-extremes.js",
+          "status": "pass",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode expression at bytes 513..535",
+          "path": "test/language/expressions/equals/bigint-and-number-extremes.js",
+          "status": "compile_unsupported",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/equals/bigint-and-number-extremes.js",
+          "status": "pass",
+          "variant": "Strict"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode expression at bytes 527..549",
+          "path": "test/language/expressions/equals/bigint-and-number-extremes.js",
+          "status": "compile_unsupported",
+          "variant": "Strict"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/equals/bigint-and-string.js",
+          "status": "pass",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode expression at bytes 351..359",
+          "path": "test/language/expressions/equals/bigint-and-string.js",
+          "status": "compile_unsupported",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/equals/bigint-and-string.js",
+          "status": "pass",
+          "variant": "Strict"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode expression at bytes 365..373",
+          "path": "test/language/expressions/equals/bigint-and-string.js",
+          "status": "compile_unsupported",
+          "variant": "Strict"
+        },
+        {
+          "backend": "AST",
+          "message": "evaluation: RuntimeError { kind: ThrownValue, message: \"JavaScript throw completion\", thrown: Some(Object(Object { identity: 942, .. })) }; thrown message: The result of (0n == Object(0n)) is true Expected SameValue(«false», «true») to be true",
+          "path": "test/language/expressions/equals/bigint-and-object.js",
+          "status": "fail",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode expression at bytes 983..999",
+          "path": "test/language/expressions/equals/bigint-and-object.js",
+          "status": "compile_unsupported",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": "evaluation: RuntimeError { kind: ThrownValue, message: \"JavaScript throw completion\", thrown: Some(Object(Object { identity: 1101, .. })) }; thrown message: The result of (0n == Object(0n)) is true Expected SameValue(«false», «true») to be true",
+          "path": "test/language/expressions/equals/bigint-and-object.js",
+          "status": "fail",
+          "variant": "Strict"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode expression at bytes 997..1013",
+          "path": "test/language/expressions/equals/bigint-and-object.js",
+          "status": "compile_unsupported",
+          "variant": "Strict"
+        },
+        {
+          "backend": "AST",
+          "message": "evaluation: RuntimeError { kind: ThrownValue, message: \"JavaScript throw completion\", thrown: Some(Object(Object { identity: 1263, .. })) }; thrown message: number primitive (equal) Expected SameValue(«false», «true») to be true",
+          "path": "test/language/expressions/equals/coerce-symbol-to-prim-return-prim.js",
+          "status": "fail",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode expression at bytes 984..986",
+          "path": "test/language/expressions/equals/coerce-symbol-to-prim-return-prim.js",
+          "status": "compile_unsupported",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": "evaluation: RuntimeError { kind: ThrownValue, message: \"JavaScript throw completion\", thrown: Some(Object(Object { identity: 1425, .. })) }; thrown message: number primitive (equal) Expected SameValue(«false», «true») to be true",
+          "path": "test/language/expressions/equals/coerce-symbol-to-prim-return-prim.js",
+          "status": "fail",
+          "variant": "Strict"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode expression at bytes 998..1000",
+          "path": "test/language/expressions/equals/coerce-symbol-to-prim-return-prim.js",
+          "status": "compile_unsupported",
+          "variant": "Strict"
+        },
+        {
+          "backend": "AST",
+          "message": "evaluation: RuntimeError { kind: TypeError, message: \"cannot convert BigInt to Number\", thrown: None }; thrown message: ",
+          "path": "test/language/expressions/greater-than/bigint-and-number-extremes.js",
+          "status": "fail",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode expression at bytes 927..948",
+          "path": "test/language/expressions/greater-than/bigint-and-number-extremes.js",
+          "status": "compile_unsupported",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": "evaluation: RuntimeError { kind: TypeError, message: \"cannot convert BigInt to Number\", thrown: None }; thrown message: ",
+          "path": "test/language/expressions/greater-than/bigint-and-number-extremes.js",
+          "status": "fail",
+          "variant": "Strict"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode expression at bytes 941..962",
+          "path": "test/language/expressions/greater-than/bigint-and-number-extremes.js",
+          "status": "compile_unsupported",
+          "variant": "Strict"
+        },
+        {
+          "backend": "AST",
+          "message": "evaluation: RuntimeError { kind: TypeError, message: \"cannot convert BigInt to Number\", thrown: None }; thrown message: ",
+          "path": "test/language/expressions/greater-than/bigint-and-incomparable-string.js",
+          "status": "fail",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode expression at bytes 279..288",
+          "path": "test/language/expressions/greater-than/bigint-and-incomparable-string.js",
+          "status": "compile_unsupported",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": "evaluation: RuntimeError { kind: TypeError, message: \"cannot convert BigInt to Number\", thrown: None }; thrown message: ",
+          "path": "test/language/expressions/greater-than/bigint-and-incomparable-string.js",
+          "status": "fail",
+          "variant": "Strict"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode expression at bytes 293..302",
+          "path": "test/language/expressions/greater-than/bigint-and-incomparable-string.js",
+          "status": "compile_unsupported",
+          "variant": "Strict"
+        },
+        {
+          "backend": "AST",
+          "message": "evaluation: RuntimeError { kind: TypeError, message: \"cannot convert BigInt to Number\", thrown: None }; thrown message: ",
+          "path": "test/language/expressions/less-than/bigint-and-number.js",
+          "status": "fail",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode expression at bytes 932..938",
+          "path": "test/language/expressions/less-than/bigint-and-number.js",
+          "status": "compile_unsupported",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": "evaluation: RuntimeError { kind: TypeError, message: \"cannot convert BigInt to Number\", thrown: None }; thrown message: ",
+          "path": "test/language/expressions/less-than/bigint-and-number.js",
+          "status": "fail",
+          "variant": "Strict"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode expression at bytes 946..952",
+          "path": "test/language/expressions/less-than/bigint-and-number.js",
+          "status": "compile_unsupported",
+          "variant": "Strict"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/exponentiation/bigint-arithmetic.js",
+          "status": "pass",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode expression at bytes 296..312",
+          "path": "test/language/expressions/exponentiation/bigint-arithmetic.js",
+          "status": "compile_unsupported",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/exponentiation/bigint-arithmetic.js",
+          "status": "pass",
+          "variant": "Strict"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode expression at bytes 310..326",
+          "path": "test/language/expressions/exponentiation/bigint-arithmetic.js",
+          "status": "compile_unsupported",
+          "variant": "Strict"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/exponentiation/bigint-negative-exponent-throws.js",
+          "status": "pass",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode expression at bytes 588..597",
+          "path": "test/language/expressions/exponentiation/bigint-negative-exponent-throws.js",
+          "status": "compile_unsupported",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/exponentiation/bigint-negative-exponent-throws.js",
+          "status": "pass",
+          "variant": "Strict"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode expression at bytes 602..611",
+          "path": "test/language/expressions/exponentiation/bigint-negative-exponent-throws.js",
+          "status": "compile_unsupported",
+          "variant": "Strict"
+        },
+        {
+          "backend": "AST",
+          "message": "evaluation: RuntimeError { kind: TypeError, message: \"cannot mix BigInt and Number operands\", thrown: None }; thrown message: ",
+          "path": "test/language/expressions/exponentiation/bigint-wrapped-values.js",
+          "status": "fail",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode expression at bytes 355..371",
+          "path": "test/language/expressions/exponentiation/bigint-wrapped-values.js",
+          "status": "compile_unsupported",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": "evaluation: RuntimeError { kind: TypeError, message: \"cannot mix BigInt and Number operands\", thrown: None }; thrown message: ",
+          "path": "test/language/expressions/exponentiation/bigint-wrapped-values.js",
+          "status": "fail",
+          "variant": "Strict"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode expression at bytes 369..385",
+          "path": "test/language/expressions/exponentiation/bigint-wrapped-values.js",
+          "status": "compile_unsupported",
+          "variant": "Strict"
+        },
+        {
+          "backend": "AST",
+          "message": "evaluation: RuntimeError { kind: ThrownValue, message: \"JavaScript throw completion\", thrown: Some(Object(Object { identity: 3523, .. })) }; thrown message: Object(1n) >>> 1 throws TypeError Expected a undefined to be thrown but no exception was thrown at all",
+          "path": "test/language/expressions/unsigned-right-shift/bigint-and-number.js",
+          "status": "fail",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode expression at bytes 517..525",
+          "path": "test/language/expressions/unsigned-right-shift/bigint-and-number.js",
+          "status": "compile_unsupported",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": "evaluation: RuntimeError { kind: ThrownValue, message: \"JavaScript throw completion\", thrown: Some(Object(Object { identity: 3687, .. })) }; thrown message: Object(1n) >>> 1 throws TypeError Expected a undefined to be thrown but no exception was thrown at all",
+          "path": "test/language/expressions/unsigned-right-shift/bigint-and-number.js",
+          "status": "fail",
+          "variant": "Strict"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode expression at bytes 531..539",
+          "path": "test/language/expressions/unsigned-right-shift/bigint-and-number.js",
+          "status": "compile_unsupported",
+          "variant": "Strict"
+        },
+        {
+          "backend": "AST",
+          "message": "evaluation: RuntimeError { kind: TypeError, message: \"right-hand side of instanceof is not callable\", thrown: None }; thrown message: ",
+          "path": "test/language/expressions/instanceof/symbol-hasinstance-invocation.js",
+          "status": "fail",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode expression at bytes 572..574",
+          "path": "test/language/expressions/instanceof/symbol-hasinstance-invocation.js",
+          "status": "compile_unsupported",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": "evaluation: RuntimeError { kind: TypeError, message: \"right-hand side of instanceof is not callable\", thrown: None }; thrown message: ",
+          "path": "test/language/expressions/instanceof/symbol-hasinstance-invocation.js",
+          "status": "fail",
+          "variant": "Strict"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode expression at bytes 586..588",
+          "path": "test/language/expressions/instanceof/symbol-hasinstance-invocation.js",
+          "status": "compile_unsupported",
+          "variant": "Strict"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/instanceof/symbol-hasinstance-not-callable.js",
+          "status": "pass",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode expression at bytes 640..642",
+          "path": "test/language/expressions/instanceof/symbol-hasinstance-not-callable.js",
+          "status": "compile_unsupported",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/instanceof/symbol-hasinstance-not-callable.js",
+          "status": "pass",
+          "variant": "Strict"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode expression at bytes 654..656",
+          "path": "test/language/expressions/instanceof/symbol-hasinstance-not-callable.js",
+          "status": "compile_unsupported",
+          "variant": "Strict"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/logical-assignment/lgcl-or-assignment-operator-unresolved-rhs.js",
+          "status": "pass",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode expression at bytes 492..512",
+          "path": "test/language/expressions/logical-assignment/lgcl-or-assignment-operator-unresolved-rhs.js",
+          "status": "compile_unsupported",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/logical-assignment/lgcl-or-assignment-operator-unresolved-rhs.js",
+          "status": "pass",
+          "variant": "Strict"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode expression at bytes 506..526",
+          "path": "test/language/expressions/logical-assignment/lgcl-or-assignment-operator-unresolved-rhs.js",
+          "status": "compile_unsupported",
+          "variant": "Strict"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/logical-assignment/lgcl-and-assignment-operator-unresolved-lhs.js",
+          "status": "pass",
+          "variant": "Strict"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode expression at bytes 485..501",
+          "path": "test/language/expressions/logical-assignment/lgcl-and-assignment-operator-unresolved-lhs.js",
+          "status": "compile_unsupported",
+          "variant": "Strict"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/logical-assignment/lgcl-nullish-assignment-operator-unresolved-rhs-put.js",
+          "status": "pass",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode expression at bytes 520..540",
+          "path": "test/language/expressions/logical-assignment/lgcl-nullish-assignment-operator-unresolved-rhs-put.js",
+          "status": "compile_unsupported",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/logical-assignment/lgcl-nullish-assignment-operator-unresolved-rhs-put.js",
+          "status": "pass",
+          "variant": "Strict"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode expression at bytes 534..554",
+          "path": "test/language/expressions/logical-assignment/lgcl-nullish-assignment-operator-unresolved-rhs-put.js",
+          "status": "compile_unsupported",
+          "variant": "Strict"
+        }
+      ],
+      "revision": "d53ebc8b1931d9f1541e43d59650776e4b766248",
+      "scope": "Original whole test programs compiled/executed independently in AST and VM, fresh Realms. Original sta/assert/includes execute as AST-backed host harness for both backends; no test-program AST fallback or assertion stripping. Unsupported/skipped are not pass.",
+      "selected_files": 16
+    }
+  },
+  "after": {
+    "stable": {
+      "AST": {
+        "compile_unsupported": 0,
+        "fail": 6,
+        "pass": 25,
+        "skipped": 0
+      },
+      "bytecode": {
+        "compile_unsupported": 10,
+        "fail": 2,
+        "pass": 19,
+        "skipped": 0
+      },
+      "fixture_git_blobs": {
+        "harness/assert.js": "55a0e2a32f2e6259a1b445a9d924f61261e2ca5f",
+        "harness/sta.js": "d291a94f46234908009a7ee909cf9d66034c73fe",
+        "test/language/expressions/equals/bigint-and-number-extremes.js": "ee799196ae7306baaf4528fcaec2864cd92a3bea",
+        "test/language/expressions/equals/bigint-and-object.js": "ab52deea30761a93be56b31691e142cac5885301",
+        "test/language/expressions/equals/bigint-and-string.js": "d998ed0e3560f1fb32dc9096e4f6c1a8fcc23587",
+        "test/language/expressions/equals/coerce-symbol-to-prim-return-prim.js": "5e19118611bd79cf6cedc749c9c7f7be788a05d3",
+        "test/language/expressions/exponentiation/bigint-arithmetic.js": "2ab0d90b08551f3cc263c4264585ef49b4673955",
+        "test/language/expressions/exponentiation/bigint-negative-exponent-throws.js": "ae49cb2b290afcea17403f5a09e7d83e4a9bd33d",
+        "test/language/expressions/exponentiation/bigint-wrapped-values.js": "13fd85202cf3f832398baaac80cb000695368d0e",
+        "test/language/expressions/greater-than/bigint-and-incomparable-string.js": "c7554e3e8afd888875c7cb15f14661b3b498b65a",
+        "test/language/expressions/greater-than/bigint-and-number-extremes.js": "658d3e567b9887b5170a88d9bdd4e0d2100653ec",
+        "test/language/expressions/instanceof/symbol-hasinstance-invocation.js": "3f38294a5d2009364e2f61add06f4d41c83fd02c",
+        "test/language/expressions/instanceof/symbol-hasinstance-not-callable.js": "a5317c4e7b72adb793c876ef878bc04a0382e30e",
+        "test/language/expressions/less-than/bigint-and-number.js": "8a6e2e7069da5601fd777b8f8005bfe99275cf35",
+        "test/language/expressions/logical-assignment/lgcl-and-assignment-operator-unresolved-lhs.js": "984df2abcf83f44cfd7f9147e062de0934c5e57a",
+        "test/language/expressions/logical-assignment/lgcl-nullish-assignment-operator-unresolved-rhs-put.js": "e91c973f049ea7705c50e7bc8bffeeb6a7ce4924",
+        "test/language/expressions/logical-assignment/lgcl-or-assignment-operator-unresolved-rhs.js": "653ac81d9b805fcb148a49abe734b9d0f11e164f",
+        "test/language/expressions/unsigned-right-shift/bigint-and-number.js": "9751553cc06fd7cbaeb049b647aa5abda2206175"
+      },
+      "outcomes": [
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/equals/bigint-and-number-extremes.js",
+          "status": "pass",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": null,
+          "path": "test/language/expressions/equals/bigint-and-number-extremes.js",
+          "status": "pass",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/equals/bigint-and-number-extremes.js",
+          "status": "pass",
+          "variant": "Strict"
+        },
+        {
+          "backend": "bytecode",
+          "message": null,
+          "path": "test/language/expressions/equals/bigint-and-number-extremes.js",
+          "status": "pass",
+          "variant": "Strict"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/equals/bigint-and-string.js",
+          "status": "pass",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": null,
+          "path": "test/language/expressions/equals/bigint-and-string.js",
+          "status": "pass",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/equals/bigint-and-string.js",
+          "status": "pass",
+          "variant": "Strict"
+        },
+        {
+          "backend": "bytecode",
+          "message": null,
+          "path": "test/language/expressions/equals/bigint-and-string.js",
+          "status": "pass",
+          "variant": "Strict"
+        },
+        {
+          "backend": "AST",
+          "message": "evaluation: RuntimeError { kind: ThrownValue, message: \"JavaScript throw completion\", thrown: Some(Object(Object { identity: 1735, .. })) }; thrown message: The result of (0n == Object(0n)) is true Expected SameValue(«false», «true») to be true",
+          "path": "test/language/expressions/equals/bigint-and-object.js",
+          "status": "fail",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode expression at bytes 2209..2211",
+          "path": "test/language/expressions/equals/bigint-and-object.js",
+          "status": "compile_unsupported",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": "evaluation: RuntimeError { kind: ThrownValue, message: \"JavaScript throw completion\", thrown: Some(Object(Object { identity: 1895, .. })) }; thrown message: The result of (0n == Object(0n)) is true Expected SameValue(«false», «true») to be true",
+          "path": "test/language/expressions/equals/bigint-and-object.js",
+          "status": "fail",
+          "variant": "Strict"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode expression at bytes 2223..2225",
+          "path": "test/language/expressions/equals/bigint-and-object.js",
+          "status": "compile_unsupported",
+          "variant": "Strict"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/equals/coerce-symbol-to-prim-return-prim.js",
+          "status": "pass",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode expression at bytes 984..986",
+          "path": "test/language/expressions/equals/coerce-symbol-to-prim-return-prim.js",
+          "status": "compile_unsupported",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/equals/coerce-symbol-to-prim-return-prim.js",
+          "status": "pass",
+          "variant": "Strict"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode expression at bytes 998..1000",
+          "path": "test/language/expressions/equals/coerce-symbol-to-prim-return-prim.js",
+          "status": "compile_unsupported",
+          "variant": "Strict"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/greater-than/bigint-and-number-extremes.js",
+          "status": "pass",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": null,
+          "path": "test/language/expressions/greater-than/bigint-and-number-extremes.js",
+          "status": "pass",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/greater-than/bigint-and-number-extremes.js",
+          "status": "pass",
+          "variant": "Strict"
+        },
+        {
+          "backend": "bytecode",
+          "message": null,
+          "path": "test/language/expressions/greater-than/bigint-and-number-extremes.js",
+          "status": "pass",
+          "variant": "Strict"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/greater-than/bigint-and-incomparable-string.js",
+          "status": "pass",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": null,
+          "path": "test/language/expressions/greater-than/bigint-and-incomparable-string.js",
+          "status": "pass",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/greater-than/bigint-and-incomparable-string.js",
+          "status": "pass",
+          "variant": "Strict"
+        },
+        {
+          "backend": "bytecode",
+          "message": null,
+          "path": "test/language/expressions/greater-than/bigint-and-incomparable-string.js",
+          "status": "pass",
+          "variant": "Strict"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/less-than/bigint-and-number.js",
+          "status": "pass",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": null,
+          "path": "test/language/expressions/less-than/bigint-and-number.js",
+          "status": "pass",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/less-than/bigint-and-number.js",
+          "status": "pass",
+          "variant": "Strict"
+        },
+        {
+          "backend": "bytecode",
+          "message": null,
+          "path": "test/language/expressions/less-than/bigint-and-number.js",
+          "status": "pass",
+          "variant": "Strict"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/exponentiation/bigint-arithmetic.js",
+          "status": "pass",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": null,
+          "path": "test/language/expressions/exponentiation/bigint-arithmetic.js",
+          "status": "pass",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/exponentiation/bigint-arithmetic.js",
+          "status": "pass",
+          "variant": "Strict"
+        },
+        {
+          "backend": "bytecode",
+          "message": null,
+          "path": "test/language/expressions/exponentiation/bigint-arithmetic.js",
+          "status": "pass",
+          "variant": "Strict"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/exponentiation/bigint-negative-exponent-throws.js",
+          "status": "pass",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": null,
+          "path": "test/language/expressions/exponentiation/bigint-negative-exponent-throws.js",
+          "status": "pass",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/exponentiation/bigint-negative-exponent-throws.js",
+          "status": "pass",
+          "variant": "Strict"
+        },
+        {
+          "backend": "bytecode",
+          "message": null,
+          "path": "test/language/expressions/exponentiation/bigint-negative-exponent-throws.js",
+          "status": "pass",
+          "variant": "Strict"
+        },
+        {
+          "backend": "AST",
+          "message": "evaluation: RuntimeError { kind: TypeError, message: \"cannot mix BigInt and Number operands\", thrown: None }; thrown message: ",
+          "path": "test/language/expressions/exponentiation/bigint-wrapped-values.js",
+          "status": "fail",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode expression at bytes 520..579",
+          "path": "test/language/expressions/exponentiation/bigint-wrapped-values.js",
+          "status": "compile_unsupported",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": "evaluation: RuntimeError { kind: TypeError, message: \"cannot mix BigInt and Number operands\", thrown: None }; thrown message: ",
+          "path": "test/language/expressions/exponentiation/bigint-wrapped-values.js",
+          "status": "fail",
+          "variant": "Strict"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode expression at bytes 534..593",
+          "path": "test/language/expressions/exponentiation/bigint-wrapped-values.js",
+          "status": "compile_unsupported",
+          "variant": "Strict"
+        },
+        {
+          "backend": "AST",
+          "message": "evaluation: RuntimeError { kind: ThrownValue, message: \"JavaScript throw completion\", thrown: Some(Object(Object { identity: 6374, .. })) }; thrown message: Object(1n) >>> 1 throws TypeError Expected a undefined to be thrown but no exception was thrown at all",
+          "path": "test/language/expressions/unsigned-right-shift/bigint-and-number.js",
+          "status": "fail",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": "evaluation: RuntimeError { kind: ThrownValue, message: \"JavaScript throw completion\", thrown: Some(Object(Object { identity: 6539, .. })) }; thrown message: Object(1n) >>> 1 throws TypeError Expected a undefined to be thrown but no exception was thrown at all",
+          "path": "test/language/expressions/unsigned-right-shift/bigint-and-number.js",
+          "status": "fail",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": "evaluation: RuntimeError { kind: ThrownValue, message: \"JavaScript throw completion\", thrown: Some(Object(Object { identity: 6704, .. })) }; thrown message: Object(1n) >>> 1 throws TypeError Expected a undefined to be thrown but no exception was thrown at all",
+          "path": "test/language/expressions/unsigned-right-shift/bigint-and-number.js",
+          "status": "fail",
+          "variant": "Strict"
+        },
+        {
+          "backend": "bytecode",
+          "message": "evaluation: RuntimeError { kind: ThrownValue, message: \"JavaScript throw completion\", thrown: Some(Object(Object { identity: 6869, .. })) }; thrown message: Object(1n) >>> 1 throws TypeError Expected a undefined to be thrown but no exception was thrown at all",
+          "path": "test/language/expressions/unsigned-right-shift/bigint-and-number.js",
+          "status": "fail",
+          "variant": "Strict"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/instanceof/symbol-hasinstance-invocation.js",
+          "status": "pass",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode expression at bytes 572..574",
+          "path": "test/language/expressions/instanceof/symbol-hasinstance-invocation.js",
+          "status": "compile_unsupported",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/instanceof/symbol-hasinstance-invocation.js",
+          "status": "pass",
+          "variant": "Strict"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode expression at bytes 586..588",
+          "path": "test/language/expressions/instanceof/symbol-hasinstance-invocation.js",
+          "status": "compile_unsupported",
+          "variant": "Strict"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/instanceof/symbol-hasinstance-not-callable.js",
+          "status": "pass",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode expression at bytes 640..642",
+          "path": "test/language/expressions/instanceof/symbol-hasinstance-not-callable.js",
+          "status": "compile_unsupported",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/instanceof/symbol-hasinstance-not-callable.js",
+          "status": "pass",
+          "variant": "Strict"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode expression at bytes 654..656",
+          "path": "test/language/expressions/instanceof/symbol-hasinstance-not-callable.js",
+          "status": "compile_unsupported",
+          "variant": "Strict"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/logical-assignment/lgcl-or-assignment-operator-unresolved-rhs.js",
+          "status": "pass",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": null,
+          "path": "test/language/expressions/logical-assignment/lgcl-or-assignment-operator-unresolved-rhs.js",
+          "status": "pass",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/logical-assignment/lgcl-or-assignment-operator-unresolved-rhs.js",
+          "status": "pass",
+          "variant": "Strict"
+        },
+        {
+          "backend": "bytecode",
+          "message": null,
+          "path": "test/language/expressions/logical-assignment/lgcl-or-assignment-operator-unresolved-rhs.js",
+          "status": "pass",
+          "variant": "Strict"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/logical-assignment/lgcl-and-assignment-operator-unresolved-lhs.js",
+          "status": "pass",
+          "variant": "Strict"
+        },
+        {
+          "backend": "bytecode",
+          "message": null,
+          "path": "test/language/expressions/logical-assignment/lgcl-and-assignment-operator-unresolved-lhs.js",
+          "status": "pass",
+          "variant": "Strict"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/logical-assignment/lgcl-nullish-assignment-operator-unresolved-rhs-put.js",
+          "status": "pass",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": null,
+          "path": "test/language/expressions/logical-assignment/lgcl-nullish-assignment-operator-unresolved-rhs-put.js",
+          "status": "pass",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/logical-assignment/lgcl-nullish-assignment-operator-unresolved-rhs-put.js",
+          "status": "pass",
+          "variant": "Strict"
+        },
+        {
+          "backend": "bytecode",
+          "message": null,
+          "path": "test/language/expressions/logical-assignment/lgcl-nullish-assignment-operator-unresolved-rhs-put.js",
+          "status": "pass",
+          "variant": "Strict"
+        }
+      ],
+      "revision": "d53ebc8b1931d9f1541e43d59650776e4b766248",
+      "scope": "Original whole test programs compiled/executed independently in AST and VM, fresh Realms. Original sta/assert/includes execute as AST-backed host harness for both backends; no test-program AST fallback or assertion stripping. Unsupported/skipped are not pass.",
+      "selected_files": 16
+    },
+    "msrv": {
+      "AST": {
+        "compile_unsupported": 0,
+        "fail": 6,
+        "pass": 25,
+        "skipped": 0
+      },
+      "bytecode": {
+        "compile_unsupported": 10,
+        "fail": 2,
+        "pass": 19,
+        "skipped": 0
+      },
+      "fixture_git_blobs": {
+        "harness/assert.js": "55a0e2a32f2e6259a1b445a9d924f61261e2ca5f",
+        "harness/sta.js": "d291a94f46234908009a7ee909cf9d66034c73fe",
+        "test/language/expressions/equals/bigint-and-number-extremes.js": "ee799196ae7306baaf4528fcaec2864cd92a3bea",
+        "test/language/expressions/equals/bigint-and-object.js": "ab52deea30761a93be56b31691e142cac5885301",
+        "test/language/expressions/equals/bigint-and-string.js": "d998ed0e3560f1fb32dc9096e4f6c1a8fcc23587",
+        "test/language/expressions/equals/coerce-symbol-to-prim-return-prim.js": "5e19118611bd79cf6cedc749c9c7f7be788a05d3",
+        "test/language/expressions/exponentiation/bigint-arithmetic.js": "2ab0d90b08551f3cc263c4264585ef49b4673955",
+        "test/language/expressions/exponentiation/bigint-negative-exponent-throws.js": "ae49cb2b290afcea17403f5a09e7d83e4a9bd33d",
+        "test/language/expressions/exponentiation/bigint-wrapped-values.js": "13fd85202cf3f832398baaac80cb000695368d0e",
+        "test/language/expressions/greater-than/bigint-and-incomparable-string.js": "c7554e3e8afd888875c7cb15f14661b3b498b65a",
+        "test/language/expressions/greater-than/bigint-and-number-extremes.js": "658d3e567b9887b5170a88d9bdd4e0d2100653ec",
+        "test/language/expressions/instanceof/symbol-hasinstance-invocation.js": "3f38294a5d2009364e2f61add06f4d41c83fd02c",
+        "test/language/expressions/instanceof/symbol-hasinstance-not-callable.js": "a5317c4e7b72adb793c876ef878bc04a0382e30e",
+        "test/language/expressions/less-than/bigint-and-number.js": "8a6e2e7069da5601fd777b8f8005bfe99275cf35",
+        "test/language/expressions/logical-assignment/lgcl-and-assignment-operator-unresolved-lhs.js": "984df2abcf83f44cfd7f9147e062de0934c5e57a",
+        "test/language/expressions/logical-assignment/lgcl-nullish-assignment-operator-unresolved-rhs-put.js": "e91c973f049ea7705c50e7bc8bffeeb6a7ce4924",
+        "test/language/expressions/logical-assignment/lgcl-or-assignment-operator-unresolved-rhs.js": "653ac81d9b805fcb148a49abe734b9d0f11e164f",
+        "test/language/expressions/unsigned-right-shift/bigint-and-number.js": "9751553cc06fd7cbaeb049b647aa5abda2206175"
+      },
+      "outcomes": [
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/equals/bigint-and-number-extremes.js",
+          "status": "pass",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": null,
+          "path": "test/language/expressions/equals/bigint-and-number-extremes.js",
+          "status": "pass",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/equals/bigint-and-number-extremes.js",
+          "status": "pass",
+          "variant": "Strict"
+        },
+        {
+          "backend": "bytecode",
+          "message": null,
+          "path": "test/language/expressions/equals/bigint-and-number-extremes.js",
+          "status": "pass",
+          "variant": "Strict"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/equals/bigint-and-string.js",
+          "status": "pass",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": null,
+          "path": "test/language/expressions/equals/bigint-and-string.js",
+          "status": "pass",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/equals/bigint-and-string.js",
+          "status": "pass",
+          "variant": "Strict"
+        },
+        {
+          "backend": "bytecode",
+          "message": null,
+          "path": "test/language/expressions/equals/bigint-and-string.js",
+          "status": "pass",
+          "variant": "Strict"
+        },
+        {
+          "backend": "AST",
+          "message": "evaluation: RuntimeError { kind: ThrownValue, message: \"JavaScript throw completion\", thrown: Some(Object(Object { identity: 1735, .. })) }; thrown message: The result of (0n == Object(0n)) is true Expected SameValue(«false», «true») to be true",
+          "path": "test/language/expressions/equals/bigint-and-object.js",
+          "status": "fail",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode expression at bytes 2209..2211",
+          "path": "test/language/expressions/equals/bigint-and-object.js",
+          "status": "compile_unsupported",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": "evaluation: RuntimeError { kind: ThrownValue, message: \"JavaScript throw completion\", thrown: Some(Object(Object { identity: 1895, .. })) }; thrown message: The result of (0n == Object(0n)) is true Expected SameValue(«false», «true») to be true",
+          "path": "test/language/expressions/equals/bigint-and-object.js",
+          "status": "fail",
+          "variant": "Strict"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode expression at bytes 2223..2225",
+          "path": "test/language/expressions/equals/bigint-and-object.js",
+          "status": "compile_unsupported",
+          "variant": "Strict"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/equals/coerce-symbol-to-prim-return-prim.js",
+          "status": "pass",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode expression at bytes 984..986",
+          "path": "test/language/expressions/equals/coerce-symbol-to-prim-return-prim.js",
+          "status": "compile_unsupported",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/equals/coerce-symbol-to-prim-return-prim.js",
+          "status": "pass",
+          "variant": "Strict"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode expression at bytes 998..1000",
+          "path": "test/language/expressions/equals/coerce-symbol-to-prim-return-prim.js",
+          "status": "compile_unsupported",
+          "variant": "Strict"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/greater-than/bigint-and-number-extremes.js",
+          "status": "pass",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": null,
+          "path": "test/language/expressions/greater-than/bigint-and-number-extremes.js",
+          "status": "pass",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/greater-than/bigint-and-number-extremes.js",
+          "status": "pass",
+          "variant": "Strict"
+        },
+        {
+          "backend": "bytecode",
+          "message": null,
+          "path": "test/language/expressions/greater-than/bigint-and-number-extremes.js",
+          "status": "pass",
+          "variant": "Strict"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/greater-than/bigint-and-incomparable-string.js",
+          "status": "pass",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": null,
+          "path": "test/language/expressions/greater-than/bigint-and-incomparable-string.js",
+          "status": "pass",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/greater-than/bigint-and-incomparable-string.js",
+          "status": "pass",
+          "variant": "Strict"
+        },
+        {
+          "backend": "bytecode",
+          "message": null,
+          "path": "test/language/expressions/greater-than/bigint-and-incomparable-string.js",
+          "status": "pass",
+          "variant": "Strict"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/less-than/bigint-and-number.js",
+          "status": "pass",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": null,
+          "path": "test/language/expressions/less-than/bigint-and-number.js",
+          "status": "pass",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/less-than/bigint-and-number.js",
+          "status": "pass",
+          "variant": "Strict"
+        },
+        {
+          "backend": "bytecode",
+          "message": null,
+          "path": "test/language/expressions/less-than/bigint-and-number.js",
+          "status": "pass",
+          "variant": "Strict"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/exponentiation/bigint-arithmetic.js",
+          "status": "pass",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": null,
+          "path": "test/language/expressions/exponentiation/bigint-arithmetic.js",
+          "status": "pass",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/exponentiation/bigint-arithmetic.js",
+          "status": "pass",
+          "variant": "Strict"
+        },
+        {
+          "backend": "bytecode",
+          "message": null,
+          "path": "test/language/expressions/exponentiation/bigint-arithmetic.js",
+          "status": "pass",
+          "variant": "Strict"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/exponentiation/bigint-negative-exponent-throws.js",
+          "status": "pass",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": null,
+          "path": "test/language/expressions/exponentiation/bigint-negative-exponent-throws.js",
+          "status": "pass",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/exponentiation/bigint-negative-exponent-throws.js",
+          "status": "pass",
+          "variant": "Strict"
+        },
+        {
+          "backend": "bytecode",
+          "message": null,
+          "path": "test/language/expressions/exponentiation/bigint-negative-exponent-throws.js",
+          "status": "pass",
+          "variant": "Strict"
+        },
+        {
+          "backend": "AST",
+          "message": "evaluation: RuntimeError { kind: TypeError, message: \"cannot mix BigInt and Number operands\", thrown: None }; thrown message: ",
+          "path": "test/language/expressions/exponentiation/bigint-wrapped-values.js",
+          "status": "fail",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode expression at bytes 520..579",
+          "path": "test/language/expressions/exponentiation/bigint-wrapped-values.js",
+          "status": "compile_unsupported",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": "evaluation: RuntimeError { kind: TypeError, message: \"cannot mix BigInt and Number operands\", thrown: None }; thrown message: ",
+          "path": "test/language/expressions/exponentiation/bigint-wrapped-values.js",
+          "status": "fail",
+          "variant": "Strict"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode expression at bytes 534..593",
+          "path": "test/language/expressions/exponentiation/bigint-wrapped-values.js",
+          "status": "compile_unsupported",
+          "variant": "Strict"
+        },
+        {
+          "backend": "AST",
+          "message": "evaluation: RuntimeError { kind: ThrownValue, message: \"JavaScript throw completion\", thrown: Some(Object(Object { identity: 6374, .. })) }; thrown message: Object(1n) >>> 1 throws TypeError Expected a undefined to be thrown but no exception was thrown at all",
+          "path": "test/language/expressions/unsigned-right-shift/bigint-and-number.js",
+          "status": "fail",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": "evaluation: RuntimeError { kind: ThrownValue, message: \"JavaScript throw completion\", thrown: Some(Object(Object { identity: 6539, .. })) }; thrown message: Object(1n) >>> 1 throws TypeError Expected a undefined to be thrown but no exception was thrown at all",
+          "path": "test/language/expressions/unsigned-right-shift/bigint-and-number.js",
+          "status": "fail",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": "evaluation: RuntimeError { kind: ThrownValue, message: \"JavaScript throw completion\", thrown: Some(Object(Object { identity: 6704, .. })) }; thrown message: Object(1n) >>> 1 throws TypeError Expected a undefined to be thrown but no exception was thrown at all",
+          "path": "test/language/expressions/unsigned-right-shift/bigint-and-number.js",
+          "status": "fail",
+          "variant": "Strict"
+        },
+        {
+          "backend": "bytecode",
+          "message": "evaluation: RuntimeError { kind: ThrownValue, message: \"JavaScript throw completion\", thrown: Some(Object(Object { identity: 6869, .. })) }; thrown message: Object(1n) >>> 1 throws TypeError Expected a undefined to be thrown but no exception was thrown at all",
+          "path": "test/language/expressions/unsigned-right-shift/bigint-and-number.js",
+          "status": "fail",
+          "variant": "Strict"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/instanceof/symbol-hasinstance-invocation.js",
+          "status": "pass",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode expression at bytes 572..574",
+          "path": "test/language/expressions/instanceof/symbol-hasinstance-invocation.js",
+          "status": "compile_unsupported",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/instanceof/symbol-hasinstance-invocation.js",
+          "status": "pass",
+          "variant": "Strict"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode expression at bytes 586..588",
+          "path": "test/language/expressions/instanceof/symbol-hasinstance-invocation.js",
+          "status": "compile_unsupported",
+          "variant": "Strict"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/instanceof/symbol-hasinstance-not-callable.js",
+          "status": "pass",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode expression at bytes 640..642",
+          "path": "test/language/expressions/instanceof/symbol-hasinstance-not-callable.js",
+          "status": "compile_unsupported",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/instanceof/symbol-hasinstance-not-callable.js",
+          "status": "pass",
+          "variant": "Strict"
+        },
+        {
+          "backend": "bytecode",
+          "message": "unsupported bytecode expression at bytes 654..656",
+          "path": "test/language/expressions/instanceof/symbol-hasinstance-not-callable.js",
+          "status": "compile_unsupported",
+          "variant": "Strict"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/logical-assignment/lgcl-or-assignment-operator-unresolved-rhs.js",
+          "status": "pass",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": null,
+          "path": "test/language/expressions/logical-assignment/lgcl-or-assignment-operator-unresolved-rhs.js",
+          "status": "pass",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/logical-assignment/lgcl-or-assignment-operator-unresolved-rhs.js",
+          "status": "pass",
+          "variant": "Strict"
+        },
+        {
+          "backend": "bytecode",
+          "message": null,
+          "path": "test/language/expressions/logical-assignment/lgcl-or-assignment-operator-unresolved-rhs.js",
+          "status": "pass",
+          "variant": "Strict"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/logical-assignment/lgcl-and-assignment-operator-unresolved-lhs.js",
+          "status": "pass",
+          "variant": "Strict"
+        },
+        {
+          "backend": "bytecode",
+          "message": null,
+          "path": "test/language/expressions/logical-assignment/lgcl-and-assignment-operator-unresolved-lhs.js",
+          "status": "pass",
+          "variant": "Strict"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/logical-assignment/lgcl-nullish-assignment-operator-unresolved-rhs-put.js",
+          "status": "pass",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "bytecode",
+          "message": null,
+          "path": "test/language/expressions/logical-assignment/lgcl-nullish-assignment-operator-unresolved-rhs-put.js",
+          "status": "pass",
+          "variant": "Sloppy"
+        },
+        {
+          "backend": "AST",
+          "message": null,
+          "path": "test/language/expressions/logical-assignment/lgcl-nullish-assignment-operator-unresolved-rhs-put.js",
+          "status": "pass",
+          "variant": "Strict"
+        },
+        {
+          "backend": "bytecode",
+          "message": null,
+          "path": "test/language/expressions/logical-assignment/lgcl-nullish-assignment-operator-unresolved-rhs-put.js",
+          "status": "pass",
+          "variant": "Strict"
+        }
+      ],
+      "revision": "d53ebc8b1931d9f1541e43d59650776e4b766248",
+      "scope": "Original whole test programs compiled/executed independently in AST and VM, fresh Realms. Original sta/assert/includes execute as AST-backed host harness for both backends; no test-program AST fallback or assertion stripping. Unsupported/skipped are not pass.",
+      "selected_files": 16
+    }
+  },
+  "status_transitions": [
+    {
+      "path": "test/language/expressions/equals/bigint-and-number-extremes.js",
+      "variant": "Sloppy",
+      "backend": "bytecode",
+      "before": "compile_unsupported",
+      "after": "pass"
+    },
+    {
+      "path": "test/language/expressions/equals/bigint-and-number-extremes.js",
+      "variant": "Strict",
+      "backend": "bytecode",
+      "before": "compile_unsupported",
+      "after": "pass"
+    },
+    {
+      "path": "test/language/expressions/equals/bigint-and-string.js",
+      "variant": "Sloppy",
+      "backend": "bytecode",
+      "before": "compile_unsupported",
+      "after": "pass"
+    },
+    {
+      "path": "test/language/expressions/equals/bigint-and-string.js",
+      "variant": "Strict",
+      "backend": "bytecode",
+      "before": "compile_unsupported",
+      "after": "pass"
+    },
+    {
+      "path": "test/language/expressions/equals/coerce-symbol-to-prim-return-prim.js",
+      "variant": "Sloppy",
+      "backend": "AST",
+      "before": "fail",
+      "after": "pass"
+    },
+    {
+      "path": "test/language/expressions/equals/coerce-symbol-to-prim-return-prim.js",
+      "variant": "Strict",
+      "backend": "AST",
+      "before": "fail",
+      "after": "pass"
+    },
+    {
+      "path": "test/language/expressions/greater-than/bigint-and-number-extremes.js",
+      "variant": "Sloppy",
+      "backend": "AST",
+      "before": "fail",
+      "after": "pass"
+    },
+    {
+      "path": "test/language/expressions/greater-than/bigint-and-number-extremes.js",
+      "variant": "Sloppy",
+      "backend": "bytecode",
+      "before": "compile_unsupported",
+      "after": "pass"
+    },
+    {
+      "path": "test/language/expressions/greater-than/bigint-and-number-extremes.js",
+      "variant": "Strict",
+      "backend": "AST",
+      "before": "fail",
+      "after": "pass"
+    },
+    {
+      "path": "test/language/expressions/greater-than/bigint-and-number-extremes.js",
+      "variant": "Strict",
+      "backend": "bytecode",
+      "before": "compile_unsupported",
+      "after": "pass"
+    },
+    {
+      "path": "test/language/expressions/greater-than/bigint-and-incomparable-string.js",
+      "variant": "Sloppy",
+      "backend": "AST",
+      "before": "fail",
+      "after": "pass"
+    },
+    {
+      "path": "test/language/expressions/greater-than/bigint-and-incomparable-string.js",
+      "variant": "Sloppy",
+      "backend": "bytecode",
+      "before": "compile_unsupported",
+      "after": "pass"
+    },
+    {
+      "path": "test/language/expressions/greater-than/bigint-and-incomparable-string.js",
+      "variant": "Strict",
+      "backend": "AST",
+      "before": "fail",
+      "after": "pass"
+    },
+    {
+      "path": "test/language/expressions/greater-than/bigint-and-incomparable-string.js",
+      "variant": "Strict",
+      "backend": "bytecode",
+      "before": "compile_unsupported",
+      "after": "pass"
+    },
+    {
+      "path": "test/language/expressions/less-than/bigint-and-number.js",
+      "variant": "Sloppy",
+      "backend": "AST",
+      "before": "fail",
+      "after": "pass"
+    },
+    {
+      "path": "test/language/expressions/less-than/bigint-and-number.js",
+      "variant": "Sloppy",
+      "backend": "bytecode",
+      "before": "compile_unsupported",
+      "after": "pass"
+    },
+    {
+      "path": "test/language/expressions/less-than/bigint-and-number.js",
+      "variant": "Strict",
+      "backend": "AST",
+      "before": "fail",
+      "after": "pass"
+    },
+    {
+      "path": "test/language/expressions/less-than/bigint-and-number.js",
+      "variant": "Strict",
+      "backend": "bytecode",
+      "before": "compile_unsupported",
+      "after": "pass"
+    },
+    {
+      "path": "test/language/expressions/exponentiation/bigint-arithmetic.js",
+      "variant": "Sloppy",
+      "backend": "bytecode",
+      "before": "compile_unsupported",
+      "after": "pass"
+    },
+    {
+      "path": "test/language/expressions/exponentiation/bigint-arithmetic.js",
+      "variant": "Strict",
+      "backend": "bytecode",
+      "before": "compile_unsupported",
+      "after": "pass"
+    },
+    {
+      "path": "test/language/expressions/exponentiation/bigint-negative-exponent-throws.js",
+      "variant": "Sloppy",
+      "backend": "bytecode",
+      "before": "compile_unsupported",
+      "after": "pass"
+    },
+    {
+      "path": "test/language/expressions/exponentiation/bigint-negative-exponent-throws.js",
+      "variant": "Strict",
+      "backend": "bytecode",
+      "before": "compile_unsupported",
+      "after": "pass"
+    },
+    {
+      "path": "test/language/expressions/unsigned-right-shift/bigint-and-number.js",
+      "variant": "Sloppy",
+      "backend": "bytecode",
+      "before": "compile_unsupported",
+      "after": "fail"
+    },
+    {
+      "path": "test/language/expressions/unsigned-right-shift/bigint-and-number.js",
+      "variant": "Strict",
+      "backend": "bytecode",
+      "before": "compile_unsupported",
+      "after": "fail"
+    },
+    {
+      "path": "test/language/expressions/instanceof/symbol-hasinstance-invocation.js",
+      "variant": "Sloppy",
+      "backend": "AST",
+      "before": "fail",
+      "after": "pass"
+    },
+    {
+      "path": "test/language/expressions/instanceof/symbol-hasinstance-invocation.js",
+      "variant": "Strict",
+      "backend": "AST",
+      "before": "fail",
+      "after": "pass"
+    },
+    {
+      "path": "test/language/expressions/logical-assignment/lgcl-or-assignment-operator-unresolved-rhs.js",
+      "variant": "Sloppy",
+      "backend": "bytecode",
+      "before": "compile_unsupported",
+      "after": "pass"
+    },
+    {
+      "path": "test/language/expressions/logical-assignment/lgcl-or-assignment-operator-unresolved-rhs.js",
+      "variant": "Strict",
+      "backend": "bytecode",
+      "before": "compile_unsupported",
+      "after": "pass"
+    },
+    {
+      "path": "test/language/expressions/logical-assignment/lgcl-and-assignment-operator-unresolved-lhs.js",
+      "variant": "Strict",
+      "backend": "bytecode",
+      "before": "compile_unsupported",
+      "after": "pass"
+    },
+    {
+      "path": "test/language/expressions/logical-assignment/lgcl-nullish-assignment-operator-unresolved-rhs-put.js",
+      "variant": "Sloppy",
+      "backend": "bytecode",
+      "before": "compile_unsupported",
+      "after": "pass"
+    },
+    {
+      "path": "test/language/expressions/logical-assignment/lgcl-nullish-assignment-operator-unresolved-rhs-put.js",
+      "variant": "Strict",
+      "backend": "bytecode",
+      "before": "compile_unsupported",
+      "after": "pass"
+    }
+  ],
+  "gate_passed": false,
+  "scope": "Fixed 16 original files/31 variants selected before observing results. Entire test programs execute independently in AST and VM with original AST-backed sta/assert/includes harness for both. No test-program fallback or stripping. All four opt-in audits exit 101. Baseline uses only copied audit test file with unchanged runtime. Normal stable/MSRV all-target tests: 424 pass, 11 ignored. This is not full operator conformance or performance evidence."
+}

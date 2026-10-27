@@ -1,4 +1,4 @@
-name: Arithmetic dispatch diagnostic
+name: Direct HIR cold unique RegExp instruction diagnostic
 on:
   push:
     branches: [bench/integer-dispatch-profile]
@@ -6,7 +6,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: integer-profile-${{ github.ref }}
+  group: regexp-cold-hir-profile-${{ github.ref }}
   cancel-in-progress: true
 jobs:
   inspect:
@@ -21,13 +21,6 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-      - name: Check out pinned workload source
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          repository: ieee0824/omoikane
-          ref: 007556adccb8fb4329236932ca8175f8e8d119d2
-          path: omoikane
-          persist-credentials: false
       - name: Prepare diagnostic tools
         run: |
           sudo apt-get update
@@ -39,31 +32,23 @@ jobs:
           valgrind --version > "$RUNNER_TEMP/profile/valgrind.txt"
           lscpu > "$RUNNER_TEMP/profile/machine.txt"
       - name: Build optimized diagnostic worker with line tables
-        run: CARGO_TARGET_DIR="$RUNNER_TEMP/target" cargo build --locked --release --example measure_workload
-      - name: Prepare separately labelled reduced diagnostic input
+        run: CARGO_TARGET_DIR="$RUNNER_TEMP/target" cargo build --locked --release --no-default-features --example measure_workload
+      - name: Prepare unchanged cold unique construction input
         run: |
-          node scripts/extract-omoikane-workloads.mjs "$GITHUB_WORKSPACE/omoikane" "$RUNNER_TEMP/original"
+          cp "benchmarks/regexp-cache/cold-unique/input.json" "$RUNNER_TEMP/profile/diagnostic-input.json"
           node <<'JS'
           const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto'),cp=require('node:child_process');
-          const root=process.env.RUNNER_TEMP;
-          const hash=b=>crypto.createHash('sha256').update(b).digest('hex');
-          const original=fs.readFileSync(path.join(root,'original/arith.json'));
-          const input=JSON.parse(original);
-          const oracle=n=>{let s=1n;for(let i=0n;i<BigInt(n);i++)s=(s+i*3n)%1000003n;return Number(s);};
-          if(input.iterations!==2000000||input.expected!==64||oracle(input.iterations)!==input.expected||input.invocation!=='__temiyaBenchmarkBody(2000000);\n')throw Error('original arithmetic fixture changed');
-          const n=20000;
-          input.iterations=n;input.expected=oracle(n);input.invocation=`__temiyaBenchmarkBody(${n});\n`;
-          input.original_invocation_sha256=input.invocation_sha256;
-          input.invocation_sha256=hash(input.invocation);
-          input.qualification='DIAGNOSTIC ONLY: reduced iterations and instrumented execution, never a performance acceptance result';
-          fs.writeFileSync(path.join(root,'profile/diagnostic-input.json'),JSON.stringify(input,null,2)+'\n');
+          const root=process.env.RUNNER_TEMP,hash=b=>crypto.createHash('sha256').update(b).digest('hex');
+          const bytes=fs.readFileSync(path.join(root,'profile/diagnostic-input.json')),input=JSON.parse(bytes);
+          if(input.name!=='regexp-cold-unique-diagnostic'||input.iterations!==2048||input.expected!==2048*(8+5+2)||input.invocation!=='uniqueRegexpBody(2048);')throw Error('authored construction contract changed');
           const executable=path.join(root,'target/release/examples/measure_workload');
           fs.writeFileSync(path.join(root,'profile/provenance.json'),JSON.stringify({
-            measured_revision:cp.execFileSync('git',['-c',`safe.directory=${process.env.GITHUB_WORKSPACE}`,'-C',process.env.GITHUB_WORKSPACE,'rev-parse','HEAD'],{encoding:'utf8'}).trim(),
-            qualifier:input.qualification,original_input_sha256:hash(original),original_iterations:2000000,diagnostic_iterations:n,
-            unchanged_setup_sha256:hash(input.setup),diagnostic_expected:input.expected,executable_sha256:hash(fs.readFileSync(executable)),
+            measured_revision:cp.execFileSync('git',['-c','safe.directory='+process.env.GITHUB_WORKSPACE,'-C',process.env.GITHUB_WORKSPACE,'rev-parse','HEAD'],{encoding:'utf8'}).trim(),
+            qualifier:'DIAGNOSTIC ONLY: unchanged cold unique 2048 iterations under instrumentation; never a speed acceptance result',
+            input_sha256:hash(bytes),setup_sha256:hash(input.setup),invocation_sha256:hash(input.invocation),iterations:2048,independent_expected:2048*(8+5+2),
+            executable_sha256:hash(fs.readFileSync(executable)),
             build:{profile:'release',features:[],release_debug:1,rustflags:process.env.RUSTFLAGS},
-            scope:'Whole instrumented process, including startup/setup, one checked warmup and one checked pass; instruction counts are not hardware cycles or valid elapsed-time comparisons'
+            scope:'Whole instrumented process, including startup/setup, one checked warmup and one checked pass; instruction references are not hardware cycles or valid elapsed-time comparisons'
           },null,2)+'\n');
           JS
       - name: Collect actual instruction and call counts
@@ -75,7 +60,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
-          name: integer-profile-${{ github.run_id }}-${{ github.run_attempt }}
+          name: regexp-cold-hir-profile-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/profile
           if-no-files-found: error
           retention-days: 30

@@ -1,4 +1,4 @@
-name: Omoikane benchmark measurements
+name: Direct numeric constant comparison against merged main
 
 on:
   workflow_dispatch:
@@ -116,7 +116,7 @@ jobs:
           };
           fs.writeFileSync(path.join(process.env.RUNNER_TEMP, 'comparison-output/baseline-build-info.json'), JSON.stringify(info, null, 2) + '\n');
           if (process.env.INCLUDE_CONTROLS === 'true') {
-            if (info.mode !== 'Auto Script') throw Error('optional baseline/Boa control requires an Auto Script baseline');
+            if (info.mode !== 'Auto Script') throw Error('direct comparison requires an Auto Script baseline');
             const current = path.join(process.env.RUNNER_TEMP, 'temiya-current-target/release/examples/measure_workload');
             const observed = JSON.parse(execFileSync(current, [probePath, '1'], {encoding:'utf8',timeout:60000}));
             if (observed.mode !== 'Auto Script' || observed.validated_passes !== 2) throw Error('current mode probe failed');
@@ -128,11 +128,6 @@ jobs:
             fs.writeFileSync(path.join(process.env.RUNNER_TEMP,'comparison-output/same-binary-build-info.json'),JSON.stringify(control,null,2)+'\n');
           }
           JS
-      - name: Build actual pinned omoikane embedding
-        if: steps.hardware.outputs.matches == 'true'
-        run: |
-          node scripts/build-omoikane-worker.mjs "$GITHUB_WORKSPACE/omoikane" "$RUNNER_TEMP/omoikane-worker-build" "$RUNNER_TEMP/omoikane-worker-target"
-          cp "$RUNNER_TEMP/omoikane-worker-build/build-info.json" "$RUNNER_TEMP/comparison-output/boa-build-info.json"
       - name: Extract original eleven workloads
         if: steps.hardware.outputs.matches == 'true'
         run: |
@@ -144,18 +139,6 @@ jobs:
           export TEMIYA_REVISION="$(git -c safe.directory="$GITHUB_WORKSPACE/temiya" -C "$GITHUB_WORKSPACE/temiya" rev-parse HEAD)"
           export BENCH_NOTES='GitHub hosted runner; same compiler, isolated build targets, all builds completed before timing; original eleven inputs, 15 samples and three alternating pairs. Job success means validated measurements, not a passing speed gate.'
           node scripts/compare-omoikane-workloads.mjs --temiya-baseline "$RUNNER_TEMP/omoikane-workloads" "$RUNNER_TEMP/temiya-current-target/release/examples/measure_workload" "$RUNNER_TEMP/comparison-output/baseline-build-info.json" 15 3 > "$RUNNER_TEMP/comparison-output/beforeafter.json" 2> "$RUNNER_TEMP/comparison-output/beforeafter.progress"
-      - name: Measure changed Temiya and actual Boa serially
-        if: steps.hardware.outputs.matches == 'true'
-        run: |
-          export TEMIYA_REVISION="$(git -c safe.directory="$GITHUB_WORKSPACE/temiya" -C "$GITHUB_WORKSPACE/temiya" rev-parse HEAD)"
-          export BENCH_NOTES='GitHub hosted runner; same compiler and original pinned public application embedding; no builds during measurements. Job success means validated measurements, not a passing speed gate.'
-          node scripts/compare-omoikane-workloads.mjs "$RUNNER_TEMP/omoikane-workloads" "$RUNNER_TEMP/temiya-current-target/release/examples/measure_workload" "$RUNNER_TEMP/comparison-output/boa-build-info.json" 15 3 > "$RUNNER_TEMP/comparison-output/boa.json" 2> "$RUNNER_TEMP/comparison-output/boa.progress"
-      - name: Measure baseline and actual Boa on the same machine
-        if: inputs.include_controls && steps.hardware.outputs.matches == 'true'
-        run: |
-          export TEMIYA_REVISION="$(cat "$RUNNER_TEMP/comparison-output/baseline-revision.txt")"
-          export BENCH_NOTES='Direct baseline/actual Boa control on this same runner; Auto Script baseline verified before timing. Original eleven inputs and unchanged statistical/limit protocol. No candidate source speedup is inferred from this control.'
-          node scripts/compare-omoikane-workloads.mjs "$RUNNER_TEMP/omoikane-workloads" "$RUNNER_TEMP/temiya-baseline-target/release/examples/measure_workload" "$RUNNER_TEMP/comparison-output/boa-build-info.json" 15 3 > "$RUNNER_TEMP/comparison-output/baseline-boa.json" 2> "$RUNNER_TEMP/comparison-output/baseline-boa.progress"
       - name: Measure candidate against the identical executable
         if: inputs.include_controls && steps.hardware.outputs.matches == 'true'
         run: |
@@ -168,13 +151,13 @@ jobs:
           node <<'JS'
           const fs = require('node:fs');
           const path = require('node:path');
-          const lines = ['## Measurement results', '', 'A successful job records correct benchmark outputs; it does not mean Temiya is faster.', ''];
+          const lines = ['## Measurement results', '', 'Temiya-only comparison: this workflow does not measure Boa. A successful job records correct outputs, not a speed win.', ''];
           const availability = JSON.parse(fs.readFileSync(path.join(process.env.RUNNER_TEMP,'comparison-output/hardware-availability.json')));
           if (!availability.target_available) {
             fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,'Requested CPU unavailable. Measurements were not run and do not count as a correctness or speed pass.\n');
             process.exit(0);
           }
-          const names = ['beforeafter','boa',...(process.env.INCLUDE_CONTROLS === 'true' ? ['baseline-boa','same-binary-control'] : [])];
+          const names = ['beforeafter','same-binary-control'];
           for (const name of names) {
             try {
               const r = JSON.parse(fs.readFileSync(path.join(process.env.RUNNER_TEMP, 'comparison-output', `${name}.json`)));
@@ -191,7 +174,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: omoikane-comparison-${{ github.run_id }}-${{ github.run_attempt }}${{ inputs.two_runners && format('-copy-{0}', matrix.copy) || '' }}
+          name: constant-direct-${{ github.run_id }}-${{ github.run_attempt }}${{ inputs.two_runners && format('-copy-{0}', matrix.copy) || '' }}
           path: ${{ runner.temp }}/comparison-output
           if-no-files-found: error
           retention-days: 30

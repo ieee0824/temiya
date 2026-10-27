@@ -2,7 +2,11 @@
 
 use std::{cell::RefCell, collections::VecDeque, rc::Rc};
 
-use regex_automata::{Input, PatternID, meta::Regex, util::syntax};
+use regex_automata::{
+    Input, PatternID,
+    meta::Regex,
+    util::{captures::Captures, syntax},
+};
 
 use super::{JsString, Object, RuntimeError, RuntimeResult};
 
@@ -59,6 +63,7 @@ struct RegExpData {
     source: JsString,
     flags: RegExpFlags,
     matcher: Regex,
+    captures: RefCell<Captures>,
     last_index: RefCell<usize>,
 }
 
@@ -166,11 +171,13 @@ impl RegExp {
         let flags = RegExpFlags::parse(flags)?;
         let source = scalar_string(&pattern)?;
         let matcher = compile_matcher(&source, flags)?;
+        let captures = RefCell::new(matcher.create_captures());
         let object = Object::new();
         object.0.state.borrow_mut().regexp = Some(RegExpSlot(Rc::new(RegExpData {
             source: pattern,
             flags,
             matcher,
+            captures,
             last_index: RefCell::new(0),
         })));
         Ok(Self(object))
@@ -234,7 +241,7 @@ impl RegExp {
             }
             return Ok(None);
         };
-        let mut captures = slot.0.matcher.create_captures();
+        let mut captures = slot.0.captures.borrow_mut();
         slot.0.matcher.search_captures(
             &Input::new(&text).span(start_byte..text.len()),
             &mut captures,

@@ -96,6 +96,64 @@ fn coercion_throw_keeps_identity_and_skips_the_right_callback() {
 }
 
 #[test]
+fn numeric_binding_reads_preserve_bits_and_observe_captured_updates() {
+    for backend in [ScriptBackend::Ast, ScriptBackend::Bytecode] {
+        let engine = Engine::builder().script_backend(backend).build();
+        let realm = engine.create_realm();
+        for bits in [
+            0,
+            1,
+            0x8000_0000_0000_0000,
+            0x7ff0_0000_0000_0001,
+            0x7ff8_dead_beef_1234,
+            0x4340_0000_0000_0000,
+        ] {
+            engine
+                .set_global(
+                    &realm,
+                    "input",
+                    engine
+                        .value(&realm, Value::Number(f64::from_bits(bits)))
+                        .unwrap(),
+                )
+                .unwrap();
+            let script = engine
+                .compile(
+                    &realm,
+                    "function pass(value){let local=value;return local;}pass(input);",
+                )
+                .unwrap();
+            let value = engine.evaluate(&script).unwrap();
+            let Value::Number(number) = value.value() else {
+                panic!("Number result")
+            };
+            assert_eq!(number.to_bits(), bits);
+        }
+        let script = engine.compile(&realm,"function f(){let x=1;function read(){return x;}var before=read();x=2;return before*10+read();}f();").unwrap();
+        assert!(
+            engine
+                .evaluate(&script)
+                .unwrap()
+                .value()
+                .same_value(&Value::Number(12.0))
+        );
+        for (source, kind) in [
+            (
+                "{x;let x=1;}",
+                temiya::embedding::ExceptionKind::ReferenceError,
+            ),
+            (
+                "const fixed=42;fixed=43;",
+                temiya::embedding::ExceptionKind::TypeError,
+            ),
+        ] {
+            let script = engine.compile(&realm, source).unwrap();
+            assert_eq!(engine.evaluate(&script).unwrap_err().kind(), kind);
+        }
+    }
+}
+
+#[test]
 #[ignore = "requires the pinned Test262 corpus; see docs/typed-number-dispatch.md"]
 fn pinned_test262_typed_number_dispatch() {
     use std::process::Command;

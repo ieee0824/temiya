@@ -12,8 +12,14 @@ their operand slots, preserving roots beneath them. Primitive arithmetic has
 no JavaScript callbacks. Other operand kinds and operators outside that table
 continue through the existing Realm-aware conversion and error paths. Operations
 are evaluated separately, without floating-point reassociation or contraction.
-No new syntax, fallback retry, binding shortcut or benchmark-specific constant
+No new syntax, fallback retry, skipped binding validation or benchmark-specific constant
 is introduced.
+
+Binding reads also copy an actual stored Number directly instead of dispatching
+the full Value clone. Record borrowing, name matching, initialization/TDZ and
+write/const checks remain in place. Other kinds keep their owned clones; there
+is no cached type assumption or skipped lookup. Bit-preservation and captured
+update regressions cover this path in both AST and explicit Bytecode.
 
 Validation includes the existing 2,653-case independent JavaScript oracle in
 AST/VM, the IEEE-bit/BigInt bitwise oracle, and public Engine regressions for
@@ -38,6 +44,13 @@ independent hosted machines with separate artifacts; it does not select or
 pretend to guarantee an Intel CPU. Default inputs retain the original two reports
 and artifact name. Every comparison keeps the original eleven workloads,
 15 samples plus checked warmup, three alternating pairs, oracle and watchdogs.
+
+An optional `required_cpu_model` substring requests a specific target, such as
+Intel Xeon 6973P-C. Each job records its actual models before building. If the
+target is unavailable, it retains an availability record and explicitly reports
+that no measurements ran; that job status is never a correctness or speed pass.
+The default empty requirement accepts any recorded CPU. This selects declared
+hardware, not a favorable performance outcome.
 
 Performance acceptance remains pending. #510 requires the actual Intel target;
 an AMD-only success or a reduced diagnostic cannot close it. Original and failed

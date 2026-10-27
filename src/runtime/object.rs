@@ -301,6 +301,9 @@ pub(super) struct ObjectState {
     prototype: Option<Object>,
     extensible: bool,
     properties: Vec<PropertyEntry>,
+    // A position hint only. Bounds and the complete key are checked on every
+    // read, so deleting/reordering properties never returns a stale descriptor.
+    last_property: Cell<usize>,
     callable: Option<NativeCall>,
     pub(super) bound_target: Option<Object>,
     construct: Option<NativeConstruct>,
@@ -669,14 +672,23 @@ impl Object {
                 return Ok(elements.get(index).cloned());
             }
         }
-        Ok(self
-            .0
-            .state
-            .borrow()
+        let state = self.0.state.borrow();
+        if let Some(entry) = state
+            .properties
+            .get(state.last_property.get())
+            .filter(|entry| entry.key == *key)
+        {
+            return Ok(Some(entry.descriptor.clone()));
+        }
+        let found = state
             .properties
             .iter()
-            .find(|entry| entry.key == *key)
-            .map(|entry| entry.descriptor.clone()))
+            .enumerate()
+            .find(|(_, entry)| entry.key == *key);
+        Ok(found.map(|(index, entry)| {
+            state.last_property.set(index);
+            entry.descriptor.clone()
+        }))
     }
 
     /// Implements `[[DefineOwnProperty]]` and descriptor compatibility rules.
@@ -1271,6 +1283,66 @@ fn complete_descriptor(mut descriptor: PropertyDescriptor) -> PropertyDescriptor
 #[cfg(test)]
 mod own_data_hint_tests {
     use super::*;
+
+    #[test]
+    fn descriptor_lookup_hint_rechecks_keys_and_reads_current_descriptors() {
+        let object = Object::new();
+        for (key, value) in [("a", 1.0), ("b", 2.0), ("c", 3.0)] {
+            object
+                .create_data_property(key.into(), Value::Number(value))
+                .unwrap();
+        }
+        assert!(
+            object
+                .get(&"c".into())
+                .unwrap()
+                .same_value(&Value::Number(3.0))
+        );
+        assert!(object.delete(&"a".into()));
+        assert!(
+            object
+                .get(&"c".into())
+                .unwrap()
+                .same_value(&Value::Number(3.0))
+        );
+        assert!(object.delete(&"c".into()));
+        assert!(matches!(object.get(&"c".into()).unwrap(), Value::Undefined));
+        object
+            .create_data_property("d".into(), Value::Number(4.0))
+            .unwrap();
+        assert!(matches!(object.get(&"c".into()).unwrap(), Value::Undefined));
+
+        let getter = Object::native_function(|_, _| Ok(Value::Number(9.0)));
+        object.get(&"b".into()).unwrap();
+        object
+            .define_own_property(
+                "b".into(),
+                PropertyDescriptor::accessor(Some(getter), None, true, true),
+            )
+            .unwrap();
+        assert!(
+            object
+                .get(&"b".into())
+                .unwrap()
+                .same_value(&Value::Number(9.0))
+        );
+
+        let symbol = Symbol::new(Some(JsString::from("same")));
+        let other = Symbol::new(Some(JsString::from("same")));
+        object
+            .create_data_property(symbol.clone().into(), Value::Number(5.0))
+            .unwrap();
+        assert!(
+            object
+                .get(&symbol.into())
+                .unwrap()
+                .same_value(&Value::Number(5.0))
+        );
+        assert!(matches!(
+            object.get(&other.into()).unwrap(),
+            Value::Undefined
+        ));
+    }
 
     #[test]
     fn direct_array_push_preserves_complete_element_descriptors_and_guard_fallback() {

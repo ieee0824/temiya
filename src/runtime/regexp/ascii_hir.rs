@@ -263,7 +263,7 @@ mod tests {
         for pattern in patterns {
             for unicode in [false, true] {
                 let hir = parse(pattern).expect(pattern);
-                let fast = Matcher::from_hir(&hir).unwrap();
+                let fast = Matcher::from_hir(&hir, pattern.len()).unwrap();
                 let mut scratch = fast.create_scratch();
                 let reference = regex::RegexBuilder::new(pattern)
                     .unicode(unicode)
@@ -345,7 +345,8 @@ mod tests {
                     for right_repeat in repeats {
                         let pattern = format!("({left}{left_repeat}|{right}{right_repeat})(a?)");
                         for unicode in [false, true] {
-                            let fast = Matcher::from_hir(&parse(&pattern).unwrap()).unwrap();
+                            let fast = Matcher::from_hir(&parse(&pattern).unwrap(), pattern.len())
+                                .unwrap();
                             let reference = regex::RegexBuilder::new(&pattern)
                                 .unicode(unicode)
                                 .build()

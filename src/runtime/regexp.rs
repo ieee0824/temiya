@@ -247,7 +247,7 @@ fn compile_matcher(pattern: &JsString, flags: RegExpFlags) -> RuntimeResult<Matc
     }
     if !flags.ignore_case {
         if let Some(hir) = ascii_hir::parse_units(units) {
-            return finish_matcher(units, flags, hash, Matcher::from_hir(&hir)?);
+            return finish_matcher(units, flags, hash, Matcher::from_hir(&hir, units.len())?);
         }
     }
     let source = match scalar {
@@ -548,7 +548,8 @@ mod cache_tests {
     #[test]
     fn hash_collisions_check_full_keys_and_evict_both_chain_positions() {
         let flags = RegExpFlags::default();
-        let matcher = |source| Matcher::from_hir(&ascii_hir::parse(source).unwrap()).unwrap();
+        let matcher =
+            |source| Matcher::from_hir(&ascii_hir::parse(source).unwrap(), source.len()).unwrap();
         for evict_hash_head in [false, true] {
             let mut cache = MatcherCache::default();
             cache.insert_hashed(&units("a"), flags, matcher("a"), 100, 7);

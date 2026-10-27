@@ -11,6 +11,7 @@ use regex_automata::{
     util::captures::{Captures, GroupInfo},
 };
 use regex_syntax::hir::Hir;
+use std::cell::RefCell;
 
 #[derive(Clone)]
 pub(super) enum Matcher {
@@ -40,17 +41,55 @@ thread_local! {
     static LINEAR_BUILDER: pikevm::Builder = PikeVM::builder();
 }
 
+const SMALL_SOURCE_UNITS: usize = 4096;
+const SMALL_NFA_BYTES: usize = 128 * 1024;
+const FULL_NFA_BYTES: usize = 10 * (1 << 20);
+
+fn compiler(limit: usize) -> regex_automata::nfa::thompson::Compiler {
+    let mut compiler = NFA::compiler();
+    compiler.configure(
+        NFA::config()
+            .utf8(true)
+            .reverse(false)
+            .shrink(false)
+            .nfa_size_limit(Some(limit)),
+    );
+    compiler
+}
+
+thread_local! {
+    // Only short ASCII source enters this compiler. Its intermediate-state budget
+    // is small; failures discard all retained scratch before the full-limit retry.
+    static SMALL_COMPILER: RefCell<regex_automata::nfa::thompson::Compiler> = RefCell::new(compiler(SMALL_NFA_BYTES));
+    #[cfg(test)]
+    static SMALL_FALLBACKS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+fn compile_nfa(
+    hir: &Hir,
+    source_units: usize,
+) -> Result<NFA, regex_automata::nfa::thompson::BuildError> {
+    if source_units <= SMALL_SOURCE_UNITS {
+        let result = SMALL_COMPILER.with(|slot| {
+            let mut small = slot.borrow_mut();
+            let result = small.build_from_hir(hir);
+            if result.is_err() {
+                *small = compiler(SMALL_NFA_BYTES);
+            }
+            result
+        });
+        if result.is_ok() {
+            return result;
+        }
+        #[cfg(test)]
+        SMALL_FALLBACKS.with(|count| count.set(count.get() + 1));
+    }
+    compiler(FULL_NFA_BYTES).build_from_hir(hir)
+}
+
 impl Matcher {
-    pub(super) fn from_hir(hir: &Hir) -> RuntimeResult<Self> {
-        let nfa = NFA::compiler()
-            .configure(
-                NFA::config()
-                    .utf8(true)
-                    .reverse(false)
-                    .shrink(false)
-                    .nfa_size_limit(Some(10 * (1 << 20))),
-            )
-            .build_from_hir(hir)
+    pub(super) fn from_hir(hir: &Hir, source_units: usize) -> RuntimeResult<Self> {
+        let nfa = compile_nfa(hir, source_units)
             .map_err(|error| RuntimeError::syntax_error(error.to_string()))?;
         let fast = BACKTRACK_BUILDER
             .with(|builder| builder.build_from_nfa(nfa))
@@ -122,9 +161,43 @@ mod tests {
     use super::*;
 
     #[test]
+    #[cfg(not(miri))]
+    fn small_compiler_budget_retries_full_limit_and_keeps_old_programs_valid() {
+        let make = |source: &str| {
+            Matcher::from_hir(
+                &super::super::ascii_hir::parse(source).unwrap(),
+                source.len(),
+            )
+        };
+        let original = make("(a)").unwrap();
+        let before = SMALL_FALLBACKS.with(|count| count.get());
+        let large = make("a{16384}").unwrap();
+        assert!(large.template_memory_usage() > SMALL_NFA_BYTES);
+        assert!(SMALL_FALLBACKS.with(|count| count.get()) > before);
+        assert_eq!(
+            make("a{1000000000}").err().unwrap().kind(),
+            crate::runtime::RuntimeErrorKind::SyntaxError
+        );
+        let after_failure = make("(b)").unwrap();
+        for (matcher, subject) in [(original, "a"), (after_failure, "b")] {
+            let mut captures = matcher.create_captures();
+            matcher.search(
+                &Input::new(subject),
+                &mut captures,
+                &mut matcher.create_scratch(),
+            );
+            assert_eq!(captures.get_group(0).unwrap().range(), 0..1);
+            assert_eq!(captures.get_group(1).unwrap().range(), 0..1);
+        }
+        let before = SMALL_FALLBACKS.with(|count| count.get());
+        make(&"a".repeat(SMALL_SOURCE_UNITS + 1)).unwrap();
+        assert_eq!(SMALL_FALLBACKS.with(|count| count.get()), before);
+    }
+
+    #[test]
     fn bounded_capacity_exhaustion_uses_linear_fallback_and_resets_captures() {
         let mut matcher =
-            Matcher::from_hir(&super::super::ascii_hir::parse("(a+)(b)?").unwrap()).unwrap();
+            Matcher::from_hir(&super::super::ascii_hir::parse("(a+)(b)?").unwrap(), 8).unwrap();
         if let Matcher::Direct { fast, .. } = &mut matcher {
             *fast = BoundedBacktracker::builder()
                 .configure(BoundedBacktracker::config().visited_capacity(1))

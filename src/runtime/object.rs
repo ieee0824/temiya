@@ -330,63 +330,6 @@ pub(super) fn ordinary_state() -> ObjectState {
     }
 }
 
-#[cfg(test)]
-mod own_data_hint_tests {
-    use super::*;
-
-    #[test]
-    fn own_data_hint_rechecks_keys_descriptors_and_exotic_objects() {
-        let object = Object::new();
-        let prefix: PropertyKey = "prefix".into();
-        let key: PropertyKey = "x".into();
-        object
-            .create_data_property(prefix.clone(), Value::Null)
-            .unwrap();
-        object
-            .create_data_property(key.clone(), Value::Number(41.0))
-            .unwrap();
-        let (_, hint) = object.own_data_value_with_hint(&key, None).unwrap();
-        assert!(object.try_delete(&prefix).unwrap());
-        object
-            .create_data_property("other".into(), Value::Number(99.0))
-            .unwrap();
-        assert!(
-            object
-                .own_data_value_with_hint(&key, Some(hint))
-                .unwrap()
-                .0
-                .same_value(&Value::Number(41.0))
-        );
-        let getter = Object::native_function(|_, _| Ok(Value::Number(42.0)));
-        assert!(
-            object
-                .define_own_property(
-                    key.clone(),
-                    PropertyDescriptor::accessor(Some(getter), None, true, true)
-                )
-                .unwrap()
-        );
-        assert!(object.own_data_value_with_hint(&key, Some(hint)).is_none());
-        assert!(object.get(&key).unwrap().same_value(&Value::Number(42.0)));
-
-        let proxy = crate::runtime::ProxyObject::new(object.clone(), Object::new()).object();
-        assert!(proxy.own_data_value_with_hint(&key, None).is_none());
-        assert!(proxy.get(&key).unwrap().same_value(&Value::Number(42.0)));
-        let string = crate::runtime::StringObject::new("abc".into()).object();
-        assert!(
-            string
-                .own_data_value_with_hint(&"length".into(), None)
-                .is_none()
-        );
-        assert!(
-            string
-                .get(&"length".into())
-                .unwrap()
-                .same_value(&Value::Number(3.0))
-        );
-    }
-}
-
 impl Object {
     // A hint identifies a position, never a cached Value or assumed shape.
     // Validate the current key/descriptor under one borrow before returning.
@@ -1200,4 +1143,61 @@ fn complete_descriptor(mut descriptor: PropertyDescriptor) -> PropertyDescriptor
     descriptor.enumerable.get_or_insert(false);
     descriptor.configurable.get_or_insert(false);
     descriptor
+}
+
+#[cfg(test)]
+mod own_data_hint_tests {
+    use super::*;
+
+    #[test]
+    fn own_data_hint_rechecks_keys_descriptors_and_exotic_objects() {
+        let object = Object::new();
+        let prefix: PropertyKey = "prefix".into();
+        let key: PropertyKey = "x".into();
+        object
+            .create_data_property(prefix.clone(), Value::Null)
+            .unwrap();
+        object
+            .create_data_property(key.clone(), Value::Number(41.0))
+            .unwrap();
+        let (_, hint) = object.own_data_value_with_hint(&key, None).unwrap();
+        assert!(object.try_delete(&prefix).unwrap());
+        object
+            .create_data_property("other".into(), Value::Number(99.0))
+            .unwrap();
+        assert!(
+            object
+                .own_data_value_with_hint(&key, Some(hint))
+                .unwrap()
+                .0
+                .same_value(&Value::Number(41.0))
+        );
+        let getter = Object::native_function(|_, _| Ok(Value::Number(42.0)));
+        assert!(
+            object
+                .define_own_property(
+                    key.clone(),
+                    PropertyDescriptor::accessor(Some(getter), None, true, true)
+                )
+                .unwrap()
+        );
+        assert!(object.own_data_value_with_hint(&key, Some(hint)).is_none());
+        assert!(object.get(&key).unwrap().same_value(&Value::Number(42.0)));
+
+        let proxy = crate::runtime::ProxyObject::new(object.clone(), Object::new()).object();
+        assert!(proxy.own_data_value_with_hint(&key, None).is_none());
+        assert!(proxy.get(&key).unwrap().same_value(&Value::Number(42.0)));
+        let string = crate::runtime::StringObject::new("abc".into()).object();
+        assert!(
+            string
+                .own_data_value_with_hint(&"length".into(), None)
+                .is_none()
+        );
+        assert!(
+            string
+                .get(&"length".into())
+                .unwrap()
+                .same_value(&Value::Number(3.0))
+        );
+    }
 }

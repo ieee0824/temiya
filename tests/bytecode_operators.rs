@@ -6,7 +6,7 @@ use temiya::{
 
 #[test]
 fn lexical_updates_capture_verified_binding_before_numeric_coercion() {
-    let source = "var calls=0;function f(){var x=new Object();x.valueOf=function(){calls++;x=99;return 41;};var old=x++;return old+':'+x+':'+calls;}f();";
+    let source = "var calls=0;function f(){var x=new Object();x.valueOf=function(){calls++;x=99;return 41;};for(var i=0;i<1;i++){var old=x++;}return old+':'+x+':'+calls;}f();";
     let code = BytecodeCompiler::compile(source).unwrap();
     assert!(code.bytecode().constants.iter().any(|constant| {
         match constant {
@@ -32,6 +32,14 @@ fn lexical_updates_capture_verified_binding_before_numeric_coercion() {
         assert!(
             result(&Realm::ordinary(), source, vm).same_value(&Value::String("41:42:1".into()))
         );
+    }
+}
+
+#[test]
+fn loop_compound_binding_retains_identity_across_coercion_and_capture() {
+    let source = "var calls=0;function f(){var x={valueOf:function(){calls++;x=99;return 41;}};function read(){return x;}for(var i=0;i<1;i++){x+=1;}return read()+':'+calls;}f();";
+    for vm in [false, true] {
+        assert!(result(&Realm::ordinary(), source, vm).same_value(&Value::String("42:1".into())));
     }
 }
 

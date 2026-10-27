@@ -57,44 +57,14 @@ impl VirtualMachine {
         let mut calls: Vec<Invocation> = vec![];
         let mut stack = Vec::with_capacity(bytecode.max_stack());
         let mut locals = vec![Value::Undefined; body.local_count as usize];
+        let mut property_hints = bytecode
+            .has_own_property_cache()
+            .then(|| vec![None; body.instructions.len()]);
         let mut pc = 0;
         loop {
             let instruction = body.instructions[pc];
             pc += 1;
             match instruction {
-                Instruction::CreateArray => {
-                    stack.push(Value::Object(crate::runtime::array_literal::create(
-                        realm.expect("verified Array Realm"),
-                    )?));
-                    stack.push(Value::Number(0.0));
-                }
-                Instruction::AppendArray | Instruction::SpreadArray => {
-                    let value = pop(&mut stack)?;
-                    let (object, mut next) = array_prefix(&mut stack)?;
-                    if matches!(instruction, Instruction::AppendArray) {
-                        crate::runtime::array_literal::append(&object, &mut next, value)?;
-                    } else {
-                        crate::runtime::array_literal::spread(
-                            realm.expect("verified Array Realm"),
-                            &object,
-                            &mut next,
-                            value,
-                        )?;
-                    }
-                    stack.push(Value::Object(object));
-                    stack.push(Value::Number(next as f64));
-                }
-                Instruction::ElideArray => {
-                    let (object, mut next) = array_prefix(&mut stack)?;
-                    crate::runtime::array_literal::elide(&mut next)?;
-                    stack.push(Value::Object(object));
-                    stack.push(Value::Number(next as f64));
-                }
-                Instruction::FinishArray => {
-                    let (object, next) = array_prefix(&mut stack)?;
-                    crate::runtime::array_literal::finish(&object, next)?;
-                    stack.push(Value::Object(object));
-                }
                 Instruction::CreateObject => stack.push(Value::Object(
                     crate::runtime::object_literal::create(realm.expect("verified object Realm")),
                 )),
@@ -134,15 +104,56 @@ impl VirtualMachine {
                     crate::runtime::object_literal::spread(&object, source)?;
                     stack.push(Value::Object(object));
                 }
+                Instruction::CreateArray => {
+                    stack.push(Value::Object(crate::runtime::array_literal::create(
+                        realm.expect("verified Array Realm"),
+                    )?));
+                    stack.push(Value::Number(0.0));
+                }
+                Instruction::AppendArray | Instruction::SpreadArray => {
+                    let value = pop(&mut stack)?;
+                    let (object, mut next) = array_prefix(&mut stack)?;
+                    if matches!(instruction, Instruction::AppendArray) {
+                        crate::runtime::array_literal::append(&object, &mut next, value)?;
+                    } else {
+                        crate::runtime::array_literal::spread(
+                            realm.expect("verified Array Realm"),
+                            &object,
+                            &mut next,
+                            value,
+                        )?;
+                    }
+                    stack.push(Value::Object(object));
+                    stack.push(Value::Number(next as f64));
+                }
+                Instruction::ElideArray => {
+                    let (object, mut next) = array_prefix(&mut stack)?;
+                    crate::runtime::array_literal::elide(&mut next)?;
+                    stack.push(Value::Object(object));
+                    stack.push(Value::Number(next as f64));
+                }
+                Instruction::FinishArray => {
+                    let (object, next) = array_prefix(&mut stack)?;
+                    crate::runtime::array_literal::finish(&object, next)?;
+                    stack.push(Value::Object(object));
+                }
                 Instruction::EnterScope(index) => {
                     let Constant::Scope(plan) = &body.constants[index as usize] else {
                         unreachable!()
                     };
                     let environment = enter_scope(plan, &scopes, (pc - 1) as u32, realm, function)?;
+                    let binding_hints =
+                        (bytecode.has_backedge() && plan.kind == ScopeKind::Function).then(|| {
+                            plan.bindings
+                                .iter()
+                                .map(|binding| environment.function_binding_index(&binding.name))
+                                .collect::<Box<[_]>>()
+                        });
                     scopes.push(ScopeFrame {
                         entry: (pc - 1) as u32,
                         plan,
                         environment,
+                        binding_hints,
                     });
                 }
                 Instruction::ExitScope => {
@@ -162,10 +173,94 @@ impl VirtualMachine {
                 }
                 Instruction::LoadBinding { scope, slot } => {
                     let frame = binding_frame(&scopes, scope);
-                    stack.push(frame.environment.get_binding_value(
-                        &frame.plan.bindings[slot as usize].name,
-                        frame.plan.strict,
+                    let name = &frame.plan.bindings[slot as usize].name;
+                    stack.push(match &frame.binding_hints {
+                        Some(hints) => frame.environment.get_function_binding_at(
+                            name,
+                            hints[slot as usize],
+                            frame.plan.strict,
+                        ),
+                        None => frame.environment.get_binding_value(name, frame.plan.strict),
+                    }?);
+                }
+                Instruction::ResolveBinding {
+                    scope,
+                    slot,
+                    strict,
+                } => {
+                    let frame = binding_frame(&scopes, scope);
+                    references.push(Reference::function_binding(
+                        frame.environment.clone(),
+                        frame.plan.bindings[slot as usize].name.clone(),
+                        strict,
+                        frame
+                            .binding_hints
+                            .as_ref()
+                            .and_then(|hints| hints[slot as usize]),
+                    ));
+                }
+                Instruction::UpdateBinding {
+                    scope,
+                    slot,
+                    strict,
+                    increment,
+                    prefix,
+                } => {
+                    let frame = binding_frame(&scopes, scope);
+                    let name = &frame.plan.bindings[slot as usize].name;
+                    let hint = frame
+                        .binding_hints
+                        .as_ref()
+                        .and_then(|hints| hints[slot as usize]);
+                    if let Some((old, new)) = frame
+                        .environment
+                        .update_number_binding(name, hint, increment, strict)?
+                    {
+                        stack.push(Value::Number(if prefix { new } else { old }));
+                        continue;
+                    }
+                    let reference = Reference::function_binding(
+                        frame.environment.clone(),
+                        name.clone(),
+                        strict,
+                        hint,
+                    );
+                    stack.push(crate::runtime::update_reference_in_realm(
+                        realm.expect("scoped update Realm"),
+                        &reference,
+                        increment,
+                        prefix,
                     )?);
+                }
+                Instruction::AppendStringBinding { scope, slot, value } => {
+                    let frame = binding_frame(&scopes, scope);
+                    let name = &frame.plan.bindings[slot as usize].name;
+                    let hint = frame
+                        .binding_hints
+                        .as_ref()
+                        .and_then(|hints| hints[slot as usize]);
+                    let Constant::String(suffix) = &body.constants[value as usize] else {
+                        unreachable!()
+                    };
+                    if let Some(value) = frame.environment.append_string_binding(name, hint, suffix)
+                    {
+                        stack.push(value);
+                    } else {
+                        let reference = Reference::function_binding(
+                            frame.environment.clone(),
+                            name.clone(),
+                            frame.plan.strict,
+                            hint,
+                        );
+                        let value = binary_values_in_realm(
+                            realm.expect("scoped string append Realm"),
+                            "+",
+                            reference.get_value()?,
+                            Value::String(suffix.clone()),
+                        )?;
+                        reference.put_value(value.clone())?;
+                        stack.push(value);
+                    }
                 }
                 Instruction::InitializeBinding { scope, slot } => {
                     let frame = binding_frame(&scopes, scope);
@@ -176,11 +271,21 @@ impl VirtualMachine {
                 }
                 Instruction::StoreBinding { scope, slot } => {
                     let frame = binding_frame(&scopes, scope);
-                    frame.environment.set_mutable_binding(
-                        &frame.plan.bindings[slot as usize].name,
-                        pop(&mut stack)?,
-                        frame.plan.strict,
-                    )?;
+                    let name = &frame.plan.bindings[slot as usize].name;
+                    let value = pop(&mut stack)?;
+                    match &frame.binding_hints {
+                        Some(hints) => frame.environment.set_function_binding_at(
+                            name,
+                            hints[slot as usize],
+                            value,
+                            frame.plan.strict,
+                        ),
+                        None => {
+                            frame
+                                .environment
+                                .set_mutable_binding(name, value, frame.plan.strict)
+                        }
+                    }?;
                 }
                 Instruction::LoadName(index) => {
                     let Constant::String(name) = &body.constants[index as usize] else {
@@ -245,9 +350,53 @@ impl VirtualMachine {
                         .expect("verified reference stack")
                         .put_value(pop(&mut stack)?)?;
                 }
+                Instruction::GetNamedProperty { name, strict }
+                | Instruction::ResolveNamedProperty { name, strict } => {
+                    let Constant::String(name) = &body.constants[name as usize] else {
+                        unreachable!()
+                    };
+                    let base = pop(&mut stack)?;
+                    if matches!(instruction, Instruction::GetNamedProperty { .. }) {
+                        if let Some(value) = primitive_named_value(&base, name) {
+                            stack.push(value);
+                            continue;
+                        }
+                    }
+                    let key = crate::runtime::PropertyKey::String(name.clone());
+                    if matches!(instruction, Instruction::GetNamedProperty { .. }) {
+                        if let (Some(hints), Value::Object(object)) = (&mut property_hints, &base) {
+                            let hint = &mut hints[pc - 1];
+                            if let Some((value, index)) =
+                                object.own_data_value_with_hint(&key, *hint)
+                            {
+                                *hint = Some(index);
+                                stack.push(value);
+                                continue;
+                            }
+                            *hint = None;
+                        }
+                    }
+                    let reference = Reference::property_in_realm(
+                        realm.expect("verified scoped property access"),
+                        base,
+                        ReferencedName::PropertyKey(key),
+                        strict,
+                    );
+                    if matches!(instruction, Instruction::GetNamedProperty { .. }) {
+                        stack.push(reference.get_value()?);
+                    } else {
+                        references.push(reference);
+                    }
+                }
                 Instruction::GetProperty { strict } | Instruction::ResolveProperty { strict } => {
                     let key = pop(&mut stack)?;
                     let base = pop(&mut stack)?;
+                    if matches!(instruction, Instruction::GetProperty { .. }) {
+                        if let Some(value) = indexed_value(&base, &key) {
+                            stack.push(value);
+                            continue;
+                        }
+                    }
                     let reference = Reference::property_in_realm(
                         realm.expect("verified scoped property access"),
                         base,
@@ -317,7 +466,7 @@ impl VirtualMachine {
                         callee,
                         receiver,
                         construct: false,
-                        arguments: vec![],
+                        arguments: CallArguments::new(),
                     });
                 }
                 Instruction::BeginCall | Instruction::BeginConstruct => {
@@ -325,7 +474,7 @@ impl VirtualMachine {
                         callee: pop(&mut stack)?,
                         receiver: Value::Undefined,
                         construct: matches!(instruction, Instruction::BeginConstruct),
-                        arguments: vec![],
+                        arguments: CallArguments::new(),
                     });
                 }
                 Instruction::BeginReferenceCall => {
@@ -335,20 +484,25 @@ impl VirtualMachine {
                         callee: reference.get_value()?,
                         receiver,
                         construct: false,
-                        arguments: vec![],
+                        arguments: CallArguments::new(),
                     });
                 }
                 Instruction::AppendArgument => {
-                    crate::runtime::iterator::push_argument(
-                        &mut calls.last_mut().expect("verified call frame").arguments,
-                        pop(&mut stack)?,
-                    )?;
+                    calls
+                        .last_mut()
+                        .expect("verified call frame")
+                        .arguments
+                        .push(pop(&mut stack)?)?;
                 }
                 Instruction::SpreadArguments => {
                     crate::runtime::iterator::spread_arguments(
                         realm.expect("verified scoped spread"),
                         pop(&mut stack)?,
-                        &mut calls.last_mut().expect("verified call frame").arguments,
+                        calls
+                            .last_mut()
+                            .expect("verified call frame")
+                            .arguments
+                            .as_vec_mut(),
                     )?;
                 }
                 Instruction::Invoke => {
@@ -458,6 +612,42 @@ impl VirtualMachine {
     }
 }
 
+fn primitive_named_value(base: &Value, name: &crate::runtime::JsString) -> Option<Value> {
+    match base {
+        Value::String(string)
+            if name
+                .code_units()
+                .iter()
+                .copied()
+                .eq("length".encode_utf16()) =>
+        {
+            Some(Value::Number(string.len() as f64))
+        }
+        _ => None,
+    }
+}
+
+fn indexed_value(base: &Value, key: &Value) -> Option<Value> {
+    let Value::Number(index) = key else {
+        return None;
+    };
+    if !(*index >= 0.0 && *index < f64::from(u32::MAX)) {
+        return None;
+    }
+    let integer = *index as u32;
+    if f64::from(integer) != *index {
+        return None;
+    }
+    match base {
+        Value::Object(object) => object.own_element_value(integer),
+        Value::String(string) => string
+            .code_units()
+            .get(integer as usize)
+            .map(|unit| Value::String(crate::runtime::JsString::from_code_units_slice(&[*unit]))),
+        _ => None,
+    }
+}
+
 fn constant(constant: &Constant) -> Value {
     match constant {
         Constant::Scope(_) | Constant::Function(_) => {
@@ -513,11 +703,59 @@ fn binary(stack: &mut Vec<Value>, operator: &str, realm: Option<&Realm>) -> Runt
 
 // Each invocation owns its roots independently of operand-stack growth and of
 // nested/reentrant VM runs. All pending roots drop on an abrupt runtime result.
+enum CallArguments {
+    Inline { values: [Value; 2], len: usize },
+    Heap(Vec<Value>),
+}
+
+impl CallArguments {
+    fn new() -> Self {
+        Self::Inline {
+            values: [Value::Undefined, Value::Undefined],
+            len: 0,
+        }
+    }
+
+    fn push(&mut self, value: Value) -> RuntimeResult<()> {
+        if let Self::Inline { values, len } = self {
+            if *len < values.len() {
+                values[*len] = value;
+                *len += 1;
+                return Ok(());
+            }
+        }
+        crate::runtime::iterator::push_argument(self.as_vec_mut(), value)
+    }
+
+    fn as_vec_mut(&mut self) -> &mut Vec<Value> {
+        if matches!(self, Self::Inline { .. }) {
+            let Self::Inline { values, len } = std::mem::replace(self, Self::Heap(Vec::new()))
+            else {
+                unreachable!()
+            };
+            let mut arguments = Vec::with_capacity(4);
+            arguments.extend(values.into_iter().take(len));
+            *self = Self::Heap(arguments);
+        }
+        let Self::Heap(arguments) = self else {
+            unreachable!()
+        };
+        arguments
+    }
+
+    fn as_slice(&self) -> &[Value] {
+        match self {
+            Self::Inline { values, len } => &values[..*len],
+            Self::Heap(arguments) => arguments,
+        }
+    }
+}
+
 struct Invocation {
     callee: Value,
     receiver: Value,
     construct: bool,
-    arguments: Vec<Value>,
+    arguments: CallArguments,
 }
 
 impl Invocation {
@@ -531,10 +769,10 @@ impl Invocation {
         };
         if self.construct {
             Ok(Value::Object(
-                callee.construct(&self.arguments, callee.clone())?,
+                callee.construct(self.arguments.as_slice(), callee.clone())?,
             ))
         } else {
-            callee.call(self.receiver, &self.arguments)
+            callee.call(self.receiver, self.arguments.as_slice())
         }
     }
 }
@@ -543,6 +781,7 @@ struct ScopeFrame<'a> {
     entry: u32,
     plan: &'a ScopeDescriptor,
     environment: Environment,
+    binding_hints: Option<Box<[Option<usize>]>>,
 }
 
 fn binding_frame<'a, 'b>(scopes: &'a [ScopeFrame<'b>], entry: u32) -> &'a ScopeFrame<'b> {

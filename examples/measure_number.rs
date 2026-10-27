@@ -1,9 +1,9 @@
-//! Small diagnostic worker: time a numeric Script result through the public API.
+//! AST diagnostic worker: time a numeric Script result through the public API.
 //! Run in release mode; the caller controls process isolation and timeouts.
 
 use std::{env, fs, time::Instant};
 
-use temiya::{Engine, benchmark::Measurement, runtime::Value};
+use temiya::{Engine, benchmark::Measurement, embedding::ScriptBackend, runtime::Value};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     if cfg!(debug_assertions) {
@@ -20,7 +20,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     let source = fs::read_to_string(&arguments[0])?;
     let start = Instant::now();
-    let engine = Engine::default();
+    let engine = Engine::builder().script_backend(ScriptBackend::Ast).build();
     let realm = engine.create_realm();
     let realm_ns = start.elapsed().as_nanos();
     let start = Instant::now();

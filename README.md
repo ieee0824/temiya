@@ -45,8 +45,8 @@ The execution paths currently have different capabilities:
 | Path | Entry point | Current scope and limits |
 | --- | --- | --- |
 | Parser | `parser::parse_script` / `parse_module` | Produces owned syntax; does not execute it. For example, a class expression parses but AST evaluation rejects it. |
-| AST interpreter | `Engine::compile` then `Engine::evaluate` | Executes arithmetic, variables, loops, ordinary functions, and supported object operations. This is the embedding API's default execution path. Classes and dynamic import are among the missing runtime features; built-ins remain incomplete. |
-| Bytecode interpreter | `BytecodeCompiler::compile` then `VirtualMachine::execute` | Explicit, separate subset supporting primitive operations, global/function/block bindings, TDZ/const, property references, calls/construct and simple-parameter functions, conditionals, while/for/do-while, break/continue and labels. Use `execute_in_realm` for persistent globals; standalone function-body execution requires a caller-prepared frame. Array literals, holes, iterable spread, data object literals, computed keys, object spread and prototype setters are supported; object methods and for-in/of remain unsupported. `Engine::builder().script_backend(ScriptBackend::Bytecode)` selects this backend and reports unsupported syntax during compilation; `Auto` falls back to AST before executing an unsupported Script. |
+| AST interpreter | `Engine::compile` then `Engine::evaluate` | Executes arithmetic, variables, loops, ordinary functions, and supported object operations. Select it explicitly with ScriptBackend::Ast; it also handles whole Scripts rejected by Auto before execution. Classes and dynamic import are among the missing runtime features; built-ins remain incomplete. |
+| Bytecode interpreter | `BytecodeCompiler::compile` then `VirtualMachine::execute` | The default Engine uses Auto to select this whole-Script subset when supported: primitive operations, global/function/block bindings, TDZ/const, property references, calls/construct and simple-parameter functions, conditionals, while/for/do-while, break/continue and labels. Use `execute_in_realm` for persistent globals; standalone function-body execution requires a caller-prepared frame. Array literals, holes, iterable spread, data object literals, computed keys, object spread and prototype setters are supported; object methods and for-in/of remain unsupported. `Engine::builder().script_backend(ScriptBackend::Bytecode)` selects this backend and reports unsupported syntax during compilation; `Auto` falls back to AST before executing an unsupported Script and never retries a runtime error. |
 | Experimental JIT | `BaselineJit::compile` with `--features jit` | Separate straight-line numeric backend on x86-64 Unix. For example, `40 + 2;` is supported, but `1 === 1;` is rejected. Other platforms, including ARM64, return `UnsupportedPlatform`. Enabling the feature does not make `Engine` use JIT execution. |
 
 Run `cargo run --example backend_scope --all-features` to check these examples
@@ -57,9 +57,11 @@ The tracing collector, debugger, and optimizing-tier contracts are development
 components; their APIs do not imply a collecting heap, debugger, or optimizing
 tier integrated into `Engine`. Runtime objects currently use `Rc` ownership,
 which does not reclaim reference cycles. The Test262 tooling records corpus
-metadata but does not yet establish whole-engine conformance. There is no
-measured claim that Temiya outperforms Boa or SpiderMonkey; see the
-[performance comparison requirements](docs/benchmarks.md#cross-engine-targets).
+metadata but does not yet establish whole-engine conformance. The default API
+passes the fixed original-eleven omoikane Boa comparison on the recorded x64
+and ARM64 machines; see [results and scope](docs/auto-backend-integration.md).
+Broader application performance, async/RegExp/GC suites and SpiderMonkey
+comparisons remain unverified.
 
 An initial lexer is available as `temiya::lexer::tokenize`; its supported subset
 and next steps are documented in [docs/lexer.md](docs/lexer.md).

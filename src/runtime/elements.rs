@@ -22,6 +22,14 @@ impl Default for Elements {
 }
 
 impl Elements {
+    pub(super) fn is_empty(&self) -> bool {
+        match self {
+            Self::Packed(slots) => slots.is_empty(),
+            Self::Holey { present, .. } => *present == 0,
+            Self::Sparse(slots) => slots.is_empty(),
+        }
+    }
+
     pub(super) fn get(&self, index: u32) -> Option<&PropertyDescriptor> {
         match self {
             Self::Packed(slots) => slots.get(index as usize),

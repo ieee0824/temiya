@@ -25,6 +25,183 @@ fn assert_value(actual: Value, expected: &Value) {
 }
 
 #[test]
+fn array_push_length_reads_keep_coercion_getters_and_setters_ordered() {
+    for vm in [false, true] {
+        let realm = Realm::ordinary();
+        setup(
+            &realm,
+            "var log='';var receiver={length:{valueOf:function(){log+='N';receiver.length=100;return 2;}}};Object.defineProperty(receiver,'2',{set:function(value){log+='I';if(this!==receiver||value!==7)throw 99;}});",
+        );
+        assert_value(
+            value(execute(
+                &realm,
+                "var count=Array.prototype.push.call(receiver,7);log+':'+count+':'+receiver.length;",
+                vm,
+            )),
+            &Value::String("NI:3:3".into()),
+        );
+        let realm = Realm::ordinary();
+        setup(&realm, "var log='';var receiver={get length(){log+='G';return 2;},set length(value){log+='L';if(value!==3)throw 99;}};Object.defineProperty(receiver,'2',{set:function(value){log+='I';if(this!==receiver||value!==7)throw 99;}});
+");
+        assert_value(
+            value(execute(
+                &realm,
+                "Array.prototype.push.call(receiver,7);log;",
+                vm,
+            )),
+            &Value::String("GIL".into()),
+        );
+    }
+}
+
+#[test]
+fn literal_string_compound_assignment_preserves_captures_results_and_coercion() {
+    for vm in [false, true] {
+        for (source, expected) in [
+            (
+                "function f(){var s='a';var first=(s+='b');var second=(s+='c');return first+':'+second+':'+s;}f();",
+                "ab:abc:abc",
+            ),
+            (
+                "function f(){var s={valueOf:function(){s='changed';return 'old';}};var r=(s+='!');return r+':'+s;}f();",
+                "old!:old!",
+            ),
+            (
+                "function f(){var s=41;var r=(s+='x');return r+':'+s;}f();",
+                "41x:41x",
+            ),
+            ("function f(){let s='a';s+='';return s;}f();", "a"),
+            ("function f(){let s='a';s+='b';return s;}f();", "ab"),
+        ] {
+            assert_value(
+                value(execute(&Realm::ordinary(), source, vm)),
+                &Value::String(expected.into()),
+            );
+        }
+        assert_value(
+            value(execute(
+                &Realm::ordinary(),
+                "(function(){var s='';var alias='';for(var i=0;i<200;i++){s+='ab';if(i===100)alias=s;}var second=s;for(var j=0;j<100;j++)s+='cd';return alias.length===202 && second.length===400 && s.length===600 && alias.charCodeAt(201)===98 && second.charCodeAt(399)===98 && s.charCodeAt(400)===99;})();",
+                vm,
+            )),
+            &Value::Boolean(true),
+        );
+        for suffix in ["", "b"] {
+            let realm = Realm::ordinary();
+            let source = format!(
+                "var read;function f(){{const s='a';read=function(){{return s;}};s+='{suffix}';}}f();"
+            );
+            assert_eq!(
+                execute(&realm, &source, vm).unwrap_err().kind(),
+                RuntimeErrorKind::TypeError
+            );
+            assert_value(
+                value(execute(&realm, "read();", vm)),
+                &Value::String("a".into()),
+            );
+        }
+    }
+}
+
+#[test]
+fn primitive_string_concat_preserves_snapshots_utf16_and_evaluation_order() {
+    for vm in [false, true] {
+        for source in [
+            r#"var log='';function left(){log+='L';return 'A\ud800';}function right(){log+='R';return '\udc00B';}var joined=left()+right();joined.length===4 && joined.charCodeAt(1)===55296 && joined.charCodeAt(2)===56320 && log==='LR';"#,
+            "var left='a';function right(){left='z';return 'b';}var joined=left+right();joined==='ab' && left==='z';",
+            "var s='';var alias='';for(var i=0;i<200;i++){s+='ab';if(i===100)alias=s;}var appended=s+'!';s.length===400 && alias.length===202 && appended.length===401 && alias.charCodeAt(201)===98;",
+            "var s='ab';var alias=s;s+='';s.length===2 && alias==='ab' && (s+'cd').length===4;",
+        ] {
+            assert_value(
+                value(execute(&Realm::ordinary(), source, vm)),
+                &Value::Boolean(true),
+            );
+        }
+    }
+}
+
+#[test]
+fn numeric_array_reads_preserve_canonical_keys_holes_and_getters() {
+    for vm in [false, true] {
+        let realm = Realm::ordinary();
+        setup(
+            &realm,
+            "var calls=0;var array=[11,undefined];array['-0']=90;array[-1]=91;array[1.5]=92;array[4294967295]=93;array[NaN]=94;array[Infinity]=95;Object.setPrototypeOf(array,{get 1(){calls++;return this[0]+20;}});",
+        );
+        assert_value(
+            value(execute(
+                &realm,
+                "array[-0]===11 && array[1]===undefined && calls===0 && array['-0']===90 && array[-1]===91 && array[1.5]===92 && array[4294967295]===93 && array[4294967294]===undefined && array[NaN]===94 && array[Infinity]===95 && array.length===2;",
+                vm,
+            )),
+            &Value::Boolean(true),
+        );
+        assert_value(
+            value(execute(&realm, "delete array[1];array[1];", vm)),
+            &Value::Number(31.0),
+        );
+        setup(
+            &realm,
+            "Object.defineProperty(array,'0',{get:function(){calls++;return 7;},configurable:true});",
+        );
+        assert_value(value(execute(&realm, "array[0];", vm)), &Value::Number(7.0));
+        assert_value(value(execute(&realm, "calls;", vm)), &Value::Number(2.0));
+    }
+}
+
+#[test]
+fn numeric_string_reads_return_utf16_units_and_keep_prototype_fallback_receiver() {
+    for vm in [false, true] {
+        let realm = Realm::ordinary();
+        setup(
+            &realm,
+            "var calls=0;var s='A😀';Object.defineProperty(String.prototype,'0',{get:function(){calls++;return 'wrong';},configurable:true});Object.defineProperty(String.prototype,'4',{get:function(){'use strict';calls++;return typeof this+':'+this.length;},configurable:true});",
+        );
+        assert_value(
+            value(execute(
+                &realm,
+                "s[-0]==='A' && s[1].charCodeAt(0)===55357 && s[2].charCodeAt(0)===56832 && s[3]===undefined && s['-0']===undefined && s[1.5]===undefined && s[4]==='string:3' && calls===1;",
+                vm,
+            )),
+            &Value::Boolean(true),
+        );
+    }
+}
+
+#[test]
+fn loop_named_reads_observe_reordering_accessors_and_prototype_changes() {
+    for vm in [false, true] {
+        let realm = Realm::ordinary();
+        let source = "var log='';var obj={prefix:0,x:1};var sum=0;for(var i=0;i<4;i++){sum+=obj.x;if(i===0){delete obj.prefix;obj.other=99;}if(i===1){delete obj.x;Object.defineProperty(obj,'x',{get:function(){log+='G';return this.other===99?4:400;},configurable:true});}if(i===2){delete obj.x;Object.setPrototypeOf(obj,{x:8});}}sum+':'+log;";
+        assert_value(
+            value(execute(&realm, source, vm)),
+            &Value::String("14:G".into()),
+        );
+    }
+}
+
+#[test]
+fn static_and_computed_method_names_retain_receiver_across_getter_reentry() {
+    for vm in [false, true] {
+        for call in ["obj.method()", "obj['method']()"] {
+            let realm = Realm::ordinary();
+            setup(
+                &realm,
+                "var log='';var other={x:2};var obj={x:1,get method(){log+='G';obj=other;return function(){return this.x;};}};",
+            );
+            assert_value(
+                value(execute(
+                    &realm,
+                    &format!("var r={call};log+':'+r+':'+obj.x;"),
+                    vm,
+                )),
+                &Value::String("G:1:2".into()),
+            );
+        }
+    }
+}
+
+#[test]
 fn member_reads_writes_and_parentheses_match_ast() {
     for vm in [false, true] {
         let realm = Realm::ordinary();
@@ -565,4 +742,83 @@ fn pinned_test262_property_audit() {
         outcomes.iter().all(|r| r["status"] == "pass"),
         "upstream integration remains incomplete; unsupported compilation is not pass"
     );
+}
+#[test]
+fn ordinary_array_push_keeps_prototype_setters_readonly_lengths_and_proxy_order() {
+    for (setup, source, expected) in [
+        (
+            "var a=[1,,3];a.length=1000000;",
+            "a.push(42)===1000001 && a[1000000]===42 && !(1 in a) && Object.getOwnPropertyDescriptor(a,'1000000').writable;",
+            Value::Boolean(true),
+        ),
+        (
+            "var seen=0;Object.defineProperty(Array.prototype,'0',{set:function(v){seen=v;}});var a=[];",
+            "a.push(42)===1 && seen===42 && Object.getOwnPropertyDescriptor(a,'0')===undefined;",
+            Value::Boolean(true),
+        ),
+        (
+            "var seen=0;Object.defineProperty(Object.prototype,'0',{set:function(v){seen=v;}});var a=[];",
+            "a.push(42)===1 && seen===42 && Object.getOwnPropertyDescriptor(a,'0')===undefined;",
+            Value::Boolean(true),
+        ),
+        (
+            "var seen=0;Object.defineProperty(Array.prototype,'0',{set:function(v){seen=v;}});var a=[];Object.preventExtensions(a);",
+            "a.push(42)===1 && seen===42 && Object.getOwnPropertyDescriptor(a,'0')===undefined;",
+            Value::Boolean(true),
+        ),
+        (
+            "var a=[];Object.preventExtensions(a);",
+            "a.push()===0;",
+            Value::Boolean(true),
+        ),
+        (
+            "var seen=0;var a=[];Object.setPrototypeOf(a,new Proxy({},{set:function(t,k,v,r){seen=v;return true;}}));",
+            "Array.prototype.push.call(a,42)===1 && seen===42 && Object.getOwnPropertyDescriptor(a,'0')===undefined;",
+            Value::Boolean(true),
+        ),
+        (
+            "var trace='';var a=[];var p=new Proxy(a,{set:function(t,k,v,r){trace+=k+',';t[k]=v;return true;}});",
+            "Array.prototype.push.call(p,42);trace+':'+a.length+':'+a[0];",
+            Value::String("0,length,:1:42".into()),
+        ),
+    ] {
+        for vm in [false, true] {
+            let realm = Realm::ordinary();
+            execute(&realm, setup, false).unwrap();
+            assert!(
+                value(execute(&realm, source, vm)).same_value(&expected),
+                "{setup} {source}"
+            );
+        }
+    }
+    for vm in [false, true] {
+        for source in ["a.push();", "a.push(42);"] {
+            let realm = Realm::ordinary();
+            execute(&realm, "var seen=0;Object.defineProperty(Array.prototype,'0',{set:function(v){seen=v;}});var a=[];Object.defineProperty(a,'length',{writable:false});", false).unwrap();
+            assert_eq!(
+                execute(&realm, source, vm).unwrap_err().kind(),
+                RuntimeErrorKind::TypeError
+            );
+            assert!(value(execute(&realm, "a.length;", vm)).same_value(&Value::Number(0.0)));
+            assert!(
+                value(execute(&realm, "seen;", vm)).same_value(&Value::Number(
+                    if source == "a.push();" { 0.0 } else { 42.0 }
+                ))
+            );
+        }
+        let realm = Realm::ordinary();
+        execute(&realm, "var a=[];a.length=4294967295;", false).unwrap();
+        assert_eq!(
+            execute(&realm, "a.push(42);", vm).unwrap_err().kind(),
+            RuntimeErrorKind::RangeError
+        );
+        assert!(
+            value(execute(
+                &realm,
+                "a['4294967295']===42 && a.length===4294967295;",
+                vm
+            ))
+            .same_value(&Value::Boolean(true))
+        );
+    }
 }

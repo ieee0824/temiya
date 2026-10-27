@@ -67,10 +67,10 @@ guards. Each mode has 66 successful runs and 1056 validated values.
 The frozen measured revision is `1384ea32e05f25709e97e681a59f2f8e168f5ad0`,
 with executable source `a666b920ec2713564ae1044f740fa8c1a377773f`,
 versus baseline `c34c797cbb717b96efb3c952c9655baa38637c41`. The later parent
-integration `62fbb569fac593bd0113325b95e3d29037c48cb0` includes merged VM
-foundations and is **not** executable-equivalent to the measured source. These
+integration `a399ee8743dafc4d2d64548df39fe9d9a952db98` includes merged VM
+foundations and binary operators and is **not** executable-equivalent to the measured source. These
 reports isolate the earlier numeric additions; final combined-main throughput
-requires a separate comparison. Result-only commits after 62fbb change no runtime.
+requires a separate comparison. Report-only changes after a399 change no runtime.
 
 | Workload | Changed / prior Temiya time | Changed Temiya / Boa time |
 | --- | ---: | ---: |
@@ -94,3 +94,16 @@ three pairs do not establish a consistent directional change. No regression-free
 claim is made. The combined-source follow-up must retain and investigate this
 workload. All 33 Boa comparisons find Temiya slower beyond threshold. Both speed
 gates remain false; compatibility completion is separate from the Boa goal.
+
+
+After integration with binary operators, normal stable/MSRV all-target tests each
+pass **429 tests**, with 12 ignored. The unchanged original 16-file/31-variant
+binary selection now has **31 AST pass / 0 fail**, and **21 VM pass / 0 fail /
+10 compile-unsupported** on both toolchains. BigInt wrapper-related executed
+failures are resolved; the VM still rejects the same original prerequisite syntax.
+The unchanged numeric selection remains **40 pass / 22 fail**; its a-z case
+now advances beyond BigInt/Number comparison and reaches the still-missing
+String.fromCharCode call. Its failure remains a failure. All four full opt-in
+runs still exit 101 because unsupported programs/shared prerequisites remain.
+These combined-source outcomes do not revise the older frozen audit or speed
+reports. A final combined-main comparison is tracked in #475.

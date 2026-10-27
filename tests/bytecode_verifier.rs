@@ -343,8 +343,18 @@ fn resolved_binding_reference_rejects_inactive_and_out_of_range_slots() {
 fn fused_binding_update_requires_a_valid_non_global_live_slot() {
     use temiya::bytecode::{BindingKind, ScopeBinding, ScopeDescriptor, ScopeKind};
     for (kind, scope, slot, expected) in [
-        (ScopeKind::Block, 99, 0, VerifyErrorKind::BindingOutOfBounds),
-        (ScopeKind::Block, 0, 1, VerifyErrorKind::BindingOutOfBounds),
+        (
+            ScopeKind::Function,
+            99,
+            0,
+            VerifyErrorKind::BindingOutOfBounds,
+        ),
+        (
+            ScopeKind::Function,
+            0,
+            1,
+            VerifyErrorKind::BindingOutOfBounds,
+        ),
         (ScopeKind::Global, 0, 0, VerifyErrorKind::ScopeMismatch),
     ] {
         let code = Bytecode {

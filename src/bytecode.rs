@@ -240,6 +240,16 @@ pub enum Instruction {
     DefineObjectProperty { prototype_setter: bool },
     /// Consume object/source and retain the object after CopyDataProperties.
     SpreadObject,
+    /// Push a fresh Array and its next initializer index (two operands).
+    CreateArray,
+    /// Append a value to the Array/index pair beneath it, retaining the pair.
+    AppendArray,
+    /// Advance an Array/index pair without creating a property.
+    ElideArray,
+    /// Consume a source through @@iterator and append into an Array/index pair.
+    SpreadArray,
+    /// Set the final Array length and replace the Array/index pair with the Array.
+    FinishArray,
     /// Instantiate metadata entry `index` and identify this scope by its entry PC.
     EnterScope(u32),
     /// Leave the innermost active scope, preserving the operand stack.
@@ -348,6 +358,9 @@ impl Instruction {
             Self::CoercePropertyKey => 1,
             Self::DefineObjectProperty { .. } => 3,
             Self::SpreadObject => 2,
+            Self::CreateArray => 0,
+            Self::AppendArray | Self::SpreadArray => 3,
+            Self::ElideArray | Self::FinishArray => 2,
             Self::LoadReference | Self::DiscardReference | Self::LoadReferenceCallTarget => 0,
             Self::AsCallTarget => 1,
             Self::BeginMethodCall => 2,
@@ -396,6 +409,9 @@ impl Instruction {
             Self::CoercePropertyKey => 0,
             Self::DefineObjectProperty { .. } => -2,
             Self::SpreadObject => -1,
+            Self::CreateArray => 2,
+            Self::AppendArray | Self::SpreadArray | Self::FinishArray => -1,
+            Self::ElideArray => 0,
             Self::LoadReference => 1,
             Self::DiscardReference => 0,
             Self::LoadReferenceCallTarget => 2,
@@ -755,6 +771,11 @@ fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
             | Instruction::CoercePropertyKey
             | Instruction::DefineObjectProperty { .. }
             | Instruction::SpreadObject
+            | Instruction::CreateArray
+            | Instruction::AppendArray
+            | Instruction::ElideArray
+            | Instruction::SpreadArray
+            | Instruction::FinishArray
             | Instruction::ResolveProperty { .. }
             | Instruction::LoadThis
             | Instruction::LoadNewTarget => {

@@ -427,6 +427,27 @@ impl Compiler {
                 }
                 Ok(())
             }
+            ExprKind::Array { elements, .. } => {
+                self.code.push(Instruction::CreateArray);
+                for element in elements {
+                    match element {
+                        Some(Expr {
+                            kind: ExprKind::Spread(value),
+                            ..
+                        }) => {
+                            self.expression(value)?;
+                            self.code.push(Instruction::SpreadArray);
+                        }
+                        Some(value) => {
+                            self.expression(value)?;
+                            self.code.push(Instruction::AppendArray);
+                        }
+                        None => self.code.push(Instruction::ElideArray),
+                    }
+                }
+                self.code.push(Instruction::FinishArray);
+                Ok(())
+            }
             ExprKind::Identifier(name) => {
                 self.load_name(name)?;
                 Ok(())

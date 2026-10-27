@@ -11,8 +11,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     env:
-      MOZCONFIG: ${{ runner.temp }}/spidermonkey.mozconfig
-      MOZBUILD_STATE_PATH: ${{ runner.temp }}/mozbuild
+      MOZCONFIG: ${{ github.workspace }}/spidermonkey.mozconfig
+      MOZBUILD_STATE_PATH: ${{ github.workspace }}/mozbuild-state
       CARGO_BUILD_JOBS: 2
     steps:
       - name: Check out target definition

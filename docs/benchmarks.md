@@ -484,3 +484,60 @@ string-concat improvement on this runner, rather than a general engine speedup.
 All 33 Boa pairs still find Temiya slower beyond the threshold. Both all-eleven
 speed gates remain false. The allocation reduction and successful CI do not
 satisfy the Boa goal or complete #415/#427.
+
+
+## Hosted x86_64 merged-main comparison
+
+[Run 40428633049](https://github.com/ieee0824/temiya/actions/runs/40428633049)
+completed on Ubuntu 24.04, Intel Xeon Platinum 8573C, four logical CPUs. The
+[provenance record](../benchmarks/combined-main-hosted-provenance.json) retains
+build identity and the original artifact reference. Both
+[before/after](../benchmarks/combined-main-hosted-beforeafter.json) and
+[Boa](../benchmarks/combined-main-hosted-boa.json) use the original eleven
+workloads, 15 timed samples, one checked warmup and three alternating pairs.
+Each mode has 66 successful runs and 1056 validated values. They run serially
+after all builds, with the same compiler and existing 512 MiB/180-second guards.
+
+The measured revision is `190b01f5de6ae323e0149ea4c164bdfa5b4f37b6`;
+the baseline is `c34c797cbb717b96efb3c952c9655baa38637c41`. The measured
+runtime is identical to code revision `190b01f5de6ae323e0149ea4c164bdfa5b4f37b6`.
+Later result-only commits do not modify executable source, worker scripts,
+dependencies or the measurement workflow. Architectures are reported separately.
+
+| Workload | Changed / prior Temiya time | Changed Temiya / Boa time |
+| --- | ---: | ---: |
+| arith | 0.98–1.00× | 3.24–4.20× |
+| prop-mono | 1.00–1.02× | 2.63–2.69× |
+| prop-mega | 1.01–1.05× | 2.24–2.61× |
+| call | 0.99–1.02× | 2.76–2.82× |
+| closure-alloc | 1.02–1.03× | 1.80–1.90× |
+| object-alloc | 1.04–1.06× | 1.75–1.90× |
+| string-concat | 0.95–0.96× | 3.82–3.83× |
+| array | 1.02–1.03× | 2.53–2.58× |
+| primitive-string-property | 0.98–1.00× | 3.22–3.31× |
+| primitive-string-method | 1.00–1.01× | 1.79–2.17× |
+| proto-method | 1.00–1.03× | 2.13–2.45× |
+
+All 33 before/after pairs remain within the noise threshold; no throughput
+speedup or regression beyond that threshold is established on this runner.
+All 33 Boa pairs still find Temiya slower beyond the threshold. Both all-eleven
+speed gates remain false. Merged-main integration does not satisfy the Boa goal
+or complete #307/#427.
+
+### Earlier allocation observation (#475)
+
+The frozen numeric-only report observed one object-alloc pair at 1.103591×
+baseline time, while its other pairs were 0.952615× and 0.967431×. That observation
+is retained in the numeric reports. The combined-main report above observes
+1.049294×, 1.036001× and 1.058231× for the same workload; all three remain within
+the unchanged 0.1 threshold. The earlier threshold crossing is not reproduced
+in this combined-source comparison. All three new ratios remain above one, so
+this is not evidence of an allocation speedup.
+
+The numeric report used an AMD EPYC 9V45 and the earlier isolated numeric source;
+this combined report uses an Intel Xeon Platinum 8573C and includes all merged
+#469–#474 changes. The sources and CPUs differ, so these observations do not
+identify the earlier delay's cause or prove that an isolated regression was
+fixed. Both reports, full samples, median/MAD and classifications remain available.
+The full Boa speed objective remains unmet. The subsequent native prototype PR
+#476 has its own source-specific comparison and is not included in revision 190b01f.

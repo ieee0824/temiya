@@ -48,13 +48,32 @@ Each worker constructs 32768 distinct patterns and checks result 30720 on all
 16 passes. Input/source/oracle/compiler/binary/fork provenance is checked by
 scripts/measure-regexp-cold-diagnostic.mjs; missing results never pass a gate.
 
-Run 40597703258 copy 1 (AMD EPYC 9V45, source 786ae28, runtime equal to 7e75280)
-records candidate/actual-Boa ratios 0.873979 / 0.898180 / 0.892383, all faster
-beyond the existing threshold. The identical-executable control is within noise
-in all three cases; its additional actual-Boa comparisons also pass. Copy 2 is
-still running. The final boxing/metadata-guard recording changes require their
-own measurements. Local ARM64 diagnostics have substantial noise and do not yet
-establish all three actual-Boa wins; all such observations are retained.
+Initial runtime 7e75280 (run 40597703258) passed all three actual-Boa
+comparisons on each of two AMD x64 runners, including repeat observations.
+These results do not qualify later runtime revisions.
+
+Runtime a8a824d, recorded by draft PR head 96a2960, has not passed the
+cold-performance gate. Run 40598960611 recorded actual-Boa ratios
+0.946633 / 0.882123 / 0.895645 on Intel 8370C and
+0.908812 / 0.892956 / 0.904733 on AMD 7763. Each cohort contains
+within-noise decisions under the unchanged minimum 10% threshold.
+Dedicated ARM64 run 40599864531 recorded 0.944921 / 0.948538 / 0.944780
+and 0.952971 / 0.954643 / 0.957900: all within noise, despite roughly
+halving elapsed time relative to current main. Identical-executable controls
+are within noise on both ARM64 runners. Raw reports retain checked first
+passes, all 15 samples, independent oracle results and negative decisions.
+
+Local ARM64 original-eleven before/after measurements also include one
+object-alloc slowdown (ratio 1.133801); its cause remains unresolved. The
+actual-Boa comparison has 31 faster and two within-noise decisions. Local
+warm RegExp measurements have four faster and five within-noise decisions.
+The hosted original-eleven regressions and controls are still running.
+
+The subsequent short-ASCII subject experiment (581265a) avoids an intermediate
+UTF-8 allocation for at most 64 ASCII code units, preserving the existing
+scalar conversion for other subjects. Its local cold report is correct but
+has no qualified actual-Boa wins. Boundary/capture ownership tests cover
+63/64/65 code units and non-ASCII UTF-16 indexing. It is not yet adopted.
 
 Before adoption: final-source cold measurements, warm authored RegExp and the
 original eleven on ARM64 and x64, both compiler versions, C ABI, fmt/Clippy and

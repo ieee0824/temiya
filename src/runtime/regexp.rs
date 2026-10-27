@@ -470,7 +470,7 @@ impl RegExp {
         let whole = captures.get_group(0).expect("capture zero");
         let index = byte_to_utf16(text, whole.start);
         if stateful {
-            let mut end = byte_to_utf16(&text, whole.end);
+            let mut end = byte_to_utf16(text, whole.end);
             if whole.start == whole.end {
                 end += if slot.0.flags.unicode {
                     text[whole.end..].chars().next().map_or(1, char::len_utf16)

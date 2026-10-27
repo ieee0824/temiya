@@ -466,7 +466,7 @@ impl VirtualMachine {
                         callee,
                         receiver,
                         construct: false,
-                        arguments: vec![],
+                        arguments: CallArguments::new(),
                     });
                 }
                 Instruction::BeginCall | Instruction::BeginConstruct => {
@@ -474,7 +474,7 @@ impl VirtualMachine {
                         callee: pop(&mut stack)?,
                         receiver: Value::Undefined,
                         construct: matches!(instruction, Instruction::BeginConstruct),
-                        arguments: vec![],
+                        arguments: CallArguments::new(),
                     });
                 }
                 Instruction::BeginReferenceCall => {
@@ -484,20 +484,25 @@ impl VirtualMachine {
                         callee: reference.get_value()?,
                         receiver,
                         construct: false,
-                        arguments: vec![],
+                        arguments: CallArguments::new(),
                     });
                 }
                 Instruction::AppendArgument => {
-                    crate::runtime::iterator::push_argument(
-                        &mut calls.last_mut().expect("verified call frame").arguments,
-                        pop(&mut stack)?,
-                    )?;
+                    calls
+                        .last_mut()
+                        .expect("verified call frame")
+                        .arguments
+                        .push(pop(&mut stack)?)?;
                 }
                 Instruction::SpreadArguments => {
                     crate::runtime::iterator::spread_arguments(
                         realm.expect("verified scoped spread"),
                         pop(&mut stack)?,
-                        &mut calls.last_mut().expect("verified call frame").arguments,
+                        calls
+                            .last_mut()
+                            .expect("verified call frame")
+                            .arguments
+                            .as_vec_mut(),
                     )?;
                 }
                 Instruction::Invoke => {
@@ -698,11 +703,59 @@ fn binary(stack: &mut Vec<Value>, operator: &str, realm: Option<&Realm>) -> Runt
 
 // Each invocation owns its roots independently of operand-stack growth and of
 // nested/reentrant VM runs. All pending roots drop on an abrupt runtime result.
+enum CallArguments {
+    Inline { values: [Value; 2], len: usize },
+    Heap(Vec<Value>),
+}
+
+impl CallArguments {
+    fn new() -> Self {
+        Self::Inline {
+            values: [Value::Undefined, Value::Undefined],
+            len: 0,
+        }
+    }
+
+    fn push(&mut self, value: Value) -> RuntimeResult<()> {
+        if let Self::Inline { values, len } = self {
+            if *len < values.len() {
+                values[*len] = value;
+                *len += 1;
+                return Ok(());
+            }
+        }
+        crate::runtime::iterator::push_argument(self.as_vec_mut(), value)
+    }
+
+    fn as_vec_mut(&mut self) -> &mut Vec<Value> {
+        if matches!(self, Self::Inline { .. }) {
+            let Self::Inline { values, len } = std::mem::replace(self, Self::Heap(Vec::new()))
+            else {
+                unreachable!()
+            };
+            let mut arguments = Vec::with_capacity(4);
+            arguments.extend(values.into_iter().take(len));
+            *self = Self::Heap(arguments);
+        }
+        let Self::Heap(arguments) = self else {
+            unreachable!()
+        };
+        arguments
+    }
+
+    fn as_slice(&self) -> &[Value] {
+        match self {
+            Self::Inline { values, len } => &values[..*len],
+            Self::Heap(arguments) => arguments,
+        }
+    }
+}
+
 struct Invocation {
     callee: Value,
     receiver: Value,
     construct: bool,
-    arguments: Vec<Value>,
+    arguments: CallArguments,
 }
 
 impl Invocation {
@@ -716,10 +769,10 @@ impl Invocation {
         };
         if self.construct {
             Ok(Value::Object(
-                callee.construct(&self.arguments, callee.clone())?,
+                callee.construct(self.arguments.as_slice(), callee.clone())?,
             ))
         } else {
-            callee.call(self.receiver, &self.arguments)
+            callee.call(self.receiver, self.arguments.as_slice())
         }
     }
 }

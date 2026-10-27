@@ -25,6 +25,28 @@ fn value(realm: &Realm, source: &str) -> Value {
 }
 
 #[test]
+fn inline_and_heap_argument_lists_preserve_nested_calls_receivers_and_constructors() {
+    let realm = setup(
+        "function count(){return arguments.length;}function f(a,b,c){return a+b+c;}function C(a,b,c){this.answer=a+b+c;}var o={x:40,m:function(a,b){return this.x+a+b;}};",
+    );
+    for source in [
+        "count()===0 && count(42)===1 && count(20,22)===2 && count(1,2,3)===3 && count(1,2,3,4,5)===5;",
+        "f(20,count(1,2),20)===42;",
+        "f(20,...[2,20])===42 && f(...[20],2,20)===42;",
+        "o.m(1,1)===42 && new C(20,2,20).answer===42;",
+    ] {
+        assert!(
+            value(&realm, source).same_value(&Value::Boolean(true)),
+            "{source}"
+        );
+    }
+    assert!(
+        value(&realm, "function g(a,b,c){return a+b+c;}g(20,2,20);")
+            .same_value(&Value::Number(42.0))
+    );
+}
+
+#[test]
 fn spread_arrays_strings_holes_and_constructor_arguments_use_actual_iterators() {
     let bootstrap = "var values=[20,22]; var holes=[,42]; function sum(a,b){return a+b;} function Ctor(a,b){this.answer=a+b;} function shape(){return arguments.length+':'+arguments[0].length;} function hole(a,b){return a===undefined && b===42;}";
     for (source, expected) in [

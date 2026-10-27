@@ -43,6 +43,7 @@ the compiler log confirms clang 22.1.8 and rustc 1.99.1. The
 [raw checks and provenance](../benchmarks/targets/spidermonkey-evidence/provenance.json)
 retain the source/build/mode identity and artifact reference. These are target-selection smoke checks, not a full
 Test262 result, a Temiya conformance claim or a performance comparison. The
-actual eleven-workload SpiderMonkey adapter, async/RegExp/GC suites and JIT
-execution evidence required by #427 remain separate unfinished work. The
+actual [eleven-workload SpiderMonkey comparison](spidermonkey-workloads.md)
+records both modes separately. Async/RegExp/GC suites and workload JIT execution
+evidence required by #427 remain separate unfinished work. The
 mandatory actual omoikane Boa comparison remains unchanged.

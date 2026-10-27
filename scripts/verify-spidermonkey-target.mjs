@@ -4,6 +4,7 @@ import path from 'node:path';
 import {execFileSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
 import os from 'node:os';
+import {fileURLToPath} from 'node:url';
 const [checkoutArg, binaryArg, outputArg] = process.argv.slice(2);
 if (!checkoutArg || !binaryArg || !outputArg) throw Error('usage: CHECKOUT SHELL OUTPUT.json');
 const checkout = path.resolve(checkoutArg), binary = path.resolve(binaryArg);
@@ -13,7 +14,7 @@ if (git(['rev-parse','HEAD']) !== target.revision || git(['status','--porcelain'
 const smoke = new URL('./spidermonkey-target-smoke.js', import.meta.url);
 const modes = [];
 for (const [name, flags] of Object.entries(target.modes)) {
-  const output = execFileSync(binary, [...flags, '-f', smoke.pathname], {encoding:'utf8', timeout:60000, maxBuffer:1024*1024});
+  const output = execFileSync(binary, [...flags, '-f', fileURLToPath(smoke)], {encoding:'utf8', timeout:60000, maxBuffer:1024*1024});
   const observed = JSON.parse(output.trim());
   if (name === 'interpreter' && ['ion.enable','baseline.enable','blinterp.enable'].some(k => observed.jit_options[k] !== 0)) throw Error('JIT disable flags not effective');
   modes.push({name, flags, observed, workload_jit_execution: name === 'interpreter' ? 'disabled by verified settings' : 'not measured; enabled settings are not execution evidence'});

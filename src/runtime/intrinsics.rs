@@ -224,26 +224,34 @@ impl IntrinsicRegistry {
             } else if id == IntrinsicId::StringPrototype {
                 super::StringObject::new(super::JsString::default()).object()
             } else if id == IntrinsicId::Object {
-                let prototype = objects
-                    .get(&IntrinsicId::ObjectPrototype)
-                    .cloned()
-                    .ok_or_else(|| {
-                        RuntimeError::internal_error("intrinsic prototype was not allocated")
-                    })?;
-                let construct_prototype = prototype.clone();
+                let prototypes = [
+                    IntrinsicId::ObjectPrototype,
+                    IntrinsicId::NumberPrototype,
+                    IntrinsicId::StringPrototype,
+                    IntrinsicId::BooleanPrototype,
+                    IntrinsicId::SymbolPrototype,
+                    IntrinsicId::BigIntPrototype,
+                ]
+                .map(|id| {
+                    objects
+                        .get(&id)
+                        .expect("primitive prototype allocated")
+                        .clone()
+                });
+                let construct_prototypes = prototypes.clone();
                 Object::native_callable_constructor(
-                    move |_, arguments| match arguments.first() {
-                        Some(Value::Object(object)) => Ok(Value::Object(object.clone())),
-                        _ => {
-                            let object = Object::new();
-                            object.set_prototype(Some(prototype.clone()));
-                            Ok(Value::Object(object))
-                        }
+                    move |_, arguments| {
+                        object_from_value(
+                            arguments.first().unwrap_or(&Value::Undefined),
+                            &prototypes,
+                        )
+                        .map(Value::Object)
                     },
-                    move |_, _| {
-                        let object = Object::new();
-                        object.set_prototype(Some(construct_prototype.clone()));
-                        Ok(object)
+                    move |arguments, _| {
+                        object_from_value(
+                            arguments.first().unwrap_or(&Value::Undefined),
+                            &construct_prototypes,
+                        )
                     },
                 )
             } else if let Some((prototype_id, _)) = id.pair() {
@@ -281,7 +289,7 @@ impl IntrinsicRegistry {
                 false,
             )?;
         }
-        super::builtins::initialize(&registry, host_hooks)?;
+        super::builtins::initialize(&registry, host_hooks, symbols)?;
         super::builtins::install_has_instance(&registry, symbols)?;
         super::array_methods::install(&registry, symbols)?;
         super::string_methods::install(&registry, symbols)?;
@@ -432,4 +440,30 @@ fn define(
     accepted.then_some(()).ok_or_else(|| {
         RuntimeError::type_error(format!("cannot install intrinsic property {name}"))
     })
+}
+
+// ToObject for the intrinsic Object function. Captures prototype identities, not
+// an entire Realm/registry or the Object constructor itself.
+fn object_from_value(value: &Value, prototypes: &[Object; 6]) -> RuntimeResult<Object> {
+    let (object, index) = match value {
+        Value::Object(object) => return Ok(object.clone()),
+        Value::Undefined | Value::Null => (Object::new(), 0),
+        Value::Number(value) => (super::NumberObject::new(*value).object(), 1),
+        Value::String(value) => (super::StringObject::new(value.clone()).object(), 2),
+        Value::Boolean(_) | Value::Symbol(_) => {
+            let object = Object::new();
+            object.0.state.borrow_mut().primitive_data = Some(value.clone());
+            (
+                object,
+                if matches!(value, Value::Boolean(_)) {
+                    3
+                } else {
+                    4
+                },
+            )
+        }
+        Value::BigInt(value) => (super::BigIntObject::new(value.clone()).object(), 5),
+    };
+    object.set_prototype(Some(prototypes[index].clone()));
+    Ok(object)
 }

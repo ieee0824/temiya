@@ -8,6 +8,10 @@ Numeric literal evaluation borrows separator-free spelling rather than making
 a normalization buffer; see [numeric literal evaluation](numeric-literal-evaluation.md)
 for the allocation probe and its limits.
 
+Number constants, safe-integer checks and BigInt wrapper methods are documented
+in [numeric builtin boundaries](numeric-builtins.md), including remaining shared
+harness/runtime gaps and the original upstream audit.
+
 `Value` exposes the fundamental abstract operations needed by the interpreter:
 `same_value`, `same_value_zero`, `to_boolean`, `to_primitive`, `to_number`,
 `to_numeric`, `to_js_string`, and `to_bigint`. These low-level conversions use

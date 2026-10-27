@@ -1,0 +1,134 @@
+{
+  "recorded_at": "2026-10-27T04:09:02.300Z",
+  "runtime_revision": "e6f60286b225fa7190a6431e5f50b854875e0af1",
+  "baseline_revision": "d2d12825f349cd37933d65c0dbde96b29971c105",
+  "hosted_run": "https://github.com/ieee0824/temiya/actions/runs/40443816721",
+  "hosted_job": 121990182099,
+  "artifact_id": 12709080468,
+  "artifact_name": "omoikane-comparison-40443816721-1",
+  "hosted_baseline_build": {
+    "name": "Temiya",
+    "engine": "Temiya",
+    "mode": "AST interpreter",
+    "profile": "release",
+    "features": [],
+    "revision": "d2d12825f349cd37933d65c0dbde96b29971c105",
+    "executable": "/home/runner/work/_temp/temiya-baseline-target/release/examples/measure_workload",
+    "executable_sha256": "2b441aac279c873e2a3116b013459461573ef728500b18ece65d10bc894a4c53",
+    "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)\nbinary: rustc\ncommit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67\ncommit-date: 2026-10-13\nhost: x86_64-unknown-linux-gnu\nrelease: 1.99.1\nLLVM version: 23.1.1"
+  },
+  "hosted_boa_build": {
+    "recorded_at": "2026-10-27T03:28:30.015Z",
+    "omoikane_revision": "007556adccb8fb4329236932ca8175f8e8d119d2",
+    "checkout_clean": true,
+    "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)\nbinary: rustc\ncommit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67\ncommit-date: 2026-10-13\nhost: x86_64-unknown-linux-gnu\nrelease: 1.99.1\nLLVM version: 23.1.1",
+    "cargo": "cargo 1.99.1 (5f94df478 2026-08-27)",
+    "profile": "release",
+    "cargo_args": [
+      "build",
+      "--locked",
+      "--release"
+    ],
+    "rustflags": "",
+    "features": {
+      "omoikane": [],
+      "boa_engine": [
+        "annex-b",
+        "default",
+        "experimental",
+        "float16",
+        "intl",
+        "intl_bundled",
+        "temporal",
+        "xsum"
+      ],
+      "regress": [
+        "backend-pikevm",
+        "default",
+        "std",
+        "utf16"
+      ]
+    },
+    "original_lock_sha256": "f3988c4d9b0ecc28560df18df1cae7760c7c55a016318ea3e31f3ebbfcaea211",
+    "adapter_lock_sha256": "6b4debb1e4368b52de4586b7b30c3d4b6b8882a1bd4ee87d78aa488a252517e7",
+    "worker_source_sha256": "efba2d69a8c594a14c508ee3c9bf97a1799de98a438f14d449fe9be07f351a06",
+    "executable": "/home/runner/work/_temp/omoikane-worker-target/release/omoikane-workload-worker",
+    "executable_sha256": "6c88090d88cc5cc6726c43b65c79fe0cbfac3f7f1135c065951f6ad06501db37",
+    "execution_mode": "interpreter; baseline-jit feature absent"
+  },
+  "summary": {
+    "arm64-beforeafter": {
+      "machine": {
+        "platform": "linux",
+        "release": "6.8.0-100-generic",
+        "architecture": "arm64",
+        "cpu_models": [
+          "unknown"
+        ],
+        "logical_cpus": 4
+      },
+      "outcomes": {
+        "within noise threshold": 31,
+        "after slower beyond threshold": 1,
+        "after faster beyond threshold": 1
+      },
+      "all_eleven_gate": false
+    },
+    "arm64-boa": {
+      "machine": {
+        "platform": "linux",
+        "release": "6.8.0-100-generic",
+        "architecture": "arm64",
+        "cpu_models": [
+          "unknown"
+        ],
+        "logical_cpus": 4
+      },
+      "outcomes": {
+        "Temiya slower beyond threshold": 29,
+        "within noise threshold": 4
+      },
+      "all_eleven_gate": false
+    },
+    "hosted-beforeafter": {
+      "machine": {
+        "platform": "linux",
+        "release": "6.17.0-1022-azure",
+        "architecture": "x64",
+        "cpu_models": [
+          "AMD EPYC 9V45 96-Core Processor"
+        ],
+        "logical_cpus": 4
+      },
+      "outcomes": {
+        "within noise threshold": 33
+      },
+      "all_eleven_gate": false
+    },
+    "hosted-boa": {
+      "machine": {
+        "platform": "linux",
+        "release": "6.17.0-1022-azure",
+        "architecture": "x64",
+        "cpu_models": [
+          "AMD EPYC 9V45 96-Core Processor"
+        ],
+        "logical_cpus": 4
+      },
+      "outcomes": {
+        "Temiya slower beyond threshold": 33
+      },
+      "all_eleven_gate": false
+    }
+  },
+  "regression_observation": {
+    "workload": "primitive-string-method",
+    "pair": 1,
+    "after_to_before_ratio": 1.114385956636163,
+    "noise_threshold": 0.1,
+    "classification": "after slower beyond threshold",
+    "qualification": "Retained original ARM64 observation; other pairs0.9077584365 and1.0670397974 are within their thresholds. Hosted same-e6-source33 beforeafter comparisons allwithinnoise on another CPU, not an isolated fix or proof of nonexistence."
+  },
+  "verification": "Original11oracles/complete66runs1056values per report; allmedians/MAD/ratios/thresholds/outcomes/resources independentlyrecomputed; localbinaryhasheschecked; hostedbuild/sourcehashescrosschecked.",
+  "scope": "Historical e6 AST-equality implementation only. NOT source-equivalent to anchored10bf1e1 or integratedda4dd1b; no latest-runtime speed claim."
+}

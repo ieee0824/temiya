@@ -194,7 +194,6 @@ pub struct ScriptRecord(Rc<ScriptData>);
 struct ScriptData {
     id: u64,
     realm: Realm,
-    program: Program,
     code_cache: super::function_code::FunctionCodeCache,
 }
 
@@ -206,8 +205,7 @@ impl ScriptRecord {
         Self(Rc::new(ScriptData {
             id: next_id(&NEXT_ID, "Script Record"),
             realm,
-            program,
-            code_cache: super::function_code::FunctionCodeCache::default(),
+            code_cache: super::function_code::FunctionCodeCache::new(program),
         }))
     }
 
@@ -230,7 +228,7 @@ impl ScriptRecord {
     /// Returns the parsed ECMAScript code.
     #[must_use]
     pub fn program(&self) -> &Program {
-        &self.0.program
+        self.0.code_cache.program()
     }
 }
 

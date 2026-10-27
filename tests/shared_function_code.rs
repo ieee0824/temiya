@@ -73,3 +73,34 @@ fn public_owned_ast_span_collisions_do_not_reuse_different_code() {
     };
     assert!(value.same_value(&Value::Number(42.0)));
 }
+
+#[test]
+fn discarded_generator_bodies_do_not_leave_reusable_definition_addresses() {
+    assert!(run("function* first(x){yield function(){return x+1;};} function* second(x){yield function(){return x+2;};} var ok=true; for(var i=0;i<100;i++){var a=first(40).next().value; var b=second(40).next().value; if(a()!==41 || b()!==42)ok=false;} ok;").same_value(&Value::Boolean(true)));
+}
+
+#[test]
+fn reevaluating_one_script_keeps_each_returned_closure_independent() {
+    let engine = Engine::default();
+    let realm = engine.create_realm();
+    engine
+        .evaluate(&engine.compile(&realm, "var next=40;").unwrap())
+        .unwrap();
+    let script = engine
+        .compile(&realm, "(function(x){return ()=>x;})(next++);")
+        .unwrap();
+    let first = engine.evaluate(&script).unwrap();
+    let second = engine.evaluate(&script).unwrap();
+    drop(script);
+    for (handle, expected) in [(first, 40.0), (second, 41.0)] {
+        let Value::Object(function) = handle.value() else {
+            panic!()
+        };
+        assert!(
+            function
+                .call(Value::Undefined, &[])
+                .unwrap()
+                .same_value(&Value::Number(expected))
+        );
+    }
+}

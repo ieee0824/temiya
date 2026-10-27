@@ -8,8 +8,8 @@ use crate::{
 };
 
 use super::{
-    BindingKind, Bytecode, Constant, Instruction, ScopeBinding, ScopeDescriptor, ScopeKind,
-    VerifiedBytecode, VerifyError,
+    BindingKind, Bytecode, Constant, FunctionTemplate, Instruction, ScopeBinding, ScopeDescriptor,
+    ScopeFunction, ScopeKind, VerifiedBytecode, VerifyError,
 };
 
 /// AST-to-bytecode compiler for the portable baseline instruction set.
@@ -25,7 +25,7 @@ impl BytecodeCompiler {
     }
 
     /// Compiles a function body for a caller-prepared function Environment.
-    /// Parameter instantiation, calls, async and generators are not lowered here.
+    /// Parameter instantiation, async and generators are not lowered here.
     pub fn compile_function_body(function: &Function) -> Result<VerifiedBytecode, CompileError> {
         if !function.parameters.is_empty() || function.asynchronous || function.generator {
             return Err(CompileError::new(
@@ -42,9 +42,10 @@ impl BytecodeCompiler {
                         Some(body.span),
                     ));
                 };
-                let vars = scope_bindings(statements, true, false)?;
+                let vars = scope_bindings(statements, true, false, true)?;
                 compiler.enter_scope(ScopeKind::Function, vars)?;
-                let terminal = compiler.block(statements)?;
+                let target = compiler.scopes.last().expect("function scope").entry;
+                let terminal = compiler.block_with_functions(statements, Some(target))?;
                 if !terminal {
                     compiler.constant(Constant::Undefined)?;
                     compiler.code.push(Instruction::Return);
@@ -136,8 +137,9 @@ impl Compiler {
         let mut compiler = Self::empty(program.strict);
         compiler.enter_scope(
             ScopeKind::Global,
-            scope_bindings(&program.body, true, true)?,
+            scope_bindings(&program.body, true, true, true)?,
         )?;
+        compiler.attach_functions(&program.body, 0)?;
         Ok(compiler)
     }
 
@@ -177,6 +179,7 @@ impl Compiler {
             kind,
             strict: self.strict,
             bindings,
+            functions: vec![],
         }))?;
         self.code.push(Instruction::EnterScope(index));
         self.scopes.push(CompileScope {
@@ -186,12 +189,66 @@ impl Compiler {
         Ok(())
     }
 
+    fn attach_functions(&mut self, statements: &[Stmt], target: u32) -> Result<(), CompileError> {
+        let mut selected = vec![];
+        let mut names = vec![];
+        for statement in statements.iter().rev() {
+            if let StmtKind::FunctionDeclaration(function) = &statement.kind {
+                let Some(ExprKind::Identifier(name)) =
+                    function.name.as_ref().map(|name| &name.kind)
+                else {
+                    return Err(self.unsupported("anonymous function declaration", function.span));
+                };
+                if !names.contains(name) {
+                    names.push(name.clone());
+                    let mut template = self.function_template(function, false)?;
+                    template.self_binding = false;
+                    selected.push(ScopeFunction {
+                        name: JsString::from(name.as_str()),
+                        target,
+                        template: std::rc::Rc::new(template),
+                    });
+                }
+            }
+        }
+        selected.reverse();
+        let scope = self.scopes.last().expect("declaration scope").entry;
+        let Instruction::EnterScope(index) = self.code[scope as usize] else {
+            unreachable!()
+        };
+        let Constant::Scope(plan) = &mut self.constants[index as usize] else {
+            unreachable!()
+        };
+        plan.functions = selected;
+        Ok(())
+    }
+
     fn block(&mut self, statements: &[Stmt]) -> Result<bool, CompileError> {
-        let bindings = scope_bindings(statements, false, true)?;
-        if bindings.is_empty() {
+        self.block_with_functions(statements, None)
+    }
+
+    fn block_with_functions(
+        &mut self,
+        statements: &[Stmt],
+        var_target: Option<u32>,
+    ) -> Result<bool, CompileError> {
+        let block_functions = var_target.is_none();
+        let has_functions = statements
+            .iter()
+            .any(|statement| matches!(statement.kind, StmtKind::FunctionDeclaration(_)));
+        if block_functions && has_functions && !self.strict {
+            return Err(CompileError::new(
+                "unsupported sloppy block function Annex B semantics",
+                None,
+            ));
+        }
+        let bindings = scope_bindings(statements, false, true, block_functions)?;
+        if bindings.is_empty() && !has_functions {
             return self.statements(statements);
         }
         self.enter_scope(ScopeKind::Block, bindings)?;
+        let target = var_target.unwrap_or_else(|| self.scopes.last().expect("block scope").entry);
+        self.attach_functions(statements, target)?;
         let result = self.statements(statements);
         self.scopes.pop();
         if matches!(result, Ok(false)) {
@@ -202,6 +259,9 @@ impl Compiler {
 
     fn statements(&mut self, statements: &[Stmt]) -> Result<bool, CompileError> {
         for statement in statements {
+            if matches!(statement.kind, StmtKind::FunctionDeclaration(_)) {
+                continue;
+            }
             if self.statement(statement)? {
                 return Ok(true);
             }
@@ -212,6 +272,10 @@ impl Compiler {
     fn statement(&mut self, statement: &Stmt) -> Result<bool, CompileError> {
         match &statement.kind {
             StmtKind::Empty | StmtKind::Debugger => Ok(false),
+            StmtKind::FunctionDeclaration(_) => Err(self.unsupported(
+                "function declaration outside declaration list",
+                statement.span,
+            )),
             StmtKind::Expression(expression) => {
                 self.expression(expression)?;
                 self.code
@@ -301,6 +365,20 @@ impl Compiler {
             ExprKind::Literal(literal) => self.literal(literal, expression.span),
             ExprKind::Identifier(name) => {
                 self.load_name(name)?;
+                Ok(())
+            }
+            ExprKind::Function(function) | ExprKind::Arrow(function) => {
+                let arrow = matches!(expression.kind, ExprKind::Arrow(_));
+                let template = self.function_template(function, arrow)?;
+                let index = self.pool(Constant::Function(std::rc::Rc::new(template)))?;
+                self.code.push(Instruction::CreateFunction(index));
+                Ok(())
+            }
+            ExprKind::MetaProperty { meta, property } if meta == "new" && property == "target" => {
+                if !self.constants.iter().any(|constant| matches!(constant, Constant::Scope(plan) if plan.kind == ScopeKind::Function)) {
+                    return Err(self.unsupported("new.target outside function", expression.span));
+                }
+                self.code.push(Instruction::LoadNewTarget);
                 Ok(())
             }
             ExprKind::Call { .. } => self.chain_value(expression, ChainUse::Value),
@@ -421,6 +499,122 @@ impl Compiler {
             }
             _ => Err(self.unsupported("expression", expression.span)),
         }
+    }
+
+    fn function_template(
+        &self,
+        function: &Function,
+        arrow: bool,
+    ) -> Result<FunctionTemplate, CompileError> {
+        if function.asynchronous || function.generator {
+            return Err(self.unsupported("async/generator function", function.span));
+        }
+        let parameters = function
+            .parameters
+            .iter()
+            .map(|parameter| {
+                if let ExprKind::Identifier(name) = &parameter.kind {
+                    Ok(JsString::from(name.as_str()))
+                } else {
+                    Err(self.unsupported("non-simple function parameter", parameter.span))
+                }
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let strict = self.strict || function.strict;
+        let mut compiler = Compiler::empty(strict);
+        match &function.body {
+            FunctionBody::Block(body) => {
+                let StmtKind::Block(statements) = &body.kind else {
+                    return Err(self.unsupported("function block", body.span));
+                };
+                let lexical = scope_bindings(statements, false, true, false)?;
+                if lexical
+                    .iter()
+                    .any(|binding| parameters.contains(&binding.name))
+                {
+                    return Err(
+                        self.unsupported("parameter/lexical binding conflict", function.span)
+                    );
+                }
+                let mut bindings = scope_bindings(statements, true, false, true)?;
+                for name in &parameters {
+                    if !bindings.iter().any(|binding| &binding.name == name) {
+                        bindings.push(ScopeBinding {
+                            name: name.clone(),
+                            kind: BindingKind::Var,
+                        });
+                    }
+                }
+                compiler.enter_scope(ScopeKind::Function, bindings)?;
+                let terminal = if strict {
+                    // Simple parameters permit the strict body lexical bindings
+                    // in the Function record itself (FDI step 31).
+                    let lexical = scope_bindings(statements, false, true, false)?;
+                    let scope = compiler.scopes.last().expect("function scope").entry;
+                    let Instruction::EnterScope(index) = compiler.code[scope as usize] else {
+                        unreachable!()
+                    };
+                    let Constant::Scope(plan) = &mut compiler.constants[index as usize] else {
+                        unreachable!()
+                    };
+                    for binding in lexical {
+                        let slot = u32::try_from(plan.bindings.len())
+                            .map_err(|_| CompileError::new("binding slot overflow", None))?;
+                        compiler
+                            .scopes
+                            .last_mut()
+                            .expect("function scope")
+                            .bindings
+                            .insert(binding.name.to_string_lossy(), (slot, binding.kind));
+                        plan.bindings.push(binding);
+                    }
+                    compiler.attach_functions(statements, scope)?;
+                    compiler.statements(statements)?
+                } else {
+                    let target = compiler.scopes.last().expect("function scope").entry;
+                    compiler.block_with_functions(statements, Some(target))?
+                };
+                if !terminal {
+                    compiler.constant(Constant::Undefined)?;
+                    compiler.code.push(Instruction::Return);
+                }
+            }
+            FunctionBody::Expression(expression) => {
+                let mut bindings = vec![];
+                for name in &parameters {
+                    if !bindings
+                        .iter()
+                        .any(|binding: &ScopeBinding| &binding.name == name)
+                    {
+                        bindings.push(ScopeBinding {
+                            name: name.clone(),
+                            kind: BindingKind::Var,
+                        });
+                    }
+                }
+                compiler.enter_scope(ScopeKind::Function, bindings)?;
+                compiler.expression(expression)?;
+                compiler.code.push(Instruction::Return);
+            }
+        }
+        let name = match function.name.as_ref().map(|name| &name.kind) {
+            Some(ExprKind::Identifier(name)) => Some(JsString::from(name.as_str())),
+            None => None,
+            _ => return Err(self.unsupported("function name", function.span)),
+        };
+        Ok(FunctionTemplate {
+            self_binding: name.is_some() && !arrow,
+            arguments_object: !arrow
+                && !parameters
+                    .iter()
+                    .any(|name| name.code_units() == JsString::from("arguments").code_units())
+                && !body_shadows_arguments(function),
+            name,
+            parameters,
+            arrow,
+            strict,
+            body: compiler.finish()?,
+        })
     }
 
     fn construct(&mut self, callee: &Expr, arguments: &[Expr]) -> Result<(), CompileError> {
@@ -689,6 +883,7 @@ fn collect_vars(statements: &[Stmt], vars: &mut Vec<String>) -> Result<(), Compi
                 }
             }
             StmtKind::While { body, .. } => collect_vars(std::slice::from_ref(body), vars)?,
+            StmtKind::FunctionDeclaration(_) => {}
             StmtKind::Empty
             | StmtKind::Debugger
             | StmtKind::Expression(_)
@@ -709,10 +904,37 @@ fn scope_bindings(
     statements: &[Stmt],
     include_vars: bool,
     include_lexical: bool,
+    include_functions: bool,
 ) -> Result<Vec<ScopeBinding>, CompileError> {
     let mut vars = vec![];
     collect_vars(statements, &mut vars)?;
     let mut lexical = vec![];
+    let mut function_names = vec![];
+    for statement in statements {
+        if let StmtKind::FunctionDeclaration(function) = &statement.kind {
+            let Some(ExprKind::Identifier(name)) = function.name.as_ref().map(|name| &name.kind)
+            else {
+                return Err(CompileError::new(
+                    "anonymous function declaration",
+                    Some(function.span),
+                ));
+            };
+            if include_vars {
+                if !vars.contains(name) {
+                    vars.push(name.clone());
+                }
+            } else if include_functions && include_lexical {
+                if vars.contains(name) || function_names.contains(name) {
+                    return Err(CompileError::new(
+                        "duplicate lexical function binding",
+                        Some(function.span),
+                    ));
+                }
+                function_names.push(name.clone());
+                lexical.push((name.clone(), BindingKind::Let));
+            }
+        }
+    }
     for statement in statements {
         if let StmtKind::Variable { kind, declarations } = &statement.kind {
             if *kind == VariableKind::Var {
@@ -767,4 +989,18 @@ enum ChainUse {
     Value,
     Callee,
     Delete,
+}
+
+fn body_shadows_arguments(function: &Function) -> bool {
+    let FunctionBody::Block(body) = &function.body else {
+        return false;
+    };
+    let StmtKind::Block(statements) = &body.kind else {
+        return false;
+    };
+    statements.iter().any(|statement| match &statement.kind {
+        StmtKind::FunctionDeclaration(function) => matches!(function.name.as_ref().map(|name| &name.kind), Some(ExprKind::Identifier(name)) if name == "arguments"),
+        StmtKind::Variable { kind, declarations } if *kind != VariableKind::Var => declarations.iter().any(|declaration| matches!(&declaration.binding.kind, ExprKind::Identifier(name) if name == "arguments")),
+        _ => false,
+    })
 }

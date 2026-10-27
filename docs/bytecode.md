@@ -1,7 +1,7 @@
 # Portable bytecode
 
 `temiya::bytecode::Bytecode` is a pointer-free stack IR. Constants contain only
-portable ECMAScript primitives and immutable scope descriptors; instruction operands are fixed-width `u32`
+portable ECMAScript primitives and immutable scope/function descriptors; instruction operands are fixed-width `u32`
 indices, and branch operands are absolute instruction indices. Runtime objects,
 native addresses, and platform-sized operands are intentionally excluded.
 
@@ -21,6 +21,8 @@ native addresses, and platform-sized operands are intentionally excluded.
 | `BeginMethodCall` | `-2` | capture receiver/callee pair |
 | `AppendArgument`, `SpreadArguments` | `-1` | exactly one value above invocation baseline; spread also needs Realm scope |
 | `Invoke` | `+1` | balanced invocation at baseline |
+| `CreateFunction(i)` | `+1` | active scope and verified function template |
+| `LoadNewTarget` | `+1` | active lexical context |
 | `LoadThis` | `+1` | active lexical this context |
 | `JumpIfNullish(target)` | `-1` | one input and valid target |
 | `LoadLocal(i)` | `+1` | `i < local_count` |
@@ -94,8 +96,8 @@ legacy unscoped manually constructed IR keeps its original raw-local execution.
 Function Environment. The caller owns the real function object, outer chain,
 `this`, parameters and arguments. Existing var bindings in that frame are
 preserved; body lexical bindings occupy a separate block. Fallthrough returns
-undefined. The in-progress call lowering described below does not create
-bytecode-backed function objects. Parameters, async/generators, closure capture
+undefined. Function expressions/arrows now use the separate template-backed
+creation path described in bytecode-closures.md. Parameters, async/generators, closure capture
 lowering and Engine backend selection remain work in #291/#292/#307. Supplying
 a global or declarative record as a function frame fails explicitly.
 
@@ -185,8 +187,8 @@ before evaluating arguments, appends each argument in order, then dispatches the
 existing Object call/construct API. Construction uses the captured constructor
 as newTarget. Callability is checked after argument evaluation in both AST and
 VM paths. Native callbacks and existing AST-backed JavaScript function objects
-are callable; function declarations/expressions are still not lowered by this
-compiler. Engine continues to use the AST backend.
+are callable; function expressions/arrows additionally create actual VM-backed
+objects. Ordinary function declarations additionally use scope-instantiation metadata. Engine continues to use the AST backend.
 
 Pending frames own their argument and receiver roots separately from operand
 storage. Verification tracks frame entry identity and operand baseline across
@@ -225,7 +227,7 @@ and spread combined). Overflow returns RangeError, closes a still-active iterato
 and drops pending invocation roots; the original overflow takes precedence over
 return getter/call failures. Iterator-step/done/value failures propagate without
 an extra return call, as required by ArgumentListEvaluation. These guards and
-added intrinsic objects require new performance measurements before merge.
+added intrinsic objects are included in the hosted comparison recorded below.
 
 This implements argument spread and Array values/String iterator prerequisites,
 not full iterator/builtin conformance: Array keys/entries, TypedArray-specific
@@ -234,9 +236,10 @@ Iterator constructor/helpers, cross-Realm symbol identity, and the older AST
 array-literal spread algorithm remain separate unfinished areas. The required original Test262 call/construct suite has
 not yet been run for this work; local integration tests do not satisfy that gate.
 Issue #291 remains incomplete. The added shared Object-call guard changes the AST
-hot path and requires fresh comparative performance evidence before merge; #469's
-measurement does not include this work. No speed improvement is claimed.
+hot path; the hosted call-frame comparison below records the required fresh
+comparative evidence. #469's measurement does not include this work. No speed improvement is claimed.
 
+Function expression/arrow lowering is in progress in #292; see [bytecode closures](bytecode-closures.md) for actual execution, ownership, tests and unfinished gates. The full parameter/arguments contract and sloppy block declarations remain incomplete.
 
 ## Hosted x86_64 call-frame and iterator comparison
 

@@ -39,9 +39,11 @@ jobs:
         run: |
           [[ "$SHELL_RUN" =~ ^[0-9]+$ ]]
           mkdir "$RUNNER_TEMP/shell-evidence" "$RUNNER_TEMP/shell" "$RUNNER_TEMP/results"
-          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SHELL_RUN" --jq '{conclusion,path,head_sha,html_url}' > "$RUNNER_TEMP/results/shell-run.json"
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SHELL_RUN" --jq '{conclusion,path,head_sha,html_url,run_attempt}' > "$RUNNER_TEMP/results/shell-run.json"
           node -e 'const r=JSON.parse(require("fs").readFileSync(process.env.RUNNER_TEMP+"/results/shell-run.json")); if(r.conclusion!=="success" || r.path!==".github/workflows/spidermonkey-target.yml") throw Error("successful target build required")'
-          gh run download "$SHELL_RUN" --pattern 'spidermonkey-target-*' --dir "$RUNNER_TEMP/shell-evidence"
+          shell_attempt="$(node -p 'JSON.parse(require("fs").readFileSync(process.env.RUNNER_TEMP+"/results/shell-run.json")).run_attempt')"
+          [[ "$shell_attempt" =~ ^[0-9]+$ ]]
+          gh run download "$SHELL_RUN" --name "spidermonkey-target-$SHELL_RUN-$shell_attempt" --dir "$RUNNER_TEMP/shell-evidence"
           cd "$RUNNER_TEMP/shell-evidence"
           sha256sum --check shell.tar.gz.sha256
           tar -xzf shell.tar.gz -C "$RUNNER_TEMP/shell"

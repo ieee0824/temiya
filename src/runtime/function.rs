@@ -411,6 +411,7 @@ mod auto_loop_tests {
     use crate::{Engine, embedding::ScriptBackend, runtime::Value};
 
     #[test]
+    #[cfg_attr(miri, ignore = "Realm intrinsic reference cycles are tracked in #313")]
     fn auto_executes_supported_loop_body_and_falls_back_before_effects() {
         LOOP_VM_ENTRIES.with(|count| count.set(0));
         let engine = Engine::builder()

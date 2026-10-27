@@ -245,6 +245,8 @@ pub enum Instruction {
     InitializeBinding { scope: u32, slot: u32 },
     /// Assign an active binding from the stack, checking TDZ and mutability.
     StoreBinding { scope: u32, slot: u32 },
+    /// Capture a statically resolved active binding as a Reference.
+    ResolveBinding { scope: u32, slot: u32, strict: bool },
     /// Resolve a string constant in the current environment chain and push its value.
     LoadName(u32),
     /// Resolve a name before its assignment RHS and retain its Reference.
@@ -353,6 +355,7 @@ impl Instruction {
             Self::EnterScope(_)
             | Self::ExitScope
             | Self::CloneLoopBindings
+            | Self::ResolveBinding { .. }
             | Self::ResolveName { .. }
             | Self::LoadBinding { .. }
             | Self::LoadName(_) => 0,
@@ -399,6 +402,7 @@ impl Instruction {
             Self::EnterScope(_)
             | Self::ExitScope
             | Self::CloneLoopBindings
+            | Self::ResolveBinding { .. }
             | Self::ResolveName { .. } => 0,
             Self::LoadBinding { .. } | Self::LoadName(_) => 1,
             Self::InitializeBinding { .. } | Self::StoreBinding { .. } | Self::StoreReference => -1,
@@ -678,7 +682,8 @@ fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
             }
             Instruction::LoadBinding { scope, slot }
             | Instruction::InitializeBinding { scope, slot }
-            | Instruction::StoreBinding { scope, slot } => {
+            | Instruction::StoreBinding { scope, slot }
+            | Instruction::ResolveBinding { scope, slot, .. } => {
                 let (_, index) = state
                     .scopes
                     .iter()
@@ -695,6 +700,11 @@ fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
                     && binding.kind == BindingKind::Var
                 {
                     return Err(error(VerifyErrorKind::BindingOutOfBounds));
+                }
+                if matches!(instruction, Instruction::ResolveBinding { .. }) {
+                    state.references.push(
+                        u32::try_from(offset).map_err(|_| error(VerifyErrorKind::ScopeMismatch))?,
+                    );
                 }
             }
             Instruction::LoadName(index) | Instruction::ResolveName { name: index, .. } => {

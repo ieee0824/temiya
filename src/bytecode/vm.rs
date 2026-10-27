@@ -95,6 +95,18 @@ impl VirtualMachine {
                         frame.plan.strict,
                     )?);
                 }
+                Instruction::ResolveBinding {
+                    scope,
+                    slot,
+                    strict,
+                } => {
+                    let frame = binding_frame(&scopes, scope);
+                    references.push(Reference::environment(
+                        frame.environment.clone(),
+                        frame.plan.bindings[slot as usize].name.clone(),
+                        strict,
+                    ));
+                }
                 Instruction::InitializeBinding { scope, slot } => {
                     let frame = binding_frame(&scopes, scope);
                     frame.environment.initialize_binding(

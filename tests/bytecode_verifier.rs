@@ -278,6 +278,39 @@ fn retained_name_references_are_checked() {
 }
 
 #[test]
+fn resolved_binding_reference_rejects_inactive_and_out_of_range_slots() {
+    use temiya::bytecode::{ScopeDescriptor, ScopeKind};
+    let scope = Constant::Scope(ScopeDescriptor {
+        kind: ScopeKind::Global,
+        strict: false,
+        functions: vec![],
+        bindings: vec![],
+    });
+    for (scope_pc, slot) in [(0, 0), (99, 0)] {
+        let code = Bytecode {
+            constants: vec![scope.clone(), Constant::Number(1.0)],
+            instructions: vec![
+                Instruction::EnterScope(0),
+                Instruction::ResolveBinding {
+                    scope: scope_pc,
+                    slot,
+                    strict: false,
+                },
+                Instruction::LoadConstant(1),
+                Instruction::StoreReference,
+                Instruction::LoadConstant(1),
+                Instruction::Return,
+            ],
+            local_count: 0,
+        };
+        assert_eq!(
+            code.verify().unwrap_err().kind(),
+            VerifyErrorKind::BindingOutOfBounds
+        );
+    }
+}
+
+#[test]
 fn property_instructions_validate_operands_scopes_and_references() {
     use temiya::bytecode::{ScopeDescriptor, ScopeKind};
     let check = |code| {

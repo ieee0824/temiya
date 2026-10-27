@@ -679,11 +679,19 @@ impl Compiler {
         let target = unparenthesized(target);
         match &target.kind {
             ExprKind::Identifier(name) => {
-                let name = self.pool(Constant::String(name.as_str().into()))?;
-                self.code.push(Instruction::ResolveName {
-                    name,
-                    strict: self.strict,
-                });
+                if let Some((scope, slot, _)) = self.binding(name) {
+                    self.code.push(Instruction::ResolveBinding {
+                        scope,
+                        slot,
+                        strict: self.strict,
+                    });
+                } else {
+                    let name = self.pool(Constant::String(name.as_str().into()))?;
+                    self.code.push(Instruction::ResolveName {
+                        name,
+                        strict: self.strict,
+                    });
+                }
             }
             ExprKind::Member {
                 object,

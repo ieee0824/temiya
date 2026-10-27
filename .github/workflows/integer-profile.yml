@@ -1,4 +1,4 @@
-name: Arithmetic dispatch diagnostic
+name: Original arithmetic instruction profile
 on:
   push:
     branches: [bench/integer-dispatch-profile]
@@ -40,7 +40,7 @@ jobs:
           lscpu > "$RUNNER_TEMP/profile/machine.txt"
       - name: Build optimized diagnostic worker with line tables
         run: CARGO_TARGET_DIR="$RUNNER_TEMP/target" cargo build --locked --release --example measure_workload
-      - name: Prepare separately labelled reduced diagnostic input
+      - name: Prepare original two-million-iteration diagnostic input
         run: |
           node scripts/extract-omoikane-workloads.mjs "$GITHUB_WORKSPACE/omoikane" "$RUNNER_TEMP/original"
           node <<'JS'
@@ -51,11 +51,11 @@ jobs:
           const input=JSON.parse(original);
           const oracle=n=>{let s=1n;for(let i=0n;i<BigInt(n);i++)s=(s+i*3n)%1000003n;return Number(s);};
           if(input.iterations!==2000000||input.expected!==64||oracle(input.iterations)!==input.expected||input.invocation!=='__temiyaBenchmarkBody(2000000);\n')throw Error('original arithmetic fixture changed');
-          const n=20000;
+          const n=2000000;
           input.iterations=n;input.expected=oracle(n);input.invocation=`__temiyaBenchmarkBody(${n});\n`;
           input.original_invocation_sha256=input.invocation_sha256;
           input.invocation_sha256=hash(input.invocation);
-          input.qualification='DIAGNOSTIC ONLY: reduced iterations and instrumented execution, never a performance acceptance result';
+          input.qualification='DIAGNOSTIC ONLY: original iterations under instrumentation, never a performance acceptance result';
           fs.writeFileSync(path.join(root,'profile/diagnostic-input.json'),JSON.stringify(input,null,2)+'\n');
           const executable=path.join(root,'target/release/examples/measure_workload');
           fs.writeFileSync(path.join(root,'profile/provenance.json'),JSON.stringify({

@@ -9,7 +9,7 @@ use crate::{
 
 use super::{
     BindingKind, Bytecode, Constant, FunctionTemplate, Instruction, ScopeBinding, ScopeDescriptor,
-    ScopeFunction, ScopeKind, VerifiedBytecode, VerifyError,
+    ScopeFunction, ScopeKind, UnaryNumericOperator, VerifiedBytecode, VerifyError,
 };
 
 /// AST-to-bytecode compiler for the portable baseline instruction set.
@@ -447,6 +447,52 @@ impl Compiler {
                 });
                 Ok(())
             }
+            ExprKind::Update {
+                operator,
+                argument,
+                prefix,
+            } => {
+                if !matches!(operator.as_str(), "++" | "--") {
+                    return Err(self.unsupported("update operator", expression.span));
+                }
+                self.resolve_update_reference(argument)?;
+                self.code.push(Instruction::UpdateReference {
+                    increment: operator == "++",
+                    prefix: *prefix,
+                });
+                Ok(())
+            }
+            ExprKind::Unary { operator, argument }
+                if matches!(operator.as_str(), "+" | "-" | "~") =>
+            {
+                self.expression(argument)?;
+                self.code
+                    .push(Instruction::UnaryNumeric(match operator.as_str() {
+                        "+" => UnaryNumericOperator::Plus,
+                        "-" => UnaryNumericOperator::Minus,
+                        _ => UnaryNumericOperator::BitNot,
+                    }));
+                Ok(())
+            }
+            ExprKind::Unary { operator, argument } if operator == "void" => {
+                self.expression(argument)?;
+                self.code.push(Instruction::Pop);
+                self.constant(Constant::Undefined)
+            }
+            ExprKind::Unary { operator, argument } if operator == "typeof" => {
+                if let ExprKind::Identifier(name) = &unparenthesized(argument).kind {
+                    let name = self.pool(Constant::String(name.as_str().into()))?;
+                    self.code.push(Instruction::ResolveName {
+                        name,
+                        strict: self.strict,
+                    });
+                    self.code.push(Instruction::TypeOfReference);
+                } else {
+                    self.expression(argument)?;
+                    self.code.push(Instruction::TypeOf);
+                }
+                Ok(())
+            }
             ExprKind::Unary { operator, argument } if operator == "delete" => {
                 let argument = unparenthesized(argument);
                 match &argument.kind {
@@ -499,6 +545,33 @@ impl Compiler {
             }
             _ => Err(self.unsupported("expression", expression.span)),
         }
+    }
+
+    fn resolve_update_reference(&mut self, target: &Expr) -> Result<(), CompileError> {
+        let target = unparenthesized(target);
+        match &target.kind {
+            ExprKind::Identifier(name) => {
+                let name = self.pool(Constant::String(name.as_str().into()))?;
+                self.code.push(Instruction::ResolveName {
+                    name,
+                    strict: self.strict,
+                });
+            }
+            ExprKind::Member {
+                object,
+                property,
+                computed,
+                optional: false,
+            } => {
+                self.expression(object)?;
+                self.property_key(property, *computed)?;
+                self.code.push(Instruction::ResolveProperty {
+                    strict: self.strict,
+                });
+            }
+            _ => return Err(self.unsupported("update target", target.span)),
+        }
+        Ok(())
     }
 
     fn function_template(

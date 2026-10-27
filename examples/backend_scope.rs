@@ -75,6 +75,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "Math.abs(0 - 42);",
         "Math.abs?.(...'7') * 6;",
         "((a,b)=>a+b)(20,22);",
+        "let numeric=41;++numeric;",
+        "-(~41);",
     ] {
         let calls = BytecodeCompiler::compile(source)?;
         assert!(matches!(

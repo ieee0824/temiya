@@ -1,7 +1,7 @@
 //! Match the public omoikane worker's parse-plus-invocation timing boundary.
 use std::{env, fs, time::Instant};
 
-use temiya::{Engine, runtime::Value};
+use temiya::{Engine, embedding::ScriptBackend, runtime::Value};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     if cfg!(debug_assertions) {
@@ -25,7 +25,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .filter(|n| n.is_finite())
         .ok_or("invalid expected result")?;
     let start = Instant::now();
-    let engine = Engine::default();
+    let engine = Engine::builder()
+        .script_backend(ScriptBackend::Auto)
+        .build();
     let realm = engine.create_realm();
     let startup_ns = start.elapsed().as_nanos();
     let start = Instant::now();
@@ -47,7 +49,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!(
         "{}",
         serde_json::json!({
-            "engine": "Temiya", "mode": "AST interpreter",
+            "engine": "Temiya", "mode": "Auto Script+loop",
             "scope": "parse+evaluate invocation; function setup excluded",
             "profile": "release", "architecture": env::consts::ARCH,
             "expected": expected, "validated_passes": samples + 1,

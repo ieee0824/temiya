@@ -313,6 +313,23 @@ impl StatementEvaluator {
     }
 
     fn block(&self, statements: &[Stmt]) -> RuntimeResult<Completion> {
+        // An empty declarative record cannot change name/this/super lookup.
+        // Preserve actual block bindings and conservatively retain class/label
+        // contexts; ordinary var declarations target variable_environment.
+        let needs_environment = statements.iter().any(|statement| {
+            matches!(
+                &statement.kind,
+                StmtKind::Variable {
+                    kind: VariableKind::Let | VariableKind::Const,
+                    ..
+                } | StmtKind::FunctionDeclaration(_)
+                    | StmtKind::ClassDeclaration(_)
+                    | StmtKind::Labeled { .. }
+            )
+        });
+        if !needs_environment {
+            return self.statement_list(statements);
+        }
         let environment = Environment::declarative(Some(self.expression.environment.clone()));
         self.instantiate_lexical(statements, &environment)?;
         let evaluator = self.nested(environment);

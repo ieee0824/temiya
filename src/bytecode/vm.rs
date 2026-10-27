@@ -1,6 +1,6 @@
 use crate::runtime::{
-    Completion, Environment, EnvironmentKind, Realm, Reference, ReferencedName, RuntimeError,
-    RuntimeResult, Value, binary_values, binary_values_in_realm,
+    ArrayObject, Completion, Environment, EnvironmentKind, Object, Realm, Reference,
+    ReferencedName, RuntimeError, RuntimeResult, Value, binary_values, binary_values_in_realm,
 };
 
 use super::{BindingKind, Constant, Instruction, ScopeDescriptor, ScopeKind, VerifiedBytecode};
@@ -62,6 +62,39 @@ impl VirtualMachine {
             let instruction = body.instructions[pc];
             pc += 1;
             match instruction {
+                Instruction::CreateArray => {
+                    stack.push(Value::Object(crate::runtime::array_literal::create(
+                        realm.expect("verified Array Realm"),
+                    )?));
+                    stack.push(Value::Number(0.0));
+                }
+                Instruction::AppendArray | Instruction::SpreadArray => {
+                    let value = pop(&mut stack)?;
+                    let (object, mut next) = array_prefix(&mut stack)?;
+                    if matches!(instruction, Instruction::AppendArray) {
+                        crate::runtime::array_literal::append(&object, &mut next, value)?;
+                    } else {
+                        crate::runtime::array_literal::spread(
+                            realm.expect("verified Array Realm"),
+                            &object,
+                            &mut next,
+                            value,
+                        )?;
+                    }
+                    stack.push(Value::Object(object));
+                    stack.push(Value::Number(next as f64));
+                }
+                Instruction::ElideArray => {
+                    let (object, mut next) = array_prefix(&mut stack)?;
+                    crate::runtime::array_literal::elide(&mut next)?;
+                    stack.push(Value::Object(object));
+                    stack.push(Value::Number(next as f64));
+                }
+                Instruction::FinishArray => {
+                    let (object, next) = array_prefix(&mut stack)?;
+                    crate::runtime::array_literal::finish(&object, next)?;
+                    stack.push(Value::Object(object));
+                }
                 Instruction::EnterScope(index) => {
                     let Constant::Scope(plan) = &body.constants[index as usize] else {
                         unreachable!()
@@ -383,6 +416,28 @@ fn constant(constant: &Constant) -> Value {
         Constant::Number(value) => Value::Number(*value),
         Constant::String(value) => Value::String(value.clone()),
     }
+}
+
+fn array_prefix(stack: &mut Vec<Value>) -> RuntimeResult<(Object, u64)> {
+    let Value::Number(next) = pop(stack)? else {
+        return Err(RuntimeError::type_error(
+            "Array initializer index is not a number",
+        ));
+    };
+    let Value::Object(object) = pop(stack)? else {
+        return Err(RuntimeError::type_error(
+            "Array initializer target is not an object",
+        ));
+    };
+    if ArrayObject::from_object(object.clone()).is_none()
+        || !next.is_finite()
+        || next < 0.0
+        || next.fract() != 0.0
+        || next > 9_007_199_254_740_991.0
+    {
+        return Err(RuntimeError::type_error("invalid Array initializer state"));
+    }
+    Ok((object, next as u64))
 }
 
 fn pop(stack: &mut Vec<Value>) -> RuntimeResult<Value> {

@@ -232,6 +232,16 @@ impl BinaryOperator {
 /// Portable instruction with fixed-width integer operands.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Instruction {
+    /// Push a fresh Array and its next initializer index (two operands).
+    CreateArray,
+    /// Append a value to the Array/index pair beneath it, retaining the pair.
+    AppendArray,
+    /// Advance an Array/index pair without creating a property.
+    ElideArray,
+    /// Consume a source through @@iterator and append into an Array/index pair.
+    SpreadArray,
+    /// Set the final Array length and replace the Array/index pair with the Array.
+    FinishArray,
     /// Instantiate metadata entry `index` and identify this scope by its entry PC.
     EnterScope(u32),
     /// Leave the innermost active scope, preserving the operand stack.
@@ -334,6 +344,9 @@ pub enum Instruction {
 impl Instruction {
     fn required_stack(self) -> usize {
         match self {
+            Self::CreateArray => 0,
+            Self::AppendArray | Self::SpreadArray => 3,
+            Self::ElideArray | Self::FinishArray => 2,
             Self::LoadReference | Self::DiscardReference | Self::LoadReferenceCallTarget => 0,
             Self::AsCallTarget => 1,
             Self::BeginMethodCall => 2,
@@ -377,6 +390,9 @@ impl Instruction {
 
     fn stack_delta(self) -> isize {
         match self {
+            Self::CreateArray => 2,
+            Self::AppendArray | Self::SpreadArray | Self::FinishArray => -1,
+            Self::ElideArray => 0,
             Self::LoadReference => 1,
             Self::DiscardReference => 0,
             Self::LoadReferenceCallTarget => 2,
@@ -720,6 +736,11 @@ fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
                 validate_function_template(template).map_err(error)?;
             }
             Instruction::GetProperty { .. }
+            | Instruction::CreateArray
+            | Instruction::AppendArray
+            | Instruction::ElideArray
+            | Instruction::SpreadArray
+            | Instruction::FinishArray
             | Instruction::ResolveProperty { .. }
             | Instruction::LoadThis
             | Instruction::LoadNewTarget => {

@@ -1,0 +1,763 @@
+{
+  "recorded_at": "2026-10-27T03:04:00.067Z",
+  "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)\nbinary: rustc\ncommit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67\ncommit-date: 2026-10-13\nhost: aarch64-unknown-linux-gnu\nrelease: 1.99.1\nLLVM version: 23.1.1",
+  "profile": "release",
+  "features": [],
+  "probe_sha256": "6a185a8de491c538c35614230a6a6b6b69ba7dedb79f6a878b614b222b17a440",
+  "workers": [
+    {
+      "name": "after",
+      "revision": "9c9e6c59ce675f2c81e788230e4871c61fb1b5d8",
+      "executable": "/tmp/temiya-native-startup-target/release/examples/realm_startup_probe",
+      "executable_sha256": "97d8c929be2bff6a8f52c1f7b548f39d80838b56a4c2e01f82d844def491ce99"
+    },
+    {
+      "name": "before",
+      "revision": "d2d12825f349cd37933d65c0dbde96b29971c105",
+      "executable": "/tmp/temiya-native-startup-baseline-target/release/examples/realm_startup_probe",
+      "executable_sha256": "d24085ba49a627168123612eb51feb68933d0bc1a2d8aaf973f9ec7e571fcd2d"
+    }
+  ],
+  "machine": {
+    "architecture": "arm64",
+    "logical_cpus": 4,
+    "cpu_models": [
+      "unknown"
+    ]
+  },
+  "samples": 50,
+  "pairs": 3,
+  "limits": {
+    "timeout_ms": 180000,
+    "rss_limit_kib": 524288,
+    "poll_ms": 25
+  },
+  "scope": "Repeated Engine+Realm initialization inside isolated processes, after explicit allocation-profile warmups. Not first cold process startup, parse/evaluate invocation, or a Boa comparison. Both release builds finished before all timing.",
+  "baseline_probe_added_for_measurement": true,
+  "runs": [
+    {
+      "worker": "after",
+      "pair": 0,
+      "order": 0,
+      "status": "pass",
+      "sampled_peak_hwm_kib": 0,
+      "exit": {
+        "code": 0,
+        "signal": null
+      },
+      "measurement": {
+        "allocation_profiles": [
+          {
+            "allocations": {
+              "allocation_requests": 2000,
+              "requested_bytes": 360000
+            },
+            "case": "raw native callable; no Realm prototype or metadata",
+            "iterations": 1000
+          },
+          {
+            "case": "native callable with actual name/length descriptors",
+            "generic_definition": {
+              "allocation_requests": 3000,
+              "requested_bytes": 744000
+            },
+            "iterations": 1000,
+            "name": "short",
+            "realm_factory": {
+              "allocation_requests": 3000,
+              "requested_bytes": 552000
+            },
+            "validated_metadata": true
+          },
+          {
+            "case": "native callable with actual name/length descriptors",
+            "generic_definition": {
+              "allocation_requests": 5000,
+              "requested_bytes": 888000
+            },
+            "iterations": 1000,
+            "name": "native method with a long UTF-16 name: 日本語😀",
+            "realm_factory": {
+              "allocation_requests": 5000,
+              "requested_bytes": 696000
+            },
+            "validated_metadata": true
+          }
+        ],
+        "allocation_warmup_iterations": 128,
+        "architecture": "aarch64",
+        "limitations": "Single process, allocation counters active only for allocation profiles; startup timings collected with counters disabled. Existing intrinsic reference cycles are not collected; sample count bounded. Use isolated workers and alternating paired repetitions, not absolute cross-machine comparisons.",
+        "profile": "release",
+        "scope": "Engine::default plus Engine::create_realm; parsing, setup and invocation excluded; drops outside timed interval",
+        "startup_allocations": {
+          "allocations": {
+            "allocation_requests": 6440,
+            "requested_bytes": 1166180
+          },
+          "iterations": 10
+        },
+        "startup_samples_ns": [
+          36666,
+          36041,
+          41916,
+          38374,
+          35583,
+          66332,
+          34749,
+          42625,
+          50166,
+          34625,
+          34832,
+          37708,
+          54665,
+          41666,
+          35916,
+          34000,
+          34374,
+          41541,
+          46374,
+          40333,
+          37249,
+          39708,
+          33833,
+          56124,
+          46166,
+          35249,
+          37708,
+          42041,
+          96081,
+          33749,
+          56707,
+          36374,
+          65207,
+          36499,
+          42707,
+          33083,
+          34582,
+          39833,
+          42708,
+          41374,
+          47958,
+          34750,
+          50915,
+          49916,
+          53666,
+          37083,
+          37457,
+          36207,
+          47416,
+          44291
+        ]
+      },
+      "median_ns": 39770,
+      "mad_ns": 4521
+    },
+    {
+      "worker": "before",
+      "pair": 0,
+      "order": 1,
+      "status": "pass",
+      "sampled_peak_hwm_kib": 0,
+      "exit": {
+        "code": 0,
+        "signal": null
+      },
+      "measurement": {
+        "allocation_profiles": [
+          {
+            "allocations": {
+              "allocation_requests": 2000,
+              "requested_bytes": 360000
+            },
+            "case": "raw native callable; no Realm prototype or metadata",
+            "iterations": 1000
+          },
+          {
+            "case": "native callable with actual name/length descriptors",
+            "generic_definition": {
+              "allocation_requests": 3000,
+              "requested_bytes": 744000
+            },
+            "iterations": 1000,
+            "name": "short",
+            "realm_factory": {
+              "allocation_requests": 3000,
+              "requested_bytes": 744000
+            },
+            "validated_metadata": true
+          },
+          {
+            "case": "native callable with actual name/length descriptors",
+            "generic_definition": {
+              "allocation_requests": 5000,
+              "requested_bytes": 888000
+            },
+            "iterations": 1000,
+            "name": "native method with a long UTF-16 name: 日本語😀",
+            "realm_factory": {
+              "allocation_requests": 5000,
+              "requested_bytes": 888000
+            },
+            "validated_metadata": true
+          }
+        ],
+        "allocation_warmup_iterations": 128,
+        "architecture": "aarch64",
+        "limitations": "Single process, allocation counters active only for allocation profiles; startup timings collected with counters disabled. Existing intrinsic reference cycles are not collected; sample count bounded. Use isolated workers and alternating paired repetitions, not absolute cross-machine comparisons.",
+        "profile": "release",
+        "scope": "Engine::default plus Engine::create_realm; parsing, setup and invocation excluded; drops outside timed interval",
+        "startup_allocations": {
+          "allocations": {
+            "allocation_requests": 6440,
+            "requested_bytes": 1325540
+          },
+          "iterations": 10
+        },
+        "startup_samples_ns": [
+          49499,
+          46374,
+          44666,
+          45582,
+          45124,
+          45708,
+          45457,
+          50999,
+          54624,
+          53249,
+          43416,
+          41958,
+          48207,
+          48333,
+          45165,
+          49458,
+          43125,
+          49124,
+          56291,
+          41916,
+          41957,
+          43291,
+          42249,
+          47791,
+          43290,
+          40624,
+          40249,
+          55833,
+          49207,
+          42415,
+          56666,
+          55333,
+          43832,
+          46082,
+          45708,
+          53541,
+          51458,
+          48374,
+          57000,
+          48625,
+          53165,
+          40875,
+          42249,
+          51832,
+          55082,
+          60499,
+          46833,
+          46291,
+          41333,
+          92082
+        ]
+      },
+      "median_ns": 46603,
+      "mad_ns": 3833
+    },
+    {
+      "worker": "before",
+      "pair": 1,
+      "order": 0,
+      "status": "pass",
+      "sampled_peak_hwm_kib": 0,
+      "exit": {
+        "code": 0,
+        "signal": null
+      },
+      "measurement": {
+        "allocation_profiles": [
+          {
+            "allocations": {
+              "allocation_requests": 2000,
+              "requested_bytes": 360000
+            },
+            "case": "raw native callable; no Realm prototype or metadata",
+            "iterations": 1000
+          },
+          {
+            "case": "native callable with actual name/length descriptors",
+            "generic_definition": {
+              "allocation_requests": 3000,
+              "requested_bytes": 744000
+            },
+            "iterations": 1000,
+            "name": "short",
+            "realm_factory": {
+              "allocation_requests": 3000,
+              "requested_bytes": 744000
+            },
+            "validated_metadata": true
+          },
+          {
+            "case": "native callable with actual name/length descriptors",
+            "generic_definition": {
+              "allocation_requests": 5000,
+              "requested_bytes": 888000
+            },
+            "iterations": 1000,
+            "name": "native method with a long UTF-16 name: 日本語😀",
+            "realm_factory": {
+              "allocation_requests": 5000,
+              "requested_bytes": 888000
+            },
+            "validated_metadata": true
+          }
+        ],
+        "allocation_warmup_iterations": 128,
+        "architecture": "aarch64",
+        "limitations": "Single process, allocation counters active only for allocation profiles; startup timings collected with counters disabled. Existing intrinsic reference cycles are not collected; sample count bounded. Use isolated workers and alternating paired repetitions, not absolute cross-machine comparisons.",
+        "profile": "release",
+        "scope": "Engine::default plus Engine::create_realm; parsing, setup and invocation excluded; drops outside timed interval",
+        "startup_allocations": {
+          "allocations": {
+            "allocation_requests": 6440,
+            "requested_bytes": 1325540
+          },
+          "iterations": 10
+        },
+        "startup_samples_ns": [
+          47124,
+          43958,
+          42957,
+          43541,
+          44291,
+          44749,
+          44458,
+          42333,
+          43999,
+          43374,
+          42332,
+          41958,
+          42333,
+          42874,
+          73623,
+          43666,
+          42416,
+          41541,
+          42999,
+          42624,
+          43750,
+          62874,
+          79416,
+          61874,
+          71332,
+          90415,
+          60207,
+          54832,
+          51291,
+          52375,
+          47416,
+          48749,
+          74873,
+          53374,
+          51291,
+          44124,
+          50249,
+          84082,
+          66749,
+          56749,
+          58874,
+          47416,
+          51374,
+          44625,
+          47207,
+          45208,
+          45582,
+          44208,
+          52291,
+          44166
+        ]
+      },
+      "median_ns": 46353,
+      "mad_ns": 3916
+    },
+    {
+      "worker": "after",
+      "pair": 1,
+      "order": 1,
+      "status": "pass",
+      "sampled_peak_hwm_kib": 0,
+      "exit": {
+        "code": 0,
+        "signal": null
+      },
+      "measurement": {
+        "allocation_profiles": [
+          {
+            "allocations": {
+              "allocation_requests": 2000,
+              "requested_bytes": 360000
+            },
+            "case": "raw native callable; no Realm prototype or metadata",
+            "iterations": 1000
+          },
+          {
+            "case": "native callable with actual name/length descriptors",
+            "generic_definition": {
+              "allocation_requests": 3000,
+              "requested_bytes": 744000
+            },
+            "iterations": 1000,
+            "name": "short",
+            "realm_factory": {
+              "allocation_requests": 3000,
+              "requested_bytes": 552000
+            },
+            "validated_metadata": true
+          },
+          {
+            "case": "native callable with actual name/length descriptors",
+            "generic_definition": {
+              "allocation_requests": 5000,
+              "requested_bytes": 888000
+            },
+            "iterations": 1000,
+            "name": "native method with a long UTF-16 name: 日本語😀",
+            "realm_factory": {
+              "allocation_requests": 5000,
+              "requested_bytes": 696000
+            },
+            "validated_metadata": true
+          }
+        ],
+        "allocation_warmup_iterations": 128,
+        "architecture": "aarch64",
+        "limitations": "Single process, allocation counters active only for allocation profiles; startup timings collected with counters disabled. Existing intrinsic reference cycles are not collected; sample count bounded. Use isolated workers and alternating paired repetitions, not absolute cross-machine comparisons.",
+        "profile": "release",
+        "scope": "Engine::default plus Engine::create_realm; parsing, setup and invocation excluded; drops outside timed interval",
+        "startup_allocations": {
+          "allocations": {
+            "allocation_requests": 6440,
+            "requested_bytes": 1166180
+          },
+          "iterations": 10
+        },
+        "startup_samples_ns": [
+          41791,
+          37541,
+          36499,
+          35957,
+          36416,
+          36499,
+          36000,
+          35791,
+          40082,
+          38874,
+          38332,
+          37750,
+          41583,
+          39582,
+          38666,
+          36707,
+          38916,
+          39250,
+          41416,
+          36541,
+          35500,
+          46416,
+          35291,
+          37124,
+          38124,
+          64791,
+          47208,
+          42457,
+          40083,
+          38916,
+          39750,
+          38916,
+          40707,
+          40041,
+          41999,
+          40332,
+          42000,
+          41291,
+          40457,
+          40875,
+          41166,
+          45000,
+          43166,
+          52124,
+          37666,
+          38291,
+          37416,
+          40125,
+          40583,
+          39333
+        ]
+      },
+      "median_ns": 39457,
+      "mad_ns": 1875
+    },
+    {
+      "worker": "after",
+      "pair": 2,
+      "order": 0,
+      "status": "pass",
+      "sampled_peak_hwm_kib": 0,
+      "exit": {
+        "code": 0,
+        "signal": null
+      },
+      "measurement": {
+        "allocation_profiles": [
+          {
+            "allocations": {
+              "allocation_requests": 2000,
+              "requested_bytes": 360000
+            },
+            "case": "raw native callable; no Realm prototype or metadata",
+            "iterations": 1000
+          },
+          {
+            "case": "native callable with actual name/length descriptors",
+            "generic_definition": {
+              "allocation_requests": 3000,
+              "requested_bytes": 744000
+            },
+            "iterations": 1000,
+            "name": "short",
+            "realm_factory": {
+              "allocation_requests": 3000,
+              "requested_bytes": 552000
+            },
+            "validated_metadata": true
+          },
+          {
+            "case": "native callable with actual name/length descriptors",
+            "generic_definition": {
+              "allocation_requests": 5000,
+              "requested_bytes": 888000
+            },
+            "iterations": 1000,
+            "name": "native method with a long UTF-16 name: 日本語😀",
+            "realm_factory": {
+              "allocation_requests": 5000,
+              "requested_bytes": 696000
+            },
+            "validated_metadata": true
+          }
+        ],
+        "allocation_warmup_iterations": 128,
+        "architecture": "aarch64",
+        "limitations": "Single process, allocation counters active only for allocation profiles; startup timings collected with counters disabled. Existing intrinsic reference cycles are not collected; sample count bounded. Use isolated workers and alternating paired repetitions, not absolute cross-machine comparisons.",
+        "profile": "release",
+        "scope": "Engine::default plus Engine::create_realm; parsing, setup and invocation excluded; drops outside timed interval",
+        "startup_allocations": {
+          "allocations": {
+            "allocation_requests": 6440,
+            "requested_bytes": 1166180
+          },
+          "iterations": 10
+        },
+        "startup_samples_ns": [
+          53749,
+          45374,
+          35541,
+          36249,
+          40791,
+          47874,
+          35291,
+          51708,
+          34958,
+          33791,
+          38749,
+          36374,
+          38499,
+          40249,
+          36582,
+          40291,
+          69915,
+          47457,
+          50082,
+          48250,
+          42916,
+          58707,
+          36249,
+          37125,
+          35958,
+          41541,
+          41625,
+          51999,
+          44541,
+          43083,
+          37916,
+          40666,
+          40999,
+          35458,
+          36208,
+          33958,
+          34375,
+          51999,
+          66916,
+          80248,
+          51166,
+          47416,
+          54666,
+          147415,
+          73457,
+          103082,
+          65665,
+          61166,
+          56666,
+          60749
+        ]
+      },
+      "median_ns": 42999,
+      "mad_ns": 7062
+    },
+    {
+      "worker": "before",
+      "pair": 2,
+      "order": 1,
+      "status": "pass",
+      "sampled_peak_hwm_kib": 0,
+      "exit": {
+        "code": 0,
+        "signal": null
+      },
+      "measurement": {
+        "allocation_profiles": [
+          {
+            "allocations": {
+              "allocation_requests": 2000,
+              "requested_bytes": 360000
+            },
+            "case": "raw native callable; no Realm prototype or metadata",
+            "iterations": 1000
+          },
+          {
+            "case": "native callable with actual name/length descriptors",
+            "generic_definition": {
+              "allocation_requests": 3000,
+              "requested_bytes": 744000
+            },
+            "iterations": 1000,
+            "name": "short",
+            "realm_factory": {
+              "allocation_requests": 3000,
+              "requested_bytes": 744000
+            },
+            "validated_metadata": true
+          },
+          {
+            "case": "native callable with actual name/length descriptors",
+            "generic_definition": {
+              "allocation_requests": 5000,
+              "requested_bytes": 888000
+            },
+            "iterations": 1000,
+            "name": "native method with a long UTF-16 name: 日本語😀",
+            "realm_factory": {
+              "allocation_requests": 5000,
+              "requested_bytes": 888000
+            },
+            "validated_metadata": true
+          }
+        ],
+        "allocation_warmup_iterations": 128,
+        "architecture": "aarch64",
+        "limitations": "Single process, allocation counters active only for allocation profiles; startup timings collected with counters disabled. Existing intrinsic reference cycles are not collected; sample count bounded. Use isolated workers and alternating paired repetitions, not absolute cross-machine comparisons.",
+        "profile": "release",
+        "scope": "Engine::default plus Engine::create_realm; parsing, setup and invocation excluded; drops outside timed interval",
+        "startup_allocations": {
+          "allocations": {
+            "allocation_requests": 6440,
+            "requested_bytes": 1325540
+          },
+          "iterations": 10
+        },
+        "startup_samples_ns": [
+          46749,
+          46041,
+          44458,
+          84748,
+          45791,
+          43083,
+          42791,
+          42625,
+          50249,
+          45166,
+          42791,
+          53166,
+          43083,
+          42958,
+          42541,
+          48666,
+          47040,
+          52958,
+          45500,
+          44708,
+          45374,
+          45333,
+          43583,
+          42957,
+          43291,
+          42000,
+          47499,
+          42708,
+          46791,
+          71749,
+          82249,
+          72124,
+          67874,
+          67040,
+          64832,
+          119706,
+          84040,
+          103665,
+          84790,
+          69749,
+          59791,
+          156205,
+          69832,
+          80291,
+          85207,
+          71374,
+          82415,
+          94457,
+          68207,
+          69082
+        ]
+      },
+      "median_ns": 49457,
+      "mad_ns": 6790
+    }
+  ],
+  "comparisons": [
+    {
+      "pair": 0,
+      "after_to_before_ratio": 0.8533785378623694,
+      "noise_threshold": 0.5877797286115007,
+      "outcome": "within noise threshold"
+    },
+    {
+      "pair": 1,
+      "after_to_before_ratio": 0.8512286151921127,
+      "noise_threshold": 0.39600663434313155,
+      "outcome": "within noise threshold"
+    },
+    {
+      "pair": 2,
+      "after_to_before_ratio": 0.8694219220737206,
+      "noise_threshold": 0.9045820729003392,
+      "outcome": "within noise threshold"
+    }
+  ],
+  "all_runs_valid": true,
+  "all_three_startup_pairs_faster_beyond_threshold": false
+}

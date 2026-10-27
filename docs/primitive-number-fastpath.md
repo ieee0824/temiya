@@ -1,5 +1,8 @@
 # Primitive Number binary fast path
 
+This document records the initial fast path measured at source 18452b3. Later
+numeric optimizations extend the oracle and are measured separately.
+
 When both operands are already Number primitives, arithmetic (+, -, *, /, %),
 relational and equality operators directly compute their f64 result. No
 JavaScript coercion callback can run for these operand pairs. Objects, mixed

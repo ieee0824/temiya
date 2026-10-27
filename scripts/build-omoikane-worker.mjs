@@ -7,8 +7,8 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { revision } from './omoikane-benchmark-reference.mjs';
 
-const [checkoutArg, buildArg, targetArg] = process.argv.slice(2);
-if (!checkoutArg || !buildArg || !targetArg) throw Error('usage: build-omoikane-worker.mjs CHECKOUT NEW_BUILD_DIR TARGET_DIR');
+const [checkoutArg, buildArg, targetArg, kind = 'sync'] = process.argv.slice(2);
+if (!checkoutArg || !buildArg || !targetArg || !['sync','async'].includes(kind)) throw Error('usage: build-omoikane-worker.mjs CHECKOUT NEW_BUILD_DIR TARGET_DIR [sync|async]');
 const checkout = realpathSync(checkoutArg), build = resolve(buildArg), target = resolve(targetArg);
 const python = process.env.PYTHON ?? 'python3';
 function run(command, args, options = {}) {
@@ -16,14 +16,14 @@ function run(command, args, options = {}) {
   if (result.status !== 0) throw Error(`${command} failed: ${result.error ?? result.stderr ?? result.status}`);
   return result.stdout;
 }
-const git = args => run('git', ['-C', checkout, ...args]).trim();
+const git = args => run('git', ['-c', `safe.directory=${checkout}`, '-C', checkout, ...args]).trim();
 if (git(['rev-parse', 'HEAD']) !== revision || git(['status', '--porcelain']) !== '') {
   throw Error(`requires a clean omoikane checkout at ${revision}`);
 }
 for (const name of ['RUSTFLAGS', 'CARGO_ENCODED_RUSTFLAGS', 'RUSTC_WRAPPER', 'RUSTC_WORKSPACE_WRAPPER']) {
   if (process.env[name]) throw Error(`unset ${name} for the reference build`);
 }
-const source = resolve(dirname(fileURLToPath(import.meta.url)), '../benchmarks/omoikane-worker/main.rs');
+const source = resolve(dirname(fileURLToPath(import.meta.url)), kind === 'async' ? '../benchmarks/omoikane-async-worker/main.rs' : '../benchmarks/omoikane-worker/main.rs');
 mkdirSync(build); // Refuse an existing build, preserving any previous evidence.
 mkdirSync(join(build, 'src'));
 copyFileSync(source, join(build, 'src/main.rs'));
@@ -70,7 +70,7 @@ run(python, [join(checkout, 'scripts/cargo-space-guard.py'), 'run', '--target-di
 if (git(['status', '--porcelain']) !== '') throw Error('application checkout changed during build; inspect before using results');
 const executable = join(target, 'release/omoikane-workload-worker');
 const hash = path => createHash('sha256').update(readFileSync(path)).digest('hex');
-const info = { recorded_at: new Date().toISOString(), omoikane_revision: revision, checkout_clean: true,
+const info = { recorded_at: new Date().toISOString(), workload_kind:kind, omoikane_revision: revision, checkout_clean: true,
   rustc: run('rustc', ['-Vv']).trim(), cargo: run('cargo', ['-V']).trim(),
   profile: 'release', cargo_args: ['build', '--locked', '--release'], rustflags: '', features,
   original_lock_sha256: hash(join(checkout, 'Cargo.lock')), adapter_lock_sha256: hash(join(build, 'Cargo.lock')),

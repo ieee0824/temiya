@@ -279,9 +279,9 @@ fn retained_name_references_are_checked() {
 
 #[test]
 fn resolved_binding_reference_rejects_inactive_and_out_of_range_slots() {
-    use temiya::bytecode::{ScopeDescriptor, ScopeKind};
+    use temiya::bytecode::{BindingKind, ScopeBinding, ScopeDescriptor, ScopeKind};
     let scope = Constant::Scope(ScopeDescriptor {
-        kind: ScopeKind::Global,
+        kind: ScopeKind::Function,
         strict: false,
         functions: vec![],
         bindings: vec![],
@@ -308,6 +308,35 @@ fn resolved_binding_reference_rejects_inactive_and_out_of_range_slots() {
             VerifyErrorKind::BindingOutOfBounds
         );
     }
+    let global = Constant::Scope(ScopeDescriptor {
+        kind: ScopeKind::Global,
+        strict: false,
+        functions: vec![],
+        bindings: vec![ScopeBinding {
+            name: "x".into(),
+            kind: BindingKind::Var,
+        }],
+    });
+    let code = Bytecode {
+        constants: vec![global, Constant::Number(1.0)],
+        instructions: vec![
+            Instruction::EnterScope(0),
+            Instruction::ResolveBinding {
+                scope: 0,
+                slot: 0,
+                strict: false,
+            },
+            Instruction::LoadConstant(1),
+            Instruction::StoreReference,
+            Instruction::LoadConstant(1),
+            Instruction::Return,
+        ],
+        local_count: 0,
+    };
+    assert_eq!(
+        code.verify().unwrap_err().kind(),
+        VerifyErrorKind::ScopeMismatch
+    );
 }
 
 #[test]

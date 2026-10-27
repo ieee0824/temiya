@@ -133,6 +133,7 @@ impl std::error::Error for CompileError {}
 
 struct CompileScope {
     entry: u32,
+    kind: ScopeKind,
     bindings: HashMap<String, (u32, BindingKind)>,
 }
 
@@ -211,6 +212,7 @@ impl Compiler {
         self.code.push(Instruction::EnterScope(index));
         self.scopes.push(CompileScope {
             entry,
+            kind,
             bindings: slots,
         });
         Ok(())
@@ -679,7 +681,11 @@ impl Compiler {
         let target = unparenthesized(target);
         match &target.kind {
             ExprKind::Identifier(name) => {
-                if let Some((scope, slot, _)) = self.binding(name) {
+                if let Some((scope, slot, _)) = self.binding(name).filter(|(scope, _, _)| {
+                    self.scopes
+                        .iter()
+                        .any(|s| s.entry == *scope && s.kind != ScopeKind::Global)
+                }) {
                     self.code.push(Instruction::ResolveBinding {
                         scope,
                         slot,

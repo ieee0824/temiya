@@ -1,19 +1,14 @@
 use temiya::{
-    bytecode::{BytecodeCompiler, Instruction, VirtualMachine},
+    bytecode::{BytecodeCompiler, Constant, Instruction, VirtualMachine},
     parser::parse_script,
     runtime::{Completion, Realm, RuntimeErrorKind, StatementEvaluator, Value},
 };
 
 #[test]
 fn lexical_updates_capture_verified_binding_before_numeric_coercion() {
-    let source = "var calls=0;var x=new Object();x.valueOf=function(){calls++;x=99;return 41;};var old=x++;old+':'+x+':'+calls;";
+    let source = "var calls=0;function f(){var x=new Object();x.valueOf=function(){calls++;x=99;return 41;};var old=x++;return old+':'+x+':'+calls;}f();";
     let code = BytecodeCompiler::compile(source).unwrap();
-    assert!(
-        code.bytecode()
-            .instructions
-            .iter()
-            .any(|op| matches!(op, Instruction::ResolveBinding { .. }))
-    );
+    assert!(code.bytecode().constants.iter().any(|constant| matches!(constant, Constant::Function(template) if template.body.bytecode().instructions.iter().any(|op| matches!(op, Instruction::ResolveBinding { .. })))));
     for vm in [false, true] {
         assert!(
             result(&Realm::ordinary(), source, vm).same_value(&Value::String("41:42:1".into()))

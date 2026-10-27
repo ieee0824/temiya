@@ -692,6 +692,11 @@ fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
                 let Constant::Scope(plan) = &bytecode.constants[*index as usize] else {
                     unreachable!()
                 };
+                if matches!(instruction, Instruction::ResolveBinding { .. })
+                    && plan.kind == ScopeKind::Global
+                {
+                    return Err(error(VerifyErrorKind::ScopeMismatch));
+                }
                 let binding = plan
                     .bindings
                     .get(slot as usize)

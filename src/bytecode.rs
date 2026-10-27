@@ -232,6 +232,16 @@ impl BinaryOperator {
 /// Portable instruction with fixed-width integer operands.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Instruction {
+    /// Push a fresh Array and its next initializer index (two operands).
+    CreateArray,
+    /// Append a value to the Array/index pair beneath it, retaining the pair.
+    AppendArray,
+    /// Advance an Array/index pair without creating a property.
+    ElideArray,
+    /// Consume a source through @@iterator and append into an Array/index pair.
+    SpreadArray,
+    /// Set the final Array length and replace the Array/index pair with the Array.
+    FinishArray,
     /// Push a fresh ordinary object with the Realm's Object prototype.
     CreateObject,
     /// Convert the top value to a String/Symbol property key before its RHS.
@@ -344,6 +354,9 @@ pub enum Instruction {
 impl Instruction {
     fn required_stack(self) -> usize {
         match self {
+            Self::CreateArray => 0,
+            Self::AppendArray | Self::SpreadArray => 3,
+            Self::ElideArray | Self::FinishArray => 2,
             Self::CreateObject => 0,
             Self::CoercePropertyKey => 1,
             Self::DefineObjectProperty { .. } => 3,
@@ -392,6 +405,9 @@ impl Instruction {
 
     fn stack_delta(self) -> isize {
         match self {
+            Self::CreateArray => 2,
+            Self::AppendArray | Self::SpreadArray | Self::FinishArray => -1,
+            Self::ElideArray => 0,
             Self::CreateObject => 1,
             Self::CoercePropertyKey => 0,
             Self::DefineObjectProperty { .. } => -2,
@@ -741,6 +757,11 @@ fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
                 validate_function_template(template).map_err(error)?;
             }
             Instruction::GetProperty { .. }
+            | Instruction::CreateArray
+            | Instruction::AppendArray
+            | Instruction::ElideArray
+            | Instruction::SpreadArray
+            | Instruction::FinishArray
             | Instruction::CreateObject
             | Instruction::CoercePropertyKey
             | Instruction::DefineObjectProperty { .. }

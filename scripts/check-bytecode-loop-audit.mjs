@@ -13,7 +13,7 @@ const boundary = row => {
       /(?:do-while\/S12\.6\.1_A3|while\/S12\.6\.2_A3)\.js$/.test(row.path)) {
     return 'eval is not defined';
   }
-  if (/for\/scope-body-var-none\.js$/.test(row.path)) return 'unsupported bytecode expression';
+  if (/for\/scope-body-var-none\.js$/.test(row.path)) return 'eval is not defined'; // Array lowering now reaches the original eval call (#305).
   if (/(?:do-while\/S12\.6\.1_A2|while\/S12\.6\.2_A2)\.js$/.test(row.path)) {
     return 'unsupported bytecode statement'; // Whole original try/catch program.
   }

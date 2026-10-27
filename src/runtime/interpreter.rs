@@ -6,8 +6,8 @@ use std::cell::RefCell;
 use crate::ast::{Expr, ExprKind, Literal, MethodKind, NumberKind};
 
 use super::{
-    ArrayObject, Environment, FunctionKind, JsString, Numeric, Object, PropertyKey, Realm,
-    RuntimeError, RuntimeResult, Value, function::create_function,
+    Environment, FunctionKind, JsString, Numeric, Object, PropertyKey, Realm, RuntimeError,
+    RuntimeResult, Value, function::create_function,
 };
 
 /// The name component of a Reference Record.
@@ -681,27 +681,26 @@ impl ExpressionEvaluator {
     }
 
     fn array(&self, elements: &[Option<Expr>]) -> RuntimeResult<Value> {
-        let array = ArrayObject::new(elements.len() as u32)?;
-        let object = array.object();
-        object.set_prototype(Some(
-            self.realm.intrinsic(super::IntrinsicId::ArrayPrototype),
-        ));
-        let mut index = 0_u32;
+        let object = super::array_literal::create(&self.realm)?;
+        let mut next = 0;
         for element in elements {
-            if let Some(element) = element {
-                if let ExprKind::Spread(value) = &element.kind {
-                    for value in array_like_values(&self.evaluate(value)?)? {
-                        object.create_data_property(index_key(index), value)?;
-                        index += 1;
-                    }
-                } else {
-                    object.create_data_property(index_key(index), self.evaluate(element)?)?;
-                    index += 1;
+            match element {
+                Some(Expr {
+                    kind: ExprKind::Spread(value),
+                    ..
+                }) => super::array_literal::spread(
+                    &self.realm,
+                    &object,
+                    &mut next,
+                    self.evaluate(value)?,
+                )?,
+                Some(value) => {
+                    super::array_literal::append(&object, &mut next, self.evaluate(value)?)?
                 }
-            } else {
-                index += 1;
+                None => super::array_literal::elide(&mut next)?,
             }
         }
+        super::array_literal::finish(&object, next)?;
         Ok(Value::Object(object))
     }
 
@@ -1077,34 +1076,6 @@ fn to_u32(value: f64) -> u32 {
 fn to_i32(value: f64) -> i32 {
     to_u32(value) as i32
 }
-fn index_key(index: u32) -> PropertyKey {
-    PropertyKey::String(JsString::from(index.to_string()))
-}
-
-fn array_like_values(value: &Value) -> RuntimeResult<Vec<Value>> {
-    match value {
-        Value::String(string) => Ok(string
-            .code_units()
-            .iter()
-            .map(|unit| Value::String(JsString::from_code_units_slice(&[*unit])))
-            .collect()),
-        Value::Object(object) => {
-            let length = object
-                .get(&PropertyKey::String(JsString::from("length")))?
-                .to_number()?;
-            let length = if length.is_finite() && length > 0.0 {
-                length.min(u32::MAX as f64) as u32
-            } else {
-                0
-            };
-            (0..length)
-                .map(|index| object.get(&index_key(index)))
-                .collect()
-        }
-        _ => Err(RuntimeError::type_error("spread value is not iterable")),
-    }
-}
-
 #[inline]
 pub(crate) fn binary_values_in_realm(
     realm: &Realm,

@@ -324,7 +324,7 @@ mod tests {
                 ((state >> 16) % 180) as u32
             };
             match (state >> 32) % 5 {
-                0 | 1 | 2 => {
+                0..=2 => {
                     let value = if state & 8 == 0 {
                         Value::Number(f64::from_bits(state))
                     } else {

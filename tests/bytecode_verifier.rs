@@ -340,6 +340,41 @@ fn resolved_binding_reference_rejects_inactive_and_out_of_range_slots() {
 }
 
 #[test]
+fn fused_binding_update_requires_a_valid_non_global_live_slot() {
+    use temiya::bytecode::{BindingKind, ScopeBinding, ScopeDescriptor, ScopeKind};
+    for (kind, scope, slot, expected) in [
+        (ScopeKind::Block, 99, 0, VerifyErrorKind::BindingOutOfBounds),
+        (ScopeKind::Block, 0, 1, VerifyErrorKind::BindingOutOfBounds),
+        (ScopeKind::Global, 0, 0, VerifyErrorKind::ScopeMismatch),
+    ] {
+        let code = Bytecode {
+            constants: vec![Constant::Scope(ScopeDescriptor {
+                kind,
+                strict: false,
+                functions: vec![],
+                bindings: vec![ScopeBinding {
+                    name: "x".into(),
+                    kind: BindingKind::Let,
+                }],
+            })],
+            instructions: vec![
+                Instruction::EnterScope(0),
+                Instruction::UpdateBinding {
+                    scope,
+                    slot,
+                    strict: false,
+                    increment: true,
+                    prefix: false,
+                },
+                Instruction::Complete,
+            ],
+            local_count: 0,
+        };
+        assert_eq!(code.verify().unwrap_err().kind(), expected);
+    }
+}
+
+#[test]
 fn property_instructions_validate_operands_scopes_and_references() {
     use temiya::bytecode::{ScopeDescriptor, ScopeKind};
     let check = |code| {

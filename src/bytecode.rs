@@ -265,6 +265,14 @@ pub enum Instruction {
     StoreBinding { scope: u32, slot: u32 },
     /// Capture a statically resolved active binding as a Reference.
     ResolveBinding { scope: u32, slot: u32, strict: bool },
+    /// Update a statically resolved non-global binding and push its numeric result.
+    UpdateBinding {
+        scope: u32,
+        slot: u32,
+        strict: bool,
+        increment: bool,
+        prefix: bool,
+    },
     /// Resolve a string constant in the current environment chain and push its value.
     LoadName(u32),
     /// Resolve a name and get its value using the source Reference's strictness.
@@ -383,6 +391,7 @@ impl Instruction {
             | Self::ExitScope
             | Self::CloneLoopBindings
             | Self::ResolveBinding { .. }
+            | Self::UpdateBinding { .. }
             | Self::ResolveName { .. }
             | Self::LoadBinding { .. }
             | Self::GetName { .. }
@@ -439,7 +448,10 @@ impl Instruction {
             | Self::CloneLoopBindings
             | Self::ResolveBinding { .. }
             | Self::ResolveName { .. } => 0,
-            Self::LoadBinding { .. } | Self::LoadName(_) | Self::GetName { .. } => 1,
+            Self::LoadBinding { .. }
+            | Self::UpdateBinding { .. }
+            | Self::LoadName(_)
+            | Self::GetName { .. } => 1,
             Self::InitializeBinding { .. } | Self::StoreBinding { .. } | Self::StoreReference => -1,
             Self::LoadConstant(_) | Self::LoadLocal(_) | Self::Duplicate => 1,
             Self::StoreLocal(_)
@@ -722,7 +734,8 @@ fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
             Instruction::LoadBinding { scope, slot }
             | Instruction::InitializeBinding { scope, slot }
             | Instruction::StoreBinding { scope, slot }
-            | Instruction::ResolveBinding { scope, slot, .. } => {
+            | Instruction::ResolveBinding { scope, slot, .. }
+            | Instruction::UpdateBinding { scope, slot, .. } => {
                 let (_, index) = state
                     .scopes
                     .iter()
@@ -731,8 +744,10 @@ fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
                 let Constant::Scope(plan) = &bytecode.constants[*index as usize] else {
                     unreachable!()
                 };
-                if matches!(instruction, Instruction::ResolveBinding { .. })
-                    && plan.kind == ScopeKind::Global
+                if matches!(
+                    instruction,
+                    Instruction::ResolveBinding { .. } | Instruction::UpdateBinding { .. }
+                ) && plan.kind == ScopeKind::Global
                 {
                     return Err(error(VerifyErrorKind::ScopeMismatch));
                 }

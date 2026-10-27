@@ -10,12 +10,14 @@ fn lexical_updates_capture_verified_binding_before_numeric_coercion() {
     let code = BytecodeCompiler::compile(source).unwrap();
     assert!(code.bytecode().constants.iter().any(|constant| {
         match constant {
-            Constant::Function(template) => template
-                .body
-                .bytecode()
-                .instructions
-                .iter()
-                .any(|op| matches!(op, Instruction::ResolveBinding { .. })),
+            Constant::Function(template) => {
+                template.body.bytecode().instructions.iter().any(|op| {
+                    matches!(
+                        op,
+                        Instruction::ResolveBinding { .. } | Instruction::UpdateBinding { .. }
+                    )
+                })
+            }
             Constant::Scope(scope) => scope.functions.iter().any(|declaration| {
                 declaration
                     .template
@@ -23,7 +25,12 @@ fn lexical_updates_capture_verified_binding_before_numeric_coercion() {
                     .bytecode()
                     .instructions
                     .iter()
-                    .any(|op| matches!(op, Instruction::ResolveBinding { .. }))
+                    .any(|op| {
+                        matches!(
+                            op,
+                            Instruction::ResolveBinding { .. } | Instruction::UpdateBinding { .. }
+                        )
+                    })
             }),
             _ => false,
         }

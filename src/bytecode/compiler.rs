@@ -573,11 +573,25 @@ impl Compiler {
                 if !matches!(operator.as_str(), "++" | "--") {
                     return Err(self.unsupported("update operator", expression.span));
                 }
-                self.resolve_update_reference(argument)?;
-                self.code.push(Instruction::UpdateReference {
-                    increment: operator == "++",
-                    prefix: *prefix,
-                });
+                let binding = match &unparenthesized(argument).kind {
+                    ExprKind::Identifier(name) => self.local_binding(name),
+                    _ => None,
+                };
+                if let Some((scope, slot, _)) = binding {
+                    self.code.push(Instruction::UpdateBinding {
+                        scope,
+                        slot,
+                        strict: self.strict,
+                        increment: operator == "++",
+                        prefix: *prefix,
+                    });
+                } else {
+                    self.resolve_update_reference(argument)?;
+                    self.code.push(Instruction::UpdateReference {
+                        increment: operator == "++",
+                        prefix: *prefix,
+                    });
+                }
                 Ok(())
             }
             ExprKind::Unary { operator, argument }

@@ -196,6 +196,30 @@ impl VirtualMachine {
                             .and_then(|hints| hints[slot as usize]),
                     ));
                 }
+                Instruction::UpdateBinding {
+                    scope,
+                    slot,
+                    strict,
+                    increment,
+                    prefix,
+                } => {
+                    let frame = binding_frame(&scopes, scope);
+                    let reference = Reference::function_binding(
+                        frame.environment.clone(),
+                        frame.plan.bindings[slot as usize].name.clone(),
+                        strict,
+                        frame
+                            .binding_hints
+                            .as_ref()
+                            .and_then(|hints| hints[slot as usize]),
+                    );
+                    stack.push(crate::runtime::update_reference_in_realm(
+                        realm.expect("scoped update Realm"),
+                        &reference,
+                        increment,
+                        prefix,
+                    )?);
+                }
                 Instruction::InitializeBinding { scope, slot } => {
                     let frame = binding_frame(&scopes, scope);
                     frame.environment.initialize_binding(

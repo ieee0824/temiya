@@ -140,3 +140,83 @@ fn array_instructions_check_scope_stack_state_and_length_overflow() {
         RuntimeErrorKind::RangeError
     );
 }
+
+#[test]
+#[ignore = "requires pinned Test262 corpus in TEST262_DIR"]
+fn pinned_test262_array_literals() {
+    use std::process::Command;
+    use temiya::test262::{NegativePhase, TEST262_REVISION, TestCase};
+    let root = std::env::var("TEST262_DIR").expect("TEST262_DIR required");
+    let git = |args: &[&str]| {
+        let out = Command::new("git")
+            .args(["-c", &format!("safe.directory={root}"), "-C", &root])
+            .args(args)
+            .output()
+            .unwrap();
+        assert!(out.status.success());
+        String::from_utf8(out.stdout).unwrap()
+    };
+    assert_eq!(git(&["rev-parse", "HEAD"]).trim(), TEST262_REVISION);
+    let read = |path: &str| git(&["show", &format!("{TEST262_REVISION}:{path}")]);
+    let mut outcomes = Vec::new();
+    for name in [
+        "S11.1.4_A1.1.js",
+        "S11.1.4_A1.2.js",
+        "S11.1.4_A1.3.js",
+        "spread-sngl-empty.js",
+        "spread-sngl-literal.js",
+        "spread-sngl-expr.js",
+    ] {
+        let path = format!("test/language/expressions/array/{name}");
+        let case = TestCase::parse(&path, read(&path)).unwrap();
+        let blob = git(&["rev-parse", &format!("{TEST262_REVISION}:{path}")]);
+        for variant in case.variants() {
+            for vm in [false, true] {
+                let source = case.source_for(variant);
+                let run = || -> Result<(), String> {
+                    if let Some(negative) = &case.metadata.negative {
+                        assert_eq!(negative.phase, NegativePhase::Parse);
+                        assert_eq!(negative.error_type, "SyntaxError");
+                        return if parse_script(&source).is_err()
+                            && BytecodeCompiler::compile(&source).is_err()
+                        {
+                            Ok(())
+                        } else {
+                            Err("parse-negative accepted".into())
+                        };
+                    }
+                    let realm = Realm::ordinary();
+                    for harness in ["sta.js", "assert.js"]
+                        .into_iter()
+                        .chain(case.metadata.includes.iter().map(String::as_str))
+                    {
+                        match execute(&realm, &read(&format!("harness/{harness}")), false)
+                            .map_err(|e| format!("harness: {e:?}"))?
+                        {
+                            Completion::Normal(_) => (),
+                            other => return Err(format!("harness {other:?}")),
+                        }
+                    }
+                    match execute(&realm, &source, vm).map_err(|e| format!("runtime: {e:?}"))? {
+                        Completion::Normal(_) => Ok(()),
+                        other => Err(format!("completion: {other:?}")),
+                    }
+                };
+                let result = run();
+                println!("{path} {variant:?} vm={vm} {result:?}");
+                outcomes.push(serde_json::json!({"path":path,"blob":blob.trim(),"variant":format!("{variant:?}"),"backend":if vm{"VM"}else{"AST"},"status":if result.is_ok(){"pass"}else{"fail"},"message":result.err()}));
+            }
+        }
+    }
+    if let Ok(path) = std::env::var("TEST262_REPORT") {
+        std::fs::write(
+            path,
+            serde_json::to_string_pretty(
+                &serde_json::json!({"revision":TEST262_REVISION,"outcomes":outcomes}),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+    }
+    assert!(outcomes.iter().all(|x| x["status"] == "pass"));
+}

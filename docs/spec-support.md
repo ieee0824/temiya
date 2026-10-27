@@ -6,6 +6,11 @@ published June 2026. The machine-readable source of truth is
 proposals commit `07002d4d999558b9c7326f98e5134e0222b13808` from 2026-10-14;
 new draft changes do not silently change this matrix.
 
+The [SpiderMonkey comparison target](spidermonkey-target.md) separately fixes
+the official source revision, release build, ECMA-402 edition and execution
+modes. Its CLI smoke checks establish the selected tool's behavior, without
+changing any Temiya feature status or claiming full standards conformance.
+
 Statuses have strict meanings:
 
 - `implemented`: the tracked feature group has executable evidence linked in

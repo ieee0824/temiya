@@ -1,6 +1,6 @@
 # Selected SpiderMonkey comparison target
 
-Issue #144 remains open. The candidate source is Mozilla's official Firefox
+The selected source for issue #144 is Mozilla's official Firefox
 repository at `5a78f4525f81f7323c2c044965096723318af6e6`, committed
 2026-10-27T04:28:09Z. [The source commit](https://github.com/mozilla-firefox/firefox/commit/5a78f4525f81f7323c2c044965096723318af6e6)
 is immutable; no moving branch or unrelated distribution binary is a substitute.
@@ -35,8 +35,13 @@ Default-mode settings are recorded, but do not prove workload JIT execution.
 
 The initial source build and eighteen normal-path checks passed in
 [run 40512263632](https://github.com/ieee0824/temiya/actions/runs/40512263632) at tool revision 6cf957f.
-The path-handling and archive additions require a new successful workflow and
-artifact verification before this updated tool revision is qualified. These are target-selection smoke checks, not a full
+The updated tool revision e9e1fb7 passed
+[run 40530470739](https://github.com/ieee0824/temiya/actions/runs/40530470739),
+including all 36 assertions across both modes and paths. The downloaded archive
+checksum, extracted binary hash and executable mode were independently checked;
+the compiler log confirms clang 22.1.8 and rustc 1.99.1. The
+[raw checks and provenance](../benchmarks/targets/spidermonkey-evidence/provenance.json)
+retain the source/build/mode identity and artifact reference. These are target-selection smoke checks, not a full
 Test262 result, a Temiya conformance claim or a performance comparison. The
 actual eleven-workload SpiderMonkey adapter, async/RegExp/GC suites and JIT
 execution evidence required by #427 remain separate unfinished work. The

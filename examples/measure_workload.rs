@@ -33,7 +33,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let setup_backend = setup_script.backend();
     engine.evaluate(&setup_script)?;
     drop(setup_script);
-    drop(setup_script);
     let setup_ns = start.elapsed().as_nanos();
     let invocation_backend = Cell::new(None);
     let evaluate = || -> Result<u64, Box<dyn std::error::Error>> {

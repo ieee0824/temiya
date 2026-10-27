@@ -42,3 +42,20 @@ The fixed original upstream harness and whole test programs run unchanged. Their
 remaining failures stay separate from normal tests and are not counted as skips.
 Shared function creation and builtin metadata affect setup and allocations, so
 this source requires its own comparative measurements. No Boa speedup is claimed.
+
+## Original upstream evidence
+
+On stable and Rust 1.85.0, the unchanged 42-file/75-variant global selection
+advances from 53 pass / 22 fail to **61 / 14**. All eight original propertyHelper
+blocked global variants now pass. The unchanged numeric selection (31 files/62
+variants) advances from 40 pass / 22 fail to **58 / 4**. No previous pass regresses
+and no cases are skipped. Full selections still exit 101; the targeted eight-case
+gate exits successfully. This is cumulative integration evidence with explicitly
+recorded baseline revisions, not an isolated attribution to one added API.
+
+[native-prototype-audit.json](../test262/native-prototype-audit.json) retains all
+outcomes, fixture identities and status transitions for both toolchains. Remaining
+global and numeric failures remain recorded. Normal stable/MSRV all-target tests
+each pass **374 tests**, with 9 ignored; formatting and all-target/all-feature
+Clippy with warnings denied pass. Hosted CI/security and source-specific speed
+measurements remain required. Parent integration and its revalidation come next.

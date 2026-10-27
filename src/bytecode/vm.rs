@@ -54,6 +54,7 @@ impl VirtualMachine {
         let body = bytecode.bytecode();
         let mut scopes: Vec<ScopeFrame<'_>> = vec![];
         let mut references: Vec<Reference> = vec![];
+        let mut calls: Vec<Invocation> = vec![];
         let mut stack = Vec::with_capacity(bytecode.max_stack());
         let mut locals = vec![Value::Undefined; body.local_count as usize];
         let mut pc = 0;
@@ -158,6 +159,63 @@ impl VirtualMachine {
                             .delete()?,
                     ));
                 }
+                Instruction::LoadReferenceCallTarget => {
+                    let reference = references.pop().expect("verified reference stack");
+                    let receiver = reference.this_value().unwrap_or(Value::Undefined);
+                    let callee = reference.get_value()?;
+                    stack.push(receiver);
+                    stack.push(callee);
+                }
+                Instruction::AsCallTarget => {
+                    let callee = pop(&mut stack)?;
+                    stack.push(Value::Undefined);
+                    stack.push(callee);
+                }
+                Instruction::BeginMethodCall => {
+                    let callee = pop(&mut stack)?;
+                    let receiver = pop(&mut stack)?;
+                    calls.push(Invocation {
+                        callee,
+                        receiver,
+                        construct: false,
+                        arguments: vec![],
+                    });
+                }
+                Instruction::BeginCall | Instruction::BeginConstruct => {
+                    calls.push(Invocation {
+                        callee: pop(&mut stack)?,
+                        receiver: Value::Undefined,
+                        construct: matches!(instruction, Instruction::BeginConstruct),
+                        arguments: vec![],
+                    });
+                }
+                Instruction::BeginReferenceCall => {
+                    let reference = references.pop().expect("verified reference stack");
+                    let receiver = reference.this_value().unwrap_or(Value::Undefined);
+                    calls.push(Invocation {
+                        callee: reference.get_value()?,
+                        receiver,
+                        construct: false,
+                        arguments: vec![],
+                    });
+                }
+                Instruction::AppendArgument => {
+                    crate::runtime::iterator::push_argument(
+                        &mut calls.last_mut().expect("verified call frame").arguments,
+                        pop(&mut stack)?,
+                    )?;
+                }
+                Instruction::SpreadArguments => {
+                    crate::runtime::iterator::spread_arguments(
+                        realm.expect("verified scoped spread"),
+                        pop(&mut stack)?,
+                        &mut calls.last_mut().expect("verified call frame").arguments,
+                    )?;
+                }
+                Instruction::Invoke => {
+                    let invocation = calls.pop().expect("verified call frame");
+                    stack.push(invocation.invoke()?);
+                }
                 Instruction::LoadThis => {
                     let mut environment = scopes
                         .last()
@@ -247,6 +305,34 @@ fn binary(stack: &mut Vec<Value>, operator: &str, realm: Option<&Realm>) -> Runt
         binary_values(operator, left, right)?
     });
     Ok(())
+}
+
+// Each invocation owns its roots independently of operand-stack growth and of
+// nested/reentrant VM runs. All pending roots drop on an abrupt runtime result.
+struct Invocation {
+    callee: Value,
+    receiver: Value,
+    construct: bool,
+    arguments: Vec<Value>,
+}
+
+impl Invocation {
+    fn invoke(self) -> RuntimeResult<Value> {
+        let Value::Object(callee) = self.callee else {
+            return Err(RuntimeError::type_error(if self.construct {
+                "value is not a constructor"
+            } else {
+                "value is not callable"
+            }));
+        };
+        if self.construct {
+            Ok(Value::Object(
+                callee.construct(&self.arguments, callee.clone())?,
+            ))
+        } else {
+            callee.call(self.receiver, &self.arguments)
+        }
+    }
 }
 
 struct ScopeFrame<'a> {

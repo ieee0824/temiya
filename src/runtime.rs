@@ -24,6 +24,7 @@ mod host_data;
 mod indexed;
 mod interpreter;
 mod intrinsics;
+pub(crate) mod iterator;
 mod job_queue;
 mod numeric;
 mod object;

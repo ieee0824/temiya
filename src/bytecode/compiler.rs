@@ -303,6 +303,8 @@ impl Compiler {
                 self.load_name(name)?;
                 Ok(())
             }
+            ExprKind::Call { .. } => self.chain_value(expression, ChainUse::Value),
+            ExprKind::New { callee, arguments } => self.construct(callee, arguments),
             ExprKind::This => {
                 self.code.push(Instruction::LoadThis);
                 Ok(())
@@ -421,6 +423,27 @@ impl Compiler {
         }
     }
 
+    fn construct(&mut self, callee: &Expr, arguments: &[Expr]) -> Result<(), CompileError> {
+        self.expression(callee)?;
+        self.code.push(Instruction::BeginConstruct);
+        self.arguments(arguments)?;
+        self.code.push(Instruction::Invoke);
+        Ok(())
+    }
+
+    fn arguments(&mut self, arguments: &[Expr]) -> Result<(), CompileError> {
+        for argument in arguments {
+            if let ExprKind::Spread(value) = &argument.kind {
+                self.expression(value)?;
+                self.code.push(Instruction::SpreadArguments);
+            } else {
+                self.expression(argument)?;
+                self.code.push(Instruction::AppendArgument);
+            }
+        }
+        Ok(())
+    }
+
     fn property_key(&mut self, property: &Expr, computed: bool) -> Result<(), CompileError> {
         if computed {
             return self.expression(property);
@@ -435,62 +458,129 @@ impl Compiler {
     }
 
     fn member_value(&mut self, member: &Expr, delete: bool) -> Result<(), CompileError> {
+        self.chain_value(
+            member,
+            if delete {
+                ChainUse::Delete
+            } else {
+                ChainUse::Value
+            },
+        )
+    }
+
+    fn chain_value(&mut self, expression: &Expr, usage: ChainUse) -> Result<(), CompileError> {
         let mut shortcuts = vec![];
-        self.member_chain(member, delete, &mut shortcuts)?;
-        if !shortcuts.is_empty() {
-            let end = self.emit(Instruction::Jump(0));
+        self.chain_inner(expression, usage, &mut shortcuts)?;
+        if shortcuts.is_empty() {
+            return Ok(());
+        }
+        let mut exits = vec![self.emit(Instruction::Jump(0))];
+        for (branch, cleanup) in shortcuts {
             let short = self.offset()?;
-            self.code.push(Instruction::Pop);
-            self.constant(if delete {
+            self.patch(branch, short);
+            for _ in 0..cleanup {
+                self.code.push(Instruction::Pop);
+            }
+            if matches!(usage, ChainUse::Callee) {
+                self.constant(Constant::Undefined)?;
+            }
+            self.constant(if matches!(usage, ChainUse::Delete) {
                 Constant::Boolean(true)
             } else {
                 Constant::Undefined
             })?;
-            let finished = self.offset()?;
-            self.patch(end, finished);
-            for branch in shortcuts {
-                self.patch(branch, short);
-            }
+            exits.push(self.emit(Instruction::Jump(0)));
+        }
+        let finished = self.offset()?;
+        for exit in exits {
+            self.patch(exit, finished);
         }
         Ok(())
     }
 
-    fn member_chain(
+    fn chain_inner(
         &mut self,
-        member: &Expr,
-        delete: bool,
-        shortcuts: &mut Vec<usize>,
+        expression: &Expr,
+        usage: ChainUse,
+        shortcuts: &mut Vec<(usize, usize)>,
     ) -> Result<(), CompileError> {
-        let ExprKind::Member {
-            object,
-            property,
-            computed,
-            optional,
-        } = &member.kind
-        else {
-            unreachable!("member chain")
-        };
-        if matches!(object.kind, ExprKind::Member { .. }) {
-            self.member_chain(object, false, shortcuts)?;
-        } else {
-            // Parentheses terminate an optional chain, while ordinary members
-            // propagate its short circuit through the remaining accesses.
-            self.expression(object)?;
-        }
-        if *optional {
-            self.code.push(Instruction::Duplicate);
-            shortcuts.push(self.emit(Instruction::JumpIfNullish(0)));
-        }
-        self.property_key(property, *computed)?;
-        if delete {
-            self.code.push(Instruction::ResolveProperty {
-                strict: self.strict,
-            });
-            self.code.push(Instruction::DeleteReference);
-        } else {
-            self.code.push(Instruction::GetProperty {
-                strict: self.strict,
-            });
+        match &expression.kind {
+            ExprKind::Member {
+                object,
+                property,
+                computed,
+                optional,
+            } => {
+                if matches!(object.kind, ExprKind::Member { .. } | ExprKind::Call { .. }) {
+                    self.chain_inner(object, ChainUse::Value, shortcuts)?;
+                } else {
+                    self.expression(object)?;
+                }
+                if *optional {
+                    self.code.push(Instruction::Duplicate);
+                    shortcuts.push((self.emit(Instruction::JumpIfNullish(0)), 1));
+                }
+                self.property_key(property, *computed)?;
+                if matches!(usage, ChainUse::Value) {
+                    self.code.push(Instruction::GetProperty {
+                        strict: self.strict,
+                    });
+                } else {
+                    self.code.push(Instruction::ResolveProperty {
+                        strict: self.strict,
+                    });
+                    self.code.push(if matches!(usage, ChainUse::Delete) {
+                        Instruction::DeleteReference
+                    } else {
+                        Instruction::LoadReferenceCallTarget
+                    });
+                }
+            }
+            ExprKind::Call {
+                callee,
+                arguments,
+                optional,
+            } => {
+                self.chain_inner(callee, ChainUse::Callee, shortcuts)?;
+                if *optional {
+                    // Receiver lies below callee. Both roots are discarded only
+                    // on this branch; no pending invocation has been opened yet.
+                    self.code.push(Instruction::Duplicate);
+                    shortcuts.push((self.emit(Instruction::JumpIfNullish(0)), 2));
+                }
+                self.code.push(Instruction::BeginMethodCall);
+                self.arguments(arguments)?;
+                self.code.push(Instruction::Invoke);
+                match usage {
+                    ChainUse::Callee => {
+                        self.code.push(Instruction::AsCallTarget);
+                    }
+                    ChainUse::Delete => {
+                        self.code.push(Instruction::Pop);
+                        self.constant(Constant::Boolean(true))?;
+                    }
+                    ChainUse::Value => {}
+                }
+            }
+            ExprKind::Parenthesized(inner) if matches!(usage, ChainUse::Callee) => {
+                // Grouping ends short-circuit propagation, but preserves a
+                // non-short-circuited member Reference and its method receiver.
+                self.chain_value(inner, ChainUse::Callee)?;
+            }
+            ExprKind::Identifier(name) if matches!(usage, ChainUse::Callee) => {
+                let name = self.pool(Constant::String(name.as_str().into()))?;
+                self.code.push(Instruction::ResolveName {
+                    name,
+                    strict: self.strict,
+                });
+                self.code.push(Instruction::LoadReferenceCallTarget);
+            }
+            _ => {
+                self.expression(expression)?;
+                if matches!(usage, ChainUse::Callee) {
+                    self.code.push(Instruction::AsCallTarget);
+                }
+            }
         }
         Ok(())
     }
@@ -670,4 +760,11 @@ fn unparenthesized(mut expression: &Expr) -> &Expr {
         expression = inner;
     }
     expression
+}
+
+#[derive(Clone, Copy)]
+enum ChainUse {
+    Value,
+    Callee,
+    Delete,
 }

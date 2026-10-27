@@ -1,0 +1,58 @@
+name: Verify pinned SpiderMonkey target
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: spidermonkey-target-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build-shell:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      MOZCONFIG: ${{ runner.temp }}/spidermonkey.mozconfig
+      MOZBUILD_STATE_PATH: ${{ runner.temp }}/mozbuild
+      CARGO_BUILD_JOBS: 2
+    steps:
+      - name: Check out target definition
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          path: temiya
+          persist-credentials: false
+      - name: Check out selected official source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: mozilla-firefox/firefox
+          ref: 5a78f4525f81f7323c2c044965096723318af6e6
+          path: spidermonkey
+          persist-credentials: false
+      - name: Prepare optimized shell configuration
+        run: |
+          mkdir "$RUNNER_TEMP/spidermonkey-evidence"
+          node <<'JS'
+          const fs=require('node:fs');
+          const c=JSON.parse(fs.readFileSync('temiya/benchmarks/targets/spidermonkey.json'));
+          const lines=c.configure_options.map(x=>'ac_add_options '+x);
+          lines.push('mk_add_options MOZ_OBJDIR='+process.env.RUNNER_TEMP+'/spidermonkey-obj');
+          lines.push('mk_add_options MOZ_MAKE_FLAGS=-j'+c.build_jobs);
+          fs.writeFileSync(process.env.MOZCONFIG,lines.join('\n')+'\n');
+          JS
+          cp "$MOZCONFIG" "$RUNNER_TEMP/spidermonkey-evidence/mozconfig"
+      - name: Bootstrap and build actual selected shell
+        working-directory: spidermonkey
+        run: |
+          ./mach bootstrap --application-choice js --no-interactive
+          ./mach build
+          ./mach environment > "$RUNNER_TEMP/spidermonkey-evidence/environment.txt"
+      - name: Verify source, release configuration and actual CLI behavior
+        run: |
+          node temiya/scripts/verify-spidermonkey-target.mjs spidermonkey "$RUNNER_TEMP/spidermonkey-obj/dist/bin/js" "$RUNNER_TEMP/spidermonkey-evidence/target-check.json"
+      - name: Retain target evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: spidermonkey-target-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/spidermonkey-evidence
+          if-no-files-found: error
+          retention-days: 30

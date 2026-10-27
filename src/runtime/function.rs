@@ -108,6 +108,11 @@ pub(super) fn create_function(
         Object::native_function(call)
     };
     *slot.borrow_mut() = Some(function.downgrade());
+    function.initialize_prototype(Some(
+        evaluator
+            .realm
+            .intrinsic(super::IntrinsicId::FunctionPrototype),
+    ));
     if let (Some(environment), Some(ExprKind::Identifier(name))) =
         (name_environment, code.name.as_ref().map(|name| &name.kind))
     {
@@ -220,11 +225,11 @@ fn construct_function(
 ) -> RuntimeResult<Object> {
     let prototype = match new_target.get(&PropertyKey::from("prototype"))? {
         Value::Object(prototype) => Some(prototype),
-        _ => None,
+        _ => Some(closure.realm.intrinsic(super::IntrinsicId::ObjectPrototype)),
     };
     let instance = Object::new();
     if let Some(prototype) = prototype {
-        instance.set_prototype(Some(prototype));
+        instance.initialize_prototype(Some(prototype));
     }
     let result = call_function(
         closure,

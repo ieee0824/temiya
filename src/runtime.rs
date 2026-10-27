@@ -29,6 +29,7 @@ pub(crate) mod iterator;
 mod job_queue;
 mod numeric;
 mod object;
+mod operators;
 mod pipeline;
 mod promise;
 mod proxy;

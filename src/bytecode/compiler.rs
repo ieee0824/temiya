@@ -8,8 +8,8 @@ use crate::{
 };
 
 use super::{
-    BindingKind, Bytecode, Constant, FunctionTemplate, Instruction, ScopeBinding, ScopeDescriptor,
-    ScopeFunction, ScopeKind, UnaryNumericOperator, VerifiedBytecode, VerifyError,
+    BinaryOperator, BindingKind, Bytecode, Constant, FunctionTemplate, Instruction, ScopeBinding,
+    ScopeDescriptor, ScopeFunction, ScopeKind, UnaryNumericOperator, VerifiedBytecode, VerifyError,
 };
 
 /// AST-to-bytecode compiler for the portable baseline instruction set.
@@ -431,20 +431,42 @@ impl Compiler {
                 });
                 Ok(())
             }
+            ExprKind::Assignment {
+                operator,
+                target,
+                value,
+            } => self.compound_assignment(operator, target, value, expression.span),
             ExprKind::Binary {
                 operator,
                 left,
                 right,
-            } if matches!(operator.as_str(), "+" | "-" | "*" | "/" | "===") => {
+            } => {
                 self.expression(left)?;
-                self.expression(right)?;
-                self.code.push(match operator.as_str() {
-                    "+" => Instruction::Add,
-                    "-" => Instruction::Subtract,
-                    "*" => Instruction::Multiply,
-                    "/" => Instruction::Divide,
-                    _ => Instruction::StrictEqual,
-                });
+                if matches!(operator.as_str(), "&&" | "||" | "??") {
+                    self.code.push(Instruction::Duplicate);
+                    if operator == "??" {
+                        let rhs = self.emit(Instruction::JumpIfNullish(0));
+                        let end = self.emit(Instruction::Jump(0));
+                        let start = self.offset()?;
+                        self.patch(rhs, start);
+                        self.code.push(Instruction::Pop);
+                        self.expression(right)?;
+                        let finish = self.offset()?;
+                        self.patch(end, finish);
+                    } else {
+                        if operator == "||" {
+                            self.code.push(Instruction::LogicalNot);
+                        }
+                        let end = self.emit(Instruction::JumpIfFalse(0));
+                        self.code.push(Instruction::Pop);
+                        self.expression(right)?;
+                        let finish = self.offset()?;
+                        self.patch(end, finish);
+                    }
+                } else {
+                    self.expression(right)?;
+                    self.emit_binary(operator, expression.span)?;
+                }
                 Ok(())
             }
             ExprKind::Update {
@@ -545,6 +567,87 @@ impl Compiler {
             }
             _ => Err(self.unsupported("expression", expression.span)),
         }
+    }
+
+    fn emit_binary(&mut self, operator: &str, span: Span) -> Result<(), CompileError> {
+        let operator = BinaryOperator::from_spelling(operator)
+            .ok_or_else(|| self.unsupported("binary operator", span))?;
+        self.code.push(match operator {
+            BinaryOperator::Add => Instruction::Add,
+            BinaryOperator::Subtract => Instruction::Subtract,
+            BinaryOperator::Multiply => Instruction::Multiply,
+            BinaryOperator::Divide => Instruction::Divide,
+            BinaryOperator::StrictEqual => Instruction::StrictEqual,
+            operator => Instruction::Binary(operator),
+        });
+        Ok(())
+    }
+
+    fn compound_assignment(
+        &mut self,
+        operator: &str,
+        target: &Expr,
+        value: &Expr,
+        span: Span,
+    ) -> Result<(), CompileError> {
+        if !matches!(
+            operator,
+            "+=" | "-="
+                | "*="
+                | "/="
+                | "%="
+                | "**="
+                | "&="
+                | "|="
+                | "^="
+                | "<<="
+                | ">>="
+                | ">>>="
+                | "&&="
+                | "||="
+                | "??="
+        ) {
+            return Err(self.unsupported("assignment operator", span));
+        }
+        self.resolve_update_reference(target)?;
+        self.code.push(Instruction::LoadReference);
+        if matches!(operator, "&&=" | "||=" | "??=") {
+            self.code.push(Instruction::Duplicate);
+            if operator == "??=" {
+                let rhs = self.emit(Instruction::JumpIfNullish(0));
+                self.code.push(Instruction::DiscardReference);
+                let end = self.emit(Instruction::Jump(0));
+                let start = self.offset()?;
+                self.patch(rhs, start);
+                self.code.push(Instruction::Pop);
+                self.expression(value)?;
+                self.code.push(Instruction::Duplicate);
+                self.code.push(Instruction::StoreReference);
+                let finish = self.offset()?;
+                self.patch(end, finish);
+            } else {
+                if operator == "||=" {
+                    self.code.push(Instruction::LogicalNot);
+                }
+                let short = self.emit(Instruction::JumpIfFalse(0));
+                self.code.push(Instruction::Pop);
+                self.expression(value)?;
+                self.code.push(Instruction::Duplicate);
+                self.code.push(Instruction::StoreReference);
+                let end = self.emit(Instruction::Jump(0));
+                let start = self.offset()?;
+                self.patch(short, start);
+                self.code.push(Instruction::DiscardReference);
+                let finish = self.offset()?;
+                self.patch(end, finish);
+            }
+        } else {
+            self.expression(value)?;
+            self.emit_binary(operator.strip_suffix('=').expect("compound suffix"), span)?;
+            self.code.push(Instruction::Duplicate);
+            self.code.push(Instruction::StoreReference);
+        }
+        Ok(())
     }
 
     fn resolve_update_reference(&mut self, target: &Expr) -> Result<(), CompileError> {

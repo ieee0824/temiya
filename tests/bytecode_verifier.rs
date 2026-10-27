@@ -595,3 +595,44 @@ fn numeric_unary_opcode_requires_one_value() {
         );
     }
 }
+
+#[test]
+fn generic_binary_and_retained_reference_reads_obey_stack_and_join_invariants() {
+    use temiya::bytecode::{BinaryOperator, BytecodeCompiler};
+    assert_eq!(
+        verify(vec![
+            Instruction::Binary(BinaryOperator::Less),
+            Instruction::Return
+        ]),
+        Err(VerifyErrorKind::StackUnderflow)
+    );
+    assert_eq!(
+        verify(vec![
+            Instruction::LoadConstant(0),
+            Instruction::LoadConstant(1),
+            Instruction::Binary(BinaryOperator::Less),
+            Instruction::Return
+        ]),
+        Ok(2)
+    );
+    for op in [Instruction::LoadReference, Instruction::DiscardReference] {
+        assert_eq!(
+            verify(vec![op, Instruction::LoadConstant(0), Instruction::Return]),
+            Err(VerifyErrorKind::ScopeMismatch)
+        );
+    }
+    let mut code = BytecodeCompiler::compile("var n=0;n&&=42;")
+        .unwrap()
+        .bytecode()
+        .clone();
+    let index = code
+        .instructions
+        .iter()
+        .position(|op| *op == Instruction::DiscardReference)
+        .unwrap();
+    code.instructions[index] = Instruction::Jump((index + 1) as u32);
+    assert_eq!(
+        code.verify().unwrap_err().kind(),
+        VerifyErrorKind::ScopeMismatch
+    );
+}

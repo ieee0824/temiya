@@ -129,6 +129,17 @@ impl VirtualMachine {
                     };
                     references.push(reference);
                 }
+                Instruction::LoadReference => {
+                    stack.push(
+                        references
+                            .last()
+                            .expect("verified reference stack")
+                            .get_value()?,
+                    );
+                }
+                Instruction::DiscardReference => {
+                    references.pop().expect("verified reference stack");
+                }
                 Instruction::StoreReference => {
                     references
                         .pop()
@@ -324,6 +335,7 @@ impl VirtualMachine {
                 Instruction::Pop => {
                     pop(&mut stack)?;
                 }
+                Instruction::Binary(operator) => binary(&mut stack, operator.spelling(), realm)?,
                 Instruction::Add => binary(&mut stack, "+", realm)?,
                 Instruction::Subtract => binary(&mut stack, "-", realm)?,
                 Instruction::Multiply => binary(&mut stack, "*", realm)?,

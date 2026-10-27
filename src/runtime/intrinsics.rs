@@ -277,6 +277,7 @@ impl IntrinsicRegistry {
         registry.wire_graph()?;
         for (name, symbol) in [
             ("iterator", WellKnownSymbol::Iterator),
+            ("hasInstance", WellKnownSymbol::HasInstance),
             ("toPrimitive", WellKnownSymbol::ToPrimitive),
             ("toStringTag", WellKnownSymbol::ToStringTag),
         ] {
@@ -289,6 +290,7 @@ impl IntrinsicRegistry {
             )?;
         }
         super::builtins::initialize(&registry, host_hooks, symbols)?;
+        super::builtins::install_has_instance(&registry, symbols)?;
         super::array_methods::install(&registry, symbols)?;
         super::string_methods::install(&registry, symbols)?;
         super::iterator::install(&registry, symbols)?;

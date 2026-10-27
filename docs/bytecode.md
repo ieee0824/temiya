@@ -9,6 +9,7 @@ native addresses, and platform-sized operands are intentionally excluded.
 | --- | ---: | --- |
 | `LoadConstant(i)` | `+1` | valid non-metadata constant |
 | `EnterScope(i)`, `ExitScope` | `0` | valid scope descriptor and nesting |
+| `CloneLoopBindings` | `0` | active let-only block, no hoisted functions; keep scope entry identity and clone its environment |
 | `LoadBinding {scope,slot}`, `LoadName(i)` | `+1` | active scope and valid slot/string name |
 | `InitializeBinding`, `StoreBinding`, `StoreReference` | `-1` | one input and valid binding/reference |
 | `GetProperty {strict}` | `-1` | base/key and active scope |
@@ -50,7 +51,8 @@ Only the resulting `VerifiedBytecode` is intended for execution by the VM.
 `BytecodeCompiler` lowers the baseline AST subset (primitive literals, scoped bindings,
 assignment, property get/set/delete, optional member chains, BigInt literals,
 binary/unary/update and compound operators, logical short circuit, conditional expressions, blocks,
-`if`, `while`, `return`, and `throw`) and immediately verifies its output.
+`if`, `while`, classic `for`, `do-while`, `break`, `continue`, labels,
+`return`, and `throw`) and immediately verifies its output.
 Unsupported syntax returns a source-spanned `CompileError` rather than falling
 back silently. `VirtualMachine` accepts only `VerifiedBytecode`, evaluates
 operands left-to-right, uses the runtime's ECMAScript conversions, and returns

@@ -76,6 +76,18 @@ impl VirtualMachine {
                 Instruction::ExitScope => {
                     scopes.pop();
                 }
+                Instruction::CloneLoopBindings => {
+                    let frame = scopes.last_mut().expect("verified loop environment");
+                    let next = Environment::declarative(frame.environment.outer());
+                    for binding in &frame.plan.bindings {
+                        let value = frame
+                            .environment
+                            .get_binding_value(&binding.name, frame.plan.strict)?;
+                        next.create_mutable_binding(binding.name.clone(), false)?;
+                        next.initialize_binding(&binding.name, value)?;
+                    }
+                    frame.environment = next;
+                }
                 Instruction::LoadBinding { scope, slot } => {
                     let frame = binding_frame(&scopes, scope);
                     stack.push(frame.environment.get_binding_value(

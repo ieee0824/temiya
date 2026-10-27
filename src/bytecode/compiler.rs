@@ -1,11 +1,16 @@
 use std::{collections::HashMap, fmt};
 
 use crate::{
-    ast::{Expr, ExprKind, Function, FunctionBody, Literal, Program, Stmt, StmtKind, VariableKind},
+    ast::{
+        Expr, ExprKind, ForInit, Function, FunctionBody, Literal, Program, Stmt, StmtKind,
+        VariableKind,
+    },
     lexer::Span,
     parser::parse_script,
     runtime::{JsString, Value, parse_numeric_literal},
 };
+
+mod control_flow;
 
 use super::{
     BinaryOperator, BindingKind, Bytecode, Constant, FunctionTemplate, Instruction, ScopeBinding,
@@ -33,6 +38,14 @@ impl BytecodeCompiler {
                 Some(function.span),
             ));
         }
+        crate::semantics::validate_expression(
+            &Expr {
+                span: function.span,
+                kind: ExprKind::Function(Box::new(function.clone())),
+            },
+            crate::semantics::SemanticOptions::default(),
+        )
+        .map_err(|error| CompileError::new(error.to_string(), Some(error.span)))?;
         let mut compiler = Compiler::empty(function.strict);
         match &function.body {
             FunctionBody::Block(body) => {
@@ -62,6 +75,8 @@ impl BytecodeCompiler {
 
     /// Lowers an owned AST and verifies the resulting bytecode.
     pub fn compile_program(program: &Program) -> Result<VerifiedBytecode, CompileError> {
+        crate::semantics::validate_program(program, crate::semantics::SemanticOptions::default())
+            .map_err(|error| CompileError::new(error.to_string(), Some(error.span)))?;
         Compiler::new(program)?.compile(program)
     }
 }
@@ -120,6 +135,8 @@ struct Compiler {
     scopes: Vec<CompileScope>,
     strict: bool,
     completion_local: u32,
+    track_completion: bool,
+    targets: Vec<control_flow::ControlTarget>,
 }
 
 impl Compiler {
@@ -130,11 +147,14 @@ impl Compiler {
             scopes: vec![],
             strict,
             completion_local: 0,
+            track_completion: false,
+            targets: vec![],
         }
     }
 
     fn new(program: &Program) -> Result<Self, CompileError> {
         let mut compiler = Self::empty(program.strict);
+        compiler.track_completion = true;
         compiler.enter_scope(
             ScopeKind::Global,
             scope_bindings(&program.body, true, true, true)?,
@@ -157,7 +177,7 @@ impl Compiler {
         Bytecode {
             constants: self.constants,
             instructions: self.code,
-            local_count: 1,
+            local_count: u32::from(self.track_completion),
         }
         .verify()
         .map_err(|error: VerifyError| CompileError::new(error.to_string(), None))
@@ -278,8 +298,11 @@ impl Compiler {
             )),
             StmtKind::Expression(expression) => {
                 self.expression(expression)?;
-                self.code
-                    .push(Instruction::StoreLocal(self.completion_local));
+                self.code.push(if self.track_completion {
+                    Instruction::StoreLocal(self.completion_local)
+                } else {
+                    Instruction::Pop
+                });
                 Ok(false)
             }
             StmtKind::Variable { kind, declarations } => {
@@ -313,6 +336,7 @@ impl Compiler {
                 consequent,
                 alternate,
             } => {
+                self.reset_completion()?;
                 self.expression(test)?;
                 let false_jump = self.emit(Instruction::JumpIfFalse(0));
                 let consequent_terminal = self.statement(consequent)?;
@@ -330,18 +354,12 @@ impl Compiler {
                 }
                 Ok(alternate.is_some() && consequent_terminal && alternate_terminal)
             }
-            StmtKind::While { test, body } => {
-                let start = self.offset()?;
-                self.expression(test)?;
-                let exit = self.emit(Instruction::JumpIfFalse(0));
-                if self.statement(body)? {
-                    return Err(self.unsupported("terminal while body", statement.span));
-                }
-                self.code.push(Instruction::Jump(start));
-                let end = self.offset()?;
-                self.patch(exit, end);
-                Ok(false)
+            StmtKind::While { .. } | StmtKind::DoWhile { .. } | StmtKind::For { .. } => {
+                self.loop_statement(statement, vec![])
             }
+            StmtKind::Labeled { .. } => self.labeled_statement(statement),
+            StmtKind::Break(label) => self.abrupt_jump(label.as_deref(), false, statement.span),
+            StmtKind::Continue(label) => self.abrupt_jump(label.as_deref(), true, statement.span),
             StmtKind::Return(value) => {
                 if let Some(value) = value {
                     self.expression(value)?;
@@ -1058,13 +1076,32 @@ fn collect_vars(statements: &[Stmt], vars: &mut Vec<String>) -> Result<(), Compi
                     collect_vars(std::slice::from_ref(alternate), vars)?;
                 }
             }
-            StmtKind::While { body, .. } => collect_vars(std::slice::from_ref(body), vars)?,
+            StmtKind::While { body, .. }
+            | StmtKind::DoWhile { body, .. }
+            | StmtKind::Labeled { body, .. } => collect_vars(std::slice::from_ref(body), vars)?,
+            StmtKind::For { init, body, .. } => {
+                if let Some(ForInit::Variable { kind, declarations }) = init {
+                    for declaration in declarations {
+                        let ExprKind::Identifier(name) = &declaration.binding.kind else {
+                            return Err(CompileError::new(
+                                "unsupported binding pattern",
+                                Some(declaration.binding.span),
+                            ));
+                        };
+                        if *kind == VariableKind::Var && !vars.contains(name) {
+                            vars.push(name.clone());
+                        }
+                    }
+                }
+                collect_vars(std::slice::from_ref(body), vars)?;
+            }
             StmtKind::FunctionDeclaration(_) => {}
             StmtKind::Empty
             | StmtKind::Debugger
             | StmtKind::Expression(_)
             | StmtKind::Return(_)
             | StmtKind::Throw(_) => {}
+            StmtKind::Break(_) | StmtKind::Continue(_) => {}
             _ => {
                 return Err(CompileError::new(
                     "unsupported bytecode statement",

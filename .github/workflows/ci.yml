@@ -113,3 +113,11 @@ jobs:
         env:
           TEST262_DIR: target/test262
         run: cargo +${{ matrix.toolchain }} test --locked --test global_declarations pinned_test262_global_declarations --all-features -- --ignored --nocapture
+      - name: Run original bytecode loop audit and check scoped regressions
+        env:
+          TEST262_DIR: target/test262
+          TEST262_REPORT: target/bytecode-loops.json
+        run: |
+          loop_audit_status=0
+          cargo +${{ matrix.toolchain }} test --locked --test bytecode_loops pinned_test262_bytecode_loops --all-features -- --ignored --nocapture || loop_audit_status=$?
+          node scripts/check-bytecode-loop-audit.mjs target/bytecode-loops.json "$loop_audit_status"

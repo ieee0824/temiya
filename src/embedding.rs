@@ -364,10 +364,14 @@ impl Engine {
                 "compiled script belongs to another engine",
             ));
         }
-        match match &script.bytecode {
-            Some(bytecode) => VirtualMachine::execute_in_realm(bytecode, &script.script.realm()),
-            None => script.script.evaluate(),
-        }
+        match crate::runtime::with_auto_loop_bytecode(self.backend == ScriptBackend::Auto, || {
+            match &script.bytecode {
+                Some(bytecode) => {
+                    VirtualMachine::execute_in_realm(bytecode, &script.script.realm())
+                }
+                None => script.script.evaluate(),
+            }
+        })
         .map_err(|error| Exception::runtime(error, self.id, script.realm_id))?
         {
             Completion::Normal(value) => Ok(ValueHandle {

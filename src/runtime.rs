@@ -20,6 +20,7 @@ mod elements;
 mod environment;
 mod execution;
 mod function;
+pub(crate) use function::with_auto_loop_bytecode;
 mod generator;
 mod host_data;
 mod indexed;

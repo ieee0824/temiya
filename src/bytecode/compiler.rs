@@ -22,6 +22,13 @@ use super::{
 pub struct BytecodeCompiler;
 
 impl BytecodeCompiler {
+    /// Compile a simple-parameter function for an already instantiated frame.
+    pub(crate) fn compile_prepared_function(
+        function: &Function,
+    ) -> Result<VerifiedBytecode, CompileError> {
+        let compiler = Compiler::empty(function.strict);
+        Ok(compiler.function_template(function, false)?.body)
+    }
     /// Parses Script source, lowers it, and verifies the resulting bytecode.
     pub fn compile(source: &str) -> Result<VerifiedBytecode, CompileError> {
         let program =

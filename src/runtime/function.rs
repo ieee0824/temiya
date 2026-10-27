@@ -1,8 +1,46 @@
 //! ECMAScript function objects, calls, constructors, and parameter binding.
 
-use std::{cell::RefCell, rc::Rc};
+use std::{
+    cell::{Cell, RefCell},
+    rc::Rc,
+};
 
-use crate::ast::{Expr, ExprKind, Function, FunctionBody, MethodKind};
+use crate::{
+    ast::{Expr, ExprKind, Function, FunctionBody, MethodKind, Stmt, StmtKind},
+    bytecode::{BytecodeCompiler, VerifiedBytecode, VirtualMachine},
+};
+
+thread_local! { static AUTO_LOOP_BYTECODE: Cell<bool> = const { Cell::new(false) }; }
+#[cfg(test)]
+thread_local! { static LOOP_VM_ENTRIES: Cell<usize> = const { Cell::new(0) }; }
+
+pub(crate) fn with_auto_loop_bytecode<T>(enabled: bool, f: impl FnOnce() -> T) -> T {
+    struct Restore(bool);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            AUTO_LOOP_BYTECODE.with(|value| value.set(self.0));
+        }
+    }
+    AUTO_LOOP_BYTECODE.with(|value| {
+        let previous = value.replace(enabled);
+        let _restore = Restore(previous);
+        f()
+    })
+}
+
+fn contains_own_loop(stmt: &Stmt) -> bool {
+    match &stmt.kind {
+        StmtKind::While { .. } | StmtKind::DoWhile { .. } | StmtKind::For { .. } => true,
+        StmtKind::Block(items) => items.iter().any(contains_own_loop),
+        StmtKind::If {
+            consequent,
+            alternate,
+            ..
+        } => contains_own_loop(consequent) || alternate.as_deref().is_some_and(contains_own_loop),
+        StmtKind::Labeled { body, .. } => contains_own_loop(body),
+        _ => false,
+    }
+}
 
 use super::{
     Completion, Environment, ExpressionEvaluator, JsString, Object, PropertyKey, Realm,
@@ -28,6 +66,7 @@ pub(super) struct FunctionClosure {
     pub(super) realm: Realm,
     pub(super) environment: Environment,
     pub(super) lexical_this: Value,
+    loop_bytecode: RefCell<Option<Option<Rc<VerifiedBytecode>>>>,
     #[allow(dead_code)]
     home_object: Option<Object>,
 }
@@ -59,6 +98,7 @@ pub(super) fn create_function(
             .clone()
             .unwrap_or_else(|| evaluator.environment.clone()),
         lexical_this: evaluator.this_value.clone(),
+        loop_bytecode: RefCell::new(None),
         home_object,
     });
     let slot = Rc::new(RefCell::new(None::<super::WeakObject>));
@@ -195,6 +235,39 @@ fn call_function(
         arguments,
     )?;
 
+    if closure.kind == FunctionKind::Normal && AUTO_LOOP_BYTECODE.with(Cell::get) {
+        let mut cache = closure.loop_bytecode.borrow_mut();
+        if cache.is_none() {
+            let has_loop =
+                matches!(&closure.code.body, FunctionBody::Block(body) if contains_own_loop(body));
+            *cache = Some(if has_loop {
+                BytecodeCompiler::compile_prepared_function(&closure.code)
+                    .ok()
+                    .map(Rc::new)
+            } else {
+                None
+            });
+        }
+        let bytecode = cache.as_ref().and_then(Clone::clone);
+        drop(cache);
+        if let Some(bytecode) = bytecode {
+            #[cfg(test)]
+            LOOP_VM_ENTRIES.with(|count| count.set(count.get() + 1));
+            return match VirtualMachine::execute_in_function(
+                &bytecode,
+                &closure.realm,
+                &environment,
+            )? {
+                Completion::Return(value) => Ok(value),
+                Completion::Normal(_) => Ok(Value::Undefined),
+                Completion::Throw(value) => Err(RuntimeError::thrown(value)),
+                _ => Err(RuntimeError::internal_error(
+                    "invalid completion escaped a bytecode function",
+                )),
+            };
+        }
+    }
+
     match &closure.code.body {
         FunctionBody::Expression(expression) => evaluator.evaluate(expression),
         FunctionBody::Block(body) => {
@@ -329,5 +402,52 @@ fn bind_parameter(environment: &Environment, binding: &Expr, value: Value) -> Ru
     } else {
         environment.create_mutable_binding(name.clone(), false)?;
         environment.initialize_binding(&name, value)
+    }
+}
+
+#[cfg(test)]
+mod auto_loop_tests {
+    use super::LOOP_VM_ENTRIES;
+    use crate::{Engine, embedding::ScriptBackend, runtime::Value};
+
+    #[test]
+    fn auto_executes_supported_loop_body_and_falls_back_before_effects() {
+        LOOP_VM_ENTRIES.with(|count| count.set(0));
+        let engine = Engine::builder()
+            .script_backend(ScriptBackend::Auto)
+            .build();
+        let realm = engine.create_realm();
+        // Object literal forces setup through the AST; function is created there.
+        let setup = engine.compile(&realm, "var o = {}; function sum(n) { var x = 0; for (var i = 0; i < n; i++) x += i; return x; } function fallback() { var x = 0; while (x < 2) { x++; } try { return x; } finally {} }").unwrap();
+        assert_eq!(setup.backend(), ScriptBackend::Ast);
+        engine.evaluate(&setup).unwrap();
+        let script = engine.compile(&realm, "sum(10);").unwrap();
+        assert!(matches!(
+            engine.evaluate(&script).unwrap().value(),
+            Value::Number(45.0)
+        ));
+        assert_eq!(LOOP_VM_ENTRIES.with(|count| count.get()), 1);
+        assert!(matches!(
+            engine.evaluate(&script).unwrap().value(),
+            Value::Number(45.0)
+        ));
+        assert_eq!(LOOP_VM_ENTRIES.with(|count| count.get()), 2);
+        let script = engine.compile(&realm, "fallback();").unwrap();
+        assert!(matches!(
+            engine.evaluate(&script).unwrap().value(),
+            Value::Number(2.0)
+        ));
+        assert_eq!(LOOP_VM_ENTRIES.with(|count| count.get()), 2);
+    }
+
+    #[test]
+    fn execution_policy_is_restored_after_nested_calls_and_panics() {
+        use super::{AUTO_LOOP_BYTECODE, with_auto_loop_bytecode};
+        with_auto_loop_bytecode(true, || {
+            assert!(AUTO_LOOP_BYTECODE.with(std::cell::Cell::get));
+            let _ = std::panic::catch_unwind(|| with_auto_loop_bytecode(false, || panic!("test")));
+            assert!(AUTO_LOOP_BYTECODE.with(std::cell::Cell::get));
+        });
+        assert!(!AUTO_LOOP_BYTECODE.with(std::cell::Cell::get));
     }
 }

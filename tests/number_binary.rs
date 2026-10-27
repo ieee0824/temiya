@@ -1,4 +1,4 @@
-use temiya::{Engine, ScriptBackend, runtime::Value};
+use temiya::{Engine, embedding::ScriptBackend, runtime::Value};
 
 #[test]
 fn number_pairs_match_independent_javascript_oracle_in_ast_and_vm() {

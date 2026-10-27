@@ -304,6 +304,94 @@ mod tests {
     use crate::runtime::Value;
 
     #[test]
+    fn mixed_transitions_match_ordered_descriptor_model() {
+        use std::collections::BTreeMap;
+        let mut elements = Elements::default();
+        let mut expected = BTreeMap::new();
+        for i in 0..64 {
+            let descriptor = number_descriptor(f64::from(i));
+            elements.insert(i, descriptor.clone());
+            expected.insert(i, descriptor);
+        }
+        let mut state = 0x4d59_5df4_d0f3_3173_u64;
+        for step in 0..2000 {
+            state = state
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            let index = if state & 255 == 0 {
+                u32::MAX - 1
+            } else {
+                ((state >> 16) % 180) as u32
+            };
+            match (state >> 32) % 5 {
+                0 | 1 | 2 => {
+                    let value = if state & 8 == 0 {
+                        Value::Number(f64::from_bits(state))
+                    } else {
+                        Value::Undefined
+                    };
+                    let descriptor = PropertyDescriptor::data(
+                        value,
+                        state & 16 == 0,
+                        state & 32 == 0,
+                        state & 64 == 0,
+                    );
+                    elements.insert(index, descriptor.clone());
+                    expected.insert(index, descriptor);
+                }
+                3 => {
+                    if expected
+                        .get(&index)
+                        .is_none_or(|d| d.configurable == Some(true))
+                    {
+                        elements.remove(index);
+                        expected.remove(&index);
+                    }
+                }
+                _ => {
+                    let length = index.min(180);
+                    let mut blocked = None;
+                    for key in expected
+                        .range(length..)
+                        .map(|(&key, _)| key)
+                        .rev()
+                        .collect::<Vec<_>>()
+                    {
+                        if expected[&key].configurable != Some(true) {
+                            blocked = Some(key);
+                            break;
+                        }
+                        expected.remove(&key);
+                    }
+                    assert_eq!(elements.shrink(length), blocked, "step {step}");
+                }
+            }
+            assert_eq!(
+                elements.indices(),
+                expected.keys().copied().collect::<Vec<_>>(),
+                "step {step}"
+            );
+            for (&index, value) in &expected {
+                let actual = elements.get(index).expect("present descriptor");
+                assert!(
+                    actual
+                        .value
+                        .as_ref()
+                        .unwrap()
+                        .same_value(value.value.as_ref().unwrap()),
+                    "step {step}, index {index}"
+                );
+                assert_eq!(
+                    (actual.writable, actual.enumerable, actual.configurable),
+                    (value.writable, value.enumerable, value.configurable),
+                    "step {step}, index {index}"
+                );
+                assert!(actual.get.is_none() && actual.set.is_none());
+            }
+        }
+    }
+
+    #[test]
     fn numeric_packing_preserves_bits_and_expands_for_holes_and_attributes() {
         let mut elements = Elements::default();
         let nan = f64::from_bits(0x7ff8_1234_5678_9abc);

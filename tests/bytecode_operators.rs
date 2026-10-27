@@ -8,10 +8,74 @@ use temiya::{
 fn lexical_updates_capture_verified_binding_before_numeric_coercion() {
     let source = "var calls=0;function f(){var x=new Object();x.valueOf=function(){calls++;x=99;return 41;};var old=x++;return old+':'+x+':'+calls;}f();";
     let code = BytecodeCompiler::compile(source).unwrap();
-    assert!(code.bytecode().constants.iter().any(|constant| matches!(constant, Constant::Function(template) if template.body.bytecode().instructions.iter().any(|op| matches!(op, Instruction::ResolveBinding { .. })))));
+    assert!(code.bytecode().constants.iter().any(|constant| {
+        match constant {
+            Constant::Function(template) => template
+                .body
+                .bytecode()
+                .instructions
+                .iter()
+                .any(|op| matches!(op, Instruction::ResolveBinding { .. })),
+            Constant::Scope(scope) => scope.functions.iter().any(|declaration| {
+                declaration
+                    .template
+                    .body
+                    .bytecode()
+                    .instructions
+                    .iter()
+                    .any(|op| matches!(op, Instruction::ResolveBinding { .. }))
+            }),
+            _ => false,
+        }
+    }));
     for vm in [false, true] {
         assert!(
             result(&Realm::ordinary(), source, vm).same_value(&Value::String("41:42:1".into()))
+        );
+    }
+}
+
+#[test]
+fn global_update_observes_proxy_has_trap() {
+    use std::{cell::Cell, rc::Rc};
+    use temiya::runtime::{Object, ProxyObject};
+    for vm in [false, true] {
+        let count = Rc::new(Cell::new(0));
+        let target = Object::new();
+        let handler = Object::new();
+        let proxy = ProxyObject::new(target.clone(), handler.clone()).object();
+        let realm = Realm::new(proxy.clone(), Value::Object(proxy));
+        let observed = count.clone();
+        handler
+            .create_data_property(
+                "has".into(),
+                Value::Object(Object::native_function(move |_, args| {
+                    let Value::Object(target) = &args[0] else {
+                        panic!("target expected")
+                    };
+                    let key = args[1].to_property_key()?;
+                    if key == "x".into() {
+                        observed.set(observed.get() + 1);
+                    }
+                    Ok(Value::Boolean(target.has_property(&key)?))
+                })),
+            )
+            .unwrap();
+        let reset = count.clone();
+        target
+            .create_data_property(
+                "reset".into(),
+                Value::Object(Object::native_function(move |_, _| {
+                    reset.set(0);
+                    Ok(Value::Undefined)
+                })),
+            )
+            .unwrap();
+        let source = "var x=41;reset();x++;";
+        assert!(result(&realm, source, vm).same_value(&Value::Number(41.0)));
+        assert!(
+            count.get() > 0,
+            "global name lookup must invoke the Proxy has trap"
         );
     }
 }

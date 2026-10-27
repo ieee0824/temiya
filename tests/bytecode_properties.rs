@@ -743,3 +743,76 @@ fn pinned_test262_property_audit() {
         "upstream integration remains incomplete; unsupported compilation is not pass"
     );
 }
+#[test]
+fn ordinary_array_push_keeps_prototype_setters_readonly_lengths_and_proxy_order() {
+    for (setup, source, expected) in [
+        (
+            "var a=[1,,3];a.length=1000000;",
+            "a.push(42)===1000001 && a[1000000]===42 && !(1 in a) && Object.getOwnPropertyDescriptor(a,'1000000').writable;",
+            Value::Boolean(true),
+        ),
+        (
+            "var seen=0;Object.defineProperty(Array.prototype,'0',{set:function(v){seen=v;}});var a=[];",
+            "a.push(42)===1 && seen===42 && Object.getOwnPropertyDescriptor(a,'0')===undefined;",
+            Value::Boolean(true),
+        ),
+        (
+            "var seen=0;Object.defineProperty(Object.prototype,'0',{set:function(v){seen=v;}});var a=[];",
+            "a.push(42)===1 && seen===42 && Object.getOwnPropertyDescriptor(a,'0')===undefined;",
+            Value::Boolean(true),
+        ),
+        (
+            "var seen=0;Object.defineProperty(Array.prototype,'0',{set:function(v){seen=v;}});var a=[];Object.preventExtensions(a);",
+            "a.push(42)===1 && seen===42 && Object.getOwnPropertyDescriptor(a,'0')===undefined;",
+            Value::Boolean(true),
+        ),
+        (
+            "var a=[];Object.preventExtensions(a);",
+            "a.push()===0;",
+            Value::Boolean(true),
+        ),
+        (
+            "var seen=0;var a=[];Object.setPrototypeOf(a,new Proxy({},{set:function(t,k,v,r){seen=v;return true;}}));",
+            "Array.prototype.push.call(a,42)===1 && seen===42 && Object.getOwnPropertyDescriptor(a,'0')===undefined;",
+            Value::Boolean(true),
+        ),
+        (
+            "var trace='';var a=[];var p=new Proxy(a,{set:function(t,k,v,r){trace+=k+',';t[k]=v;return true;}});",
+            "Array.prototype.push.call(p,42);trace+':'+a.length+':'+a[0];",
+            Value::String("0,length,:1:42".into()),
+        ),
+    ] {
+        for vm in [false, true] {
+            let realm = Realm::ordinary();
+            execute(&realm, setup, false).unwrap();
+            assert!(
+                result(&realm, source, vm).same_value(&expected),
+                "{setup} {source}"
+            );
+        }
+    }
+    for vm in [false, true] {
+        for source in ["a.push();", "a.push(42);"] {
+            let realm = Realm::ordinary();
+            execute(&realm, "var seen=0;Object.defineProperty(Array.prototype,'0',{set:function(v){seen=v;}});var a=[];Object.defineProperty(a,'length',{writable:false});", false).unwrap();
+            assert_eq!(
+                execute(&realm, source, vm).unwrap_err().kind(),
+                RuntimeErrorKind::TypeError
+            );
+            assert!(result(&realm, "a.length;", vm).same_value(&Value::Number(0.0)));
+            assert!(result(&realm, "seen;", vm).same_value(&Value::Number(
+                if source == "a.push();" { 0.0 } else { 42.0 }
+            )));
+        }
+        let realm = Realm::ordinary();
+        execute(&realm, "var a=[];a.length=4294967295;", false).unwrap();
+        assert_eq!(
+            execute(&realm, "a.push(42);", vm).unwrap_err().kind(),
+            RuntimeErrorKind::RangeError
+        );
+        assert!(
+            result(&realm, "a['4294967295']===42 && a.length===4294967295;", vm)
+                .same_value(&Value::Boolean(true))
+        );
+    }
+}

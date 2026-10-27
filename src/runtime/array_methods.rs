@@ -205,6 +205,9 @@ fn push(object: &Object, len: u64, items: &[Value]) -> RuntimeResult<Value> {
             "array-like length exceeds the safe integer limit",
         ));
     }
+    if let Some(end) = object.try_push_array_values(len, items) {
+        return Ok(Value::Number(f64::from(end)));
+    }
     for (index, item) in items.iter().enumerate() {
         set(object, key(len + index as u64), item.clone())?;
     }

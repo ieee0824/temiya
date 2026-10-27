@@ -66,8 +66,11 @@ passes, all 15 samples, independent oracle results and negative decisions.
 Local ARM64 original-eleven before/after measurements also include one
 object-alloc slowdown (ratio 1.133801); its cause remains unresolved. The
 actual-Boa comparison has 31 faster and two within-noise decisions. Local
-warm RegExp measurements have four faster and five within-noise decisions.
-The hosted original-eleven regressions and controls are still running.
+warm RegExp measurements have five faster and four within-noise decisions.
+The completed local identical-binary control has 29 within-noise, two faster
+and two slower decisions; object-alloc is within noise in all three pairs.
+This demonstrates process variability but does not clear the retained source
+regression. Hosted original-eleven regressions and controls are still running.
 
 The subsequent short-ASCII subject experiment (581265a) avoids an intermediate
 UTF-8 allocation for at most 64 ASCII code units, preserving the existing
@@ -79,3 +82,8 @@ Before adoption: final-source cold measurements, warm authored RegExp and the
 original eleven on ARM64 and x64, both compiler versions, C ABI, fmt/Clippy and
 security checks must be reviewed. #510 and the broader performance/compatibility
 scope of #427 remain separate.
+
+The inline-scratch variant (40a4f58) keeps the bounded cache directly inside
+the per-object search state, removing a separate Box allocation. Internal
+RegExp tests and all-target/all-feature Clippy pass; its local cold report
+passes correctness but misses the overall Boa gate (one faster, two noise).

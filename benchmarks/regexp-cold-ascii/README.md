@@ -15,7 +15,7 @@ Local absolute paths identify historical files, not portable executable location
 
 ## Results and source identity
 
-local/ retains all ten successive local cold reports, per-source build metadata
+local/ retains all eleven successive local cold reports, per-source build metadata
 and compressed production patches against main 5616425. None passes all three
 actual-Boa speed comparisons. Source and binary hashes must remain distinct.
 
@@ -31,10 +31,11 @@ Early artifacts are complete cold reports; hosted macro runs remain in progress.
 additional/ retains affinity/same-binary diagnostics, four local macro reports,
 profile attribution proof and quality logs (including initial Clippy failures).
 The local original-eleven before/after report includes object-alloc pair 0
-ratio 1.133801, classified slower. Its cause is unresolved. Same-binary control
-measurement is pending and is not evidence until its output is validated.
+ratio 1.133801, classified slower. Its cause is unresolved. The completed same-binary control has 29 within-noise, two faster and two
+slower decisions (call and string-concat). All three object-alloc controls
+are within noise; this does not establish the absence of a source regression.
 The local original-eleven Boa report is 31 faster/two within noise; authored
-warm RegExp is four faster/five within noise. No whole-engine victory is claimed.
+warm RegExp is five faster/four within noise. No whole-engine victory is claimed.
 
 ## Offline verification
 
@@ -45,3 +46,12 @@ Bytecode execution and actual fork provenance. A valid report with a false
 speed gate remains false. This does not rebuild historical binaries or prove
 whole-application throughput, full conformance, or process RSS bounds.
 Compressed logs and patches preserve original bytes, including whitespace.
+
+Final-profile run 40601358312 retains raw Callgrind and provenance in
+profile-final/. The production source equals 0cdb99c; 323344296 instruction
+references include setup/startup/two checked passes. Compiler inclusive cost
+is 88125528 references; these counts overlap and are not elapsed-time wins.
+
+The subsequent inline-scratch variant 40a4f58 removes one per-object heap
+allocation. Its fixed-input local report is valid but has only one faster
+and two within-noise Boa decisions, so its overall speed gate remains false.

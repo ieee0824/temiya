@@ -56,6 +56,25 @@ and build identities.
 These observations predate the subsequent integration with array literal main
 revision 674528b639e0b4b1b7c191efa94982754adffcc7. The integrated runtime at
 e03c7e1c5a417ce16a1f1ee12c1fcb1d158b39a1 passed CI 40483634621 and security
-40483627761; its separate final comparison is run 40483784397. That result must
-be verified separately before merge. This report/documentation addition changes
+40483627761; its separate final comparison is run 40483784397, completed successfully. This report/documentation addition changes
 no runtime code, does not enable Auto by default and does not close #307/#427.
+
+## Final integrated comparison
+
+[Run 40483784397](https://github.com/ieee0824/temiya/actions/runs/40483784397)
+measures exact runtime e03c7e1c5a417ce16a1f1ee12c1fcb1d158b39a1 against main
+674528b639e0b4b1b7c191efa94982754adffcc7 after array integration, with both
+Temiya workers using default AST. All 33 before/after comparisons are within
+the unchanged noise threshold; no speedup or regression is detected. Actual
+omoikane Boa is faster beyond threshold in all 33 comparisons. This is a
+correctness fix and does not establish Boa superiority.
+
+Both reports contain 66 successful workers and 1,056 validated results with
+the same original eleven workloads, iterations, 15 timed samples, checked
+warmup, three alternating pairs, and 512 MiB/180-second limits. All statistics
+and decisions were independently recalculated, and manifest/oracle coverage,
+modes, revisions, compiler and artifact metadata verified. Artifact 12726431047.
+Raw [before/after](../benchmarks/global-resolution-final-beforeafter.json),
+[Boa](../benchmarks/global-resolution-final-boa.json), and
+[provenance](../benchmarks/global-resolution-final-provenance.json) are retained.
+The final report/documentation change adds no runtime code.

@@ -54,7 +54,15 @@ impl Coercion {
     }
 
     fn length(&self, object: &Object) -> RuntimeResult<u64> {
-        let number = self.number(object.get(&"length".into())?)?;
+        let key: PropertyKey = "length".into();
+        let value = match object.own_data_value_with_hint(&key, None) {
+            Some((value, _)) => value,
+            None => object.get(&key)?,
+        };
+        let number = match value {
+            Value::Number(number) => number,
+            value => self.number(value)?,
+        };
         // Rust's saturating float cast maps NaN and negative values to zero.
         // Explicit clamping implements ToLength for positive infinity as well.
         Ok((number as u64).min(MAX_LENGTH))

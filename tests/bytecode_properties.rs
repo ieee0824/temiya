@@ -25,6 +25,36 @@ fn assert_value(actual: Value, expected: &Value) {
 }
 
 #[test]
+fn array_push_length_reads_keep_coercion_getters_and_setters_ordered() {
+    for vm in [false, true] {
+        let realm = Realm::ordinary();
+        setup(
+            &realm,
+            "var log='';var receiver={length:{valueOf:function(){log+='N';receiver.length=100;return 2;}}};Object.defineProperty(receiver,'2',{set:function(value){log+='I';if(this!==receiver||value!==7)throw 99;}});",
+        );
+        assert_value(
+            value(execute(
+                &realm,
+                "var count=Array.prototype.push.call(receiver,7);log+':'+count+':'+receiver.length;",
+                vm,
+            )),
+            &Value::String("NI:3:3".into()),
+        );
+        let realm = Realm::ordinary();
+        setup(&realm, "var log='';var receiver={get length(){log+='G';return 2;},set length(value){log+='L';if(value!==3)throw 99;}};Object.defineProperty(receiver,'2',{set:function(value){log+='I';if(this!==receiver||value!==7)throw 99;}});
+");
+        assert_value(
+            value(execute(
+                &realm,
+                "Array.prototype.push.call(receiver,7);log;",
+                vm,
+            )),
+            &Value::String("GIL".into()),
+        );
+    }
+}
+
+#[test]
 fn literal_string_compound_assignment_preserves_captures_results_and_coercion() {
     for vm in [false, true] {
         for (source, expected) in [

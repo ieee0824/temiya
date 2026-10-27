@@ -358,7 +358,7 @@ impl Object {
         if state.proxy.is_some()
             || state.lazy_function_prototype.is_some()
             || state.string_data.is_some()
-            || state.elements.is_some()
+            || (state.elements.is_some() && key.array_index().is_some())
             || state.view.is_some()
             || state.buffer.is_some()
         {
@@ -748,7 +748,29 @@ impl Object {
         Ok(true)
     }
 
+    fn ordinary_array_length_info(&self) -> Option<(u32, bool)> {
+        let state = self.0.state.borrow();
+        if !state.array
+            || state.proxy.is_some()
+            || state.string_data.is_some()
+            || state.view.is_some()
+            || state.buffer.is_some()
+        {
+            return None;
+        }
+        let entry = state.properties.iter().find(|entry| {
+            matches!(&entry.key, PropertyKey::String(name) if name.code_units().iter().copied().eq("length".encode_utf16()))
+        })?;
+        let Some(Value::Number(length)) = &entry.descriptor.value else {
+            return None;
+        };
+        Some((*length as u32, entry.descriptor.writable == Some(true)))
+    }
+
     pub(super) fn array_length(&self) -> u32 {
+        if let Some((length, _)) = self.ordinary_array_length_info() {
+            return length;
+        }
         match self
             .get_own_property(&"length".into())
             .and_then(|d| d.value)
@@ -759,6 +781,9 @@ impl Object {
     }
 
     fn array_length_writable(&self) -> bool {
+        if let Some((_, writable)) = self.ordinary_array_length_info() {
+            return writable;
+        }
         self.get_own_property(&"length".into())
             .and_then(|descriptor| descriptor.writable)
             .unwrap_or(false)
@@ -1164,6 +1189,31 @@ fn complete_descriptor(mut descriptor: PropertyDescriptor) -> PropertyDescriptor
 #[cfg(test)]
 mod own_data_hint_tests {
     use super::*;
+
+    #[test]
+    fn array_named_data_hints_observe_length_and_skip_indexed_storage() {
+        let array = crate::runtime::ArrayObject::new(3).unwrap().object();
+        let key: PropertyKey = "length".into();
+        let (value, index) = array.own_data_value_with_hint(&key, None).unwrap();
+        assert!(value.same_value(&Value::Number(3.0)));
+        array
+            .create_data_property("3".into(), Value::Number(42.0))
+            .unwrap();
+        assert!(
+            array
+                .own_data_value_with_hint(&key, Some(index))
+                .unwrap()
+                .0
+                .same_value(&Value::Number(4.0))
+        );
+        assert!(array.own_data_value_with_hint(&"3".into(), None).is_none());
+        assert!(
+            array
+                .get(&"3".into())
+                .unwrap()
+                .same_value(&Value::Number(42.0))
+        );
+    }
 
     #[test]
     fn own_data_hint_rechecks_keys_descriptors_and_exotic_objects() {

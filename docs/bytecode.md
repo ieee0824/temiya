@@ -344,3 +344,10 @@ bytecode for a supported whole Script and falls back to AST otherwise;
 AST. Selection applies to Scripts compiled by that Engine, not modules or
 functions previously created by the AST interpreter. A VM runtime exception
 is propagated and never triggers AST re-execution.
+
+
+### Object initializer data properties
+
+See [object data literals](object-data-literals.md) for bytecode instructions,
+key/value ordering, prototype setters, object spread, scoped upstream tests
+and remaining method/HomeObject limits.

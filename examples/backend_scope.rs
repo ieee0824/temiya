@@ -19,14 +19,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             engine.evaluate(&script)?.value(),
             Value::Number(42.0)
         ));
-        if source.starts_with("function") {
-            assert!(matches!(
-                VirtualMachine::execute(&BytecodeCompiler::compile(source)?)?,
-                Completion::Normal(Some(Value::Number(42.0)))
-            ));
-        } else {
-            assert!(BytecodeCompiler::compile(source).is_err());
-        }
+        assert!(matches!(
+            VirtualMachine::execute(&BytecodeCompiler::compile(source)?)?,
+            Completion::Normal(Some(Value::Number(42.0)))
+        ));
     }
 
     // Syntax acceptance and runtime support are separate contracts.

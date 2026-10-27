@@ -1,5 +1,7 @@
 name: Pinned SpiderMonkey workload comparison
 on:
+  pull_request:
+    types: [opened, synchronize]
   workflow_dispatch:
     inputs:
       shell_run:
@@ -14,6 +16,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   compare:
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     env:

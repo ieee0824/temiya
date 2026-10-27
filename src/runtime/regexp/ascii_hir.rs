@@ -216,8 +216,9 @@ fn literal(byte: u8) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use super::super::matcher::Matcher;
     use super::*;
-    use regex_automata::{Input, PatternID, meta::Regex};
+    use regex_automata::{Input, PatternID};
 
     #[test]
     fn supported_grammar_matches_full_parser_captures_and_offsets() {
@@ -252,7 +253,8 @@ mod tests {
         for pattern in patterns {
             for unicode in [false, true] {
                 let hir = parse(pattern).expect(pattern);
-                let fast = Regex::builder().build_from_hir(&hir).unwrap();
+                let fast = Matcher::from_hir(&hir).unwrap();
+                let mut scratch = fast.create_scratch();
                 let reference = regex::RegexBuilder::new(pattern)
                     .unicode(unicode)
                     .build()
@@ -280,7 +282,11 @@ mod tests {
                 ] {
                     for start in [0, input.len()] {
                         let mut got = fast.create_captures();
-                        fast.search_captures(&Input::new(input).span(start..input.len()), &mut got);
+                        fast.search(
+                            &Input::new(input).span(start..input.len()),
+                            &mut got,
+                            &mut scratch,
+                        );
                         let expected = reference.captures_at(input, start);
                         assert_eq!(
                             got.is_match(),

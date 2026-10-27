@@ -11,6 +11,8 @@ use regex_automata::{
 use super::{JsString, Object, RuntimeError, RuntimeResult};
 
 mod ascii_hir;
+mod matcher;
+use matcher::{Matcher, Scratch};
 
 /// Parsed ECMAScript regular-expression flags.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -64,8 +66,9 @@ pub(super) struct RegExpSlot(Rc<RegExpData>);
 struct RegExpData {
     source: JsString,
     flags: RegExpFlags,
-    matcher: Regex,
+    matcher: Matcher,
     captures: RefCell<Captures>,
+    scratch: RefCell<Scratch>,
     last_index: RefCell<usize>,
 }
 
@@ -79,7 +82,7 @@ const MATCHER_CACHE_ENTRIES: usize = 256;
 struct CachedMatcher {
     source: String,
     flags: RegExpFlags,
-    matcher: Regex,
+    matcher: Matcher,
     bytes: usize,
 }
 
@@ -93,7 +96,7 @@ thread_local! {
     static MATCHERS: RefCell<MatcherCache> = RefCell::new(MatcherCache::default());
 }
 
-fn compile_matcher(source: &str, flags: RegExpFlags) -> RuntimeResult<Regex> {
+fn compile_matcher(source: &str, flags: RegExpFlags) -> RuntimeResult<Matcher> {
     if let Some(matcher) = MATCHERS.with(|cache| {
         let mut cache = cache.borrow_mut();
         let index = cache
@@ -128,13 +131,16 @@ fn compile_matcher(source: &str, flags: RegExpFlags) -> RuntimeResult<Regex> {
         .then(|| ascii_hir::parse(source))
         .flatten();
     let matcher = match direct {
-        Some(hir) => builder.build_from_hir(&hir),
+        Some(hir) => return finish_matcher(source, flags, Matcher::from_hir(&hir)?),
         None => builder.build(&translate_named_groups(source)),
     }
     .map_err(|error| RuntimeError::syntax_error(error.to_string()))?;
+    finish_matcher(source, flags, Matcher::Meta(matcher))
+}
+
+fn finish_matcher(source: &str, flags: RegExpFlags, matcher: Matcher) -> RuntimeResult<Matcher> {
     let bytes = matcher
-        .memory_usage()
-        .saturating_add(matcher.create_cache().memory_usage())
+        .template_memory_usage()
         .saturating_add(source.len())
         .saturating_add(std::mem::size_of::<CachedMatcher>());
     if bytes <= MATCHER_CACHE_BYTES {
@@ -180,12 +186,14 @@ impl RegExp {
         let source = scalar_string(&pattern)?;
         let matcher = compile_matcher(&source, flags)?;
         let captures = RefCell::new(matcher.create_captures());
+        let scratch = RefCell::new(matcher.create_scratch());
         let object = Object::new();
         object.0.state.borrow_mut().regexp = Some(RegExpSlot(Rc::new(RegExpData {
             source: pattern,
             flags,
             matcher,
             captures,
+            scratch,
             last_index: RefCell::new(0),
         })));
         Ok(Self(object))
@@ -250,9 +258,10 @@ impl RegExp {
             return Ok(None);
         };
         let mut captures = slot.0.captures.borrow_mut();
-        slot.0.matcher.search_captures(
+        slot.0.matcher.search(
             &Input::new(&text).span(start_byte..text.len()),
             &mut captures,
+            &mut slot.0.scratch.borrow_mut(),
         );
         if !captures.is_match()
             || (slot.0.flags.sticky

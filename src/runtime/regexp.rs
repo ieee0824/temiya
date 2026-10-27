@@ -1,6 +1,11 @@
 //! String exotic objects and a non-JIT regular-expression matcher.
 
-use std::{cell::RefCell, collections::VecDeque, rc::Rc};
+use std::{
+    cell::RefCell,
+    collections::{HashMap, hash_map::RandomState},
+    hash::{BuildHasher, Hash, Hasher},
+    rc::Rc,
+};
 
 use regex_automata::{
     Input, PatternID,
@@ -15,7 +20,7 @@ mod matcher;
 use matcher::{Matcher, Scratch};
 
 /// Parsed ECMAScript regular-expression flags.
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Hash)]
 pub struct RegExpFlags {
     /// Global matching (`g`).
     pub global: bool,
@@ -84,12 +89,148 @@ struct CachedMatcher {
     flags: RegExpFlags,
     matcher: Matcher,
     bytes: usize,
+    hash: u64,
+    previous: Option<usize>,
+    next: Option<usize>,
+    collision_next: Option<usize>,
 }
 
 #[derive(Default)]
 struct MatcherCache {
-    entries: VecDeque<CachedMatcher>,
+    entries: Vec<Option<CachedMatcher>>,
+    index: HashMap<u64, usize>,
+    free: Vec<usize>,
+    head: Option<usize>,
+    tail: Option<usize>,
+    len: usize,
     bytes: usize,
+    hash_builder: RandomState,
+}
+
+impl MatcherCache {
+    fn key_hash(&self, source: &str, flags: RegExpFlags) -> u64 {
+        let mut hasher = self.hash_builder.build_hasher();
+        source.hash(&mut hasher);
+        flags.hash(&mut hasher);
+        hasher.finish()
+    }
+
+    fn get(&mut self, source: &str, flags: RegExpFlags) -> Option<Matcher> {
+        self.get_hashed(source, flags, self.key_hash(source, flags))
+    }
+
+    fn get_hashed(&mut self, source: &str, flags: RegExpFlags, hash: u64) -> Option<Matcher> {
+        let mut index = *self.index.get(&hash)?;
+        loop {
+            let entry = self.entries[index].as_ref().expect("indexed cache entry");
+            if entry.flags == flags && entry.source == source {
+                let matcher = entry.matcher.clone();
+                self.unlink(index);
+                self.push_front(index);
+                return Some(matcher);
+            }
+            index = entry.collision_next?;
+        }
+    }
+
+    fn unlink(&mut self, index: usize) {
+        let entry = self.entries[index].as_ref().expect("linked cache entry");
+        let (previous, next) = (entry.previous, entry.next);
+        if let Some(previous) = previous {
+            self.entries[previous]
+                .as_mut()
+                .expect("previous entry")
+                .next = next;
+        } else {
+            self.head = next;
+        }
+        if let Some(next) = next {
+            self.entries[next].as_mut().expect("next entry").previous = previous;
+        } else {
+            self.tail = previous;
+        }
+    }
+
+    fn push_front(&mut self, index: usize) {
+        let entry = self.entries[index].as_mut().expect("new head entry");
+        entry.previous = None;
+        entry.next = self.head;
+        if let Some(head) = self.head {
+            self.entries[head]
+                .as_mut()
+                .expect("old head entry")
+                .previous = Some(index);
+        } else {
+            self.tail = Some(index);
+        }
+        self.head = Some(index);
+    }
+
+    fn evict_tail(&mut self) {
+        let index = self.tail.expect("nonempty cache");
+        self.unlink(index);
+        let entry = self.entries[index].take().expect("evicted cache entry");
+        let head = self.index[&entry.hash];
+        if head == index {
+            if let Some(next) = entry.collision_next {
+                self.index.insert(entry.hash, next);
+            } else {
+                self.index.remove(&entry.hash);
+            }
+        } else {
+            let mut previous = head;
+            loop {
+                let parent = self.entries[previous]
+                    .as_mut()
+                    .expect("collision chain entry");
+                if parent.collision_next == Some(index) {
+                    parent.collision_next = entry.collision_next;
+                    break;
+                }
+                previous = parent.collision_next.expect("indexed collision target");
+            }
+        }
+        self.bytes -= entry.bytes;
+        self.len -= 1;
+        self.free.push(index);
+    }
+
+    fn insert(&mut self, source: &str, flags: RegExpFlags, matcher: Matcher, bytes: usize) {
+        self.insert_hashed(source, flags, matcher, bytes, self.key_hash(source, flags));
+    }
+
+    fn insert_hashed(
+        &mut self,
+        source: &str,
+        flags: RegExpFlags,
+        matcher: Matcher,
+        bytes: usize,
+        hash: u64,
+    ) {
+        while self.len >= MATCHER_CACHE_ENTRIES
+            || self.bytes.saturating_add(bytes) > MATCHER_CACHE_BYTES
+        {
+            self.evict_tail();
+        }
+        let index = self.free.pop().unwrap_or_else(|| {
+            self.entries.push(None);
+            self.entries.len() - 1
+        });
+        let collision_next = self.index.insert(hash, index);
+        self.entries[index] = Some(CachedMatcher {
+            source: source.to_owned(),
+            flags,
+            matcher,
+            bytes,
+            hash,
+            previous: None,
+            next: None,
+            collision_next,
+        });
+        self.push_front(index);
+        self.len += 1;
+        self.bytes += bytes;
+    }
 }
 
 thread_local! {
@@ -97,17 +238,7 @@ thread_local! {
 }
 
 fn compile_matcher(source: &str, flags: RegExpFlags) -> RuntimeResult<Matcher> {
-    if let Some(matcher) = MATCHERS.with(|cache| {
-        let mut cache = cache.borrow_mut();
-        let index = cache
-            .entries
-            .iter()
-            .position(|entry| entry.flags == flags && entry.source == source)?;
-        let entry = cache.entries.remove(index).expect("existing cache entry");
-        let matcher = entry.matcher.clone();
-        cache.entries.push_front(entry);
-        Some(matcher)
-    }) {
+    if let Some(matcher) = MATCHERS.with(|cache| cache.borrow_mut().get(source, flags)) {
         return Ok(matcher);
     }
     let mut builder = Regex::builder();
@@ -145,20 +276,9 @@ fn finish_matcher(source: &str, flags: RegExpFlags, matcher: Matcher) -> Runtime
         .saturating_add(std::mem::size_of::<CachedMatcher>());
     if bytes <= MATCHER_CACHE_BYTES {
         MATCHERS.with(|cache| {
-            let mut cache = cache.borrow_mut();
-            while cache.entries.len() >= MATCHER_CACHE_ENTRIES
-                || cache.bytes.saturating_add(bytes) > MATCHER_CACHE_BYTES
-            {
-                let entry = cache.entries.pop_back().expect("nonempty cache");
-                cache.bytes -= entry.bytes;
-            }
-            cache.entries.push_front(CachedMatcher {
-                source: source.to_owned(),
-                flags,
-                matcher: matcher.clone(),
-                bytes,
-            });
-            cache.bytes += bytes;
+            cache
+                .borrow_mut()
+                .insert(source, flags, matcher.clone(), bytes)
         });
     }
     Ok(matcher)
@@ -413,6 +533,57 @@ fn utf16_range(text: &str, start: usize, end: usize) -> RuntimeResult<String> {
 mod cache_tests {
     use super::*;
 
+    #[test]
+    fn hash_collisions_check_full_keys_and_evict_both_chain_positions() {
+        let flags = RegExpFlags::default();
+        let matcher = |source| Matcher::from_hir(&ascii_hir::parse(source).unwrap()).unwrap();
+        for evict_hash_head in [false, true] {
+            let mut cache = MatcherCache::default();
+            cache.insert_hashed("a", flags, matcher("a"), 100, 7);
+            cache.insert_hashed("b", flags, matcher("b"), 100, 7);
+            assert!(cache.get_hashed("absent", flags, 7).is_none());
+            assert!(
+                cache
+                    .get_hashed(
+                        "a",
+                        RegExpFlags {
+                            global: true,
+                            ..flags
+                        },
+                        7
+                    )
+                    .is_none()
+            );
+            if evict_hash_head {
+                assert!(cache.get_hashed("a", flags, 7).is_some());
+            }
+            cache.evict_tail();
+            let (remaining, removed, start) = if evict_hash_head {
+                ("a", "b", 0)
+            } else {
+                ("b", "a", 1)
+            };
+            assert!(cache.get_hashed(removed, flags, 7).is_none());
+            let selected = cache.get_hashed(remaining, flags, 7).unwrap();
+            let mut captures = selected.create_captures();
+            selected.search(
+                &Input::new("ab"),
+                &mut captures,
+                &mut selected.create_scratch(),
+            );
+            assert_eq!(captures.get_group(0).unwrap().start, start);
+            cache.evict_tail();
+            assert_eq!(cache.len, 0);
+            assert_eq!(cache.bytes, 0);
+            assert!(cache.index.is_empty());
+            assert_eq!(cache.head, None);
+            assert_eq!(cache.tail, None);
+            cache.insert_hashed("c", flags, matcher("c"), 100, 7);
+            assert!(cache.get_hashed("c", flags, 7).is_some());
+            assert_eq!(cache.entries.len(), 2, "reuse vacated slots");
+        }
+    }
+
     // This allocates hundreds of thousands of automaton states to exercise the
     // byte budget. The smaller-pattern eviction/state test also runs in Miri.
     #[test]
@@ -424,17 +595,16 @@ mod cache_tests {
             MATCHERS.with(|cache| {
                 let cache = cache.borrow();
                 assert!(cache.bytes <= MATCHER_CACHE_BYTES);
-                assert!(cache.entries.len() <= MATCHER_CACHE_ENTRIES);
+                assert!(cache.len <= MATCHER_CACHE_ENTRIES);
             });
         }
         MATCHERS.with(|cache| {
             let cache = cache.borrow();
-            assert!(!cache.entries.is_empty());
-            assert!(cache.entries.len() < 32, "byte budget must cause eviction");
+            assert!(cache.len != 0);
+            assert!(cache.len < 32, "byte budget must cause eviction");
             println!(
                 "byte-budget stress: {} entries, {} accounted bytes",
-                cache.entries.len(),
-                cache.bytes
+                cache.len, cache.bytes
             );
         });
     }
@@ -456,7 +626,7 @@ mod cache_tests {
             );
             MATCHERS.with(|cache| {
                 let cache = cache.borrow();
-                assert!(cache.entries.len() <= MATCHER_CACHE_ENTRIES);
+                assert!(cache.len <= MATCHER_CACHE_ENTRIES);
                 assert!(cache.bytes <= MATCHER_CACHE_BYTES);
             });
         }
@@ -466,6 +636,7 @@ mod cache_tests {
                     .borrow()
                     .entries
                     .iter()
+                    .flatten()
                     .any(|entry| entry.source == "(?<keep>a+)")
             )
         });

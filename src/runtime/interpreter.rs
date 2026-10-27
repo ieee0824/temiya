@@ -719,42 +719,16 @@ impl ExpressionEvaluator {
     }
 
     fn object(&self, properties: &[crate::ast::ObjectProperty]) -> RuntimeResult<Value> {
-        let object = Object::new();
-        object.set_prototype(Some(
-            self.realm.intrinsic(super::IntrinsicId::ObjectPrototype),
-        ));
+        let object = super::object_literal::create(&self.realm);
         for property in properties {
             if property.spread {
-                let spread_value = self.evaluate(&property.key)?;
-                if matches!(spread_value, Value::Undefined | Value::Null) {
-                    continue;
-                }
-                let source = match spread_value {
-                    Value::Object(source) => source,
-                    Value::String(string) => {
-                        let source = Object::new();
-                        for (index, unit) in string.code_units().iter().enumerate() {
-                            source.create_data_property(
-                                index_key(index as u32),
-                                Value::String(JsString::from_code_units_slice(&[*unit])),
-                            )?;
-                        }
-                        source
-                    }
-                    _ => Object::new(),
-                };
-                for key in source.own_property_keys() {
-                    if source
-                        .get_own_property(&key)
-                        .is_some_and(|descriptor| descriptor.enumerable == Some(true))
-                    {
-                        object.create_data_property(key.clone(), source.get(&key)?)?;
-                    }
-                }
+                super::object_literal::spread(&object, self.evaluate(&property.key)?)?;
                 continue;
             }
-            let key = if property.computed {
-                self.evaluate(&property.key)?.to_property_key()?
+            let key = if property.computed
+                || matches!(property.key.kind, ExprKind::Literal(Literal::Number { .. }))
+            {
+                super::object_literal::property_key(&self.realm, self.evaluate(&property.key)?)?
             } else {
                 PropertyKey::String(member_name(&property.key)?)
             };
@@ -801,7 +775,10 @@ impl ExpressionEvaluator {
                     || self.evaluate(&property.key),
                     |value| self.evaluate(value),
                 )?;
-                object.create_data_property(key, value)?;
+                let prototype_setter = !property.computed
+                    && !property.shorthand
+                    && key == PropertyKey::from("__proto__");
+                super::object_literal::define_data(&object, key, value, prototype_setter)?;
             }
         }
         Ok(Value::Object(object))

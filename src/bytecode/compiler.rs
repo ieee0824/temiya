@@ -390,6 +390,43 @@ impl Compiler {
     fn expression(&mut self, expression: &Expr) -> Result<(), CompileError> {
         match &expression.kind {
             ExprKind::Literal(literal) => self.literal(literal, expression.span),
+            ExprKind::Object(properties) => {
+                self.code.push(Instruction::CreateObject);
+                for property in properties {
+                    if property.spread {
+                        self.expression(&property.key)?;
+                        self.code.push(Instruction::SpreadObject);
+                        continue;
+                    }
+                    if matches!(
+                        property.value.as_ref().map(|value| &value.kind),
+                        Some(ExprKind::Method { .. })
+                    ) {
+                        return Err(self.unsupported("object method", property.span));
+                    }
+                    if property.computed
+                        || matches!(property.key.kind, ExprKind::Literal(Literal::Number { .. }))
+                    {
+                        self.expression(&property.key)?;
+                    } else {
+                        self.property_key(&property.key, false)?;
+                    }
+                    self.code.push(Instruction::CoercePropertyKey);
+                    self.expression(property.value.as_ref().unwrap_or(&property.key))?;
+                    let proto_name = match &property.key.kind {
+                        ExprKind::Identifier(name) => name == "__proto__",
+                        ExprKind::Literal(Literal::String { value, .. }) => {
+                            value.as_slice()
+                                == "__proto__".encode_utf16().collect::<Vec<_>>().as_slice()
+                        }
+                        _ => false,
+                    };
+                    self.code.push(Instruction::DefineObjectProperty {
+                        prototype_setter: !property.computed && !property.shorthand && proto_name,
+                    });
+                }
+                Ok(())
+            }
             ExprKind::Identifier(name) => {
                 self.load_name(name)?;
                 Ok(())

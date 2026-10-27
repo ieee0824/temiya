@@ -357,3 +357,10 @@ nested or failed evaluations. The benchmark record in
 explicit Auto mode separately from the default; it does not establish Boa
 superiority. Test262 coverage is limited to the three original function-loop
 files exercised in both strict and sloppy variants by CI.
+
+
+### Object initializer data properties
+
+See [object data literals](object-data-literals.md) for bytecode instructions,
+key/value ordering, prototype setters, object spread, scoped upstream tests
+and remaining method/HomeObject limits.

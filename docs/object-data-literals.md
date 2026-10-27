@@ -1,0 +1,40 @@
+# Object initializer data properties in AST and bytecode
+
+The bytecode compiler lowers ordinary and shorthand data properties, computed
+keys, numeric property names, object spread and the literal `__proto__` setter.
+It creates a fresh object with the Realm's Object prototype, converts each
+computed key before evaluating its value, and defines properties in source
+order. Repeated ordinary keys replace values. Computed and shorthand
+`__proto__` names remain ordinary properties; a colon property changes the
+prototype only for an Object or null value.
+
+AST and VM share the property-key conversion, data definition and object-copy
+operations. Spread snapshots the source's own keys, checks each current own
+descriptor, and reads only enumerable values. Symbol keys and getters are
+included; inherited values and nonenumerable properties are not copied.
+Proxy errors from ownKeys, getOwnPropertyDescriptor and get propagate and stop
+later evaluation. String primitives contribute enumerable UTF-16 indices.
+Object copy does not use the iterator protocol.
+
+The new instructions are `CreateObject` (+1 operand), `CoercePropertyKey`
+(replace one operand), `DefineObjectProperty` (object/key/value to object), and
+`SpreadObject` (object/source to object). They require an active verified scope
+and sufficient operands. Runtime target checks also reject malformed operand
+values. No AST evaluator is used by these VM instructions.
+
+Object methods, accessors and their HomeObject/super behavior are still rejected
+by this bytecode lowering. Function name inference for anonymous data-property
+values is also incomplete. These remaining parts of #289 stay open. Existing
+AST methods retain their own path. This change does not complete array/call
+iterator spread (#172), Engine integration (#307), or Boa superiority (#427).
+
+The focused tests compare AST and VM for duplicate/shorthand/numeric keys,
+prototype setters, observable computed coercion order, enumerable symbols and
+getters, and abrupt Proxy operations. Five original Test262 prototype files
+run in both strict/sloppy variants under AST and explicit VM, with original
+sta/assert harnesses evaluated by AST. No case is skipped or redirected to AST
+when VM compilation fails. This scoped set does not establish full object
+initializer conformance.
+
+Primary semantics: [Object Initializer](https://tc39.es/ecma262/multipage/ecmascript-language-expressions.html#sec-object-initializer)
+and [CopyDataProperties](https://tc39.es/ecma262/multipage/abstract-operations.html#sec-copydataproperties).

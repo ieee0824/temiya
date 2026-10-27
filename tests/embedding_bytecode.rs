@@ -60,7 +60,7 @@ fn unsupported_bytecode_is_rejected_before_effects_and_auto_selects_ast() {
         })
         .unwrap();
     let error = engine
-        .compile(&realm, "host(); ({ value: 42 });")
+        .compile(&realm, "host(); try { 42; } finally {}")
         .unwrap_err();
     assert!(matches!(error, EmbedError::Bytecode(_)));
     assert_eq!(calls.get(), 0);
@@ -68,7 +68,7 @@ fn unsupported_bytecode_is_rejected_before_effects_and_auto_selects_ast() {
         .script_backend(ScriptBackend::Auto)
         .build();
     let realm = auto.create_realm();
-    let script = auto.compile(&realm, "({ value: 42 }).value;").unwrap();
+    let script = auto.compile(&realm, "try { 42; } finally {}").unwrap();
     assert_eq!(script.backend(), ScriptBackend::Ast);
     assert!(matches!(
         auto.evaluate(&script).unwrap().value(),

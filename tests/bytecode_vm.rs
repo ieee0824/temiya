@@ -61,7 +61,7 @@ fn throw_completion_preserves_its_value() {
 #[test]
 fn source_compile_reports_parse_and_unsupported_errors() {
     assert!(BytecodeCompiler::compile("let = ;").is_err());
-    let unsupported = BytecodeCompiler::compile("({ answer: 42 });").unwrap_err();
+    let unsupported = BytecodeCompiler::compile("(class {});").unwrap_err();
     assert!(
         unsupported
             .message()

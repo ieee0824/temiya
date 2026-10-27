@@ -85,6 +85,10 @@ jobs:
         env:
           TEST262_DIR: target/test262
         run: cargo +${{ matrix.toolchain }} test --locked --lib pinned_test262_original_function_loops --all-features -- --ignored --nocapture
+      - name: Run original object-initializer prototype regressions
+        env:
+          TEST262_DIR: target/test262
+        run: cargo +${{ matrix.toolchain }} test --locked --test bytecode_objects pinned_test262_object_prototypes --all-features -- --ignored --nocapture
       - name: Run upstream exception regressions
         env:
           TEST262_DIR: target/test262

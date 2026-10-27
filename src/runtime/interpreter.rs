@@ -1,6 +1,7 @@
 //! Direct expression evaluation and ECMAScript Reference Records.
 
 use num_bigint::BigInt;
+use std::cell::RefCell;
 
 use crate::ast::{Expr, ExprKind, Literal, MethodKind, NumberKind};
 
@@ -20,6 +21,13 @@ pub enum ReferencedName {
     PropertyKey(PropertyKey),
     /// A computed name awaiting `ToPropertyKey`.
     Value(Value),
+    /// An object-valued computed key using a Realm's @@toPrimitive symbol.
+    Computed {
+        /// Original key value retained until GetValue/PutValue/Delete.
+        value: Value,
+        /// Symbol identity to use for JavaScript key coercion.
+        to_primitive: super::Symbol,
+    },
 }
 
 impl ReferencedName {
@@ -27,6 +35,17 @@ impl ReferencedName {
         match self {
             Self::PropertyKey(key) => Ok(key.clone()),
             Self::Value(value) => value.to_property_key(),
+            Self::Computed {
+                value,
+                to_primitive,
+            } => {
+                let primitive = super::coercion::primitive_with_hint(
+                    value,
+                    &PropertyKey::Symbol(to_primitive.clone()),
+                    super::PrimitiveHint::String,
+                )?;
+                primitive.to_property_key()
+            }
         }
     }
 
@@ -47,11 +66,65 @@ enum ReferenceBase {
     Unresolvable(Object),
 }
 
+// Primitive names need no observable conversion state. Only object-valued
+// computed names allocate a mutable cell, keeping ordinary environment/static
+// property references free of dynamic borrows. Cloning copies the Record state.
+#[derive(Clone, Debug)]
+enum ReferenceName {
+    Plain(ReferencedName),
+    Computed(Box<RefCell<ReferencedName>>),
+}
+
+impl ReferenceName {
+    fn new(name: ReferencedName) -> Self {
+        if matches!(
+            name,
+            ReferencedName::Computed { .. } | ReferencedName::Value(Value::Object(_))
+        ) {
+            Self::Computed(Box::new(RefCell::new(name)))
+        } else {
+            Self::Plain(name)
+        }
+    }
+
+    fn property_key(&self) -> RuntimeResult<PropertyKey> {
+        let Self::Computed(cell) = self else {
+            let Self::Plain(name) = self else {
+                unreachable!()
+            };
+            return name.property_key();
+        };
+        let name = cell.borrow();
+        if let ReferencedName::PropertyKey(key) = &*name {
+            return Ok(key.clone());
+        }
+        let unresolved = name.clone();
+        drop(name);
+        // ToPropertyKey can run arbitrary/reentrant JavaScript. Store the key
+        // before getter/PutValue and release the original key object now.
+        let key = unresolved.property_key()?;
+        *cell.borrow_mut() = ReferencedName::PropertyKey(key.clone());
+        Ok(key)
+    }
+
+    fn binding_name(&self) -> RuntimeResult<JsString> {
+        match self {
+            Self::Plain(name) => name.binding_name(),
+            Self::Computed(_) => match self.property_key()? {
+                PropertyKey::String(name) => Ok(name),
+                PropertyKey::Symbol(_) => Err(RuntimeError::reference_error(
+                    "environment name cannot be a Symbol",
+                )),
+            },
+        }
+    }
+}
+
 /// An ECMAScript Reference Record used by identifier and property expressions.
 #[derive(Clone, Debug)]
 pub struct Reference {
     base: ReferenceBase,
-    name: ReferencedName,
+    name: ReferenceName,
     strict: bool,
     this_value: Option<Value>,
     primitive_prototype: Option<Object>,
@@ -63,7 +136,7 @@ impl Reference {
     pub fn environment(environment: Environment, name: JsString, strict: bool) -> Self {
         Self {
             base: ReferenceBase::Environment(environment),
-            name: ReferencedName::PropertyKey(PropertyKey::String(name)),
+            name: ReferenceName::Plain(ReferencedName::PropertyKey(PropertyKey::String(name))),
             strict,
             this_value: None,
             primitive_prototype: None,
@@ -80,11 +153,39 @@ impl Reference {
     ) -> Self {
         Self {
             base: ReferenceBase::Property(base),
-            name,
+            name: ReferenceName::new(name),
             strict,
             this_value,
             primitive_prototype: None,
         }
+    }
+
+    /// Creates a property Reference with primitive prototype fallback for this Realm.
+    /// Null checks and key coercion occur when the Reference is consumed.
+    pub(crate) fn property_in_realm(
+        realm: &Realm,
+        base: Value,
+        name: ReferencedName,
+        strict: bool,
+    ) -> Self {
+        let prototype = match &base {
+            Value::String(_) => Some(super::IntrinsicId::StringPrototype),
+            Value::Number(_) => Some(super::IntrinsicId::NumberPrototype),
+            Value::Boolean(_) => Some(super::IntrinsicId::BooleanPrototype),
+            Value::BigInt(_) => Some(super::IntrinsicId::BigIntPrototype),
+            Value::Symbol(_) => Some(super::IntrinsicId::SymbolPrototype),
+            _ => None,
+        };
+        let name = match name {
+            ReferencedName::Value(value @ Value::Object(_)) => ReferencedName::Computed {
+                value,
+                to_primitive: realm.well_known_symbol(super::WellKnownSymbol::ToPrimitive),
+            },
+            name => name,
+        };
+        let mut reference = Self::property(base, name, strict, None);
+        reference.primitive_prototype = prototype.map(|id| realm.intrinsic(id));
+        reference
     }
 
     /// Creates an unresolvable reference associated with a Realm global object.
@@ -92,7 +193,7 @@ impl Reference {
     pub fn unresolvable(global_object: Object, name: JsString, strict: bool) -> Self {
         Self {
             base: ReferenceBase::Unresolvable(global_object),
-            name: ReferencedName::PropertyKey(PropertyKey::String(name)),
+            name: ReferenceName::Plain(ReferencedName::PropertyKey(PropertyKey::String(name))),
             strict,
             this_value: None,
             primitive_prototype: None,
@@ -135,6 +236,9 @@ impl Reference {
                 "{} is not defined",
                 self.name.binding_name()?.to_string_lossy()
             ))),
+            ReferenceBase::Property(Value::Undefined | Value::Null) => Err(
+                RuntimeError::type_error("cannot access a property of null or undefined"),
+            ),
             ReferenceBase::Property(base) => get_property(
                 base,
                 &self.name.property_key()?,
@@ -163,9 +267,12 @@ impl Reference {
                 "{} is not defined",
                 self.name.binding_name()?.to_string_lossy()
             ))),
+            ReferenceBase::Property(Value::Undefined | Value::Null) => Err(
+                RuntimeError::type_error("cannot assign a property of null or undefined"),
+            ),
             ReferenceBase::Property(base) => {
                 let key = self.name.property_key()?;
-                let succeeded = set_property(base, &key, value)?;
+                let succeeded = set_property(base, &key, value, self.primitive_prototype.as_ref())?;
                 if !succeeded && self.strict {
                     Err(RuntimeError::type_error("property assignment was rejected"))
                 } else {
@@ -188,13 +295,27 @@ impl Reference {
                     environment.delete_binding(&self.name.binding_name()?)
                 }
             }
-            ReferenceBase::Property(Value::Object(object)) => {
-                Ok(object.delete(&self.name.property_key()?))
-            }
             ReferenceBase::Property(Value::Undefined | Value::Null) => Err(
                 RuntimeError::type_error("cannot delete a property of null or undefined"),
             ),
-            ReferenceBase::Property(_) => Ok(true),
+            ReferenceBase::Property(base) => {
+                let key = self.name.property_key()?;
+                let deleted = match base {
+                    Value::Object(object) => object.try_delete(&key)?,
+                    Value::String(string) => {
+                        !(key == PropertyKey::from("length")
+                            || key
+                                .array_index()
+                                .is_some_and(|index| (index as usize) < string.len()))
+                    }
+                    _ => true,
+                };
+                if !deleted && self.strict {
+                    Err(RuntimeError::type_error("property deletion was rejected"))
+                } else {
+                    Ok(deleted)
+                }
+            }
         }
     }
 }
@@ -231,7 +352,10 @@ impl ExpressionEvaluator {
     #[must_use]
     pub fn new(realm: Realm) -> Self {
         let environment = realm.global_environment();
-        let this_value = Value::Object(realm.global_object());
+        let this_value = realm
+            .global_environment()
+            .global_this_value()
+            .expect("Realm has a global environment");
         Self {
             realm,
             environment,
@@ -285,7 +409,10 @@ impl ExpressionEvaluator {
             ExprKind::Identifier(name) => self.identifier(name).map(Evaluation::Reference),
             ExprKind::Literal(literal) => self.literal(literal).map(Evaluation::Value),
             ExprKind::This => Ok(Evaluation::Value(self.this_value.clone())),
-            ExprKind::Parenthesized(inner) => self.eval(inner)?.value().map(Evaluation::Value),
+            ExprKind::Parenthesized(inner) => match self.eval(inner)? {
+                Evaluation::ShortCircuit => Ok(Evaluation::Value(Value::Undefined)),
+                result => Ok(result),
+            },
             ExprKind::MetaProperty { meta, property } if meta == "new" && property == "target" => {
                 Ok(Evaluation::Value(
                     self.new_target
@@ -423,28 +550,17 @@ impl ExpressionEvaluator {
         if optional && matches!(base, Value::Undefined | Value::Null) {
             return Ok(Evaluation::ShortCircuit);
         }
-        if matches!(base, Value::Undefined | Value::Null) {
-            return Err(RuntimeError::type_error(
-                "cannot access a property of null or undefined",
-            ));
-        }
         let name = if computed {
             ReferencedName::Value(self.evaluate(property)?)
         } else {
             ReferencedName::PropertyKey(PropertyKey::String(member_name(property)?))
         };
-        let prototype_id = match &base {
-            Value::String(_) => Some(super::IntrinsicId::StringPrototype),
-            Value::Number(_) => Some(super::IntrinsicId::NumberPrototype),
-            Value::Boolean(_) => Some(super::IntrinsicId::BooleanPrototype),
-            Value::BigInt(_) => Some(super::IntrinsicId::BigIntPrototype),
-            Value::Symbol(_) => Some(super::IntrinsicId::SymbolPrototype),
-            _ => None,
-        };
-        let primitive_prototype = prototype_id.map(|id| self.realm.intrinsic(id));
-        let mut reference = Reference::property(base, name, self.strict, None);
-        reference.primitive_prototype = primitive_prototype;
-        Ok(Evaluation::Reference(reference))
+        Ok(Evaluation::Reference(Reference::property_in_realm(
+            &self.realm,
+            base,
+            name,
+            self.strict,
+        )))
     }
 
     fn call(&self, callee: &Expr, arguments: &[Expr], optional: bool) -> RuntimeResult<Evaluation> {
@@ -463,36 +579,37 @@ impl ExpressionEvaluator {
         if optional && matches!(function, Value::Undefined | Value::Null) {
             return Ok(Evaluation::ShortCircuit);
         }
+        let arguments = self.arguments(arguments)?;
         let Value::Object(function) = function else {
             return Err(RuntimeError::type_error("value is not callable"));
         };
         if !function.is_callable() {
             return Err(RuntimeError::type_error("value is not callable"));
         }
-        let arguments = self.arguments(arguments)?;
         function.call(this_value, &arguments).map(Evaluation::Value)
     }
 
     fn construct(&self, callee: &Expr, arguments: &[Expr]) -> RuntimeResult<Value> {
-        let Value::Object(constructor) = self.evaluate(callee)? else {
+        let constructor = self.evaluate(callee)?;
+        let arguments = self.arguments(arguments)?;
+        let Value::Object(constructor) = constructor else {
             return Err(RuntimeError::type_error("value is not a constructor"));
         };
         if !constructor.is_constructor() {
             return Err(RuntimeError::type_error("value is not a constructor"));
         }
-        Ok(Value::Object(constructor.construct(
-            &self.arguments(arguments)?,
-            constructor.clone(),
-        )?))
+        Ok(Value::Object(
+            constructor.construct(&arguments, constructor.clone())?,
+        ))
     }
 
     fn arguments(&self, arguments: &[Expr]) -> RuntimeResult<Vec<Value>> {
         let mut values = Vec::new();
         for argument in arguments {
             if let ExprKind::Spread(value) = &argument.kind {
-                values.extend(array_like_values(&self.evaluate(value)?)?);
+                super::iterator::spread_arguments(&self.realm, self.evaluate(value)?, &mut values)?;
             } else {
-                values.push(self.evaluate(argument)?);
+                super::iterator::push_argument(&mut values, self.evaluate(argument)?)?;
             }
         }
         Ok(values)
@@ -516,15 +633,7 @@ impl ExpressionEvaluator {
         match operator {
             "void" => Ok(Value::Undefined),
             "!" => Ok(Value::Boolean(!value.to_boolean())),
-            "+" => Ok(Value::Number(value.to_number()?)),
-            "-" => match value.to_numeric()? {
-                Numeric::Number(value) => Ok(Value::Number(-value)),
-                Numeric::BigInt(value) => Ok(Value::BigInt(-value)),
-            },
-            "~" => match value.to_numeric()? {
-                Numeric::Number(value) => Ok(Value::Number(f64::from(!to_i32(value)))),
-                Numeric::BigInt(value) => Ok(Value::BigInt(!value)),
-            },
+            "+" | "-" | "~" => unary_numeric_value(Some(&self.realm), operator, value),
             "await" => super::promise::await_value(value),
             _ => Err(RuntimeError::syntax_error("unknown unary operator")),
         }
@@ -532,27 +641,7 @@ impl ExpressionEvaluator {
 
     fn update(&self, operator: &str, argument: &Expr, prefix: bool) -> RuntimeResult<Value> {
         let reference = self.evaluate_reference(argument)?;
-        let old = reference.get_value()?.to_numeric()?;
-        let (old_value, new_value) = match old {
-            Numeric::Number(value) => (
-                Value::Number(value),
-                Value::Number(if operator == "++" {
-                    value + 1.0
-                } else {
-                    value - 1.0
-                }),
-            ),
-            Numeric::BigInt(value) => {
-                let next = if operator == "++" {
-                    &value + 1
-                } else {
-                    &value - 1
-                };
-                (Value::BigInt(value), Value::BigInt(next))
-            }
-        };
-        reference.put_value(new_value.clone())?;
-        Ok(if prefix { new_value } else { old_value })
+        update_reference_in_realm(&self.realm, &reference, operator == "++", prefix)
     }
 
     fn binary(&self, operator: &str, left: &Expr, right: &Expr) -> RuntimeResult<Value> {
@@ -750,13 +839,28 @@ fn get_property(
     }
 }
 
-fn set_property(base: &Value, key: &PropertyKey, value: Value) -> RuntimeResult<bool> {
+fn set_property(
+    base: &Value,
+    key: &PropertyKey,
+    value: Value,
+    primitive_prototype: Option<&Object>,
+) -> RuntimeResult<bool> {
     match base {
         Value::Object(object) => object.set_with_receiver(key, value, base.clone()),
         Value::Undefined | Value::Null => Err(RuntimeError::type_error(
             "cannot assign a property of null or undefined",
         )),
-        _ => Ok(false),
+        Value::String(string)
+            if key == &PropertyKey::from("length")
+                || key
+                    .array_index()
+                    .is_some_and(|index| (index as usize) < string.len()) =>
+        {
+            Ok(false)
+        }
+        _ => primitive_prototype.map_or(Ok(false), |prototype| {
+            prototype.set_with_receiver(key, value, base.clone())
+        }),
     }
 }
 
@@ -1038,7 +1142,7 @@ fn instance_of(left: Value, right: Value) -> RuntimeResult<bool> {
     Ok(false)
 }
 
-fn type_of(value: &Value) -> &'static str {
+pub(crate) fn type_of(value: &Value) -> &'static str {
     match value {
         Value::Undefined => "undefined",
         Value::Null => "object",
@@ -1112,4 +1216,72 @@ fn addition_with_objects(realm: &Realm, left: Value, right: Value) -> RuntimeRes
     let left = super::coercion::primitive_with_hint(&left, &key, super::PrimitiveHint::Default)?;
     let right = super::coercion::primitive_with_hint(&right, &key, super::PrimitiveHint::Default)?;
     binary_values("+", left, right)
+}
+
+/// Performs the complete update on one retained Reference, including Realm-aware
+/// ToPrimitive(Number), ToNumeric, PutValue and numeric postfix results.
+pub(crate) fn update_reference_in_realm(
+    realm: &Realm,
+    reference: &Reference,
+    increment: bool,
+    prefix: bool,
+) -> RuntimeResult<Value> {
+    let old = reference.get_value()?;
+    let old = if matches!(old, Value::Object(_)) {
+        super::coercion::primitive(
+            &old,
+            &realm
+                .well_known_symbol(super::WellKnownSymbol::ToPrimitive)
+                .into(),
+            false,
+        )?
+        .to_numeric()?
+    } else {
+        old.to_numeric()?
+    };
+    let (old, new) = match old {
+        Numeric::Number(value) => (
+            Value::Number(value),
+            Value::Number(if increment { value + 1.0 } else { value - 1.0 }),
+        ),
+        Numeric::BigInt(value) => {
+            let next = if increment { &value + 1 } else { &value - 1 };
+            (Value::BigInt(value), Value::BigInt(next))
+        }
+    };
+    reference.put_value(new.clone())?;
+    Ok(if prefix { new } else { old })
+}
+
+/// Shared numeric unary operation; primitive operands do not need a Realm.
+pub(crate) fn unary_numeric_value(
+    realm: Option<&Realm>,
+    operator: &str,
+    value: Value,
+) -> RuntimeResult<Value> {
+    let primitive = if matches!(value, Value::Object(_)) {
+        let realm = realm
+            .ok_or_else(|| RuntimeError::internal_error("object unary operation requires Realm"))?;
+        super::coercion::primitive(
+            &value,
+            &realm
+                .well_known_symbol(super::WellKnownSymbol::ToPrimitive)
+                .into(),
+            false,
+        )?
+    } else {
+        value
+    };
+    if operator == "+" {
+        return primitive.to_number().map(Value::Number);
+    }
+    match (operator, primitive.to_numeric()?) {
+        ("-", Numeric::Number(value)) => Ok(Value::Number(-value)),
+        ("-", Numeric::BigInt(value)) => Ok(Value::BigInt(-value)),
+        ("~", Numeric::Number(value)) => Ok(Value::Number(f64::from(!to_i32(value)))),
+        ("~", Numeric::BigInt(value)) => Ok(Value::BigInt(!value)),
+        _ => Err(RuntimeError::internal_error(
+            "invalid numeric unary operator",
+        )),
+    }
 }

@@ -119,6 +119,7 @@ fn scope_operands_and_control_flow_are_verified() {
         Constant::Scope(ScopeDescriptor {
             kind,
             strict: false,
+            functions: vec![],
             bindings: vec![ScopeBinding {
                 name: "x".into(),
                 kind: binding,
@@ -224,6 +225,7 @@ fn retained_name_references_are_checked() {
     let scope = Constant::Scope(ScopeDescriptor {
         kind: ScopeKind::Global,
         strict: false,
+        functions: vec![],
         bindings: vec![],
     });
     let check = |code| {
@@ -273,4 +275,323 @@ fn retained_name_references_are_checked() {
         ]),
         VerifyErrorKind::ScopeMismatch
     );
+}
+
+#[test]
+fn property_instructions_validate_operands_scopes_and_references() {
+    use temiya::bytecode::{ScopeDescriptor, ScopeKind};
+    let check = |code| {
+        Bytecode {
+            constants: vec![
+                Constant::Scope(ScopeDescriptor {
+                    kind: ScopeKind::Global,
+                    strict: false,
+                    functions: vec![],
+                    bindings: vec![],
+                }),
+                Constant::Null,
+                Constant::String("x".into()),
+            ],
+            instructions: code,
+            local_count: 0,
+        }
+        .verify()
+        .unwrap_err()
+        .kind()
+    };
+    assert_eq!(
+        check(vec![
+            Instruction::EnterScope(0),
+            Instruction::LoadConstant(1),
+            Instruction::GetProperty { strict: false },
+            Instruction::Return
+        ]),
+        VerifyErrorKind::StackUnderflow
+    );
+    assert_eq!(
+        check(vec![
+            Instruction::LoadConstant(1),
+            Instruction::LoadConstant(2),
+            Instruction::GetProperty { strict: false },
+            Instruction::Return
+        ]),
+        VerifyErrorKind::ScopeMismatch
+    );
+    assert_eq!(
+        check(vec![
+            Instruction::EnterScope(0),
+            Instruction::DeleteReference,
+            Instruction::Return
+        ]),
+        VerifyErrorKind::ScopeMismatch
+    );
+    assert_eq!(
+        check(vec![Instruction::LoadThis, Instruction::Return]),
+        VerifyErrorKind::ScopeMismatch
+    );
+    assert_eq!(
+        check(vec![
+            Instruction::LoadConstant(1),
+            Instruction::JumpIfNullish(3),
+            Instruction::Return
+        ]),
+        VerifyErrorKind::JumpOutOfBounds
+    );
+}
+
+#[test]
+fn pending_invocations_require_balanced_frames_and_argument_boundaries() {
+    use Instruction::*;
+    for code in [
+        vec![Invoke, Return],
+        vec![LoadConstant(0), AppendArgument, Return],
+        vec![BeginReferenceCall, Invoke, Return],
+        vec![LoadConstant(0), BeginCall, LoadConstant(1), Return],
+        vec![LoadConstant(0), BeginCall, LoadConstant(1), Invoke, Return],
+        vec![
+            LoadConstant(0),
+            LoadConstant(1),
+            BeginCall,
+            Pop,
+            LoadConstant(0),
+            Invoke,
+            Return,
+        ],
+    ] {
+        assert!(verify(code).is_err());
+    }
+    assert_eq!(
+        verify(vec![
+            LoadConstant(0),
+            BeginCall,
+            LoadConstant(1),
+            AppendArgument,
+            Invoke,
+            Return
+        ]),
+        Ok(1)
+    );
+    // Equal operand depths do not make different invocation identities joinable.
+    assert_eq!(
+        verify(vec![
+            LoadConstant(0),
+            JumpIfFalse(5),
+            LoadConstant(0),
+            BeginCall,
+            Jump(7),
+            LoadConstant(0),
+            BeginCall,
+            Invoke,
+            Return
+        ]),
+        Err(VerifyErrorKind::ScopeMismatch)
+    );
+}
+
+#[test]
+fn call_target_pairs_require_references_and_two_operands() {
+    use Instruction::*;
+    assert!(
+        verify(vec![
+            LoadReferenceCallTarget,
+            BeginMethodCall,
+            Invoke,
+            Return
+        ])
+        .is_err()
+    );
+    assert_eq!(
+        verify(vec![LoadConstant(0), BeginMethodCall, Invoke, Return]),
+        Err(VerifyErrorKind::StackUnderflow)
+    );
+    assert_eq!(
+        verify(vec![
+            LoadConstant(0),
+            AsCallTarget,
+            BeginMethodCall,
+            Invoke,
+            Return
+        ]),
+        Ok(2)
+    );
+    assert_eq!(
+        verify(vec![AsCallTarget, BeginMethodCall, Invoke, Return]),
+        Err(VerifyErrorKind::StackUnderflow)
+    );
+}
+
+#[test]
+fn spread_arguments_require_active_invocation_and_realm_scope() {
+    use Instruction::*;
+    assert!(verify(vec![LoadConstant(0), SpreadArguments, Return]).is_err());
+    assert_eq!(
+        verify(vec![
+            LoadConstant(0),
+            BeginCall,
+            LoadConstant(1),
+            SpreadArguments,
+            Invoke,
+            Return
+        ]),
+        Err(VerifyErrorKind::ScopeMismatch)
+    );
+}
+
+#[test]
+fn function_templates_require_function_bodies_and_scoped_creation() {
+    use std::rc::Rc;
+    use temiya::bytecode::{BytecodeCompiler, FunctionTemplate, ScopeDescriptor, ScopeKind};
+    let body = Bytecode {
+        constants: vec![
+            Constant::Scope(ScopeDescriptor {
+                kind: ScopeKind::Function,
+                strict: false,
+                functions: vec![],
+                bindings: vec![],
+            }),
+            Constant::Undefined,
+        ],
+        instructions: vec![
+            Instruction::EnterScope(0),
+            Instruction::LoadConstant(1),
+            Instruction::Return,
+        ],
+        local_count: 0,
+    }
+    .verify()
+    .unwrap();
+    let template = FunctionTemplate {
+        name: None,
+        self_binding: false,
+        arguments_object: false,
+        parameters: vec![],
+        arrow: false,
+        strict: false,
+        body,
+    };
+    let scoped = |template| Bytecode {
+        constants: vec![
+            Constant::Scope(ScopeDescriptor {
+                kind: ScopeKind::Global,
+                strict: false,
+                functions: vec![],
+                bindings: vec![],
+            }),
+            Constant::Function(Rc::new(template)),
+        ],
+        instructions: vec![
+            Instruction::EnterScope(0),
+            Instruction::CreateFunction(1),
+            Instruction::ExitScope,
+            Instruction::Complete,
+        ],
+        local_count: 0,
+    };
+    assert!(scoped(template.clone()).verify().is_ok());
+    let mut invalid = scoped(template.clone());
+    invalid.instructions[1] = Instruction::LoadConstant(1);
+    assert_eq!(
+        invalid.verify().unwrap_err().kind(),
+        VerifyErrorKind::InvalidConstantKind
+    );
+    let mut invalid = scoped(template.clone());
+    invalid.instructions.remove(0);
+    assert_eq!(
+        invalid.verify().unwrap_err().kind(),
+        VerifyErrorKind::ScopeMismatch
+    );
+    let mut invalid = template.clone();
+    invalid.body = BytecodeCompiler::compile("42;").unwrap();
+    assert_eq!(
+        scoped(invalid).verify().unwrap_err().kind(),
+        VerifyErrorKind::InvalidScopeDescriptor
+    );
+    let mut invalid = template;
+    invalid.arrow = true;
+    invalid.parameters = vec!["a".into(), "a".into()];
+    assert_eq!(
+        scoped(invalid).verify().unwrap_err().kind(),
+        VerifyErrorKind::InvalidScopeDescriptor
+    );
+}
+
+#[test]
+fn hoisted_function_metadata_validates_binding_targets_and_template_kind() {
+    use temiya::bytecode::{BindingKind, BytecodeCompiler};
+    let code = BytecodeCompiler::compile("function f(){return 42;}f();").unwrap();
+    let mut bad = code.bytecode().clone();
+    let Constant::Scope(plan) = &mut bad.constants[0] else {
+        panic!("no scope")
+    };
+    plan.functions[0].target = 99;
+    assert_eq!(
+        bad.verify().unwrap_err().kind(),
+        VerifyErrorKind::BindingOutOfBounds
+    );
+    let mut bad = code.bytecode().clone();
+    let Constant::Scope(plan) = &mut bad.constants[0] else {
+        panic!("no scope")
+    };
+    std::rc::Rc::make_mut(&mut plan.functions[0].template).self_binding = true;
+    assert_eq!(
+        bad.verify().unwrap_err().kind(),
+        VerifyErrorKind::InvalidScopeDescriptor
+    );
+    let mut bad = code.bytecode().clone();
+    let Constant::Scope(plan) = &mut bad.constants[0] else {
+        panic!("no scope")
+    };
+    plan.bindings[0].kind = BindingKind::Let;
+    assert_eq!(
+        bad.verify().unwrap_err().kind(),
+        VerifyErrorKind::BindingOutOfBounds
+    );
+}
+
+#[test]
+fn update_and_typeof_instructions_require_their_values_or_references() {
+    use Instruction::*;
+    for op in [
+        UpdateReference {
+            increment: true,
+            prefix: false,
+        },
+        TypeOfReference,
+    ] {
+        assert_eq!(
+            verify(vec![op, Return]),
+            Err(VerifyErrorKind::ScopeMismatch)
+        );
+    }
+    assert_eq!(
+        verify(vec![TypeOf, Return]),
+        Err(VerifyErrorKind::StackUnderflow)
+    );
+    assert_eq!(verify(vec![LoadConstant(0), TypeOf, Return]), Ok(1));
+}
+
+#[test]
+fn numeric_unary_opcode_requires_one_value() {
+    use temiya::bytecode::UnaryNumericOperator;
+    for operator in [
+        UnaryNumericOperator::Plus,
+        UnaryNumericOperator::Minus,
+        UnaryNumericOperator::BitNot,
+    ] {
+        assert_eq!(
+            verify(vec![
+                Instruction::UnaryNumeric(operator),
+                Instruction::Return
+            ]),
+            Err(VerifyErrorKind::StackUnderflow)
+        );
+        assert_eq!(
+            verify(vec![
+                Instruction::LoadConstant(0),
+                Instruction::UnaryNumeric(operator),
+                Instruction::Return
+            ]),
+            Ok(1)
+        );
+    }
 }

@@ -1,6 +1,6 @@
 //! Portable stack bytecode and its mandatory pre-execution verifier.
 
-use std::{collections::VecDeque, fmt};
+use std::{collections::VecDeque, fmt, rc::Rc};
 
 use crate::runtime::JsString;
 
@@ -40,6 +40,17 @@ pub struct ScopeBinding {
     pub kind: BindingKind,
 }
 
+/// One hoisted function and the active scope entry containing its binding.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ScopeFunction {
+    /// Declared binding name.
+    pub name: JsString,
+    /// Scope entry PC owning the binding (may differ from the capture scope).
+    pub target: u32,
+    /// Verified function code and metadata.
+    pub template: Rc<FunctionTemplate>,
+}
+
 /// Immutable scope metadata, containing no runtime environment or values.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ScopeDescriptor {
@@ -49,6 +60,27 @@ pub struct ScopeDescriptor {
     pub strict: bool,
     /// Ordered bindings addressed by slot operands.
     pub bindings: Vec<ScopeBinding>,
+    /// Selected hoisted functions in source order (last duplicate wins).
+    pub functions: Vec<ScopeFunction>,
+}
+
+/// Immutable executable function metadata; contains no runtime environment.
+#[derive(Clone, Debug, PartialEq)]
+pub struct FunctionTemplate {
+    /// Explicit function-expression name, if any.
+    pub name: Option<JsString>,
+    /// Whether an explicit expression name creates a private self binding.
+    pub self_binding: bool,
+    /// Whether ordinary call instantiation creates an arguments object.
+    pub arguments_object: bool,
+    /// Simple identifier parameters, in source order.
+    pub parameters: Vec<JsString>,
+    /// Whether this function uses lexical this/arguments/newTarget.
+    pub arrow: bool,
+    /// Whether the function is strict code.
+    pub strict: bool,
+    /// Independently verified executable function body.
+    pub body: VerifiedBytecode,
 }
 
 /// Pointer-free literal stored in a bytecode constant pool.
@@ -64,8 +96,33 @@ pub enum Constant {
     Number(f64),
     /// Exact UTF-16 string, including lone surrogates.
     String(JsString),
+    /// Arbitrary-precision integer literal.
+    BigInt(num_bigint::BigInt),
     /// Scope metadata, usable only by `EnterScope`, never `LoadConstant`.
     Scope(ScopeDescriptor),
+    /// Immutable nested code, usable only by CreateFunction.
+    Function(Rc<FunctionTemplate>),
+}
+
+/// Supported numeric unary operations; conversion semantics are shared with AST.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum UnaryNumericOperator {
+    /// Unary plus (ToNumber; rejects BigInt).
+    Plus,
+    /// Number/BigInt negation.
+    Minus,
+    /// Number ToInt32 / BigInt bitwise complement.
+    BitNot,
+}
+
+impl UnaryNumericOperator {
+    pub(crate) fn spelling(self) -> &'static str {
+        match self {
+            Self::Plus => "+",
+            Self::Minus => "-",
+            Self::BitNot => "~",
+        }
+    }
 }
 
 /// Portable instruction with fixed-width integer operands.
@@ -87,6 +144,46 @@ pub enum Instruction {
     ResolveName { name: u32, strict: bool },
     /// Pop an assigned value and the innermost retained Reference, then PutValue.
     StoreReference,
+    /// Pop base and key values; push GetValue with the original receiver.
+    GetProperty { strict: bool },
+    /// Pop base and key values; retain their property Reference before the RHS.
+    ResolveProperty { strict: bool },
+    /// Consume a retained Reference, update its Number/BigInt, push prefix/postfix result.
+    UpdateReference { increment: bool, prefix: bool },
+    /// Consume a retained Reference and implement typeof, including unresolvable names.
+    TypeOfReference,
+    /// Apply Realm-aware numeric coercion and replace the unary operand.
+    UnaryNumeric(UnaryNumericOperator),
+    /// Replace a value with its ECMAScript typeof string.
+    TypeOf,
+    /// Consume a retained Reference and push the deletion result.
+    DeleteReference,
+    /// Capture a value callee before evaluating its arguments.
+    BeginCall,
+    /// Consume a Reference, capturing its value and receiver before arguments.
+    BeginReferenceCall,
+    /// Consume a Reference and push receiver then callee, evaluating GetValue once.
+    LoadReferenceCallTarget,
+    /// Convert a value callee to an undefined-receiver call target pair.
+    AsCallTarget,
+    /// Capture a receiver/callee pair before arguments.
+    BeginMethodCall,
+    /// Capture a constructor value and its newTarget before arguments.
+    BeginConstruct,
+    /// Append one evaluated value to the innermost pending invocation.
+    AppendArgument,
+    /// Consume an iterable through the Realm iterator protocol and append arguments.
+    SpreadArguments,
+    /// Invoke the innermost captured callee and push its result.
+    Invoke,
+    /// Create a bytecode-backed closure capturing the current environment.
+    CreateFunction(u32),
+    /// Push the nearest non-arrow function newTarget, or undefined.
+    LoadNewTarget,
+    /// Push the current lexical this binding.
+    LoadThis,
+    /// Pop a condition and jump if null or undefined.
+    JumpIfNullish(u32),
     /// Push constant-pool entry `index` (`+1`).
     LoadConstant(u32),
     /// Push local slot `index` (`+1`).
@@ -124,6 +221,22 @@ pub enum Instruction {
 impl Instruction {
     fn required_stack(self) -> usize {
         match self {
+            Self::LoadReferenceCallTarget => 0,
+            Self::AsCallTarget => 1,
+            Self::BeginMethodCall => 2,
+            Self::CreateFunction(_)
+            | Self::LoadNewTarget
+            | Self::BeginReferenceCall
+            | Self::Invoke
+            | Self::LoadThis => 0,
+            Self::BeginCall
+            | Self::BeginConstruct
+            | Self::AppendArgument
+            | Self::SpreadArguments => 1,
+            Self::GetProperty { .. } | Self::ResolveProperty { .. } => 2,
+            Self::DeleteReference | Self::UpdateReference { .. } | Self::TypeOfReference => 0,
+            Self::TypeOf | Self::UnaryNumeric(_) => 1,
+            Self::JumpIfNullish(_) => 1,
             Self::EnterScope(_)
             | Self::ExitScope
             | Self::ResolveName { .. }
@@ -145,6 +258,23 @@ impl Instruction {
 
     fn stack_delta(self) -> isize {
         match self {
+            Self::LoadReferenceCallTarget => 2,
+            Self::AsCallTarget => 1,
+            Self::BeginMethodCall => -2,
+            Self::BeginReferenceCall => 0,
+            Self::BeginCall
+            | Self::BeginConstruct
+            | Self::AppendArgument
+            | Self::SpreadArguments => -1,
+            Self::CreateFunction(_)
+            | Self::LoadNewTarget
+            | Self::Invoke
+            | Self::LoadThis
+            | Self::DeleteReference
+            | Self::UpdateReference { .. }
+            | Self::TypeOfReference => 1,
+            Self::GetProperty { .. } | Self::JumpIfNullish(_) => -1,
+            Self::ResolveProperty { .. } => -2,
             Self::EnterScope(_) | Self::ExitScope | Self::ResolveName { .. } => 0,
             Self::LoadBinding { .. } | Self::LoadName(_) => 1,
             Self::InitializeBinding { .. } | Self::StoreBinding { .. } | Self::StoreReference => -1,
@@ -156,7 +286,7 @@ impl Instruction {
             | Self::Complete
             | Self::Throw => -1,
             Self::Add | Self::Subtract | Self::Multiply | Self::Divide | Self::StrictEqual => -1,
-            Self::Jump(_) | Self::LogicalNot => 0,
+            Self::Jump(_) | Self::LogicalNot | Self::TypeOf | Self::UnaryNumeric(_) => 0,
         }
     }
 }
@@ -231,7 +361,7 @@ pub enum VerifyErrorKind {
     InvalidScopeDescriptor,
     /// A metadata constant was used as a value, or a name operand is not a String.
     InvalidConstantKind,
-    /// Active scopes differ at a join, are unbalanced, or have invalid nesting.
+    /// Scopes or retained References mismatch, underflow, or nest incorrectly.
     ScopeMismatch,
     /// A binding references an inactive scope, invalid slot, or var initialization.
     BindingOutOfBounds,
@@ -285,6 +415,7 @@ struct FlowState {
     depth: usize,
     scopes: Vec<(u32, u32)>,
     references: Vec<u32>,
+    calls: Vec<(u32, usize)>,
 }
 
 fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
@@ -316,6 +447,7 @@ fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
             depth: 0,
             scopes: vec![],
             references: vec![],
+            calls: vec![],
         },
     )]);
     let mut max_stack = 0;
@@ -324,7 +456,10 @@ fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
             if previous.depth != state.depth {
                 return Err(VerifyError::at(VerifyErrorKind::StackDepthMismatch, offset));
             }
-            if previous.scopes != state.scopes || previous.references != state.references {
+            if previous.scopes != state.scopes
+                || previous.references != state.references
+                || previous.calls != state.calls
+            {
                 return Err(VerifyError::at(VerifyErrorKind::ScopeMismatch, offset));
             }
             continue;
@@ -354,6 +489,42 @@ fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
                 let entry =
                     u32::try_from(offset).map_err(|_| error(VerifyErrorKind::ScopeMismatch))?;
                 state.scopes.push((entry, index));
+                let mut function_names = std::collections::HashSet::new();
+                for declaration in &plan.functions {
+                    validate_function_template(&declaration.template).map_err(error)?;
+                    if declaration.template.arrow
+                        || declaration.template.self_binding
+                        || declaration.template.name.as_ref() != Some(&declaration.name)
+                        || !function_names.insert(declaration.name.code_units())
+                    {
+                        return Err(error(VerifyErrorKind::InvalidScopeDescriptor));
+                    }
+                    let (_, target) = state
+                        .scopes
+                        .iter()
+                        .find(|(entry, _)| *entry == declaration.target)
+                        .ok_or_else(|| error(VerifyErrorKind::BindingOutOfBounds))?;
+                    let Constant::Scope(target) = &bytecode.constants[*target as usize] else {
+                        unreachable!()
+                    };
+                    if declaration.target != entry
+                        && (plan.kind != ScopeKind::Block || target.kind != ScopeKind::Function)
+                    {
+                        return Err(error(VerifyErrorKind::ScopeMismatch));
+                    }
+                    let expected = if target.kind == ScopeKind::Block {
+                        BindingKind::Let
+                    } else {
+                        BindingKind::Var
+                    };
+                    if !target
+                        .bindings
+                        .iter()
+                        .any(|binding| binding.name == declaration.name && binding.kind == expected)
+                    {
+                        return Err(error(VerifyErrorKind::BindingOutOfBounds));
+                    }
+                }
             }
             Instruction::ExitScope => {
                 state
@@ -395,14 +566,84 @@ fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
                     );
                 }
             }
-            Instruction::StoreReference => {
+            Instruction::CreateFunction(index) => {
+                let Constant::Function(template) = constant(index)? else {
+                    return Err(error(VerifyErrorKind::InvalidConstantKind));
+                };
+                if state.scopes.is_empty() {
+                    return Err(error(VerifyErrorKind::ScopeMismatch));
+                }
+                validate_function_template(template).map_err(error)?;
+            }
+            Instruction::GetProperty { .. }
+            | Instruction::ResolveProperty { .. }
+            | Instruction::LoadThis
+            | Instruction::LoadNewTarget => {
+                if state.scopes.is_empty() {
+                    return Err(error(VerifyErrorKind::ScopeMismatch));
+                }
+                if matches!(instruction, Instruction::ResolveProperty { .. }) {
+                    state.references.push(
+                        u32::try_from(offset).map_err(|_| error(VerifyErrorKind::ScopeMismatch))?,
+                    );
+                }
+            }
+            Instruction::LoadReferenceCallTarget => {
+                state
+                    .references
+                    .pop()
+                    .ok_or_else(|| error(VerifyErrorKind::ScopeMismatch))?;
+            }
+            Instruction::BeginCall
+            | Instruction::BeginMethodCall
+            | Instruction::BeginConstruct
+            | Instruction::BeginReferenceCall => {
+                if matches!(instruction, Instruction::BeginReferenceCall) {
+                    state
+                        .references
+                        .pop()
+                        .ok_or_else(|| error(VerifyErrorKind::ScopeMismatch))?;
+                }
+                let baseline = state
+                    .depth
+                    .checked_sub(instruction.required_stack())
+                    .ok_or_else(|| error(VerifyErrorKind::StackUnderflow))?;
+                state.calls.push((
+                    u32::try_from(offset).map_err(|_| error(VerifyErrorKind::ScopeMismatch))?,
+                    baseline,
+                ));
+            }
+            Instruction::AppendArgument | Instruction::SpreadArguments | Instruction::Invoke => {
+                if matches!(instruction, Instruction::SpreadArguments) && state.scopes.is_empty() {
+                    return Err(error(VerifyErrorKind::ScopeMismatch));
+                }
+                let (_, baseline) = state
+                    .calls
+                    .last()
+                    .ok_or_else(|| error(VerifyErrorKind::ScopeMismatch))?;
+                let expected = baseline
+                    + usize::from(matches!(
+                        instruction,
+                        Instruction::AppendArgument | Instruction::SpreadArguments
+                    ));
+                if state.depth != expected {
+                    return Err(error(VerifyErrorKind::StackDepthMismatch));
+                }
+                if matches!(instruction, Instruction::Invoke) {
+                    state.calls.pop();
+                }
+            }
+            Instruction::StoreReference
+            | Instruction::DeleteReference
+            | Instruction::UpdateReference { .. }
+            | Instruction::TypeOfReference => {
                 state
                     .references
                     .pop()
                     .ok_or_else(|| error(VerifyErrorKind::ScopeMismatch))?;
             }
             Instruction::LoadConstant(index) => {
-                if matches!(constant(index)?, Constant::Scope(_)) {
+                if matches!(constant(index)?, Constant::Scope(_) | Constant::Function(_)) {
                     return Err(error(VerifyErrorKind::InvalidConstantKind));
                 }
             }
@@ -411,7 +652,9 @@ fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
             {
                 return Err(error(VerifyErrorKind::LocalOutOfBounds));
             }
-            Instruction::Jump(target) | Instruction::JumpIfFalse(target)
+            Instruction::Jump(target)
+            | Instruction::JumpIfFalse(target)
+            | Instruction::JumpIfNullish(target)
                 if target as usize >= length =>
             {
                 return Err(error(VerifyErrorKind::JumpOutOfBounds));
@@ -420,6 +663,13 @@ fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
                 return Err(error(VerifyErrorKind::ScopeMismatch));
             }
             _ => {}
+        }
+        if matches!(
+            instruction,
+            Instruction::Return | Instruction::Complete | Instruction::Throw
+        ) && !state.calls.is_empty()
+        {
+            return Err(error(VerifyErrorKind::ScopeMismatch));
         }
         if state.depth < instruction.required_stack() {
             return Err(error(VerifyErrorKind::StackUnderflow));
@@ -436,11 +686,18 @@ fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
             .depth
             .checked_add_signed(instruction.stack_delta())
             .expect("stack requirement prevents underflow");
+        if state
+            .calls
+            .iter()
+            .any(|(_, baseline)| state.depth < *baseline)
+        {
+            return Err(error(VerifyErrorKind::StackUnderflow));
+        }
         max_stack = max_stack.max(state.depth);
         match instruction {
             Instruction::Return | Instruction::Complete | Instruction::Throw => {}
             Instruction::Jump(target) => work.push_back((target as usize, state)),
-            Instruction::JumpIfFalse(target) => {
+            Instruction::JumpIfFalse(target) | Instruction::JumpIfNullish(target) => {
                 work.push_back((target as usize, state.clone()));
                 enqueue_fallthrough(offset, length, state, &mut work)?;
             }
@@ -472,4 +729,29 @@ fn enqueue_fallthrough(
         work.push_back((next, state));
         Ok(())
     }
+}
+
+fn validate_function_template(template: &FunctionTemplate) -> Result<(), VerifyErrorKind> {
+    let body = template.body.bytecode();
+    let Some(Instruction::EnterScope(index)) = body.instructions.first() else {
+        return Err(VerifyErrorKind::InvalidScopeDescriptor);
+    };
+    if !matches!(body.constants.get(*index as usize), Some(Constant::Scope(plan)) if plan.kind == ScopeKind::Function && plan.strict == template.strict)
+    {
+        return Err(VerifyErrorKind::InvalidScopeDescriptor);
+    }
+    if template.arrow && (template.self_binding || template.arguments_object) {
+        return Err(VerifyErrorKind::InvalidScopeDescriptor);
+    }
+    if template.strict || template.arrow {
+        let mut names = std::collections::HashSet::new();
+        if template
+            .parameters
+            .iter()
+            .any(|name| !names.insert(name.code_units()))
+        {
+            return Err(VerifyErrorKind::InvalidScopeDescriptor);
+        }
+    }
+    Ok(())
 }

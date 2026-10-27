@@ -19,7 +19,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             engine.evaluate(&script)?.value(),
             Value::Number(42.0)
         ));
-        assert!(BytecodeCompiler::compile(source).is_err());
+        if source.starts_with("function") {
+            assert!(matches!(
+                VirtualMachine::execute(&BytecodeCompiler::compile(source)?)?,
+                Completion::Normal(Some(Value::Number(42.0)))
+            ));
+        } else {
+            assert!(BytecodeCompiler::compile(source).is_err());
+        }
     }
 
     // Syntax acceptance and runtime support are separate contracts.
@@ -54,10 +61,29 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         RuntimeErrorKind::ReferenceError
     );
 
+    let property = BytecodeCompiler::compile("this.answer=42; this?.answer;")?;
+    assert!(matches!(
+        VirtualMachine::execute(&property)?,
+        Completion::Normal(Some(Value::Number(42.0)))
+    ));
+
     #[cfg(feature = "jit")]
     check_jit()?;
 
     println!("AST and bytecode examples and rejection cases passed");
+    for source in [
+        "Math.abs(0 - 42);",
+        "Math.abs?.(...'7') * 6;",
+        "((a,b)=>a+b)(20,22);",
+        "let numeric=41;++numeric;",
+        "-(~41);",
+    ] {
+        let calls = BytecodeCompiler::compile(source)?;
+        assert!(matches!(
+            VirtualMachine::execute_in_realm(&calls, &bytecode_realm)?,
+            Completion::Normal(Some(Value::Number(42.0)))
+        ));
+    }
     Ok(())
 }
 
@@ -67,6 +93,7 @@ fn check_jit() -> Result<(), Box<dyn std::error::Error>> {
 
     let numeric = BytecodeCompiler::compile("40 + 2;")?;
     let equality = BytecodeCompiler::compile("1 === 1;")?;
+    let callable = BytecodeCompiler::compile("(()=>42)();")?;
     #[cfg(all(target_arch = "x86_64", unix))]
     {
         assert_eq!(BaselineJit::compile(&numeric)?.execute(), 42.0);
@@ -74,11 +101,15 @@ fn check_jit() -> Result<(), Box<dyn std::error::Error>> {
             BaselineJit::compile(&equality).unwrap_err().kind(),
             JitErrorKind::UnsupportedInstruction
         );
+        assert_eq!(
+            BaselineJit::compile(&callable).unwrap_err().kind(),
+            JitErrorKind::UnsupportedInstruction
+        );
         println!("x86-64 Unix JIT execution and rejection passed");
     }
     #[cfg(not(all(target_arch = "x86_64", unix)))]
     {
-        for bytecode in [&numeric, &equality] {
+        for bytecode in [&numeric, &equality, &callable] {
             assert_eq!(
                 BaselineJit::compile(bytecode).unwrap_err().kind(),
                 JitErrorKind::UnsupportedPlatform

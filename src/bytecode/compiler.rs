@@ -319,7 +319,19 @@ impl Compiler {
                     let ExprKind::Identifier(name) = &declaration.binding.kind else {
                         return Err(self.unsupported("binding pattern", declaration.binding.span));
                     };
+                    let (scope, slot, _) = self
+                        .binding(name)
+                        .expect("declaration collected before lowering");
+                    let global_var =
+                        *kind == VariableKind::Var && self.local_binding(name).is_none();
                     if let Some(init) = &declaration.init {
+                        if global_var {
+                            let name = self.pool(Constant::String(name.as_str().into()))?;
+                            self.code.push(Instruction::ResolveName {
+                                name,
+                                strict: self.strict,
+                            });
+                        }
                         self.expression(init)?;
                     } else if *kind == VariableKind::Var {
                         continue;
@@ -328,10 +340,9 @@ impl Compiler {
                     } else {
                         self.constant(Constant::Undefined)?;
                     }
-                    let (scope, slot, _) = self
-                        .binding(name)
-                        .expect("declaration collected before lowering");
-                    self.code.push(if *kind == VariableKind::Var {
+                    self.code.push(if global_var {
+                        Instruction::StoreReference
+                    } else if *kind == VariableKind::Var {
                         Instruction::StoreBinding { scope, slot }
                     } else {
                         Instruction::InitializeBinding { scope, slot }
@@ -482,7 +493,7 @@ impl Compiler {
                 let target = unparenthesized(target);
                 let binding = match &target.kind {
                     ExprKind::Identifier(name) => {
-                        let binding = self.binding(name);
+                        let binding = self.local_binding(name);
                         if binding.is_none() {
                             let name = self.pool(Constant::String(name.as_str().into()))?;
                             self.code.push(Instruction::ResolveName {
@@ -1094,10 +1105,13 @@ impl Compiler {
     }
 
     fn load_name(&mut self, name: &str) -> Result<(), CompileError> {
-        let instruction = if let Some((scope, slot, _)) = self.binding(name) {
+        let instruction = if let Some((scope, slot, _)) = self.local_binding(name) {
             Instruction::LoadBinding { scope, slot }
         } else {
-            Instruction::LoadName(self.pool(Constant::String(name.into()))?)
+            Instruction::GetName {
+                name: self.pool(Constant::String(name.into()))?,
+                strict: self.strict,
+            }
         };
         self.code.push(instruction);
         Ok(())
@@ -1106,6 +1120,14 @@ impl Compiler {
     fn offset(&self) -> Result<u32, CompileError> {
         u32::try_from(self.code.len())
             .map_err(|_| CompileError::new("instruction stream overflow", None))
+    }
+
+    fn local_binding(&self, name: &str) -> Option<(u32, u32, BindingKind)> {
+        self.binding(name).filter(|(entry, _, _)| {
+            self.scopes
+                .iter()
+                .any(|scope| scope.entry == *entry && scope.kind != ScopeKind::Global)
+        })
     }
 
     fn emit(&mut self, instruction: Instruction) -> usize {

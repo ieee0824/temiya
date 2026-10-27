@@ -93,6 +93,10 @@ jobs:
         env:
           TEST262_DIR: target/test262
         run: cargo +${{ matrix.toolchain }} test --locked --test bytecode_arrays pinned_test262_array_literals --all-features -- --ignored --nocapture
+      - name: Run original var-binding resolution regression
+        env:
+          TEST262_DIR: target/test262
+        run: cargo +${{ matrix.toolchain }} test --locked --test bytecode_operators pinned_test262_var_binding_resolution --all-features -- --ignored --nocapture
       - name: Run upstream exception regressions
         env:
           TEST262_DIR: target/test262

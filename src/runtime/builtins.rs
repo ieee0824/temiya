@@ -14,7 +14,7 @@ pub(super) fn initialize(
     host_hooks: HostHooks,
     symbols: &super::WellKnownSymbols,
 ) -> RuntimeResult<()> {
-    install_object(intrinsics)?;
+    install_object(intrinsics, symbols)?;
     install_function(intrinsics)?;
     install_reflect(intrinsics)
         .and_then(|()| install_indexed(intrinsics))
@@ -33,21 +33,33 @@ fn install_proxy(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {
         let handler = object_arg(arguments.get(1), "Proxy handler")?;
         Ok(ProxyObject::new(target, handler).object())
     });
-    method(&constructor, "revocable", |_, arguments| {
-        let target = object_arg(arguments.first(), "Proxy target")?;
-        let handler = object_arg(arguments.get(1), "Proxy handler")?;
-        let proxy = ProxyObject::new(target, handler);
-        let revocable = Object::new();
-        revocable.create_data_property("proxy".into(), Value::Object(proxy.object()))?;
-        revocable.create_data_property(
-            "revoke".into(),
-            Value::Object(Object::native_function(move |_, _| {
-                proxy.revoke();
-                Ok(Value::Undefined)
-            })),
-        )?;
-        Ok(Value::Object(revocable))
-    })
+    let prototype = intrinsics.get(IntrinsicId::FunctionPrototype);
+    method(
+        intrinsics,
+        &constructor,
+        "revocable",
+        2,
+        move |_, arguments| {
+            let target = object_arg(arguments.first(), "Proxy target")?;
+            let handler = object_arg(arguments.get(1), "Proxy handler")?;
+            let proxy = ProxyObject::new(target, handler);
+            let revocable = Object::new();
+            revocable.create_data_property("proxy".into(), Value::Object(proxy.object()))?;
+            revocable.create_data_property(
+                "revoke".into(),
+                Value::Object(super::native_function::create(
+                    &prototype,
+                    "",
+                    0,
+                    move |_, _| {
+                        proxy.revoke();
+                        Ok(Value::Undefined)
+                    },
+                )?),
+            )?;
+            Ok(Value::Object(revocable))
+        },
+    )
 }
 
 fn install_date_json(intrinsics: &IntrinsicRegistry, host: HostHooks) -> RuntimeResult<()> {
@@ -69,17 +81,19 @@ fn install_date_json(intrinsics: &IntrinsicRegistry, host: HostHooks) -> Runtime
         object.set_prototype(Some(date_prototype.clone()));
         Ok(object)
     });
-    method(&date, "now", move |_, _| Ok(Value::Number(host.now())))?;
+    method(intrinsics, &date, "now", 0, move |_, _| {
+        Ok(Value::Number(host.now()))
+    })?;
     let date_prototype = intrinsics.get(IntrinsicId::DatePrototype);
-    method(&date_prototype, "valueOf", |this, _| {
+    method(intrinsics, &date_prototype, "valueOf", 0, |this, _| {
         Ok(Value::Number(date_receiver(this)?.value()))
     })?;
-    method(&date_prototype, "toISOString", |this, _| {
+    method(intrinsics, &date_prototype, "toISOString", 0, |this, _| {
         date_receiver(this)?.to_iso_string().map(Value::String)
     })?;
 
     let json = intrinsics.get(IntrinsicId::Json);
-    method(&json, "parse", |_, arguments| {
+    method(intrinsics, &json, "parse", 2, |_, arguments| {
         let source = value_arg(arguments.first()).to_js_string()?;
         let reviver = callable_arg(arguments.get(1)).ok();
         let mut callback = |key: &str, value: Value| match &reviver {
@@ -94,7 +108,7 @@ fn install_date_json(intrinsics: &IntrinsicRegistry, host: HostHooks) -> Runtime
             .map(|_| &mut callback as &mut dyn FnMut(&str, Value) -> RuntimeResult<Value>);
         Json::parse(&source, callback)
     })?;
-    method(&json, "stringify", |_, arguments| {
+    method(intrinsics, &json, "stringify", 3, |_, arguments| {
         let replacer = callable_arg(arguments.get(1)).ok();
         let mut callback = |key: &str, value: Value| match &replacer {
             Some(replacer) => replacer.call(
@@ -127,24 +141,30 @@ fn install_collections(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {
         Ok(object)
     });
     let map_prototype = intrinsics.get(IntrinsicId::MapPrototype);
-    method(&map_prototype, "set", |this, arguments| {
+    method(intrinsics, &map_prototype, "set", 2, |this, arguments| {
         let map = map_receiver(this)?;
         map.set(value_arg(arguments.first()), value_arg(arguments.get(1)));
         Ok(Value::Object(map.object()))
     })?;
-    method(&map_prototype, "get", |this, arguments| {
+    method(intrinsics, &map_prototype, "get", 1, |this, arguments| {
         Ok(map_receiver(this)?.get(&value_arg(arguments.first())))
     })?;
-    method(&map_prototype, "has", |this, arguments| {
+    method(intrinsics, &map_prototype, "has", 1, |this, arguments| {
         Ok(Value::Boolean(
             map_receiver(this)?.has(&value_arg(arguments.first())),
         ))
     })?;
-    method(&map_prototype, "delete", |this, arguments| {
-        Ok(Value::Boolean(
-            map_receiver(this)?.delete(&value_arg(arguments.first())),
-        ))
-    })?;
+    method(
+        intrinsics,
+        &map_prototype,
+        "delete",
+        1,
+        |this, arguments| {
+            Ok(Value::Boolean(
+                map_receiver(this)?.delete(&value_arg(arguments.first())),
+            ))
+        },
+    )?;
 
     let set = intrinsics.get(IntrinsicId::Set);
     let set_prototype = intrinsics.get(IntrinsicId::SetPrototype);
@@ -155,21 +175,27 @@ fn install_collections(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {
         Ok(object)
     });
     let set_prototype = intrinsics.get(IntrinsicId::SetPrototype);
-    method(&set_prototype, "add", |this, arguments| {
+    method(intrinsics, &set_prototype, "add", 1, |this, arguments| {
         let set = set_receiver(this)?;
         set.add(value_arg(arguments.first()));
         Ok(Value::Object(set.object()))
     })?;
-    method(&set_prototype, "has", |this, arguments| {
+    method(intrinsics, &set_prototype, "has", 1, |this, arguments| {
         Ok(Value::Boolean(
             set_receiver(this)?.has(&value_arg(arguments.first())),
         ))
     })?;
-    method(&set_prototype, "delete", |this, arguments| {
-        Ok(Value::Boolean(
-            set_receiver(this)?.delete(&value_arg(arguments.first())),
-        ))
-    })?;
+    method(
+        intrinsics,
+        &set_prototype,
+        "delete",
+        1,
+        |this, arguments| {
+            Ok(Value::Boolean(
+                set_receiver(this)?.delete(&value_arg(arguments.first())),
+            ))
+        },
+    )?;
 
     let weak_map = intrinsics.get(IntrinsicId::WeakMap);
     let weak_map_prototype = intrinsics.get(IntrinsicId::WeakMapPrototype);
@@ -180,18 +206,30 @@ fn install_collections(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {
         Ok(object)
     });
     let weak_map_prototype = intrinsics.get(IntrinsicId::WeakMapPrototype);
-    method(&weak_map_prototype, "set", |this, arguments| {
-        let map = weak_map_receiver(this)?;
-        map.set(&value_arg(arguments.first()), value_arg(arguments.get(1)))?;
-        Ok(Value::Object(map.object()))
-    })?;
-    method(&weak_map_prototype, "get", |this, arguments| {
-        let map = weak_map_receiver(this)?;
-        match arguments.first() {
-            Some(Value::Object(key)) => Ok(map.get(key)),
-            _ => Ok(Value::Undefined),
-        }
-    })?;
+    method(
+        intrinsics,
+        &weak_map_prototype,
+        "set",
+        2,
+        |this, arguments| {
+            let map = weak_map_receiver(this)?;
+            map.set(&value_arg(arguments.first()), value_arg(arguments.get(1)))?;
+            Ok(Value::Object(map.object()))
+        },
+    )?;
+    method(
+        intrinsics,
+        &weak_map_prototype,
+        "get",
+        1,
+        |this, arguments| {
+            let map = weak_map_receiver(this)?;
+            match arguments.first() {
+                Some(Value::Object(key)) => Ok(map.get(key)),
+                _ => Ok(Value::Undefined),
+            }
+        },
+    )?;
 
     let weak_set = intrinsics.get(IntrinsicId::WeakSet);
     let weak_set_prototype = intrinsics.get(IntrinsicId::WeakSetPrototype);
@@ -202,11 +240,17 @@ fn install_collections(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {
         Ok(object)
     });
     let weak_set_prototype = intrinsics.get(IntrinsicId::WeakSetPrototype);
-    method(&weak_set_prototype, "add", |this, arguments| {
-        let set = weak_set_receiver(this)?;
-        set.add(&value_arg(arguments.first()))?;
-        Ok(Value::Object(set.object()))
-    })
+    method(
+        intrinsics,
+        &weak_set_prototype,
+        "add",
+        1,
+        |this, arguments| {
+            let set = weak_set_receiver(this)?;
+            set.add(&value_arg(arguments.first()))?;
+            Ok(Value::Object(set.object()))
+        },
+    )
 }
 
 fn map_receiver(value: Value) -> RuntimeResult<MapObject> {
@@ -261,17 +305,17 @@ fn install_numeric(
             PropertyDescriptor::data(Value::Number(value), false, false, false),
         )?;
     }
-    method(&number, "isNaN", |_, arguments| {
+    method(intrinsics, &number, "isNaN", 1, |_, arguments| {
         Ok(Value::Boolean(
             matches!(arguments.first(), Some(Value::Number(value)) if value.is_nan()),
         ))
     })?;
-    method(&number, "isFinite", |_, arguments| {
+    method(intrinsics, &number, "isFinite", 1, |_, arguments| {
         Ok(Value::Boolean(
             matches!(arguments.first(), Some(Value::Number(value)) if value.is_finite()),
         ))
     })?;
-    method(&number, "isInteger", |_, arguments| {
+    method(intrinsics, &number, "isInteger", 1, |_, arguments| {
         Ok(Value::Boolean(
             matches!(arguments.first(), Some(Value::Number(value)) if value.is_finite() && value.fract() == 0.0),
         ))
@@ -281,12 +325,12 @@ fn install_numeric(
             matches!(arguments.first(), Some(Value::Number(value)) if value.is_finite() && value.fract() == 0.0 && value.abs() <= 9_007_199_254_740_991.0),
         ))
     })?;
-    method(&number, "parseFloat", |_, arguments| {
+    method(intrinsics, &number, "parseFloat", 1, |_, arguments| {
         Ok(Value::Number(parse_float(
             &value_arg(arguments.first()).to_js_string()?,
         )))
     })?;
-    method(&number, "parseInt", |_, arguments| {
+    method(intrinsics, &number, "parseInt", 2, |_, arguments| {
         let input = value_arg(arguments.first()).to_js_string()?;
         let radix = match arguments.get(1) {
             None | Some(Value::Undefined) => None,
@@ -295,13 +339,17 @@ fn install_numeric(
         Ok(Value::Number(parse_int(&input, radix)))
     })?;
     method(
+        intrinsics,
         &intrinsics.get(IntrinsicId::NumberPrototype),
         "valueOf",
+        0,
         |this, _| numeric_receiver(&this, false),
     )?;
     method(
+        intrinsics,
         &intrinsics.get(IntrinsicId::NumberPrototype),
         "toFixed",
+        1,
         |this, arguments| {
             let Value::Number(value) = numeric_receiver(&this, false)? else {
                 unreachable!()
@@ -326,12 +374,12 @@ fn install_numeric(
         }
     });
     bigint.clear_native_construct();
-    method(&bigint, "asUintN", |_, arguments| {
+    method(intrinsics, &bigint, "asUintN", 2, |_, arguments| {
         let bits = bit_count(arguments.first())?;
         let value = value_arg(arguments.get(1)).to_bigint()?;
         Math::bigint_as_uint_n(bits, &value).map(Value::BigInt)
     })?;
-    method(&bigint, "asIntN", |_, arguments| {
+    method(intrinsics, &bigint, "asIntN", 2, |_, arguments| {
         let bits = bit_count(arguments.first())?;
         let value = value_arg(arguments.get(1)).to_bigint()?;
         Math::bigint_as_int_n(bits, &value).map(Value::BigInt)
@@ -373,26 +421,26 @@ fn install_numeric(
     )?;
 
     let math = intrinsics.get(IntrinsicId::Math);
-    unary_math(&math, "abs", f64::abs)?;
-    unary_math(&math, "floor", f64::floor)?;
-    unary_math(&math, "ceil", f64::ceil)?;
-    unary_math(&math, "sqrt", f64::sqrt)?;
-    unary_math(&math, "round", Math::round)?;
-    method(&math, "pow", |_, arguments| {
+    unary_math(intrinsics, &math, "abs", f64::abs)?;
+    unary_math(intrinsics, &math, "floor", f64::floor)?;
+    unary_math(intrinsics, &math, "ceil", f64::ceil)?;
+    unary_math(intrinsics, &math, "sqrt", f64::sqrt)?;
+    unary_math(intrinsics, &math, "round", Math::round)?;
+    method(intrinsics, &math, "pow", 2, |_, arguments| {
         Ok(Value::Number(
             value_arg(arguments.first())
                 .to_number()?
                 .powf(value_arg(arguments.get(1)).to_number()?),
         ))
     })?;
-    method(&math, "max", |_, arguments| {
+    method(intrinsics, &math, "max", 2, |_, arguments| {
         arguments
             .iter()
             .map(Value::to_number)
             .collect::<RuntimeResult<Vec<_>>>()
             .map(|values| Value::Number(Math::max(&values)))
     })?;
-    method(&math, "min", |_, arguments| {
+    method(intrinsics, &math, "min", 2, |_, arguments| {
         arguments
             .iter()
             .map(Value::to_number)
@@ -401,8 +449,13 @@ fn install_numeric(
     })
 }
 
-fn unary_math(object: &Object, name: &str, operation: fn(f64) -> f64) -> RuntimeResult<()> {
-    method(object, name, move |_, arguments| {
+fn unary_math(
+    intrinsics: &IntrinsicRegistry,
+    object: &Object,
+    name: &str,
+    operation: fn(f64) -> f64,
+) -> RuntimeResult<()> {
+    method(intrinsics, object, name, 1, move |_, arguments| {
         Ok(Value::Number(operation(
             value_arg(arguments.first()).to_number()?,
         )))
@@ -454,8 +507,10 @@ fn install_regexp(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {
     regexp.set_native_call(move |_, arguments| call_create(arguments).map(Value::Object));
     regexp.set_native_construct(move |arguments, _| create(arguments));
     method(
+        intrinsics,
         &intrinsics.get(IntrinsicId::RegExpPrototype),
         "exec",
+        1,
         |this, arguments| {
             let object = object_value(&this, "RegExp receiver")?;
             let regexp = RegExp::from_object(object)
@@ -485,7 +540,7 @@ fn install_indexed(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {
     array.set_native_construct(move |arguments, _| {
         create_array(arguments, &prototype_for_construct)
     });
-    method(&array, "isArray", |_, arguments| {
+    method(intrinsics, &array, "isArray", 1, |_, arguments| {
         Ok(Value::Boolean(
             matches!(arguments.first(), Some(Value::Object(object)) if ArrayObject::from_object(object.clone()).is_some()),
         ))
@@ -501,7 +556,7 @@ fn install_indexed(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {
             .set_prototype(Some(buffer_prototype.clone()));
         Ok(buffer.object())
     });
-    method(&array_buffer, "isView", |_, arguments| {
+    method(intrinsics, &array_buffer, "isView", 1, |_, arguments| {
         Ok(Value::Boolean(
             matches!(arguments.first(), Some(Value::Object(object)) if TypedArray::from_object(object.clone()).is_some()),
         ))
@@ -587,101 +642,185 @@ fn length_argument(value: Option<&Value>) -> RuntimeResult<usize> {
     Ok(number as usize)
 }
 
-fn install_object(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {
+fn install_object(
+    intrinsics: &IntrinsicRegistry,
+    symbols: &super::WellKnownSymbols,
+) -> RuntimeResult<()> {
     let constructor = intrinsics.get(IntrinsicId::Object);
     let object_prototype = intrinsics.get(IntrinsicId::ObjectPrototype);
-    method(&constructor, "create", move |_, arguments| {
-        let prototype = nullable_object(arguments.first())?;
-        let object = Object::new();
-        object.set_prototype(prototype);
-        match arguments.get(1) {
-            None | Some(Value::Undefined) => {}
-            Some(Value::Object(descriptors)) => define_properties(&object, descriptors)?,
-            Some(_) => {
+    for (name, symbols) in [
+        ("getOwnPropertyNames", false),
+        ("getOwnPropertySymbols", true),
+    ] {
+        let prototype = intrinsics.get(IntrinsicId::ArrayPrototype);
+        method(intrinsics, &constructor, name, 1, move |_, arguments| {
+            let source = property_source(value_arg(arguments.first()))?;
+            let keys = source
+                .try_own_property_keys()?
+                .into_iter()
+                .filter_map(|key| match key {
+                    PropertyKey::String(name) if !symbols => Some(Value::String(name)),
+                    PropertyKey::Symbol(symbol) if symbols => Some(Value::Symbol(symbol)),
+                    _ => None,
+                })
+                .collect();
+            let Value::Object(array) = array_value(keys)? else {
+                unreachable!()
+            };
+            array.initialize_prototype(Some(prototype.clone()));
+            Ok(Value::Object(array))
+        })?;
+    }
+    method(
+        intrinsics,
+        &constructor,
+        "create",
+        2,
+        move |_, arguments| {
+            let prototype = nullable_object(arguments.first())?;
+            let object = Object::new();
+            object.set_prototype(prototype);
+            match arguments.get(1) {
+                None | Some(Value::Undefined) => {}
+                Some(Value::Object(descriptors)) => define_properties(&object, descriptors)?,
+                Some(_) => {
+                    return Err(RuntimeError::type_error(
+                        "Object.create descriptors must be an object",
+                    ));
+                }
+            }
+            Ok(Value::Object(object))
+        },
+    )?;
+    method(
+        intrinsics,
+        &constructor,
+        "defineProperty",
+        3,
+        |_, arguments| {
+            let object = object_arg(arguments.first(), "Object.defineProperty target")?;
+            let key = value_arg(arguments.get(1)).to_property_key()?;
+            let descriptor = descriptor_arg(arguments.get(2))?;
+            require_define(&object, key, descriptor)?;
+            Ok(Value::Object(object))
+        },
+    )?;
+    method(
+        intrinsics,
+        &constructor,
+        "getOwnPropertyDescriptor",
+        2,
+        |_, arguments| {
+            let object = object_arg(arguments.first(), "Object.getOwnPropertyDescriptor target")?;
+            let key = value_arg(arguments.get(1)).to_property_key()?;
+            object
+                .try_get_own_property(&key)?
+                .map_or(Ok(Value::Undefined), |descriptor| {
+                    descriptor.to_object().map(Value::Object)
+                })
+        },
+    )?;
+    method(
+        intrinsics,
+        &constructor,
+        "getPrototypeOf",
+        1,
+        |_, arguments| {
+            let object = object_arg(arguments.first(), "Object.getPrototypeOf target")?;
+            Ok(object.try_prototype()?.map_or(Value::Null, Value::Object))
+        },
+    )?;
+    method(
+        intrinsics,
+        &constructor,
+        "setPrototypeOf",
+        2,
+        |_, arguments| {
+            let object = object_arg(arguments.first(), "Object.setPrototypeOf target")?;
+            let prototype = nullable_object(arguments.get(1))?;
+            if !object.try_set_prototype(prototype)? {
                 return Err(RuntimeError::type_error(
-                    "Object.create descriptors must be an object",
+                    "object prototype cannot be changed",
                 ));
             }
-        }
-        Ok(Value::Object(object))
-    })?;
-    method(&constructor, "defineProperty", |_, arguments| {
-        let object = object_arg(arguments.first(), "Object.defineProperty target")?;
-        let key = value_arg(arguments.get(1)).to_property_key()?;
-        let descriptor = descriptor_arg(arguments.get(2))?;
-        require_define(&object, key, descriptor)?;
-        Ok(Value::Object(object))
-    })?;
-    method(&constructor, "getOwnPropertyDescriptor", |_, arguments| {
-        let object = object_arg(arguments.first(), "Object.getOwnPropertyDescriptor target")?;
-        let key = value_arg(arguments.get(1)).to_property_key()?;
-        object
-            .try_get_own_property(&key)?
-            .map_or(Ok(Value::Undefined), |descriptor| {
-                descriptor.to_object().map(Value::Object)
-            })
-    })?;
-    method(&constructor, "getPrototypeOf", |_, arguments| {
-        let object = object_arg(arguments.first(), "Object.getPrototypeOf target")?;
-        Ok(object.try_prototype()?.map_or(Value::Null, Value::Object))
-    })?;
-    method(&constructor, "setPrototypeOf", |_, arguments| {
-        let object = object_arg(arguments.first(), "Object.setPrototypeOf target")?;
-        let prototype = nullable_object(arguments.get(1))?;
-        if !object.try_set_prototype(prototype)? {
-            return Err(RuntimeError::type_error(
-                "object prototype cannot be changed",
-            ));
-        }
-        Ok(Value::Object(object))
-    })?;
-    method(&constructor, "preventExtensions", |_, arguments| {
-        let object = object_arg(arguments.first(), "Object.preventExtensions target")?;
-        object.try_prevent_extensions()?;
-        Ok(Value::Object(object))
-    })?;
-    method(&constructor, "isExtensible", |_, arguments| {
-        let object = object_arg(arguments.first(), "Object.isExtensible target")?;
-        Ok(Value::Boolean(object.try_is_extensible()?))
-    })?;
-    method(&object_prototype, "hasOwnProperty", |this, arguments| {
-        let object = object_value(&this, "Object.prototype.hasOwnProperty receiver")?;
-        let key = value_arg(arguments.first()).to_property_key()?;
-        Ok(Value::Boolean(object.get_own_property(&key).is_some()))
-    })
+            Ok(Value::Object(object))
+        },
+    )?;
+    method(
+        intrinsics,
+        &constructor,
+        "preventExtensions",
+        1,
+        |_, arguments| {
+            let object = object_arg(arguments.first(), "Object.preventExtensions target")?;
+            object.try_prevent_extensions()?;
+            Ok(Value::Object(object))
+        },
+    )?;
+    method(
+        intrinsics,
+        &constructor,
+        "isExtensible",
+        1,
+        |_, arguments| {
+            let object = object_arg(arguments.first(), "Object.isExtensible target")?;
+            Ok(Value::Boolean(object.try_is_extensible()?))
+        },
+    )?;
+    for (name, enumerable) in [("hasOwnProperty", false), ("propertyIsEnumerable", true)] {
+        let to_primitive: PropertyKey = symbols.get(super::WellKnownSymbol::ToPrimitive).into();
+        method(
+            intrinsics,
+            &object_prototype,
+            name,
+            1,
+            move |this, arguments| {
+                // Key conversion precedes ToObject(this), including a null receiver.
+                let key =
+                    super::coercion::primitive(&value_arg(arguments.first()), &to_primitive, true)?
+                        .to_property_key()?;
+                let object = property_source(this)?;
+                let descriptor = object.try_get_own_property(&key)?;
+                Ok(Value::Boolean(descriptor.is_some_and(|descriptor| {
+                    !enumerable || descriptor.enumerable == Some(true)
+                })))
+            },
+        )?;
+    }
+    Ok(())
 }
 
 fn install_function(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {
     let prototype = intrinsics.get(IntrinsicId::FunctionPrototype);
-    method(&prototype, "call", |this, arguments| {
+    method(intrinsics, &prototype, "call", 1, |this, arguments| {
         let target = callable_value(&this)?;
         target.call(
             arguments.first().cloned().unwrap_or(Value::Undefined),
             arguments.get(1..).unwrap_or_default(),
         )
     })?;
-    method(&prototype, "apply", |this, arguments| {
+    method(intrinsics, &prototype, "apply", 2, |this, arguments| {
         let target = callable_value(&this)?;
         let this_argument = arguments.first().cloned().unwrap_or(Value::Undefined);
         let list = argument_list(arguments.get(1))?;
         target.call(this_argument, &list)
     })?;
-    method(&prototype, "bind", |this, arguments| {
+    method(intrinsics, &prototype, "bind", 1, |this, arguments| {
         let target = callable_value(&this)?;
         let bound_this = arguments.first().cloned().unwrap_or(Value::Undefined);
         let prefix = arguments.get(1..).unwrap_or_default().to_vec();
-        Ok(Value::Object(bound_function(target, bound_this, prefix)))
+        bound_function(target, bound_this, prefix).map(Value::Object)
     })
 }
 
 fn install_reflect(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {
     let reflect = intrinsics.get(IntrinsicId::Reflect);
-    method(&reflect, "apply", |_, arguments| {
+    method(intrinsics, &reflect, "apply", 3, |_, arguments| {
         let target = callable_arg(arguments.first())?;
         let this_argument = arguments.get(1).cloned().unwrap_or(Value::Undefined);
         target.call(this_argument, &argument_list(arguments.get(2))?)
     })?;
-    method(&reflect, "construct", |_, arguments| {
+    method(intrinsics, &reflect, "construct", 2, |_, arguments| {
         let target = constructor_arg(arguments.first())?;
         let list = argument_list(arguments.get(1))?;
         let new_target = match arguments.get(2) {
@@ -690,7 +829,7 @@ fn install_reflect(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {
         };
         target.construct(&list, new_target).map(Value::Object)
     })?;
-    method(&reflect, "defineProperty", |_, arguments| {
+    method(intrinsics, &reflect, "defineProperty", 3, |_, arguments| {
         let object = object_arg(arguments.first(), "Reflect.defineProperty target")?;
         let key = value_arg(arguments.get(1)).to_property_key()?;
         let descriptor = descriptor_arg(arguments.get(2))?;
@@ -698,16 +837,22 @@ fn install_reflect(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {
             .define_own_property(key, descriptor)
             .map(Value::Boolean)
     })?;
-    method(&reflect, "getOwnPropertyDescriptor", |_, arguments| {
-        let object = object_arg(arguments.first(), "Reflect.getOwnPropertyDescriptor target")?;
-        let key = value_arg(arguments.get(1)).to_property_key()?;
-        object
-            .try_get_own_property(&key)?
-            .map_or(Ok(Value::Undefined), |descriptor| {
-                descriptor.to_object().map(Value::Object)
-            })
-    })?;
-    method(&reflect, "get", |_, arguments| {
+    method(
+        intrinsics,
+        &reflect,
+        "getOwnPropertyDescriptor",
+        2,
+        |_, arguments| {
+            let object = object_arg(arguments.first(), "Reflect.getOwnPropertyDescriptor target")?;
+            let key = value_arg(arguments.get(1)).to_property_key()?;
+            object
+                .try_get_own_property(&key)?
+                .map_or(Ok(Value::Undefined), |descriptor| {
+                    descriptor.to_object().map(Value::Object)
+                })
+        },
+    )?;
+    method(intrinsics, &reflect, "get", 2, |_, arguments| {
         let object = object_arg(arguments.first(), "Reflect.get target")?;
         let key = value_arg(arguments.get(1)).to_property_key()?;
         let receiver = arguments
@@ -716,7 +861,7 @@ fn install_reflect(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {
             .unwrap_or_else(|| Value::Object(object.clone()));
         object.get_with_receiver(&key, receiver)
     })?;
-    method(&reflect, "set", |_, arguments| {
+    method(intrinsics, &reflect, "set", 3, |_, arguments| {
         let object = object_arg(arguments.first(), "Reflect.set target")?;
         let key = value_arg(arguments.get(1)).to_property_key()?;
         let value = value_arg(arguments.get(2));
@@ -728,17 +873,17 @@ fn install_reflect(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {
             .set_with_receiver(&key, value, receiver)
             .map(Value::Boolean)
     })?;
-    method(&reflect, "has", |_, arguments| {
+    method(intrinsics, &reflect, "has", 2, |_, arguments| {
         let object = object_arg(arguments.first(), "Reflect.has target")?;
         let key = value_arg(arguments.get(1)).to_property_key()?;
         object.has_property(&key).map(Value::Boolean)
     })?;
-    method(&reflect, "deleteProperty", |_, arguments| {
+    method(intrinsics, &reflect, "deleteProperty", 2, |_, arguments| {
         let object = object_arg(arguments.first(), "Reflect.deleteProperty target")?;
         let key = value_arg(arguments.get(1)).to_property_key()?;
         Ok(Value::Boolean(object.try_delete(&key)?))
     })?;
-    method(&reflect, "ownKeys", |_, arguments| {
+    method(intrinsics, &reflect, "ownKeys", 1, |_, arguments| {
         let object = object_arg(arguments.first(), "Reflect.ownKeys target")?;
         let values = object
             .try_own_property_keys()?
@@ -750,44 +895,50 @@ fn install_reflect(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {
             .collect::<Vec<_>>();
         array_value(values)
     })?;
-    method(&reflect, "getPrototypeOf", |_, arguments| {
+    method(intrinsics, &reflect, "getPrototypeOf", 1, |_, arguments| {
         let object = object_arg(arguments.first(), "Reflect.getPrototypeOf target")?;
         Ok(object.try_prototype()?.map_or(Value::Null, Value::Object))
     })?;
-    method(&reflect, "setPrototypeOf", |_, arguments| {
+    method(intrinsics, &reflect, "setPrototypeOf", 2, |_, arguments| {
         let object = object_arg(arguments.first(), "Reflect.setPrototypeOf target")?;
         let prototype = nullable_object(arguments.get(1))?;
         Ok(Value::Boolean(object.try_set_prototype(prototype)?))
     })?;
-    method(&reflect, "isExtensible", |_, arguments| {
+    method(intrinsics, &reflect, "isExtensible", 1, |_, arguments| {
         Ok(Value::Boolean(
             object_arg(arguments.first(), "Reflect.isExtensible target")?.try_is_extensible()?,
         ))
     })?;
-    method(&reflect, "preventExtensions", |_, arguments| {
-        let object = object_arg(arguments.first(), "Reflect.preventExtensions target")?;
-        Ok(Value::Boolean(object.try_prevent_extensions()?))
-    })
-}
-
-fn method(
-    holder: &Object,
-    name: &str,
-    callback: impl Fn(Value, &[Value]) -> RuntimeResult<Value> + 'static,
-) -> RuntimeResult<()> {
-    require_define(
-        holder,
-        name.into(),
-        PropertyDescriptor::data(
-            Value::Object(Object::native_function(callback)),
-            true,
-            false,
-            true,
-        ),
+    method(
+        intrinsics,
+        &reflect,
+        "preventExtensions",
+        1,
+        |_, arguments| {
+            let object = object_arg(arguments.first(), "Reflect.preventExtensions target")?;
+            Ok(Value::Boolean(object.try_prevent_extensions()?))
+        },
     )
 }
 
-fn bound_function(target: Object, bound_this: Value, prefix: Vec<Value>) -> Object {
+fn method(
+    intrinsics: &IntrinsicRegistry,
+    holder: &Object,
+    name: &str,
+    length: u32,
+    callback: impl Fn(Value, &[Value]) -> RuntimeResult<Value> + 'static,
+) -> RuntimeResult<()> {
+    super::array_methods::method(
+        holder,
+        &intrinsics.get(IntrinsicId::FunctionPrototype),
+        name,
+        length,
+        callback,
+    )
+}
+
+fn bound_function(target: Object, bound_this: Value, prefix: Vec<Value>) -> RuntimeResult<Object> {
+    let prototype = target.try_prototype()?;
     let call_target = target.clone();
     let call_prefix = prefix.clone();
     let call = move |_: Value, suffix: &[Value]| {
@@ -795,26 +946,34 @@ fn bound_function(target: Object, bound_this: Value, prefix: Vec<Value>) -> Obje
         arguments.extend_from_slice(suffix);
         call_target.call(bound_this.clone(), &arguments)
     };
-    if target.is_constructor() {
-        let slot = Rc::new(RefCell::new(None::<Object>));
+    let function = if target.is_constructor() {
+        let slot = Rc::new(RefCell::new(None::<super::WeakObject>));
         let construct_slot = slot.clone();
         let construct_target = target.clone();
         let construct_prefix = prefix;
         let function = Object::native_callable_constructor(call, move |suffix, new_target| {
             let mut arguments = construct_prefix.clone();
             arguments.extend_from_slice(suffix);
-            let actual_new_target = if construct_slot.borrow().as_ref() == Some(&new_target) {
+            let actual_new_target = if construct_slot
+                .borrow()
+                .as_ref()
+                .and_then(super::WeakObject::upgrade)
+                .as_ref()
+                == Some(&new_target)
+            {
                 construct_target.clone()
             } else {
                 new_target
             };
             construct_target.construct(&arguments, actual_new_target)
         });
-        *slot.borrow_mut() = Some(function.clone());
+        *slot.borrow_mut() = Some(function.downgrade());
         function
     } else {
         Object::native_function(call)
-    }
+    };
+    function.initialize_prototype(prototype);
+    Ok(function)
 }
 
 fn define_properties(target: &Object, descriptors: &Object) -> RuntimeResult<()> {
@@ -932,21 +1091,7 @@ fn numeric_method(
     length: u32,
     callback: impl Fn(Value, &[Value]) -> RuntimeResult<Value> + 'static,
 ) -> RuntimeResult<()> {
-    let method = Object::native_function(callback);
-    method.set_prototype(Some(intrinsics.get(IntrinsicId::FunctionPrototype)));
-    method.define_own_property(
-        "name".into(),
-        PropertyDescriptor::data(Value::String(name.into()), false, false, true),
-    )?;
-    method.define_own_property(
-        "length".into(),
-        PropertyDescriptor::data(Value::Number(f64::from(length)), false, false, true),
-    )?;
-    require_define(
-        holder,
-        name.into(),
-        PropertyDescriptor::data(Value::Object(method), true, false, true),
-    )
+    method(intrinsics, holder, name, length, callback)
 }
 
 fn number_argument(value: Option<&Value>, key: &PropertyKey) -> RuntimeResult<f64> {
@@ -957,5 +1102,18 @@ fn number_argument(value: Option<&Value>, key: &PropertyKey) -> RuntimeResult<f6
             .parse::<f64>()
             .expect("BigInt decimal is a valid Number spelling")),
         value => value.to_number(),
+    }
+}
+
+// Primitive wrapper identity/prototype cannot be observed by an own-descriptor
+// query; only string wrappers contribute own properties.
+fn property_source(value: Value) -> RuntimeResult<Object> {
+    match value {
+        Value::Object(object) => Ok(object),
+        Value::String(value) => Ok(super::StringObject::new(value).object()),
+        Value::Null | Value::Undefined => {
+            Err(RuntimeError::type_error("cannot inspect null or undefined"))
+        }
+        _ => Ok(Object::new()),
     }
 }

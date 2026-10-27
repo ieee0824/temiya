@@ -306,7 +306,7 @@ impl IntrinsicRegistry {
         for id in IntrinsicId::ALL {
             let object = self.get(id);
             if id != IntrinsicId::ObjectPrototype && id != IntrinsicId::FunctionPrototype {
-                let prototype = if id.pair().is_some() {
+                let prototype = if id.pair().is_some() || id == IntrinsicId::Proxy {
                     &function_prototype
                 } else {
                     &object_prototype

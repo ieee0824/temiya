@@ -74,7 +74,7 @@ pub(super) fn create_function(
             create_generator_object(&call_closure, function, this, arguments).map(Value::Object)
         } else if call_closure.code.asynchronous {
             settled_promise_object(
-                call_closure.realm.job_queue(),
+                &call_closure.realm,
                 call_function(&call_closure, function, this, arguments, None)
                     .map_err(|error| call_closure.realm.bind_exception(error)),
             )
@@ -108,6 +108,11 @@ pub(super) fn create_function(
         Object::native_function(call)
     };
     *slot.borrow_mut() = Some(function.downgrade());
+    function.initialize_prototype(Some(
+        evaluator
+            .realm
+            .intrinsic(super::IntrinsicId::FunctionPrototype),
+    ));
     if let (Some(environment), Some(ExprKind::Identifier(name))) =
         (name_environment, code.name.as_ref().map(|name| &name.kind))
     {

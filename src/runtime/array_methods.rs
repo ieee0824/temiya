@@ -141,16 +141,7 @@ pub(super) fn method(
     length: u32,
     callback: impl Fn(Value, &[Value]) -> RuntimeResult<Value> + 'static,
 ) -> RuntimeResult<()> {
-    let function = Object::native_function(callback);
-    function.set_prototype(Some(prototype.clone()));
-    function.define_own_property(
-        "name".into(),
-        PropertyDescriptor::data(Value::String(name.into()), false, false, true),
-    )?;
-    function.define_own_property(
-        "length".into(),
-        PropertyDescriptor::data(Value::Number(f64::from(length)), false, false, true),
-    )?;
+    let function = super::native_function::create(prototype, name, length, callback)?;
     holder.define_own_property(
         name.into(),
         PropertyDescriptor::data(Value::Object(function), true, false, true),

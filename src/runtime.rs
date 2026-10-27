@@ -25,6 +25,7 @@ mod indexed;
 mod interpreter;
 mod intrinsics;
 mod job_queue;
+mod native_function;
 mod numeric;
 mod object;
 mod pipeline;

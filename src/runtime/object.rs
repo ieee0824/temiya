@@ -434,6 +434,12 @@ impl Object {
         Ok(self.0.state.borrow().prototype.clone())
     }
 
+    // Allocation is not [[SetPrototypeOf]]: never traverse a user Proxy chain.
+    pub(super) fn initialize_prototype(&self, prototype: Option<Self>) {
+        debug_assert!(self.0.state.borrow().prototype.is_none());
+        self.0.state.borrow_mut().prototype = prototype;
+    }
+
     /// Implements `[[SetPrototypeOf]]`, rejecting cycles and forbidden changes.
     pub fn set_prototype(&self, prototype: Option<Self>) -> bool {
         self.try_set_prototype(prototype).unwrap_or(false)

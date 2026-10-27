@@ -380,3 +380,69 @@ fn computed_key_conversion_can_reenter_the_same_public_reference() {
     );
     assert_eq!(calls.get(), 2);
 }
+
+#[test]
+fn global_name_resolution_has_traps_precede_reads_and_initializer_values() {
+    use std::{cell::RefCell, rc::Rc};
+    use temiya::runtime::{Object, ProxyObject};
+    let mut failures = Vec::new();
+    for (source, expected) in [
+        ("var x=41;reset();x;", "HH"),
+        ("var x=41;reset();x=rhs();", "HR"),
+        ("var x=41;reset();var x=rhs();", "HR"),
+    ] {
+        for vm in [false, true] {
+            let log = Rc::new(RefCell::new(String::new()));
+            let target = Object::new();
+            let handler = Object::new();
+            let proxy = ProxyObject::new(target.clone(), handler.clone()).object();
+            let realm = Realm::new(proxy.clone(), Value::Object(proxy));
+            let observed = log.clone();
+            handler
+                .create_data_property(
+                    "has".into(),
+                    Value::Object(Object::native_function(move |_, args| {
+                        let Value::Object(target) = &args[0] else {
+                            panic!()
+                        };
+                        let key = args[1].to_property_key()?;
+                        if key == "x".into() {
+                            observed.borrow_mut().push('H');
+                        }
+                        Ok(Value::Boolean(target.has_property(&key)?))
+                    })),
+                )
+                .unwrap();
+            let reset = log.clone();
+            target
+                .create_data_property(
+                    "reset".into(),
+                    Value::Object(Object::native_function(move |_, _| {
+                        reset.borrow_mut().clear();
+                        Ok(Value::Undefined)
+                    })),
+                )
+                .unwrap();
+            let rhs = log.clone();
+            target
+                .create_data_property(
+                    "rhs".into(),
+                    Value::Object(Object::native_function(move |_, _| {
+                        rhs.borrow_mut().push('R');
+                        Ok(Value::Number(42.0))
+                    })),
+                )
+                .unwrap();
+            assert!(matches!(
+                execute(&realm, source, vm).unwrap(),
+                Completion::Normal(_)
+            ));
+            let actual = log.borrow().clone();
+            println!("source={source:?} vm={vm} expected={expected} actual={actual}");
+            if actual != expected {
+                failures.push(format!("{source}: vm={vm} {actual} != {expected}"));
+            }
+        }
+    }
+    assert!(failures.is_empty(), "{failures:?}");
+}

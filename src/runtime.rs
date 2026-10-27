@@ -513,7 +513,7 @@ impl Value {
             Self::Boolean(false) => Ok(JsString::from("false")),
             Self::Boolean(true) => Ok(JsString::from("true")),
             Self::String(value) => Ok(value),
-            Self::Number(value) => Ok(JsString::from(number_to_string(value))),
+            Self::Number(value) => Ok(number_to_js_string(value)),
             Self::BigInt(value) => Ok(JsString::from(value.to_string())),
             Self::Symbol(_) => Err(RuntimeError::type_error("cannot convert Symbol to String")),
             Self::Object(_) => unreachable!("ToPrimitive returned an object"),
@@ -678,7 +678,7 @@ fn prefixed_integer(value: &str) -> Option<(u32, &str)> {
     (!digits.is_empty()).then_some((radix, digits))
 }
 
-fn number_to_string(value: f64) -> String {
+fn number_to_js_string(value: f64) -> JsString {
     if value.is_nan() {
         return "NaN".into();
     }
@@ -691,5 +691,5 @@ fn number_to_string(value: f64) -> String {
     if value == f64::NEG_INFINITY {
         return "-Infinity".into();
     }
-    ryu_js::Buffer::new().format(value).to_owned()
+    JsString::from(ryu_js::Buffer::new().format(value))
 }

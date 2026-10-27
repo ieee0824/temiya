@@ -21,7 +21,7 @@ pub(super) enum Matcher {
 
 pub(super) enum Scratch {
     Meta,
-    Direct(Box<DirectScratch>),
+    Direct(DirectScratch),
 }
 
 pub(super) struct DirectScratch {
@@ -109,10 +109,10 @@ impl Matcher {
     pub(super) fn create_scratch(&self) -> Scratch {
         match self {
             Self::Meta(_) => Scratch::Meta,
-            Self::Direct { fast, .. } => Scratch::Direct(Box::new(DirectScratch {
+            Self::Direct { fast, .. } => Scratch::Direct(DirectScratch {
                 fast: fast.create_cache(),
                 linear: None,
-            })),
+            }),
         }
     }
 

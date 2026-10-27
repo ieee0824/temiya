@@ -717,9 +717,24 @@ impl StatementEvaluator {
             match kind {
                 VariableKind::Var => {
                     if let Some(init) = &declaration.init {
-                        let reference = self.expression.evaluate_reference(&declaration.binding)?;
-                        let value = self.expression.evaluate(init)?;
-                        reference.put_value(value)?;
+                        // Resolve before the RHS. An own Function binding has no
+                        // observable HasBinding callback or intervening scope.
+                        if self.expression.environment == self.variable_environment
+                            && self.variable_environment.kind() == EnvironmentKind::Function
+                            && self.variable_environment.has_binding(&name)?
+                        {
+                            let value = self.expression.evaluate(init)?;
+                            self.variable_environment.set_mutable_binding(
+                                &name,
+                                value,
+                                self.expression.strict,
+                            )?;
+                        } else {
+                            let reference =
+                                self.expression.evaluate_reference(&declaration.binding)?;
+                            let value = self.expression.evaluate(init)?;
+                            reference.put_value(value)?;
+                        }
                     }
                 }
                 VariableKind::Let | VariableKind::Const => {

@@ -592,6 +592,24 @@ impl VirtualMachine {
                 Instruction::Pop => {
                     pop(&mut stack)?;
                 }
+                Instruction::BinaryNumberConstant { operator, constant } => {
+                    let Constant::Number(right) = body.constants[constant as usize] else {
+                        unreachable!("verified numeric constant")
+                    };
+                    if let Some(Value::Number(left)) = stack.last() {
+                        if let Some(result) = binary_number(operator, *left, right) {
+                            *stack.last_mut().expect("verified numeric operand") = result;
+                            continue;
+                        }
+                    }
+                    let left = pop(&mut stack)?;
+                    let right = Value::Number(right);
+                    stack.push(if let Some(realm) = realm {
+                        binary_values_in_realm(realm, operator.spelling(), left, right)?
+                    } else {
+                        binary_values(operator.spelling(), left, right)?
+                    });
+                }
                 Instruction::Binary(operator) => binary(&mut stack, operator, realm)?,
                 Instruction::Add => binary(&mut stack, BinaryOperator::Add, realm)?,
                 Instruction::Subtract => binary(&mut stack, BinaryOperator::Subtract, realm)?,

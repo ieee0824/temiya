@@ -551,7 +551,36 @@ impl Compiler {
                     }
                 } else {
                     self.expression(right)?;
-                    self.emit_binary(operator, expression.span)?;
+                    // Only a literal Number has no observable right-hand evaluation.
+                    // Do not fold a load at the end of an arbitrary expression: it
+                    // could be the target of a conditional jump or have side effects.
+                    let number_constant = if matches!(
+                        &unparenthesized(right).kind,
+                        ExprKind::Literal(Literal::Number { .. })
+                    ) {
+                        match self.code.last().copied() {
+                            Some(Instruction::LoadConstant(index))
+                                if matches!(
+                                    self.constants[index as usize],
+                                    Constant::Number(_)
+                                ) =>
+                            {
+                                Some(index)
+                            }
+                            _ => None,
+                        }
+                    } else {
+                        None
+                    };
+                    if let Some(constant) = number_constant {
+                        let operator = BinaryOperator::from_spelling(operator)
+                            .ok_or_else(|| self.unsupported("binary operator", expression.span))?;
+                        self.code.pop();
+                        self.code
+                            .push(Instruction::BinaryNumberConstant { operator, constant });
+                    } else {
+                        self.emit_binary(operator, expression.span)?;
+                    }
                 }
                 Ok(())
             }

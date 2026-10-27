@@ -344,6 +344,13 @@ pub enum Instruction {
     Pop,
     /// Pop two operands and apply the shared binary runtime operation.
     Binary(BinaryOperator),
+    /// Apply a binary operator to the stack top and a Number constant (delta 0).
+    BinaryNumberConstant {
+        /// Binary operation with the same coercion and error semantics as Binary.
+        operator: BinaryOperator,
+        /// Constant-pool index, verified to contain a Number.
+        constant: u32,
+    },
     /// Pop two operands and push their numeric sum (`-1`).
     Add,
     /// Pop two operands and push their numeric difference (`-1`).
@@ -412,6 +419,7 @@ impl Instruction {
             | Self::Pop
             | Self::JumpIfFalse(_)
             | Self::LogicalNot
+            | Self::BinaryNumberConstant { .. }
             | Self::Return
             | Self::Complete
             | Self::Throw => 1,
@@ -478,7 +486,11 @@ impl Instruction {
             | Self::Multiply
             | Self::Divide
             | Self::StrictEqual => -1,
-            Self::Jump(_) | Self::LogicalNot | Self::TypeOf | Self::UnaryNumeric(_) => 0,
+            Self::Jump(_)
+            | Self::LogicalNot
+            | Self::TypeOf
+            | Self::UnaryNumeric(_)
+            | Self::BinaryNumberConstant { .. } => 0,
         }
     }
 }
@@ -900,6 +912,13 @@ fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
                     .references
                     .pop()
                     .ok_or_else(|| error(VerifyErrorKind::ScopeMismatch))?;
+            }
+            Instruction::BinaryNumberConstant {
+                constant: index, ..
+            } => {
+                if !matches!(constant(index)?, Constant::Number(_)) {
+                    return Err(error(VerifyErrorKind::InvalidConstantKind));
+                }
             }
             Instruction::LoadConstant(index) => {
                 if matches!(constant(index)?, Constant::Scope(_) | Constant::Function(_)) {

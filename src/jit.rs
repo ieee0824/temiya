@@ -8,7 +8,7 @@ use std::{fmt, marker::PhantomData, rc::Rc};
 use crate::bytecode::VerifiedBytecode;
 
 #[cfg(all(target_arch = "x86_64", unix))]
-use crate::bytecode::{Constant, Instruction};
+use crate::bytecode::{BinaryOperator, Constant, Instruction};
 
 /// Stable baseline-JIT failure category.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -144,6 +144,28 @@ mod platform {
                     }
                     emit_number(&mut machine, depth as u8, number);
                     depth += 1;
+                }
+                Instruction::BinaryNumberConstant { operator, constant } => {
+                    let instruction = match operator {
+                        BinaryOperator::Add => Instruction::Add,
+                        BinaryOperator::Subtract => Instruction::Subtract,
+                        BinaryOperator::Multiply => Instruction::Multiply,
+                        BinaryOperator::Divide => Instruction::Divide,
+                        _ => {
+                            return Err(JitError::new(
+                                JitErrorKind::UnsupportedInstruction,
+                                Some(offset),
+                            ));
+                        }
+                    };
+                    if depth == REGISTER_LIMIT {
+                        return Err(JitError::new(JitErrorKind::RegisterPressure, Some(offset)));
+                    }
+                    let Constant::Number(number) = body.constants[constant as usize] else {
+                        unreachable!("verified Number constant")
+                    };
+                    emit_number(&mut machine, depth as u8, number);
+                    emit_binary(&mut machine, instruction, (depth - 1) as u8, depth as u8);
                 }
                 Instruction::Add
                 | Instruction::Subtract

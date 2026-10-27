@@ -46,3 +46,30 @@ and [ArgumentListEvaluation](https://tc39.es/ecma262/multipage/ecmascript-langua
 The original six-file observation is retained in the audit record. The seventh
 custom-iterator program was added after integration with object data lowering;
 its whole original source now compiles to VM without AST fallback.
+
+## Integrated default-AST performance observation
+
+[Hosted run 40479086606](https://github.com/ieee0824/temiya/actions/runs/40479086606)
+measured d086fff3bb82685a78d696a05e0c06c098fc8920 against main
+c218bc518e0da4beb1ec88f46bd5ed44d07959d5 after object-data integration.
+Both Temiya workers use the production default AST interpreter. All 33
+before/after comparisons were within the fixed noise threshold; none showed
+an improvement or regression beyond that threshold. Actual omoikane Boa was
+faster beyond threshold in all 33 comparisons. This does not establish a VM
+speedup or Boa superiority and does not close #427.
+
+The original eleven workloads, iterations and oracles are unchanged, with
+15 timed samples, one checked warmup and three alternating pairs, serial
+512 MiB/180-second guards. Each report contains 66 successful worker processes
+and 1,056 checked values. All medians/MAD, ratios, thresholds and outcomes were
+independently recalculated; original manifest/oracle coverage, worker identities,
+compiler and artifact build metadata were checked. Artifact: 12723148662.
+
+Raw [before/after](../benchmarks/array-integrated-hosted-beforeafter.json),
+[Boa](../benchmarks/array-integrated-hosted-boa.json), and
+[provenance](../benchmarks/array-integrated-provenance.json) are retained.
+The following report/documentation commit changes no runtime code. The measured
+revision's CI 40479039746 passed all four jobs; runtime revision
+9c60dbc513323922daa31005d0d4e4dee56b309a passed all three security jobs in
+40477102132. Subsequent source changes added only the seventh upstream test and
+its observation record, with 28 original AST/VM outcomes on each toolchain.

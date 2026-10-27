@@ -1,0 +1,96 @@
+{
+  "recorded_at": "2026-10-27T00:29:51.469Z",
+  "run_id": 40423209543,
+  "run_url": "https://github.com/ieee0824/temiya/actions/runs/40423209543",
+  "artifact_id": 12699404479,
+  "artifact_name": "omoikane-comparison-40423209543-1",
+  "measured_revision": "1384ea32e05f25709e97e681a59f2f8e168f5ad0",
+  "baseline_revision": "c34c797cbb717b96efb3c952c9655baa38637c41",
+  "runtime_code_revision": "a666b920ec2713564ae1044f740fa8c1a377773f",
+  "source_equivalence": {
+    "from": "a666b920ec2713564ae1044f740fa8c1a377773f",
+    "through": "1384ea32e05f25709e97e681a59f2f8e168f5ad0",
+    "scope": [
+      "src",
+      "examples",
+      "scripts",
+      "Cargo.toml",
+      "Cargo.lock",
+      ".github/workflows/omoikane-benchmark.yml"
+    ]
+  },
+  "integration_revision": "62fbb569fac593bd0113325b95e3d29037c48cb0",
+  "integration_scope": "This parent-integration revision includes separately merged VM foundations. It is not executable-equivalent to the frozen measured revision; the reports isolate the earlier numeric additions. Later result-only commits are equivalent to integration revision 62fbb. Combined main requires a separate final comparison.",
+  "compiler": "rustc 1.99.1 (58cf8f9c3 2026-10-13)\nbinary: rustc\ncommit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67\ncommit-date: 2026-10-13\nhost: x86_64-unknown-linux-gnu\nrelease: 1.99.1\nLLVM version: 23.1.1",
+  "manifest_sha256": "003147323f8fca044bafdf341e2fba09abec1c15d93396cbd87453fb89d54e8a",
+  "baseline_build": {
+    "name": "Temiya",
+    "engine": "Temiya",
+    "mode": "AST interpreter",
+    "profile": "release",
+    "features": [],
+    "revision": "c34c797cbb717b96efb3c952c9655baa38637c41",
+    "executable": "/home/runner/work/_temp/temiya-baseline-target/release/examples/measure_workload",
+    "executable_sha256": "c8b91580641f6c48f4f89a17cb2c83f76b80d0383c5c21fe40ed3cad0579d6d1",
+    "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)\nbinary: rustc\ncommit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67\ncommit-date: 2026-10-13\nhost: x86_64-unknown-linux-gnu\nrelease: 1.99.1\nLLVM version: 23.1.1"
+  },
+  "boa_build": {
+    "recorded_at": "2026-10-27T00:03:15.116Z",
+    "omoikane_revision": "007556adccb8fb4329236932ca8175f8e8d119d2",
+    "checkout_clean": true,
+    "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)\nbinary: rustc\ncommit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67\ncommit-date: 2026-10-13\nhost: x86_64-unknown-linux-gnu\nrelease: 1.99.1\nLLVM version: 23.1.1",
+    "cargo": "cargo 1.99.1 (5f94df478 2026-08-27)",
+    "profile": "release",
+    "cargo_args": [
+      "build",
+      "--locked",
+      "--release"
+    ],
+    "rustflags": "",
+    "features": {
+      "omoikane": [],
+      "boa_engine": [
+        "annex-b",
+        "default",
+        "experimental",
+        "float16",
+        "intl",
+        "intl_bundled",
+        "temporal",
+        "xsum"
+      ],
+      "regress": [
+        "backend-pikevm",
+        "default",
+        "std",
+        "utf16"
+      ]
+    },
+    "original_lock_sha256": "f3988c4d9b0ecc28560df18df1cae7760c7c55a016318ea3e31f3ebbfcaea211",
+    "adapter_lock_sha256": "6b4debb1e4368b52de4586b7b30c3d4b6b8882a1bd4ee87d78aa488a252517e7",
+    "worker_source_sha256": "efba2d69a8c594a14c508ee3c9bf97a1799de98a438f14d449fe9be07f351a06",
+    "executable": "/home/runner/work/_temp/omoikane-worker-target/release/omoikane-workload-worker",
+    "executable_sha256": "6c88090d88cc5cc6726c43b65c79fe0cbfac3f7f1135c065951f6ad06501db37",
+    "execution_mode": "interpreter; baseline-jit feature absent"
+  },
+  "observations": {
+    "beforeafter": {
+      "within noise threshold": 32,
+      "after slower beyond threshold": 1
+    },
+    "boa": {
+      "Temiya slower beyond threshold": 33
+    }
+  },
+  "flagged_comparisons": [
+    {
+      "workload": "object-alloc",
+      "pair": 1,
+      "status": "comparable",
+      "after_to_before_ratio": 1.1035912809479291,
+      "noise_threshold": 0.1,
+      "outcome": "after slower beyond threshold"
+    }
+  ],
+  "scope": "Full eleven-workload repeated comparison. Success means validated measurements, not a passing speed gate. One object-alloc pair is slower beyond the fixed threshold; it is retained without reclassification."
+}

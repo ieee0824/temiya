@@ -285,3 +285,20 @@ fn object_tag(object: &Object) -> RuntimeResult<&'static str> {
         }
     })
 }
+
+// Preserve ordinary prototype lookup when boxing primitive generic receivers.
+pub(super) fn iterator_boxing(
+    intrinsics: &IntrinsicRegistry,
+    symbols: &WellKnownSymbols,
+) -> impl Fn(Value) -> RuntimeResult<Object> + 'static {
+    let coercion = Coercion {
+        string: intrinsics.get(IntrinsicId::StringPrototype),
+        number: intrinsics.get(IntrinsicId::NumberPrototype),
+        boolean: intrinsics.get(IntrinsicId::BooleanPrototype),
+        symbol: intrinsics.get(IntrinsicId::SymbolPrototype),
+        bigint: intrinsics.get(IntrinsicId::BigIntPrototype),
+        to_primitive: symbols.get(WellKnownSymbol::ToPrimitive).into(),
+        to_string_tag: symbols.get(WellKnownSymbol::ToStringTag).into(),
+    };
+    move |value| coercion.object(value)
+}

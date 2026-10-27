@@ -1,6 +1,6 @@
 use crate::runtime::{
-    Completion, Environment, EnvironmentKind, Realm, Reference, RuntimeError, RuntimeResult, Value,
-    binary_values, binary_values_in_realm,
+    Completion, Environment, EnvironmentKind, Realm, Reference, ReferencedName, RuntimeError,
+    RuntimeResult, Value, binary_values, binary_values_in_realm,
 };
 
 use super::{BindingKind, Constant, Instruction, ScopeDescriptor, ScopeKind, VerifiedBytecode};
@@ -54,6 +54,7 @@ impl VirtualMachine {
         let body = bytecode.bytecode();
         let mut scopes: Vec<ScopeFrame<'_>> = vec![];
         let mut references: Vec<Reference> = vec![];
+        let mut calls: Vec<Invocation> = vec![];
         let mut stack = Vec::with_capacity(bytecode.max_stack());
         let mut locals = vec![Value::Undefined; body.local_count as usize];
         let mut pc = 0;
@@ -65,8 +66,7 @@ impl VirtualMachine {
                     let Constant::Scope(plan) = &body.constants[index as usize] else {
                         unreachable!()
                     };
-                    let environment =
-                        enter_scope(plan, scopes.last().map(|s| &s.environment), realm, function)?;
+                    let environment = enter_scope(plan, &scopes, (pc - 1) as u32, realm, function)?;
                     scopes.push(ScopeFrame {
                         entry: (pc - 1) as u32,
                         plan,
@@ -129,11 +129,197 @@ impl VirtualMachine {
                     };
                     references.push(reference);
                 }
+                Instruction::LoadReference => {
+                    stack.push(
+                        references
+                            .last()
+                            .expect("verified reference stack")
+                            .get_value()?,
+                    );
+                }
+                Instruction::DiscardReference => {
+                    references.pop().expect("verified reference stack");
+                }
                 Instruction::StoreReference => {
                     references
                         .pop()
                         .expect("verified reference stack")
                         .put_value(pop(&mut stack)?)?;
+                }
+                Instruction::GetProperty { strict } | Instruction::ResolveProperty { strict } => {
+                    let key = pop(&mut stack)?;
+                    let base = pop(&mut stack)?;
+                    let reference = Reference::property_in_realm(
+                        realm.expect("verified scoped property access"),
+                        base,
+                        ReferencedName::Value(key),
+                        strict,
+                    );
+                    if matches!(instruction, Instruction::GetProperty { .. }) {
+                        stack.push(reference.get_value()?);
+                    } else {
+                        references.push(reference);
+                    }
+                }
+                Instruction::UpdateReference { increment, prefix } => {
+                    let reference = references.pop().expect("verified reference stack");
+                    stack.push(crate::runtime::update_reference_in_realm(
+                        realm.expect("scoped update Realm"),
+                        &reference,
+                        increment,
+                        prefix,
+                    )?);
+                }
+                Instruction::TypeOfReference => {
+                    let reference = references.pop().expect("verified reference stack");
+                    let value = if reference.is_unresolvable() {
+                        Value::Undefined
+                    } else {
+                        reference.get_value()?
+                    };
+                    stack.push(Value::String(crate::runtime::type_of(&value).into()));
+                }
+                Instruction::UnaryNumeric(operator) => {
+                    let value = pop(&mut stack)?;
+                    stack.push(crate::runtime::unary_numeric_value(
+                        realm,
+                        operator.spelling(),
+                        value,
+                    )?);
+                }
+                Instruction::TypeOf => {
+                    let value = pop(&mut stack)?;
+                    stack.push(Value::String(crate::runtime::type_of(&value).into()));
+                }
+                Instruction::DeleteReference => {
+                    stack.push(Value::Boolean(
+                        references
+                            .pop()
+                            .expect("verified reference stack")
+                            .delete()?,
+                    ));
+                }
+                Instruction::LoadReferenceCallTarget => {
+                    let reference = references.pop().expect("verified reference stack");
+                    let receiver = reference.this_value().unwrap_or(Value::Undefined);
+                    let callee = reference.get_value()?;
+                    stack.push(receiver);
+                    stack.push(callee);
+                }
+                Instruction::AsCallTarget => {
+                    let callee = pop(&mut stack)?;
+                    stack.push(Value::Undefined);
+                    stack.push(callee);
+                }
+                Instruction::BeginMethodCall => {
+                    let callee = pop(&mut stack)?;
+                    let receiver = pop(&mut stack)?;
+                    calls.push(Invocation {
+                        callee,
+                        receiver,
+                        construct: false,
+                        arguments: vec![],
+                    });
+                }
+                Instruction::BeginCall | Instruction::BeginConstruct => {
+                    calls.push(Invocation {
+                        callee: pop(&mut stack)?,
+                        receiver: Value::Undefined,
+                        construct: matches!(instruction, Instruction::BeginConstruct),
+                        arguments: vec![],
+                    });
+                }
+                Instruction::BeginReferenceCall => {
+                    let reference = references.pop().expect("verified reference stack");
+                    let receiver = reference.this_value().unwrap_or(Value::Undefined);
+                    calls.push(Invocation {
+                        callee: reference.get_value()?,
+                        receiver,
+                        construct: false,
+                        arguments: vec![],
+                    });
+                }
+                Instruction::AppendArgument => {
+                    crate::runtime::iterator::push_argument(
+                        &mut calls.last_mut().expect("verified call frame").arguments,
+                        pop(&mut stack)?,
+                    )?;
+                }
+                Instruction::SpreadArguments => {
+                    crate::runtime::iterator::spread_arguments(
+                        realm.expect("verified scoped spread"),
+                        pop(&mut stack)?,
+                        &mut calls.last_mut().expect("verified call frame").arguments,
+                    )?;
+                }
+                Instruction::Invoke => {
+                    let invocation = calls.pop().expect("verified call frame");
+                    stack.push(invocation.invoke()?);
+                }
+                Instruction::CreateFunction(index) => {
+                    let Constant::Function(template) = &body.constants[index as usize] else {
+                        unreachable!()
+                    };
+                    stack.push(Value::Object(crate::runtime::bytecode_function::create(
+                        template.clone(),
+                        realm.expect("verified function Realm"),
+                        scopes
+                            .last()
+                            .expect("verified active scope")
+                            .environment
+                            .clone(),
+                    )?));
+                }
+                Instruction::LoadNewTarget => {
+                    let mut environment = scopes
+                        .last()
+                        .expect("verified active scope")
+                        .environment
+                        .clone();
+                    loop {
+                        if environment.kind() == EnvironmentKind::Global {
+                            stack.push(Value::Undefined);
+                            break;
+                        }
+                        if environment.kind() == EnvironmentKind::Function
+                            && environment.has_this_binding()?
+                        {
+                            stack.push(
+                                environment
+                                    .new_target()?
+                                    .map_or(Value::Undefined, Value::Object),
+                            );
+                            break;
+                        }
+                        environment = environment.outer().ok_or_else(|| {
+                            RuntimeError::reference_error("no newTarget environment")
+                        })?;
+                    }
+                }
+                Instruction::LoadThis => {
+                    let mut environment = scopes
+                        .last()
+                        .expect("verified active scope")
+                        .environment
+                        .clone();
+                    loop {
+                        if environment.kind() == EnvironmentKind::Global {
+                            stack.push(environment.global_this_value()?);
+                            break;
+                        }
+                        if environment.has_this_binding()? {
+                            stack.push(environment.get_this_binding()?);
+                            break;
+                        }
+                        environment = environment
+                            .outer()
+                            .ok_or_else(|| RuntimeError::reference_error("no this binding"))?;
+                    }
+                }
+                Instruction::JumpIfNullish(target) => {
+                    if matches!(pop(&mut stack)?, Value::Null | Value::Undefined) {
+                        pc = target as usize;
+                    }
                 }
                 Instruction::LoadConstant(index) => {
                     stack.push(constant(&body.constants[index as usize]))
@@ -149,6 +335,7 @@ impl VirtualMachine {
                 Instruction::Pop => {
                     pop(&mut stack)?;
                 }
+                Instruction::Binary(operator) => binary(&mut stack, operator.spelling(), realm)?,
                 Instruction::Add => binary(&mut stack, "+", realm)?,
                 Instruction::Subtract => binary(&mut stack, "-", realm)?,
                 Instruction::Multiply => binary(&mut stack, "*", realm)?,
@@ -174,7 +361,10 @@ impl VirtualMachine {
 
 fn constant(constant: &Constant) -> Value {
     match constant {
-        Constant::Scope(_) => unreachable!("verifier rejects metadata values"),
+        Constant::Scope(_) | Constant::Function(_) => {
+            unreachable!("verifier rejects metadata values")
+        }
+        Constant::BigInt(value) => Value::BigInt(value.clone()),
         Constant::Undefined => Value::Undefined,
         Constant::Null => Value::Null,
         Constant::Boolean(value) => Value::Boolean(*value),
@@ -200,6 +390,34 @@ fn binary(stack: &mut Vec<Value>, operator: &str, realm: Option<&Realm>) -> Runt
     Ok(())
 }
 
+// Each invocation owns its roots independently of operand-stack growth and of
+// nested/reentrant VM runs. All pending roots drop on an abrupt runtime result.
+struct Invocation {
+    callee: Value,
+    receiver: Value,
+    construct: bool,
+    arguments: Vec<Value>,
+}
+
+impl Invocation {
+    fn invoke(self) -> RuntimeResult<Value> {
+        let Value::Object(callee) = self.callee else {
+            return Err(RuntimeError::type_error(if self.construct {
+                "value is not a constructor"
+            } else {
+                "value is not callable"
+            }));
+        };
+        if self.construct {
+            Ok(Value::Object(
+                callee.construct(&self.arguments, callee.clone())?,
+            ))
+        } else {
+            callee.call(self.receiver, &self.arguments)
+        }
+    }
+}
+
 struct ScopeFrame<'a> {
     entry: u32,
     plan: &'a ScopeDescriptor,
@@ -216,7 +434,8 @@ fn binding_frame<'a, 'b>(scopes: &'a [ScopeFrame<'b>], entry: u32) -> &'a ScopeF
 
 fn enter_scope(
     plan: &ScopeDescriptor,
-    parent: Option<&Environment>,
+    parents: &[ScopeFrame<'_>],
+    entry: u32,
     realm: Option<&Realm>,
     function: Option<&Environment>,
 ) -> RuntimeResult<Environment> {
@@ -227,9 +446,11 @@ fn enter_scope(
         ScopeKind::Function => function
             .ok_or_else(|| RuntimeError::type_error("function scope requires a prepared frame"))?
             .clone(),
-        ScopeKind::Block => Environment::declarative(parent.cloned()),
+        ScopeKind::Block => {
+            Environment::declarative(parents.last().map(|frame| frame.environment.clone()))
+        }
     };
-    // Check every declaration before mutating the persistent global record.
+    // Global eligibility is atomic with respect to binding/function creation.
     if plan.kind == ScopeKind::Global {
         for binding in plan.bindings.iter().filter(|b| b.kind != BindingKind::Var) {
             if !environment.can_declare_global_lexical(&binding.name)? {
@@ -245,13 +466,36 @@ fn enter_scope(
                 ));
             }
         }
-        for binding in plan.bindings.iter().filter(|b| b.kind == BindingKind::Var) {
+        for declaration in plan.functions.iter().rev() {
+            if !environment.can_declare_global_function(&declaration.name)? {
+                return Err(RuntimeError::type_error(
+                    "global object rejects function binding",
+                ));
+            }
+        }
+        for binding in plan.bindings.iter().filter(|b| {
+            b.kind == BindingKind::Var && !plan.functions.iter().any(|f| f.name == b.name)
+        }) {
             if !environment.can_declare_global_var(&binding.name)? {
                 return Err(RuntimeError::type_error(
                     "global object rejects var binding",
                 ));
             }
         }
+        for binding in plan.bindings.iter().filter(|b| b.kind != BindingKind::Var) {
+            environment.create_global_lexical_binding(
+                binding.name.clone(),
+                binding.kind == BindingKind::Let,
+                binding.kind == BindingKind::Const,
+            )?;
+        }
+        instantiate_functions(plan, parents, entry, &environment, realm)?;
+        for binding in plan.bindings.iter().filter(|b| {
+            b.kind == BindingKind::Var && !plan.functions.iter().any(|f| f.name == b.name)
+        }) {
+            environment.create_global_var_binding(binding.name.clone(), false)?;
+        }
+        return Ok(environment);
     }
     for binding in plan
         .bindings
@@ -259,32 +503,52 @@ fn enter_scope(
         .filter(|b| b.kind != BindingKind::Var)
         .chain(plan.bindings.iter().filter(|b| b.kind == BindingKind::Var))
     {
-        if plan.kind == ScopeKind::Global {
-            if binding.kind == BindingKind::Var {
-                environment.create_global_var_binding(binding.name.clone(), false)?;
-            } else {
-                environment.create_global_lexical_binding(
-                    binding.name.clone(),
-                    binding.kind == BindingKind::Let,
-                    binding.kind == BindingKind::Const,
-                )?;
+        match binding.kind {
+            BindingKind::Var => {
+                if !environment.has_binding(&binding.name)? {
+                    environment.create_mutable_binding(binding.name.clone(), false)?;
+                    environment.initialize_binding(&binding.name, Value::Undefined)?;
+                }
             }
-        } else {
-            match binding.kind {
-                BindingKind::Var => {
-                    if !environment.has_binding(&binding.name)? {
-                        environment.create_mutable_binding(binding.name.clone(), false)?;
-                        environment.initialize_binding(&binding.name, Value::Undefined)?;
-                    }
-                }
-                BindingKind::Let => {
-                    environment.create_mutable_binding(binding.name.clone(), false)?
-                }
-                BindingKind::Const => {
-                    environment.create_immutable_binding(binding.name.clone(), true)?
-                }
+            BindingKind::Let => environment.create_mutable_binding(binding.name.clone(), false)?,
+            BindingKind::Const => {
+                environment.create_immutable_binding(binding.name.clone(), true)?
             }
         }
     }
+    instantiate_functions(plan, parents, entry, &environment, realm)?;
     Ok(environment)
+}
+
+fn instantiate_functions(
+    plan: &ScopeDescriptor,
+    parents: &[ScopeFrame<'_>],
+    entry: u32,
+    environment: &Environment,
+    realm: Option<&Realm>,
+) -> RuntimeResult<()> {
+    for declaration in &plan.functions {
+        let function = crate::runtime::bytecode_function::create(
+            declaration.template.clone(),
+            realm.expect("scoped declaration Realm"),
+            environment.clone(),
+        )?;
+        let target = if declaration.target == entry {
+            environment
+        } else {
+            &binding_frame(parents, declaration.target).environment
+        };
+        if target.kind() == EnvironmentKind::Global {
+            target.create_global_function_binding(
+                declaration.name.clone(),
+                Value::Object(function),
+                false,
+            )?;
+        } else if declaration.target == entry && plan.kind == ScopeKind::Block {
+            target.initialize_binding(&declaration.name, Value::Object(function))?;
+        } else {
+            target.set_mutable_binding(&declaration.name, Value::Object(function), false)?;
+        }
+    }
+    Ok(())
 }

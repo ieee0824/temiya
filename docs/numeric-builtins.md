@@ -51,3 +51,46 @@ Clippy with warnings denied pass. This source needs its own hosted CI/security
 and before/after plus actual pinned omoikane Boa measurements before review.
 
 Reference: [ECMAScript 2026 numeric builtins](https://tc39.es/ecma262/2026/multipage/numbers-and-dates.html#sec-bigint.prototype.tostring).
+
+
+## Hosted numeric builtin comparison
+
+[Run 40423209543](https://github.com/ieee0824/temiya/actions/runs/40423209543)
+completed on Ubuntu 24.04, AMD EPYC 9V45 96-Core Processor, four logical CPUs,
+with the same Rust 1.99.1 compiler. [Provenance](../benchmarks/numeric-builtins-hosted-provenance.json),
+[before/after](../benchmarks/numeric-builtins-hosted-beforeafter.json) and
+[actual pinned omoikane Boa](../benchmarks/numeric-builtins-hosted-boa.json)
+retain the original eleven workloads and oracles, 15 timed samples plus a checked
+warmup, three alternating pairs and serial execution with 512 MiB/180-second
+guards. Each mode has 66 successful runs and 1056 validated values.
+
+The frozen measured revision is `1384ea32e05f25709e97e681a59f2f8e168f5ad0`,
+with executable source `a666b920ec2713564ae1044f740fa8c1a377773f`,
+versus baseline `c34c797cbb717b96efb3c952c9655baa38637c41`. The later parent
+integration `62fbb569fac593bd0113325b95e3d29037c48cb0` includes merged VM
+foundations and is **not** executable-equivalent to the measured source. These
+reports isolate the earlier numeric additions; final combined-main throughput
+requires a separate comparison. Result-only commits after 62fbb change no runtime.
+
+| Workload | Changed / prior Temiya time | Changed Temiya / Boa time |
+| --- | ---: | ---: |
+| arith | 0.932–0.964× | 3.245–4.571× |
+| prop-mono | 0.986–1.008× | 2.243–2.417× |
+| prop-mega | 0.974–0.986× | 2.208–2.570× |
+| call | 0.921–0.939× | 2.261–2.748× |
+| closure-alloc | 0.943–0.945× | 1.656–1.747× |
+| object-alloc | 0.953–1.104× | 1.700–1.999× |
+| string-concat | 0.979–0.992× | 2.953–3.003× |
+| array | 0.969–0.994× | 2.043–2.209× |
+| primitive-string-property | 0.961–0.995× | 2.591–3.295× |
+| primitive-string-method | 0.920–0.968× | 2.039–2.365× |
+| proto-method | 0.949–0.993× | 2.138–2.604× |
+
+Thirty-two before/after pairs are within the fixed noise threshold. Object-alloc
+pair 1 takes **1.103591× the baseline time** (10.36% slower), with a 0.1 threshold;
+its other pairs are 0.952615×
+and 0.967431×. The flagged comparison remains a regression observation; the
+three pairs do not establish a consistent directional change. No regression-free
+claim is made. The combined-source follow-up must retain and investigate this
+workload. All 33 Boa comparisons find Temiya slower beyond threshold. Both speed
+gates remain false; compatibility completion is separate from the Boa goal.

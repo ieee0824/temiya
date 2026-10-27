@@ -1,9 +1,38 @@
 //! Property descriptors and ordinary object internal methods.
 
+use std::cell::Cell;
 use std::hash::{Hash, Hasher};
 use std::rc::Rc;
 
 use super::{JsString, Object, RuntimeError, RuntimeResult, Symbol, Value};
+
+// Native callbacks and the current AST function implementation recurse through
+// Rust. Share one per-thread budget across calls, construction and VM reentry.
+// This conservative bound also applies on the supported debug/MSRV builds.
+const MAX_CALL_DEPTH: usize = 32;
+thread_local! {
+    static CALL_DEPTH: Cell<usize> = const { Cell::new(0) };
+}
+
+struct CallDepthGuard;
+
+impl CallDepthGuard {
+    fn enter() -> RuntimeResult<Self> {
+        CALL_DEPTH.with(|depth| {
+            if depth.get() >= MAX_CALL_DEPTH {
+                return Err(RuntimeError::range_error("maximum call depth exceeded"));
+            }
+            depth.set(depth.get() + 1);
+            Ok(Self)
+        })
+    }
+}
+
+impl Drop for CallDepthGuard {
+    fn drop(&mut self) {
+        CALL_DEPTH.with(|depth| depth.set(depth.get() - 1));
+    }
+}
 
 /// A JavaScript property key: either a String or a Symbol.
 #[derive(Clone, Debug, Eq)]
@@ -273,6 +302,7 @@ pub(super) struct ObjectState {
     extensible: bool,
     properties: Vec<PropertyEntry>,
     callable: Option<NativeCall>,
+    pub(super) bound_target: Option<Object>,
     construct: Option<NativeConstruct>,
     // The own data property already exists. Only its initial object value is
     // deferred until an operation observes or redefines that descriptor.
@@ -289,6 +319,7 @@ pub(super) struct ObjectState {
     pub(super) weak_map_data: Option<super::collections::WeakMapSlot>,
     pub(super) weak_set_data: Option<super::collections::WeakSetSlot>,
     pub(super) date_value: Option<f64>,
+    pub(super) iterator: Option<Box<super::iterator::IteratorSlot>>,
     pub(super) proxy: Option<super::proxy::ProxySlot>,
 }
 
@@ -399,10 +430,14 @@ impl Object {
     }
 
     /// Invokes this object's `[[Call]]` internal method.
+    ///
+    /// Calls and construction share a per-thread nesting limit of 32. Exceeding
+    /// the limit returns RangeError; normal and abrupt exits release the budget.
     pub fn call(&self, this_value: Value, arguments: &[Value]) -> RuntimeResult<Value> {
         let callback = self.0.state.borrow().callable.clone().ok_or_else(|| {
             RuntimeError::type_error("object does not have a [[Call]] internal method")
         })?;
+        let _depth = CallDepthGuard::enter()?;
         callback(this_value, arguments)
     }
 
@@ -413,11 +448,20 @@ impl Object {
     }
 
     /// Invokes this object's `[[Construct]]` internal method.
+    /// Shares the nesting limit documented on [`Self::call`].
     pub fn construct(&self, arguments: &[Value], new_target: Self) -> RuntimeResult<Self> {
         let callback = self.0.state.borrow().construct.clone().ok_or_else(|| {
             RuntimeError::type_error("object does not have a [[Construct]] internal method")
         })?;
+        let _depth = CallDepthGuard::enter()?;
         callback(arguments, new_target)
+    }
+
+    /// Initializes an unexposed fresh ordinary object's prototype. Creation is
+    /// not SetPrototypeOf: no cycle walk or user Proxy callbacks are required.
+    pub(super) fn initialize_prototype(&self, prototype: Option<Self>) {
+        debug_assert!(self.0.state.borrow().prototype.is_none());
+        self.0.state.borrow_mut().prototype = prototype;
     }
 
     /// Returns this object's prototype.
@@ -432,12 +476,6 @@ impl Object {
             return super::proxy::get_prototype_of(self);
         }
         Ok(self.0.state.borrow().prototype.clone())
-    }
-
-    // Allocation is not [[SetPrototypeOf]]: never traverse a user Proxy chain.
-    pub(super) fn initialize_prototype(&self, prototype: Option<Self>) {
-        debug_assert!(self.0.state.borrow().prototype.is_none());
-        self.0.state.borrow_mut().prototype = prototype;
     }
 
     /// Implements `[[SetPrototypeOf]]`, rejecting cycles and forbidden changes.

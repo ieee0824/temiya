@@ -973,6 +973,7 @@ fn bound_function(target: Object, bound_this: Value, prefix: Vec<Value>) -> Runt
         Object::native_function(call)
     };
     function.initialize_prototype(prototype);
+    function.0.state.borrow_mut().bound_target = Some(target);
     Ok(function)
 }
 
@@ -1116,4 +1117,36 @@ fn property_source(value: Value) -> RuntimeResult<Object> {
         }
         _ => Ok(Object::new()),
     }
+}
+
+pub(super) fn install_has_instance(
+    intrinsics: &IntrinsicRegistry,
+    symbols: &super::WellKnownSymbols,
+) -> RuntimeResult<()> {
+    let prototype = intrinsics.get(IntrinsicId::FunctionPrototype);
+    let key: PropertyKey = symbols.get(super::WellKnownSymbol::HasInstance).into();
+    let call_key = key.clone();
+    let method = Object::native_function(move |this, arguments| {
+        super::operators::ordinary_has_instance(this, value_arg(arguments.first()), &call_key)
+            .map(Value::Boolean)
+    });
+    method.set_prototype(Some(prototype.clone()));
+    method.define_own_property(
+        "name".into(),
+        PropertyDescriptor::data(
+            Value::String("[Symbol.hasInstance]".into()),
+            false,
+            false,
+            true,
+        ),
+    )?;
+    method.define_own_property(
+        "length".into(),
+        PropertyDescriptor::data(Value::Number(1.0), false, false, true),
+    )?;
+    prototype.define_own_property(
+        key,
+        PropertyDescriptor::data(Value::Object(method), false, false, false),
+    )?;
+    Ok(())
 }

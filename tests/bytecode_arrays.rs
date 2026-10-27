@@ -166,6 +166,7 @@ fn pinned_test262_array_literals() {
         "spread-sngl-empty.js",
         "spread-sngl-literal.js",
         "spread-sngl-expr.js",
+        "spread-sngl-iter.js",
     ] {
         let path = format!("test/language/expressions/array/{name}");
         let case = TestCase::parse(&path, read(&path)).unwrap();

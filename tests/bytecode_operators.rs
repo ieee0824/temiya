@@ -5,6 +5,34 @@ use temiya::{
 };
 
 #[test]
+fn local_number_updates_preserve_signed_zero_nonfinite_and_fallback_types() {
+    for source in [
+        "(function(){var x=-0;var old=x++;return 1/old===-Infinity && x===1;})();",
+        "(function(){let x=0;var a=--x;var b=x--;return a===-1 && b===-1 && x===-2;})();",
+        "(function(){var x=Infinity;var old=x++;return old===Infinity && x===Infinity;})();",
+        "(function(){var x=NaN;var old=x++;return old!==old && x!==x;})();",
+        "(function(){var x='41';var old=x++;return old===41 && x===42;})();",
+        "(function(){var x=41n;var old=x++;return old===41n && x===42n;})();",
+    ] {
+        for vm in [false, true] {
+            assert!(
+                result(&Realm::ordinary(), source, vm).same_value(&Value::Boolean(true)),
+                "{source}"
+            );
+        }
+    }
+    for vm in [false, true] {
+        let realm = Realm::ordinary();
+        let source = "var read;function f(){const x=41;read=function(){return x;};x++;}f();";
+        assert_eq!(
+            execute(&realm, source, vm).unwrap_err().kind(),
+            RuntimeErrorKind::TypeError
+        );
+        assert!(result(&realm, "read();", vm).same_value(&Value::Number(41.0)));
+    }
+}
+
+#[test]
 fn lexical_updates_capture_verified_binding_before_numeric_coercion() {
     let source = "var calls=0;function f(){var x=new Object();x.valueOf=function(){calls++;x=99;return 41;};for(var i=0;i<1;i++){var old=x++;}return old+':'+x+':'+calls;}f();";
     let code = BytecodeCompiler::compile(source).unwrap();

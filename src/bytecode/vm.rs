@@ -207,14 +207,23 @@ impl VirtualMachine {
                     prefix,
                 } => {
                     let frame = binding_frame(&scopes, scope);
+                    let name = &frame.plan.bindings[slot as usize].name;
+                    let hint = frame
+                        .binding_hints
+                        .as_ref()
+                        .and_then(|hints| hints[slot as usize]);
+                    if let Some((old, new)) = frame
+                        .environment
+                        .update_number_binding(name, hint, increment, strict)?
+                    {
+                        stack.push(Value::Number(if prefix { new } else { old }));
+                        continue;
+                    }
                     let reference = Reference::function_binding(
                         frame.environment.clone(),
-                        frame.plan.bindings[slot as usize].name.clone(),
+                        name.clone(),
                         strict,
-                        frame
-                            .binding_hints
-                            .as_ref()
-                            .and_then(|hints| hints[slot as usize]),
+                        hint,
                     );
                     stack.push(crate::runtime::update_reference_in_realm(
                         realm.expect("scoped update Realm"),

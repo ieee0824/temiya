@@ -108,6 +108,45 @@ struct ImportBinding {
 }
 
 impl Environment {
+    pub(crate) fn update_number_binding(
+        &self,
+        name: &JsString,
+        hint: Option<usize>,
+        increment: bool,
+        strict: bool,
+    ) -> RuntimeResult<Option<(f64, f64)>> {
+        let mut record = self.0.record.borrow_mut();
+        let record = match &mut *record {
+            EnvironmentRecord::Function(record) => &mut record.declarative_record,
+            EnvironmentRecord::Declarative(record) => record,
+            _ => return Ok(None),
+        };
+        let Some(index) = hint
+            .filter(|index| {
+                record
+                    .bindings
+                    .get(*index)
+                    .is_some_and(|binding| binding.name == *name)
+            })
+            .or_else(|| {
+                record
+                    .bindings
+                    .iter()
+                    .position(|binding| binding.name == *name)
+            })
+        else {
+            return Ok(None);
+        };
+        let binding = &mut record.bindings[index];
+        let Some(Value::Number(old)) = &binding.value else {
+            return Ok(None);
+        };
+        let old = *old;
+        let new = if increment { old + 1.0 } else { old - 1.0 };
+        binding.write(Value::Number(new), strict)?;
+        Ok(Some((old, new)))
+    }
+
     pub(crate) fn append_string_binding(
         &self,
         name: &JsString,
@@ -1060,6 +1099,36 @@ fn reference_error(name: &JsString, detail: &str) -> RuntimeError {
 #[cfg(test)]
 mod slot_hint_tests {
     use super::*;
+    #[test]
+    fn number_update_respects_ignored_and_throwing_immutable_writes() {
+        let env =
+            Environment::function(None, Object::new(), None, ThisBindingStatus::Uninitialized);
+        let name: JsString = "fixed".into();
+        env.create_immutable_binding(name.clone(), false).unwrap();
+        env.initialize_binding(&name, Value::Number(41.0)).unwrap();
+        let hint = env.function_binding_index(&name);
+        assert_eq!(
+            env.update_number_binding(&name, hint, true, false).unwrap(),
+            Some((41.0, 42.0))
+        );
+        assert!(
+            env.get_binding_value(&name, false)
+                .unwrap()
+                .same_value(&Value::Number(41.0))
+        );
+        assert_eq!(
+            env.update_number_binding(&name, hint, true, true)
+                .unwrap_err()
+                .kind(),
+            super::super::RuntimeErrorKind::TypeError
+        );
+        assert!(
+            env.get_binding_value(&name, false)
+                .unwrap()
+                .same_value(&Value::Number(41.0))
+        );
+    }
+
     #[test]
     fn string_append_rechecks_shifted_slots_and_preserves_readonly_bindings() {
         let env =

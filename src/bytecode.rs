@@ -479,9 +479,13 @@ impl Bytecode {
 pub struct VerifiedBytecode {
     bytecode: Bytecode,
     max_stack: usize,
+    has_backedge: bool,
 }
 
 impl VerifiedBytecode {
+    pub(crate) fn has_backedge(&self) -> bool {
+        self.has_backedge
+    }
     /// Returns the verified bytecode body.
     #[must_use]
     pub fn bytecode(&self) -> &Bytecode {
@@ -916,9 +920,13 @@ fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
             offset,
         ));
     }
+    let has_backedge = bytecode.instructions.iter().enumerate().any(|(offset, op)| {
+        matches!(op, Instruction::Jump(target) | Instruction::JumpIfFalse(target) | Instruction::JumpIfNullish(target) if (*target as usize) <= offset)
+    });
     Ok(VerifiedBytecode {
         bytecode,
         max_stack,
+        has_backedge,
     })
 }
 

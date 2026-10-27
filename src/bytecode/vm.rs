@@ -139,10 +139,18 @@ impl VirtualMachine {
                         unreachable!()
                     };
                     let environment = enter_scope(plan, &scopes, (pc - 1) as u32, realm, function)?;
+                    let binding_hints =
+                        (bytecode.has_backedge() && plan.kind == ScopeKind::Function).then(|| {
+                            plan.bindings
+                                .iter()
+                                .map(|binding| environment.function_binding_index(&binding.name))
+                                .collect::<Box<[_]>>()
+                        });
                     scopes.push(ScopeFrame {
                         entry: (pc - 1) as u32,
                         plan,
                         environment,
+                        binding_hints,
                     });
                 }
                 Instruction::ExitScope => {
@@ -162,10 +170,15 @@ impl VirtualMachine {
                 }
                 Instruction::LoadBinding { scope, slot } => {
                     let frame = binding_frame(&scopes, scope);
-                    stack.push(frame.environment.get_binding_value(
-                        &frame.plan.bindings[slot as usize].name,
-                        frame.plan.strict,
-                    )?);
+                    let name = &frame.plan.bindings[slot as usize].name;
+                    stack.push(match &frame.binding_hints {
+                        Some(hints) => frame.environment.get_function_binding_at(
+                            name,
+                            hints[slot as usize],
+                            frame.plan.strict,
+                        ),
+                        None => frame.environment.get_binding_value(name, frame.plan.strict),
+                    }?);
                 }
                 Instruction::ResolveBinding {
                     scope,
@@ -188,11 +201,21 @@ impl VirtualMachine {
                 }
                 Instruction::StoreBinding { scope, slot } => {
                     let frame = binding_frame(&scopes, scope);
-                    frame.environment.set_mutable_binding(
-                        &frame.plan.bindings[slot as usize].name,
-                        pop(&mut stack)?,
-                        frame.plan.strict,
-                    )?;
+                    let name = &frame.plan.bindings[slot as usize].name;
+                    let value = pop(&mut stack)?;
+                    match &frame.binding_hints {
+                        Some(hints) => frame.environment.set_function_binding_at(
+                            name,
+                            hints[slot as usize],
+                            value,
+                            frame.plan.strict,
+                        ),
+                        None => {
+                            frame
+                                .environment
+                                .set_mutable_binding(name, value, frame.plan.strict)
+                        }
+                    }?;
                 }
                 Instruction::LoadName(index) => {
                     let Constant::String(name) = &body.constants[index as usize] else {
@@ -540,6 +563,7 @@ struct ScopeFrame<'a> {
     entry: u32,
     plan: &'a ScopeDescriptor,
     environment: Environment,
+    binding_hints: Option<Box<[Option<usize>]>>,
 }
 
 fn binding_frame<'a, 'b>(scopes: &'a [ScopeFrame<'b>], entry: u32) -> &'a ScopeFrame<'b> {

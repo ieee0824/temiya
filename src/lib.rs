@@ -1,9 +1,10 @@
 //! Temiya is a Rust-native JavaScript engine under development.
 //!
-//! [`Engine`] evaluates a JavaScript subset through an AST interpreter. The
-//! separate [`bytecode`] backend and optional `jit` backend support smaller
-//! subsets and are not selected by the embedding API. See the repository README
-//! for runnable examples and current integration limits.
+//! [`Engine`] selects verified whole-Script [`bytecode`] execution for supported
+//! Scripts and selects the AST interpreter before evaluation for other Scripts.
+//! Explicit backend selection is available through [`EngineBuilder`]. The
+//! optional `jit` backend is not selected by the embedding API. See the repository
+//! README for runnable examples and current integration limits.
 
 pub mod ast;
 pub mod benchmark;

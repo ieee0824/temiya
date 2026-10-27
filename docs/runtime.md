@@ -67,11 +67,35 @@ Native language errors are materialized with intrinsic error prototypes; a
 replaced global constructor is not invoked. A JavaScript function retains its
 own Realm's native error object when returning an error to a caller.
 
-This does not complete Error constructor APIs, Promise rejection reactions,
+This does not complete Error constructor APIs, the full Promise API,
 generator suspension/handler resumption, or bytecode exception handlers. Those
 remain separate work. The Error-family prototypes introduced here provide the
 identity/name/message needed by catch; constructor message/cause behavior and
 the remaining Error APIs still need implementation.
+
+Promise reactions retain an explicit throw's original value. Thenable rejection
+callbacks use `Promise::reject_value`; throwing then getters and missing rejection
+handlers forward the same reason. Rejection handlers, settled synchronous await
+and the unhandled-rejection hook preserve object/Symbol identity and primitive
+boundaries without string conversion. The original diagnostic-string behavior
+for unbound Rust-only errors is preserved. Settled await marks a rejection handled;
+this does not implement pending-await suspension, `Promise` constructor wiring,
+`catch`/`finally`, or the complete host rejection lifecycle (#177/#180/#185/#192).
+
+The focused regression command reads unmodified upstream harnesses and four
+async rejection tests from fixed Test262 Git objects:
+
+```sh
+TEST262_DIR=/tmp/temiya-test262 cargo test --locked --test promise_rejection_values \
+    pinned_test262_async_rejection_values --all-features -- --ignored --nocapture
+```
+
+The measured result is 16 passing executions (four files, strict/sloppy, AST/Auto),
+zero failures and zero skips in this selection. The corpus-dependent test is
+ignored in an ordinary local run and explicitly executed in CI; unexecuted
+tests do not count as passes. The scope follows
+[Promise reject functions](https://tc39.es/ecma262/2026/multipage/control-abstraction-objects.html#sec-promise-reject-functions)
+and [Promise reaction jobs](https://tc39.es/ecma262/2026/multipage/control-abstraction-objects.html#sec-newpromisereactionjob).
 
 The focused upstream regression check reads unmodified `sta.js`, `assert.js`,
 and seven try/catch/finally tests from Git objects at the pinned Test262 revision:

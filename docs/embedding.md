@@ -30,6 +30,15 @@ through JavaScript evaluation. Jobs execute FIFO at an explicit `drain_jobs`
 microtask checkpoint, and unhandled Promise errors can be observed with
 `register_job_error_callback`.
 
+JavaScript Promise rejection values retain their type and identity in reactions
+and in `Exception::thrown()` passed to the job-error callback, including
+`undefined`, `null`, NaN, signed zero, Symbols and objects. The Rust Promise API's
+`reject_value` supplies an arbitrary reason without coercion. Existing unbound
+Rust-only `RuntimeError` rejections preserve their diagnostic-string reaction
+argument. A consumed settled rejection is marked handled at the synchronous
+await boundary; pending-await continuations and the complete host rejection
+lifecycle remain tracked separately.
+
 ## C ABI
 
 `include/temiya.h` exposes ABI version 1 using opaque handles and explicit

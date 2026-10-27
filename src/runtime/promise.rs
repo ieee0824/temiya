@@ -13,7 +13,7 @@ pub enum PromiseState {
     Pending,
     /// Fulfilled with a value.
     Fulfilled,
-    /// Rejected with an error.
+    /// Rejected with a JavaScript reason or a host error.
     Rejected,
 }
 
@@ -171,9 +171,7 @@ impl Promise {
                         let reject_target = promise.clone();
                         let reject = promise.native_function("", 1, move |_, arguments| {
                             let reason = arguments.first().cloned().unwrap_or(Value::Undefined);
-                            reject_target.reject(RuntimeError::type_error(format!(
-                                "thenable rejected: {reason:?}"
-                            )))?;
+                            reject_target.reject_value(reason)?;
                             Ok(Value::Undefined)
                         })?;
                         if let Err(error) = then.call(
@@ -191,9 +189,17 @@ impl Promise {
         self.fulfill(value)
     }
 
-    /// Rejects once; later attempts return false.
+    /// Rejects once; later attempts return false. A JavaScript payload in
+    /// `RuntimeError::thrown` is retained for reactions and host hooks. Unbound
+    /// Rust errors retain the legacy diagnostic-string reaction argument.
     pub fn reject(&self, error: RuntimeError) -> RuntimeResult<bool> {
         self.settle(Settlement::Rejected(error))
+    }
+
+    /// Rejects once with an arbitrary JavaScript value, without coercion.
+    /// Reactions, synchronous await and the unhandled hook retain this value.
+    pub fn reject_value(&self, reason: Value) -> RuntimeResult<bool> {
+        self.reject(RuntimeError::thrown(reason))
     }
 
     /// Registers reactions and returns their derived Promise.
@@ -212,15 +218,21 @@ impl Promise {
         Ok(result)
     }
 
-    /// Extracts the result at the synchronous await boundary.
+    /// Extracts the result at the synchronous await boundary. A settled Promise
+    /// is marked handled, including when its rejection is rethrown to a caller.
     pub fn await_result(&self) -> RuntimeResult<Value> {
-        match &self.data.borrow().settlement {
+        let mut data = self.data.borrow_mut();
+        let result = match &data.settlement {
             Settlement::Pending => Err(RuntimeError::internal_error(
                 "awaited Promise is still pending",
             )),
             Settlement::Fulfilled(value) => Ok(value.clone()),
             Settlement::Rejected(error) => Err(error.clone()),
+        };
+        if !matches!(data.settlement, Settlement::Pending) {
+            data.handled = true;
         }
+        result
     }
 
     fn fulfill(&self, value: Value) -> RuntimeResult<bool> {
@@ -359,10 +371,13 @@ fn enqueue_reaction(queue: JobQueue, settlement: Settlement, reaction: Reaction)
                 None => return reaction.result.resolve(value).map(|_| ()),
             },
             Settlement::Rejected(error) => match reaction.on_rejected {
-                Some(callback) => callback.call(
-                    Value::Undefined,
-                    &[Value::String(JsString::from(error.to_string()))],
-                ),
+                Some(callback) => {
+                    let reason = error
+                        .thrown_value()
+                        .cloned()
+                        .unwrap_or_else(|| Value::String(JsString::from(error.to_string())));
+                    callback.call(Value::Undefined, &[reason])
+                }
                 None => return reaction.result.reject(error).map(|_| ()),
             },
             Settlement::Pending => unreachable!(),

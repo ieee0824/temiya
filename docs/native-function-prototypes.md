@@ -123,3 +123,12 @@ speedup or regression beyond that threshold is established on this runner.
 All 33 Boa pairs still find Temiya slower beyond the threshold. Both all-eleven
 speed gates remain false. Native function prototype integration does not satisfy the Boa goal
 or complete #307/#427.
+
+### Startup is a separate observation
+
+The same report records one startup timing per worker process, outside the
+repeated invocation boundary. Across 33 observations each, startup medians are
+123,767 ns before and 160,662 ns after (about +29.8%, +36,895 ns). This is an
+observed startup cost; unchanged invocation classification does not establish
+unchanged Realm initialization time. The raw values remain retained, and reducing
+metadata/allocation cost without removing standard behavior is tracked in #478.

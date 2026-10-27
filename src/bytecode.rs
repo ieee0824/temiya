@@ -232,6 +232,14 @@ impl BinaryOperator {
 /// Portable instruction with fixed-width integer operands.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Instruction {
+    /// Push a fresh ordinary object with the Realm's Object prototype.
+    CreateObject,
+    /// Convert the top value to a String/Symbol property key before its RHS.
+    CoercePropertyKey,
+    /// Consume object/key/value and retain the object after a data definition.
+    DefineObjectProperty { prototype_setter: bool },
+    /// Consume object/source and retain the object after CopyDataProperties.
+    SpreadObject,
     /// Instantiate metadata entry `index` and identify this scope by its entry PC.
     EnterScope(u32),
     /// Leave the innermost active scope, preserving the operand stack.
@@ -334,6 +342,10 @@ pub enum Instruction {
 impl Instruction {
     fn required_stack(self) -> usize {
         match self {
+            Self::CreateObject => 0,
+            Self::CoercePropertyKey => 1,
+            Self::DefineObjectProperty { .. } => 3,
+            Self::SpreadObject => 2,
             Self::LoadReference | Self::DiscardReference | Self::LoadReferenceCallTarget => 0,
             Self::AsCallTarget => 1,
             Self::BeginMethodCall => 2,
@@ -377,6 +389,10 @@ impl Instruction {
 
     fn stack_delta(self) -> isize {
         match self {
+            Self::CreateObject => 1,
+            Self::CoercePropertyKey => 0,
+            Self::DefineObjectProperty { .. } => -2,
+            Self::SpreadObject => -1,
             Self::LoadReference => 1,
             Self::DiscardReference => 0,
             Self::LoadReferenceCallTarget => 2,
@@ -720,6 +736,10 @@ fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
                 validate_function_template(template).map_err(error)?;
             }
             Instruction::GetProperty { .. }
+            | Instruction::CreateObject
+            | Instruction::CoercePropertyKey
+            | Instruction::DefineObjectProperty { .. }
+            | Instruction::SpreadObject
             | Instruction::ResolveProperty { .. }
             | Instruction::LoadThis
             | Instruction::LoadNewTarget => {

@@ -58,3 +58,26 @@ retain the slower results. The construction gap needs profiling and a general
 implementation improvement. Dedicated parse/startup/objects/GC groups and the
 rest of #427 remain unfinished, and no application-wide or collector superiority
 is established.
+
+## Construction diagnostic
+
+Run40574346710 (artifact12766766527) profiles the original authored128 iterations,
+without reducing or replacing the input. Workflow-only revision654a68e3 has the
+same runtime/worker/dependencies as this baseline. Both checked passes returned
+1920 and actually used Bytecode. Callgrind records151,016,279 whole-process
+instruction references; RegexBuilder::build accounts for124,230,676 inclusive
+references (82.26%), with256 calls across warmup and sample. These figures include
+startup/setup and are not native cycles, exclusive costs or elapsed-time speed
+acceptance. They identify matcher construction as a significant instruction
+source on the recorded x64 host; they do not establish its exact share of the
+ARM elapsed-time gap.
+
+Issue #513 tracks the general construction improvement. Pattern compilation,
+automata/cache creation and allocation need separation before choosing a fix.
+The other RegExp feature issues remain independent.
+
+The [rejected Number operand experiment](../benchmarks/rejected-number-operand/)
+is also preserved. Direct comparisons against current main did not establish an
+arithmetic win beyond the fixed threshold, and two AMD property pairs were slower.
+Its code stays inactive; favorable comparisons against an obsolete baseline and
+other-host async results are not adoption evidence.

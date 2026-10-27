@@ -8,7 +8,8 @@ use temiya::{
 fn run(backend: ScriptBackend, body: &str, call: &str) -> Value {
     let engine = Engine::builder().script_backend(backend).build();
     let realm = engine.create_realm();
-    let setup = format!("var setup_object = {{}}; function f(n) {{ {body} }}");
+    let setup =
+        format!("try {{}} finally {{}} var setup_object = {{}}; function f(n) {{ {body} }}");
     engine
         .evaluate(&engine.compile(&realm, &setup).unwrap())
         .unwrap();
@@ -86,7 +87,7 @@ fn thrown_vm_body_is_not_retried() {
             &engine
                 .compile(
                     &realm,
-                    "var setup_object={}; function f(){while(true){hit();throw 7;}}",
+                    "try {} finally {} var setup_object={}; function f(){while(true){hit();throw 7;}}",
                 )
                 .unwrap(),
         )

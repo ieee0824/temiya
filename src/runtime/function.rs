@@ -418,7 +418,7 @@ mod auto_loop_tests {
             .script_backend(ScriptBackend::Auto)
             .build();
         let realm = engine.create_realm();
-        // Object literal forces setup through the AST; function is created there.
+        // The unsupported try body in fallback forces the whole setup through AST.
         let setup = engine.compile(&realm, "var o = {}; function sum(n) { var x = 0; for (var i = 0; i < n; i++) x += i; return x; } function fallback() { var x = 0; while (x < 2) { x++; } try { return x; } finally {} }").unwrap();
         assert_eq!(setup.backend(), ScriptBackend::Ast);
         engine.evaluate(&setup).unwrap();

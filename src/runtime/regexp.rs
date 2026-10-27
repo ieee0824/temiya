@@ -13,7 +13,7 @@ use regex_automata::{
     util::{captures::Captures, syntax},
 };
 
-use super::{JsString, Object, RuntimeError, RuntimeResult};
+use super::{JsString, Object, RuntimeError, RuntimeResult, Value};
 
 mod ascii_hir;
 mod matcher;
@@ -372,6 +372,54 @@ impl RegExp {
 
     /// Executes the matcher and updates `lastIndex` for global or sticky expressions.
     pub fn exec(&self, input: &JsString) -> RuntimeResult<Option<RegExpMatch>> {
+        self.exec_with(input, |index, text, captures, matcher| {
+            let values = (0..captures.group_len())
+                .map(|index| {
+                    captures
+                        .get_group(index)
+                        .map(|value| JsString::from(&text[value.range()]))
+                })
+                .collect();
+            let named_captures = matcher
+                .group_info()
+                .pattern_names(PatternID::ZERO)
+                .flatten()
+                .map(|name| {
+                    (
+                        name.to_owned(),
+                        captures
+                            .get_group_by_name(name)
+                            .map(|value| JsString::from(&text[value.range()])),
+                    )
+                })
+                .collect();
+
+            RegExpMatch {
+                index,
+                captures: values,
+                named_captures,
+            }
+        })
+    }
+
+    pub(super) fn exec_values(&self, input: &JsString) -> RuntimeResult<Option<Vec<Value>>> {
+        self.exec_with(input, |_, text, captures, _| {
+            (0..captures.group_len())
+                .map(|index| {
+                    captures.get_group(index).map_or(Value::Undefined, |span| {
+                        Value::String(JsString::from(&text[span.range()]))
+                    })
+                })
+                .collect()
+        })
+    }
+
+    // Internal ownership conversion only: neither callback executes JavaScript.
+    fn exec_with<T>(
+        &self,
+        input: &JsString,
+        finish: impl FnOnce(usize, &str, &Captures, &Matcher) -> T,
+    ) -> RuntimeResult<Option<T>> {
         let slot = self.slot();
         let text = scalar_string(input)?;
         let stateful = slot.0.flags.global || slot.0.flags.sticky;
@@ -405,28 +453,6 @@ impl RegExp {
         }
         let whole = captures.get_group(0).expect("capture zero");
         let index = byte_to_utf16(&text, whole.start);
-        let values = (0..captures.group_len())
-            .map(|index| {
-                captures
-                    .get_group(index)
-                    .map(|value| JsString::from(&text[value.range()]))
-            })
-            .collect();
-        let named_captures = slot
-            .0
-            .matcher
-            .group_info()
-            .pattern_names(PatternID::ZERO)
-            .flatten()
-            .map(|name| {
-                (
-                    name.to_owned(),
-                    captures
-                        .get_group_by_name(name)
-                        .map(|value| JsString::from(&text[value.range()])),
-                )
-            })
-            .collect();
         if stateful {
             let mut end = byte_to_utf16(&text, whole.end);
             if whole.start == whole.end {
@@ -438,11 +464,7 @@ impl RegExp {
             }
             *slot.0.last_index.borrow_mut() = end;
         }
-        Ok(Some(RegExpMatch {
-            index,
-            captures: values,
-            named_captures,
-        }))
+        Ok(Some(finish(index, &text, &captures, &slot.0.matcher)))
     }
 
     /// Replaces matches, invoking a callback with the matched text and capture values.

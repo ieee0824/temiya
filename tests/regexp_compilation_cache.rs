@@ -210,3 +210,30 @@ fn non_ascii_cache_keys_preserve_scalar_patterns_and_independent_state() {
         assert_eq!(latin.last_index(), 3);
     }
 }
+
+#[test]
+fn builtin_exec_owns_each_capture_array_and_clears_optional_groups() {
+    for backend in [ScriptBackend::Ast, ScriptBackend::Auto] {
+        let engine = Engine::builder().script_backend(backend).build();
+        let realm = engine.create_realm();
+        let script = engine
+            .compile(
+                &realm,
+                "var r=new RegExp('(a)?b','g');var first=r.exec('ab b');\
+             var second=r.exec('ab b');var failure=r.exec('ab b');\
+             first!==second&&first[0]==='ab'&&first[1]==='a'&&\
+             second[0]==='b'&&second[1]===undefined&&failure===null&&\
+             r.exec('ab')[1]==='a'&&first[1]==='a';",
+            )
+            .unwrap();
+        for _ in 0..2 {
+            assert!(
+                engine
+                    .evaluate(&script)
+                    .unwrap()
+                    .value()
+                    .same_value(&Value::Boolean(true))
+            );
+        }
+    }
+}

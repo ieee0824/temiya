@@ -516,14 +516,9 @@ fn install_regexp(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {
             let regexp = RegExp::from_object(object)
                 .ok_or_else(|| RuntimeError::type_error("receiver is not a RegExp"))?;
             let input = value_arg(arguments.first()).to_js_string()?;
-            let Some(found) = regexp.exec(&input)? else {
+            let Some(values) = regexp.exec_values(&input)? else {
                 return Ok(Value::Null);
             };
-            let values = found
-                .captures
-                .into_iter()
-                .map(|capture| capture.map_or(Value::Undefined, Value::String))
-                .collect();
             array_value(values)
         },
     )

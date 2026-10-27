@@ -1,0 +1,78 @@
+name: Pinned SpiderMonkey workload comparison
+on:
+  workflow_dispatch:
+    inputs:
+      shell_run:
+        description: Successful pinned-shell build run ID
+        required: true
+        type: string
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: spidermonkey-benchmark-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  compare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      CARGO_BUILD_JOBS: 2
+      SHELL_RUN: ${{ inputs.shell_run }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Check out original workload source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: ieee0824/omoikane
+          ref: 007556adccb8fb4329236932ca8175f8e8d119d2
+          path: omoikane
+          persist-credentials: false
+      - name: Download verified native shell and validate archive
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          [[ "$SHELL_RUN" =~ ^[0-9]+$ ]]
+          mkdir "$RUNNER_TEMP/shell-evidence" "$RUNNER_TEMP/shell" "$RUNNER_TEMP/results"
+          gh run view "$SHELL_RUN" --json conclusion,workflowName,headSha,url > "$RUNNER_TEMP/results/shell-run.json"
+          node -e 'const r=JSON.parse(require("fs").readFileSync(process.env.RUNNER_TEMP+"/results/shell-run.json")); if(r.conclusion!=="success" || r.workflowName!=="Verify pinned SpiderMonkey target") throw Error("successful target build required")'
+          gh run download "$SHELL_RUN" --pattern 'spidermonkey-target-*' --dir "$RUNNER_TEMP/shell-evidence"
+          cd "$RUNNER_TEMP/shell-evidence"
+          sha256sum --check shell.tar.gz.sha256
+          tar -xzf shell.tar.gz -C "$RUNNER_TEMP/shell"
+      - name: Prepare both release engines before timing
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          CARGO_TARGET_DIR="$RUNNER_TEMP/temiya-target" cargo build --locked --release --example measure_workload
+          node scripts/extract-omoikane-workloads.mjs "$GITHUB_WORKSPACE/omoikane" "$RUNNER_TEMP/workloads"
+          node <<'JS'
+          const fs=require('node:fs'),path=require('node:path'),cp=require('node:child_process');
+          const root=process.env.RUNNER_TEMP;
+          const info=JSON.parse(fs.readFileSync(path.join(root,'shell-evidence/target-check.json')));
+          info.executable=path.join(root,'shell/bin/js');
+          info.compilers={clang:fs.readFileSync(path.join(root,'shell-evidence/clang.txt'),'utf8'),rustc:fs.readFileSync(path.join(root,'shell-evidence/rustc.txt'),'utf8')};
+          fs.writeFileSync(path.join(root,'results/spidermonkey-build.json'),JSON.stringify(info,null,2)+'\n');
+          fs.copyFileSync(path.join(root,'workloads/manifest.json'),path.join(root,'results/manifest.json'));
+          cp.execFileSync(info.executable,['-e','assertEq(40+2,42)'],{stdio:'inherit'});
+          JS
+          node scripts/check-spidermonkey-worker.mjs "$RUNNER_TEMP/shell/bin/js" > "$RUNNER_TEMP/results/worker-checks.json"
+      - name: Measure original inputs serially in both modes
+        run: |
+          export TEMIYA_REVISION="$(git -c safe.directory="$GITHUB_WORKSPACE" -C "$GITHUB_WORKSPACE" rev-parse HEAD)"
+          export BENCH_NOTES='Same Linux x64 runner, separate native release engines, no builds during timing. SpiderMonkey C++ and Temiya Rust compiler identities recorded separately. Default-mode JIT execution is not proven. Job success means valid results, not a speed win.'
+          status=0
+          for mode in interpreter default; do
+            node scripts/compare-omoikane-workloads.mjs --spidermonkey "$mode" "$RUNNER_TEMP/workloads" "$RUNNER_TEMP/temiya-target/release/examples/measure_workload" "$RUNNER_TEMP/results/spidermonkey-build.json" 15 3 > "$RUNNER_TEMP/results/$mode.json" 2> "$RUNNER_TEMP/results/$mode.progress" || status=1
+          done
+          exit "$status"
+      - name: Retain all results including failures
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: spidermonkey-comparison-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/results
+          if-no-files-found: error
+          retention-days: 30

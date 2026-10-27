@@ -331,6 +331,62 @@ pub(super) fn ordinary_state() -> ObjectState {
 }
 
 impl Object {
+    pub(crate) fn own_element_value(&self, index: u32) -> Option<Value> {
+        let state = self.0.state.borrow();
+        if !state.array
+            || state.proxy.is_some()
+            || state.string_data.is_some()
+            || state.view.is_some()
+            || state.buffer.is_some()
+        {
+            return None;
+        }
+        let descriptor = state.elements.as_ref()?.get(index)?;
+        descriptor
+            .is_data_descriptor()
+            .then(|| descriptor.value.clone().unwrap_or(Value::Undefined))
+    }
+
+    // A hint identifies a position, never a cached Value or assumed shape.
+    // Validate the current key/descriptor under one borrow before returning.
+    pub(crate) fn own_data_value_with_hint(
+        &self,
+        key: &PropertyKey,
+        hint: Option<usize>,
+    ) -> Option<(Value, usize)> {
+        let state = self.0.state.borrow();
+        if state.proxy.is_some()
+            || state.lazy_function_prototype.is_some()
+            || state.string_data.is_some()
+            || (state.elements.is_some() && key.array_index().is_some())
+            || state.view.is_some()
+            || state.buffer.is_some()
+        {
+            return None;
+        }
+        let (index, entry) = hint
+            .and_then(|index| {
+                state
+                    .properties
+                    .get(index)
+                    .filter(|entry| entry.key == *key)
+                    .map(|entry| (index, entry))
+            })
+            .or_else(|| {
+                state
+                    .properties
+                    .iter()
+                    .enumerate()
+                    .find(|(_, entry)| entry.key == *key)
+            })?;
+        entry.descriptor.is_data_descriptor().then(|| {
+            (
+                entry.descriptor.value.clone().unwrap_or(Value::Undefined),
+                index,
+            )
+        })
+    }
+
     pub(super) fn install_lazy_function_prototype(
         &self,
         object_prototype: Object,
@@ -692,7 +748,111 @@ impl Object {
         Ok(true)
     }
 
+    // No user code runs between these guards and the writes. Reject every
+    // prototype with indexed properties or exotic indexed/proxy behavior so
+    // inherited setters and readonly descriptors retain the generic Set path.
+    pub(super) fn try_push_array_values(&self, length: u64, values: &[Value]) -> Option<u32> {
+        let length = u32::try_from(length).ok()?;
+        let count = u32::try_from(values.len()).ok()?;
+        let end = length.checked_add(count)?;
+        let (length_slot, mut prototype) = {
+            let state = self.0.state.borrow();
+            if !state.array
+                || state.proxy.is_some()
+                || state.string_data.is_some()
+                || state.view.is_some()
+                || state.buffer.is_some()
+                || (!values.is_empty() && !state.extensible)
+            {
+                return None;
+            }
+            let slot = state.properties.iter().position(|entry| {
+                matches!(&entry.key, PropertyKey::String(name) if name.code_units().iter().copied().eq("length".encode_utf16()))
+            })?;
+            let descriptor = &state.properties[slot].descriptor;
+            if !descriptor.is_data_descriptor()
+                || descriptor.writable != Some(true)
+                || !matches!(&descriptor.value, Some(Value::Number(n)) if *n == f64::from(length))
+            {
+                return None;
+            }
+            let elements = state.elements.as_ref()?;
+            if (length..end).any(|index| elements.get(index).is_some()) {
+                return None;
+            }
+            (slot, state.prototype.clone())
+        };
+        if !values.is_empty() {
+            let mut depth = 0;
+            while let Some(object) = prototype {
+                // A bounded conservative check also handles malformed host
+                // prototype cycles without changing their generic behavior.
+                depth += 1;
+                if depth > 64 {
+                    return None;
+                }
+                let state = object.0.state.borrow();
+                if state.proxy.is_some()
+                    || state.string_data.is_some()
+                    || state.view.is_some()
+                    || state.buffer.is_some()
+                    || state
+                        .elements
+                        .as_ref()
+                        .is_some_and(|elements| !elements.is_empty())
+                    || state
+                        .properties
+                        .iter()
+                        .any(|entry| entry.key.array_index().is_some())
+                {
+                    return None;
+                }
+                prototype = state.prototype.clone();
+            }
+        }
+        let mut state = self.0.state.borrow_mut();
+        let ObjectState {
+            properties,
+            elements,
+            ..
+        } = &mut *state;
+        let elements = elements.as_mut()?;
+        for (offset, value) in values.iter().enumerate() {
+            let index = length + offset as u32;
+            elements.insert(
+                index,
+                PropertyDescriptor::data(value.clone(), true, true, true),
+            );
+            // Maintain Array length after every inserted index, as generic
+            // DefineOwnProperty does, including if host allocation unwinds.
+            properties[length_slot].descriptor.value = Some(Value::Number(f64::from(index + 1)));
+        }
+        Some(end)
+    }
+
+    fn ordinary_array_length_info(&self) -> Option<(u32, bool)> {
+        let state = self.0.state.borrow();
+        if !state.array
+            || state.proxy.is_some()
+            || state.string_data.is_some()
+            || state.view.is_some()
+            || state.buffer.is_some()
+        {
+            return None;
+        }
+        let entry = state.properties.iter().find(|entry| {
+            matches!(&entry.key, PropertyKey::String(name) if name.code_units().iter().copied().eq("length".encode_utf16()))
+        })?;
+        let Some(Value::Number(length)) = &entry.descriptor.value else {
+            return None;
+        };
+        Some((*length as u32, entry.descriptor.writable == Some(true)))
+    }
+
     pub(super) fn array_length(&self) -> u32 {
+        if let Some((length, _)) = self.ordinary_array_length_info() {
+            return length;
+        }
         match self
             .get_own_property(&"length".into())
             .and_then(|d| d.value)
@@ -703,6 +863,9 @@ impl Object {
     }
 
     fn array_length_writable(&self) -> bool {
+        if let Some((_, writable)) = self.ordinary_array_length_info() {
+            return writable;
+        }
         self.get_own_property(&"length".into())
             .and_then(|descriptor| descriptor.writable)
             .unwrap_or(false)
@@ -1103,4 +1266,110 @@ fn complete_descriptor(mut descriptor: PropertyDescriptor) -> PropertyDescriptor
     descriptor.enumerable.get_or_insert(false);
     descriptor.configurable.get_or_insert(false);
     descriptor
+}
+
+#[cfg(test)]
+mod own_data_hint_tests {
+    use super::*;
+
+    #[test]
+    fn direct_array_push_preserves_complete_element_descriptors_and_guard_fallback() {
+        let array = crate::runtime::ArrayObject::new(3).unwrap().object();
+        assert_eq!(
+            array.try_push_array_values(3, &[Value::Number(42.0)]),
+            Some(4)
+        );
+        let descriptor = array.get_own_property(&"3".into()).unwrap();
+        assert_eq!(descriptor.writable, Some(true));
+        assert_eq!(descriptor.enumerable, Some(true));
+        assert_eq!(descriptor.configurable, Some(true));
+        assert!(descriptor.value.unwrap().same_value(&Value::Number(42.0)));
+        assert_eq!(array.array_length(), 4);
+        assert_eq!(array.try_push_array_values(3, &[Value::Number(99.0)]), None);
+        let prototype = Object::new();
+        prototype
+            .create_data_property("4".into(), Value::Number(1.0))
+            .unwrap();
+        array.set_prototype(Some(prototype));
+        assert_eq!(array.try_push_array_values(4, &[Value::Number(99.0)]), None);
+        assert_eq!(array.array_length(), 4);
+        assert!(array.get_own_property(&"4".into()).is_none());
+    }
+
+    #[test]
+    fn array_named_data_hints_observe_length_and_skip_indexed_storage() {
+        let array = crate::runtime::ArrayObject::new(3).unwrap().object();
+        let key: PropertyKey = "length".into();
+        let (value, index) = array.own_data_value_with_hint(&key, None).unwrap();
+        assert!(value.same_value(&Value::Number(3.0)));
+        array
+            .create_data_property("3".into(), Value::Number(42.0))
+            .unwrap();
+        assert!(
+            array
+                .own_data_value_with_hint(&key, Some(index))
+                .unwrap()
+                .0
+                .same_value(&Value::Number(4.0))
+        );
+        assert!(array.own_data_value_with_hint(&"3".into(), None).is_none());
+        assert!(
+            array
+                .get(&"3".into())
+                .unwrap()
+                .same_value(&Value::Number(42.0))
+        );
+    }
+
+    #[test]
+    fn own_data_hint_rechecks_keys_descriptors_and_exotic_objects() {
+        let object = Object::new();
+        let prefix: PropertyKey = "prefix".into();
+        let key: PropertyKey = "x".into();
+        object
+            .create_data_property(prefix.clone(), Value::Null)
+            .unwrap();
+        object
+            .create_data_property(key.clone(), Value::Number(41.0))
+            .unwrap();
+        let (_, hint) = object.own_data_value_with_hint(&key, None).unwrap();
+        assert!(object.try_delete(&prefix).unwrap());
+        object
+            .create_data_property("other".into(), Value::Number(99.0))
+            .unwrap();
+        assert!(
+            object
+                .own_data_value_with_hint(&key, Some(hint))
+                .unwrap()
+                .0
+                .same_value(&Value::Number(41.0))
+        );
+        let getter = Object::native_function(|_, _| Ok(Value::Number(42.0)));
+        assert!(
+            object
+                .define_own_property(
+                    key.clone(),
+                    PropertyDescriptor::accessor(Some(getter), None, true, true)
+                )
+                .unwrap()
+        );
+        assert!(object.own_data_value_with_hint(&key, Some(hint)).is_none());
+        assert!(object.get(&key).unwrap().same_value(&Value::Number(42.0)));
+
+        let proxy = crate::runtime::ProxyObject::new(object.clone(), Object::new()).object();
+        assert!(proxy.own_data_value_with_hint(&key, None).is_none());
+        assert!(proxy.get(&key).unwrap().same_value(&Value::Number(42.0)));
+        let string = crate::runtime::StringObject::new("abc".into()).object();
+        assert!(
+            string
+                .own_data_value_with_hint(&"length".into(), None)
+                .is_none()
+        );
+        assert!(
+            string
+                .get(&"length".into())
+                .unwrap()
+                .same_value(&Value::Number(3.0))
+        );
+    }
 }

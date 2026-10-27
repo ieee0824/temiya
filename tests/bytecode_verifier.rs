@@ -12,6 +12,118 @@ fn verify(instructions: Vec<Instruction>) -> Result<usize, VerifyErrorKind> {
 }
 
 #[test]
+fn string_append_binding_verifies_slots_constants_and_instruction_size() {
+    use temiya::bytecode::{BindingKind, ScopeBinding, ScopeDescriptor, ScopeKind};
+    assert_eq!(std::mem::size_of::<Instruction>(), 16);
+    for (kind, scope, slot, value, expected) in [
+        (
+            ScopeKind::Function,
+            99,
+            0,
+            1,
+            VerifyErrorKind::BindingOutOfBounds,
+        ),
+        (
+            ScopeKind::Function,
+            0,
+            1,
+            1,
+            VerifyErrorKind::BindingOutOfBounds,
+        ),
+        (
+            ScopeKind::Function,
+            0,
+            0,
+            2,
+            VerifyErrorKind::InvalidConstantKind,
+        ),
+        (
+            ScopeKind::Function,
+            0,
+            0,
+            99,
+            VerifyErrorKind::ConstantOutOfBounds,
+        ),
+        (ScopeKind::Global, 0, 0, 1, VerifyErrorKind::ScopeMismatch),
+    ] {
+        let code = Bytecode {
+            constants: vec![
+                Constant::Scope(ScopeDescriptor {
+                    kind,
+                    strict: false,
+                    functions: vec![],
+                    bindings: vec![ScopeBinding {
+                        name: "x".into(),
+                        kind: BindingKind::Var,
+                    }],
+                }),
+                Constant::String("suffix".into()),
+                Constant::Number(1.0),
+            ],
+            instructions: vec![
+                Instruction::EnterScope(0),
+                Instruction::AppendStringBinding { scope, slot, value },
+                Instruction::Return,
+            ],
+            local_count: 0,
+        };
+        assert_eq!(code.verify().unwrap_err().kind(), expected);
+    }
+}
+
+#[test]
+fn named_property_opcodes_validate_constant_kind_scope_and_operands() {
+    use temiya::bytecode::{ScopeDescriptor, ScopeKind};
+    for resolve in [false, true] {
+        for (name, scoped, has_base, expected) in [
+            (2, true, true, VerifyErrorKind::InvalidConstantKind),
+            (99, true, true, VerifyErrorKind::ConstantOutOfBounds),
+            (1, false, true, VerifyErrorKind::ScopeMismatch),
+            (1, true, false, VerifyErrorKind::StackUnderflow),
+        ] {
+            let mut instructions = vec![];
+            if scoped {
+                instructions.push(Instruction::EnterScope(0));
+            }
+            if has_base {
+                instructions.push(Instruction::LoadConstant(2));
+            }
+            instructions.push(if resolve {
+                Instruction::ResolveNamedProperty {
+                    name,
+                    strict: false,
+                }
+            } else {
+                Instruction::GetNamedProperty {
+                    name,
+                    strict: false,
+                }
+            });
+            if resolve {
+                instructions.push(Instruction::LoadReference);
+                instructions.push(Instruction::DiscardReference);
+            }
+            instructions.push(Instruction::Complete);
+            let code = Bytecode {
+                constants: vec![
+                    Constant::Scope(ScopeDescriptor {
+                        kind: ScopeKind::Global,
+                        strict: false,
+                        bindings: vec![],
+                        functions: vec![],
+                    }),
+                    Constant::String("x".into()),
+                    Constant::Number(1.0),
+                ],
+                instructions,
+                local_count: 0,
+            };
+            assert_eq!(code.verify().unwrap_err().kind(), expected);
+        }
+    }
+}
+
+#[test]
 fn computes_stack_bound_across_branches_and_locals() {
     let bytecode = Bytecode {
         constants: vec![
@@ -275,6 +387,113 @@ fn retained_name_references_are_checked() {
         ]),
         VerifyErrorKind::ScopeMismatch
     );
+}
+
+#[test]
+fn resolved_binding_reference_rejects_inactive_and_out_of_range_slots() {
+    use temiya::bytecode::{BindingKind, ScopeBinding, ScopeDescriptor, ScopeKind};
+    let scope = Constant::Scope(ScopeDescriptor {
+        kind: ScopeKind::Function,
+        strict: false,
+        functions: vec![],
+        bindings: vec![],
+    });
+    for (scope_pc, slot) in [(0, 0), (99, 0)] {
+        let code = Bytecode {
+            constants: vec![scope.clone(), Constant::Number(1.0)],
+            instructions: vec![
+                Instruction::EnterScope(0),
+                Instruction::ResolveBinding {
+                    scope: scope_pc,
+                    slot,
+                    strict: false,
+                },
+                Instruction::LoadConstant(1),
+                Instruction::StoreReference,
+                Instruction::LoadConstant(1),
+                Instruction::Return,
+            ],
+            local_count: 0,
+        };
+        assert_eq!(
+            code.verify().unwrap_err().kind(),
+            VerifyErrorKind::BindingOutOfBounds
+        );
+    }
+    let global = Constant::Scope(ScopeDescriptor {
+        kind: ScopeKind::Global,
+        strict: false,
+        functions: vec![],
+        bindings: vec![ScopeBinding {
+            name: "x".into(),
+            kind: BindingKind::Var,
+        }],
+    });
+    let code = Bytecode {
+        constants: vec![global, Constant::Number(1.0)],
+        instructions: vec![
+            Instruction::EnterScope(0),
+            Instruction::ResolveBinding {
+                scope: 0,
+                slot: 0,
+                strict: false,
+            },
+            Instruction::LoadConstant(1),
+            Instruction::StoreReference,
+            Instruction::LoadConstant(1),
+            Instruction::Return,
+        ],
+        local_count: 0,
+    };
+    assert_eq!(
+        code.verify().unwrap_err().kind(),
+        VerifyErrorKind::ScopeMismatch
+    );
+}
+
+#[test]
+fn fused_binding_update_requires_a_valid_non_global_live_slot() {
+    use temiya::bytecode::{BindingKind, ScopeBinding, ScopeDescriptor, ScopeKind};
+    for (kind, scope, slot, expected) in [
+        (
+            ScopeKind::Function,
+            99,
+            0,
+            VerifyErrorKind::BindingOutOfBounds,
+        ),
+        (
+            ScopeKind::Function,
+            0,
+            1,
+            VerifyErrorKind::BindingOutOfBounds,
+        ),
+        (ScopeKind::Global, 0, 0, VerifyErrorKind::ScopeMismatch),
+    ] {
+        let code = Bytecode {
+            constants: vec![Constant::Scope(ScopeDescriptor {
+                kind,
+                strict: false,
+                functions: vec![],
+                bindings: vec![ScopeBinding {
+                    name: "x".into(),
+                    kind: BindingKind::Let,
+                }],
+            })],
+            instructions: vec![
+                Instruction::EnterScope(0),
+                Instruction::UpdateBinding {
+                    scope,
+                    slot,
+                    strict: false,
+                    increment: true,
+                    prefix: false,
+                },
+                Instruction::Complete,
+            ],
+            local_count: 0,
+        };
+        assert_eq!(code.verify().unwrap_err().kind(), expected);
+    }
 }
 
 #[test]

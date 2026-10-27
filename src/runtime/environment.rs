@@ -108,6 +108,137 @@ struct ImportBinding {
 }
 
 impl Environment {
+    pub(crate) fn update_number_binding(
+        &self,
+        name: &JsString,
+        hint: Option<usize>,
+        increment: bool,
+        strict: bool,
+    ) -> RuntimeResult<Option<(f64, f64)>> {
+        let mut record = self.0.record.borrow_mut();
+        let record = match &mut *record {
+            EnvironmentRecord::Function(record) => &mut record.declarative_record,
+            EnvironmentRecord::Declarative(record) => record,
+            _ => return Ok(None),
+        };
+        let Some(index) = hint
+            .filter(|index| {
+                record
+                    .bindings
+                    .get(*index)
+                    .is_some_and(|binding| binding.name == *name)
+            })
+            .or_else(|| {
+                record
+                    .bindings
+                    .iter()
+                    .position(|binding| binding.name == *name)
+            })
+        else {
+            return Ok(None);
+        };
+        let binding = &mut record.bindings[index];
+        let Some(Value::Number(old)) = &binding.value else {
+            return Ok(None);
+        };
+        let old = *old;
+        let new = if increment { old + 1.0 } else { old - 1.0 };
+        binding.write(Value::Number(new), strict)?;
+        Ok(Some((old, new)))
+    }
+
+    pub(crate) fn append_string_binding(
+        &self,
+        name: &JsString,
+        hint: Option<usize>,
+        suffix: &JsString,
+    ) -> Option<Value> {
+        let mut record = self.0.record.borrow_mut();
+        let record = match &mut *record {
+            EnvironmentRecord::Function(record) => &mut record.declarative_record,
+            EnvironmentRecord::Declarative(record) => record,
+            _ => return None,
+        };
+        let index = hint
+            .filter(|index| {
+                record
+                    .bindings
+                    .get(*index)
+                    .is_some_and(|binding| binding.name == *name)
+            })
+            .or_else(|| {
+                record
+                    .bindings
+                    .iter()
+                    .position(|binding| binding.name == *name)
+            })?;
+        let binding = &mut record.bindings[index];
+        if !binding.mutable {
+            return None;
+        }
+        let Some(Value::String(string)) = &mut binding.value else {
+            return None;
+        };
+        string.append_owned(suffix);
+        Some(Value::String(string.clone()))
+    }
+
+    pub(crate) fn function_binding_index(&self, name: &JsString) -> Option<usize> {
+        let record = self.0.record.borrow();
+        let EnvironmentRecord::Function(record) = &*record else {
+            return None;
+        };
+        record
+            .declarative_record
+            .bindings
+            .iter()
+            .position(|binding| binding.name == *name)
+    }
+
+    pub(crate) fn get_function_binding_at(
+        &self,
+        name: &JsString,
+        index: Option<usize>,
+        strict: bool,
+    ) -> RuntimeResult<Value> {
+        {
+            let record = self.0.record.borrow();
+            if let (EnvironmentRecord::Function(record), Some(index)) = (&*record, index) {
+                if let Some(binding) = record
+                    .declarative_record
+                    .bindings
+                    .get(index)
+                    .filter(|binding| binding.name == *name)
+                {
+                    return binding.read();
+                }
+            }
+        }
+        self.get_binding_value(name, strict)
+    }
+
+    pub(crate) fn set_function_binding_at(
+        &self,
+        name: &JsString,
+        index: Option<usize>,
+        value: Value,
+        strict: bool,
+    ) -> RuntimeResult<()> {
+        {
+            let mut record = self.0.record.borrow_mut();
+            if let (EnvironmentRecord::Function(record), Some(index)) = (&mut *record, index) {
+                if let Some(binding) = record
+                    .declarative_record
+                    .bindings
+                    .get_mut(index)
+                    .filter(|binding| binding.name == *name)
+                {
+                    return binding.write(value, strict);
+                }
+            }
+        }
+        self.set_mutable_binding(name, value, strict)
+    }
     /// Creates a declarative environment record.
     #[must_use]
     pub fn declarative(outer: Option<Self>) -> Self {
@@ -162,6 +293,45 @@ impl Environment {
             outer,
             EnvironmentRecord::Function(FunctionRecord {
                 declarative_record: DeclarativeRecord::default(),
+                this_status,
+                this_value: (this_status == ThisBindingStatus::Initialized)
+                    .then_some(Value::Undefined),
+                function_object,
+                new_target,
+            }),
+        )
+    }
+
+    pub(crate) fn function_with_parameters(
+        outer: Option<Self>,
+        function_object: Object,
+        new_target: Option<Object>,
+        this_status: ThisBindingStatus,
+        parameters: &[JsString],
+        arguments: &[Value],
+        capacity: usize,
+    ) -> Self {
+        let mut bindings: Vec<Binding> = Vec::with_capacity(capacity.max(parameters.len()));
+        for (index, name) in parameters.iter().enumerate() {
+            let value = arguments.get(index).cloned().unwrap_or(Value::Undefined);
+            if let Some(binding) = bindings.iter_mut().find(|binding| binding.name == *name) {
+                // Sloppy duplicate parameters retain the last supplied value,
+                // including undefined when that occurrence has no argument.
+                binding.value = Some(value);
+            } else {
+                bindings.push(Binding {
+                    name: name.clone(),
+                    value: Some(value),
+                    mutable: true,
+                    strict: false,
+                    deletable: false,
+                });
+            }
+        }
+        Self::new(
+            outer,
+            EnvironmentRecord::Function(FunctionRecord {
+                declarative_record: DeclarativeRecord { bindings },
                 this_status,
                 this_value: (this_status == ThisBindingStatus::Initialized)
                     .then_some(Value::Undefined),
@@ -828,22 +998,8 @@ impl DeclarativeRecord {
         Ok(())
     }
 
-    fn set(&mut self, name: &JsString, value: Value, mut strict: bool) -> RuntimeResult<()> {
-        let binding = self.binding_mut(name)?;
-        if binding.value.is_none() {
-            return Err(reference_error(name, "is in the temporal dead zone"));
-        }
-        strict |= binding.strict;
-        if binding.mutable {
-            binding.value = Some(value);
-            Ok(())
-        } else if strict {
-            Err(RuntimeError::type_error(
-                "assignment to an immutable binding",
-            ))
-        } else {
-            Ok(())
-        }
+    fn set(&mut self, name: &JsString, value: Value, strict: bool) -> RuntimeResult<()> {
+        self.binding_mut(name)?.write(value, strict)
     }
 
     fn get(&self, name: &JsString) -> RuntimeResult<Value> {
@@ -851,9 +1007,7 @@ impl DeclarativeRecord {
             .iter()
             .find(|binding| binding.name == *name)
             .ok_or_else(|| reference_error(name, "is not defined"))?
-            .value
-            .clone()
-            .ok_or_else(|| reference_error(name, "is in the temporal dead zone"))
+            .read()
     }
 
     fn delete(&mut self, name: &JsString) -> bool {
@@ -876,6 +1030,30 @@ impl DeclarativeRecord {
             .iter_mut()
             .find(|binding| binding.name == *name)
             .ok_or_else(|| reference_error(name, "is not defined"))
+    }
+}
+
+impl Binding {
+    fn read(&self) -> RuntimeResult<Value> {
+        self.value
+            .clone()
+            .ok_or_else(|| reference_error(&self.name, "is in the temporal dead zone"))
+    }
+
+    fn write(&mut self, value: Value, strict: bool) -> RuntimeResult<()> {
+        if self.value.is_none() {
+            return Err(reference_error(&self.name, "is in the temporal dead zone"));
+        }
+        if self.mutable {
+            self.value = Some(value);
+            Ok(())
+        } else if strict || self.strict {
+            Err(RuntimeError::type_error(
+                "assignment to an immutable binding",
+            ))
+        } else {
+            Ok(())
+        }
     }
 }
 
@@ -955,4 +1133,184 @@ fn define_or_error(
 
 fn reference_error(name: &JsString, detail: &str) -> RuntimeError {
     RuntimeError::reference_error(format!("{} {detail}", name.to_string_lossy()))
+}
+
+#[cfg(test)]
+mod slot_hint_tests {
+    use super::*;
+    #[test]
+    fn prepared_parameter_records_initialize_missing_and_duplicate_names() {
+        let names = [
+            JsString::from("a"),
+            JsString::from("a"),
+            JsString::from("b"),
+        ];
+        let env = Environment::function_with_parameters(
+            None,
+            Object::new(),
+            None,
+            ThisBindingStatus::Uninitialized,
+            &names,
+            &[Value::Number(1.0)],
+            3,
+        );
+        for name in [&names[0], &names[2]] {
+            assert!(
+                env.get_binding_value(name, false)
+                    .unwrap()
+                    .same_value(&Value::Undefined)
+            );
+            assert!(!env.delete_binding(name).unwrap());
+        }
+        env.set_mutable_binding(&names[0], Value::Number(42.0), true)
+            .unwrap();
+        assert!(
+            env.get_binding_value(&names[0], true)
+                .unwrap()
+                .same_value(&Value::Number(42.0))
+        );
+    }
+
+    #[test]
+    fn number_update_respects_ignored_and_throwing_immutable_writes() {
+        let env =
+            Environment::function(None, Object::new(), None, ThisBindingStatus::Uninitialized);
+        let name: JsString = "fixed".into();
+        env.create_immutable_binding(name.clone(), false).unwrap();
+        env.initialize_binding(&name, Value::Number(41.0)).unwrap();
+        let hint = env.function_binding_index(&name);
+        assert_eq!(
+            env.update_number_binding(&name, hint, true, false).unwrap(),
+            Some((41.0, 42.0))
+        );
+        assert!(
+            env.get_binding_value(&name, false)
+                .unwrap()
+                .same_value(&Value::Number(41.0))
+        );
+        assert_eq!(
+            env.update_number_binding(&name, hint, true, true)
+                .unwrap_err()
+                .kind(),
+            super::super::RuntimeErrorKind::TypeError
+        );
+        assert!(
+            env.get_binding_value(&name, false)
+                .unwrap()
+                .same_value(&Value::Number(41.0))
+        );
+    }
+
+    #[test]
+    fn string_append_rechecks_shifted_slots_and_preserves_readonly_bindings() {
+        let env =
+            Environment::function(None, Object::new(), None, ThisBindingStatus::Uninitialized);
+        let prefix: JsString = "prefix".into();
+        let name: JsString = "value".into();
+        env.create_mutable_binding(prefix.clone(), true).unwrap();
+        env.initialize_binding(&prefix, Value::Null).unwrap();
+        env.create_mutable_binding(name.clone(), false).unwrap();
+        env.initialize_binding(&name, Value::String("left_".into()))
+            .unwrap();
+        let hint = env.function_binding_index(&name);
+        assert!(env.delete_binding(&prefix).unwrap());
+        let other: JsString = "other".into();
+        env.create_mutable_binding(other.clone(), false).unwrap();
+        env.initialize_binding(&other, Value::String("other".into()))
+            .unwrap();
+        assert!(
+            env.append_string_binding(&name, hint, &"right".into())
+                .unwrap()
+                .same_value(&Value::String("left_right".into()))
+        );
+        assert!(
+            env.get_binding_value(&other, false)
+                .unwrap()
+                .same_value(&Value::String("other".into()))
+        );
+        let fixed: JsString = "fixed".into();
+        env.create_immutable_binding(fixed.clone(), true).unwrap();
+        env.initialize_binding(&fixed, Value::String("fixed".into()))
+            .unwrap();
+        assert!(
+            env.append_string_binding(&fixed, None, &"suffix".into())
+                .is_none()
+        );
+        assert!(
+            env.get_binding_value(&fixed, false)
+                .unwrap()
+                .same_value(&Value::String("fixed".into()))
+        );
+    }
+
+    #[test]
+    fn stale_function_slot_hints_preserve_binding_identity_and_checks() {
+        let env =
+            Environment::function(None, Object::new(), None, ThisBindingStatus::Uninitialized);
+        let discarded: JsString = "discarded".into();
+        let name: JsString = "value".into();
+        for (key, value, deletable) in [(&discarded, 0.0, true), (&name, 41.0, false)] {
+            env.create_mutable_binding(key.clone(), deletable).unwrap();
+            env.initialize_binding(key, Value::Number(value)).unwrap();
+        }
+        let hint = env.function_binding_index(&name);
+        assert_eq!(hint, Some(1));
+        assert!(env.delete_binding(&discarded).unwrap());
+        let other: JsString = "other".into();
+        env.create_mutable_binding(other.clone(), false).unwrap();
+        env.initialize_binding(&other, Value::Number(99.0)).unwrap();
+        assert!(
+            env.get_function_binding_at(&name, hint, false)
+                .unwrap()
+                .same_value(&Value::Number(41.0))
+        );
+        env.set_function_binding_at(&name, hint, Value::Number(42.0), false)
+            .unwrap();
+        assert!(
+            env.get_binding_value(&name, false)
+                .unwrap()
+                .same_value(&Value::Number(42.0))
+        );
+        assert!(
+            env.get_binding_value(&other, false)
+                .unwrap()
+                .same_value(&Value::Number(99.0))
+        );
+        let tdz: JsString = "tdz".into();
+        env.create_mutable_binding(tdz.clone(), false).unwrap();
+        let hint = env.function_binding_index(&tdz);
+        assert_eq!(
+            env.get_function_binding_at(&tdz, hint, false)
+                .unwrap_err()
+                .kind(),
+            super::super::RuntimeErrorKind::ReferenceError
+        );
+        assert_eq!(
+            env.set_function_binding_at(&tdz, hint, Value::Null, false)
+                .unwrap_err()
+                .kind(),
+            super::super::RuntimeErrorKind::ReferenceError
+        );
+        for strict_binding in [false, true] {
+            let key: JsString = if strict_binding { "constant" } else { "named" }.into();
+            env.create_immutable_binding(key.clone(), strict_binding)
+                .unwrap();
+            env.initialize_binding(&key, Value::Number(1.0)).unwrap();
+            let hint = env.function_binding_index(&key);
+            let result = env.set_function_binding_at(&key, hint, Value::Number(2.0), false);
+            if strict_binding {
+                assert_eq!(
+                    result.unwrap_err().kind(),
+                    super::super::RuntimeErrorKind::TypeError
+                );
+            } else {
+                result.unwrap();
+            }
+            assert!(
+                env.get_binding_value(&key, false)
+                    .unwrap()
+                    .same_value(&Value::Number(1.0))
+            );
+        }
+    }
 }

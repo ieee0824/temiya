@@ -232,6 +232,14 @@ impl BinaryOperator {
 /// Portable instruction with fixed-width integer operands.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Instruction {
+    /// Push a fresh ordinary object with the Realm's Object prototype.
+    CreateObject,
+    /// Convert the top value to a String/Symbol property key before its RHS.
+    CoercePropertyKey,
+    /// Consume object/key/value and retain the object after a data definition.
+    DefineObjectProperty { prototype_setter: bool },
+    /// Consume object/source and retain the object after CopyDataProperties.
+    SpreadObject,
     /// Push a fresh Array and its next initializer index (two operands).
     CreateArray,
     /// Append a value to the Array/index pair beneath it, retaining the pair.
@@ -242,14 +250,6 @@ pub enum Instruction {
     SpreadArray,
     /// Set the final Array length and replace the Array/index pair with the Array.
     FinishArray,
-    /// Push a fresh ordinary object with the Realm's Object prototype.
-    CreateObject,
-    /// Convert the top value to a String/Symbol property key before its RHS.
-    CoercePropertyKey,
-    /// Consume object/key/value and retain the object after a data definition.
-    DefineObjectProperty { prototype_setter: bool },
-    /// Consume object/source and retain the object after CopyDataProperties.
-    SpreadObject,
     /// Instantiate metadata entry `index` and identify this scope by its entry PC.
     EnterScope(u32),
     /// Leave the innermost active scope, preserving the operand stack.
@@ -263,6 +263,19 @@ pub enum Instruction {
     InitializeBinding { scope: u32, slot: u32 },
     /// Assign an active binding from the stack, checking TDZ and mutability.
     StoreBinding { scope: u32, slot: u32 },
+    /// Capture a statically resolved active binding as a Reference.
+    ResolveBinding { scope: u32, slot: u32, strict: bool },
+    /// Append a String constant to a local binding, using its scope's strictness.
+    /// Push the assignment value; non-String/immutable bindings use ordinary semantics.
+    AppendStringBinding { scope: u32, slot: u32, value: u32 },
+    /// Update a statically resolved non-global binding and push its numeric result.
+    UpdateBinding {
+        scope: u32,
+        slot: u32,
+        strict: bool,
+        increment: bool,
+        prefix: bool,
+    },
     /// Resolve a string constant in the current environment chain and push its value.
     LoadName(u32),
     /// Resolve a name and get its value using the source Reference's strictness.
@@ -277,8 +290,12 @@ pub enum Instruction {
     StoreReference,
     /// Pop base and key values; push GetValue with the original receiver.
     GetProperty { strict: bool },
+    /// Pop a base and read a statically named property from a String constant.
+    GetNamedProperty { name: u32, strict: bool },
     /// Pop base and key values; retain their property Reference before the RHS.
     ResolveProperty { strict: bool },
+    /// Pop a base and retain its statically named property Reference.
+    ResolveNamedProperty { name: u32, strict: bool },
     /// Consume a retained Reference, update its Number/BigInt, push prefix/postfix result.
     UpdateReference { increment: bool, prefix: bool },
     /// Consume a retained Reference and implement typeof, including unresolvable names.
@@ -354,13 +371,13 @@ pub enum Instruction {
 impl Instruction {
     fn required_stack(self) -> usize {
         match self {
-            Self::CreateArray => 0,
-            Self::AppendArray | Self::SpreadArray => 3,
-            Self::ElideArray | Self::FinishArray => 2,
             Self::CreateObject => 0,
             Self::CoercePropertyKey => 1,
             Self::DefineObjectProperty { .. } => 3,
             Self::SpreadObject => 2,
+            Self::CreateArray => 0,
+            Self::AppendArray | Self::SpreadArray => 3,
+            Self::ElideArray | Self::FinishArray => 2,
             Self::LoadReference | Self::DiscardReference | Self::LoadReferenceCallTarget => 0,
             Self::AsCallTarget => 1,
             Self::BeginMethodCall => 2,
@@ -374,12 +391,16 @@ impl Instruction {
             | Self::AppendArgument
             | Self::SpreadArguments => 1,
             Self::GetProperty { .. } | Self::ResolveProperty { .. } => 2,
+            Self::GetNamedProperty { .. } | Self::ResolveNamedProperty { .. } => 1,
             Self::DeleteReference | Self::UpdateReference { .. } | Self::TypeOfReference => 0,
             Self::TypeOf | Self::UnaryNumeric(_) => 1,
             Self::JumpIfNullish(_) => 1,
             Self::EnterScope(_)
             | Self::ExitScope
             | Self::CloneLoopBindings
+            | Self::ResolveBinding { .. }
+            | Self::AppendStringBinding { .. }
+            | Self::UpdateBinding { .. }
             | Self::ResolveName { .. }
             | Self::LoadBinding { .. }
             | Self::GetName { .. }
@@ -405,13 +426,13 @@ impl Instruction {
 
     fn stack_delta(self) -> isize {
         match self {
-            Self::CreateArray => 2,
-            Self::AppendArray | Self::SpreadArray | Self::FinishArray => -1,
-            Self::ElideArray => 0,
             Self::CreateObject => 1,
             Self::CoercePropertyKey => 0,
             Self::DefineObjectProperty { .. } => -2,
             Self::SpreadObject => -1,
+            Self::CreateArray => 2,
+            Self::AppendArray | Self::SpreadArray | Self::FinishArray => -1,
+            Self::ElideArray => 0,
             Self::LoadReference => 1,
             Self::DiscardReference => 0,
             Self::LoadReferenceCallTarget => 2,
@@ -430,12 +451,19 @@ impl Instruction {
             | Self::UpdateReference { .. }
             | Self::TypeOfReference => 1,
             Self::GetProperty { .. } | Self::JumpIfNullish(_) => -1,
+            Self::GetNamedProperty { .. } => 0,
+            Self::ResolveNamedProperty { .. } => -1,
             Self::ResolveProperty { .. } => -2,
             Self::EnterScope(_)
             | Self::ExitScope
             | Self::CloneLoopBindings
+            | Self::ResolveBinding { .. }
             | Self::ResolveName { .. } => 0,
-            Self::LoadBinding { .. } | Self::LoadName(_) | Self::GetName { .. } => 1,
+            Self::LoadBinding { .. }
+            | Self::AppendStringBinding { .. }
+            | Self::UpdateBinding { .. }
+            | Self::LoadName(_)
+            | Self::GetName { .. } => 1,
             Self::InitializeBinding { .. } | Self::StoreBinding { .. } | Self::StoreReference => -1,
             Self::LoadConstant(_) | Self::LoadLocal(_) | Self::Duplicate => 1,
             Self::StoreLocal(_)
@@ -478,9 +506,17 @@ impl Bytecode {
 pub struct VerifiedBytecode {
     bytecode: Bytecode,
     max_stack: usize,
+    has_backedge: bool,
+    has_own_property_cache: bool,
 }
 
 impl VerifiedBytecode {
+    pub(crate) fn has_own_property_cache(&self) -> bool {
+        self.has_own_property_cache
+    }
+    pub(crate) fn has_backedge(&self) -> bool {
+        self.has_backedge
+    }
     /// Returns the verified bytecode body.
     #[must_use]
     pub fn bytecode(&self) -> &Bytecode {
@@ -713,7 +749,10 @@ fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
             }
             Instruction::LoadBinding { scope, slot }
             | Instruction::InitializeBinding { scope, slot }
-            | Instruction::StoreBinding { scope, slot } => {
+            | Instruction::StoreBinding { scope, slot }
+            | Instruction::ResolveBinding { scope, slot, .. }
+            | Instruction::AppendStringBinding { scope, slot, .. }
+            | Instruction::UpdateBinding { scope, slot, .. } => {
                 let (_, index) = state
                     .scopes
                     .iter()
@@ -722,26 +761,50 @@ fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
                 let Constant::Scope(plan) = &bytecode.constants[*index as usize] else {
                     unreachable!()
                 };
+                if matches!(
+                    instruction,
+                    Instruction::ResolveBinding { .. }
+                        | Instruction::UpdateBinding { .. }
+                        | Instruction::AppendStringBinding { .. }
+                ) && plan.kind == ScopeKind::Global
+                {
+                    return Err(error(VerifyErrorKind::ScopeMismatch));
+                }
                 let binding = plan
                     .bindings
                     .get(slot as usize)
                     .ok_or_else(|| error(VerifyErrorKind::BindingOutOfBounds))?;
+                if let Instruction::AppendStringBinding { value, .. } = instruction {
+                    if !matches!(constant(value)?, Constant::String(_)) {
+                        return Err(error(VerifyErrorKind::InvalidConstantKind));
+                    }
+                }
                 if matches!(instruction, Instruction::InitializeBinding { .. })
                     && binding.kind == BindingKind::Var
                 {
                     return Err(error(VerifyErrorKind::BindingOutOfBounds));
                 }
+                if matches!(instruction, Instruction::ResolveBinding { .. }) {
+                    state.references.push(
+                        u32::try_from(offset).map_err(|_| error(VerifyErrorKind::ScopeMismatch))?,
+                    );
+                }
             }
             Instruction::LoadName(index)
             | Instruction::GetName { name: index, .. }
-            | Instruction::ResolveName { name: index, .. } => {
+            | Instruction::ResolveName { name: index, .. }
+            | Instruction::GetNamedProperty { name: index, .. }
+            | Instruction::ResolveNamedProperty { name: index, .. } => {
                 if !matches!(constant(index)?, Constant::String(_)) {
                     return Err(error(VerifyErrorKind::InvalidConstantKind));
                 }
                 if state.scopes.is_empty() {
                     return Err(error(VerifyErrorKind::ScopeMismatch));
                 }
-                if matches!(instruction, Instruction::ResolveName { .. }) {
+                if matches!(
+                    instruction,
+                    Instruction::ResolveName { .. } | Instruction::ResolveNamedProperty { .. }
+                ) {
                     state.references.push(
                         u32::try_from(offset).map_err(|_| error(VerifyErrorKind::ScopeMismatch))?,
                     );
@@ -757,15 +820,15 @@ fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
                 validate_function_template(template).map_err(error)?;
             }
             Instruction::GetProperty { .. }
+            | Instruction::CreateObject
+            | Instruction::CoercePropertyKey
+            | Instruction::DefineObjectProperty { .. }
+            | Instruction::SpreadObject
             | Instruction::CreateArray
             | Instruction::AppendArray
             | Instruction::ElideArray
             | Instruction::SpreadArray
             | Instruction::FinishArray
-            | Instruction::CreateObject
-            | Instruction::CoercePropertyKey
-            | Instruction::DefineObjectProperty { .. }
-            | Instruction::SpreadObject
             | Instruction::ResolveProperty { .. }
             | Instruction::LoadThis
             | Instruction::LoadNewTarget => {
@@ -906,9 +969,19 @@ fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
             offset,
         ));
     }
+    let has_backedge = bytecode.instructions.iter().enumerate().any(|(offset, op)| {
+        matches!(op, Instruction::Jump(target) | Instruction::JumpIfFalse(target) | Instruction::JumpIfNullish(target) if (*target as usize) <= offset)
+    });
+    let has_own_property_cache = has_backedge
+        && bytecode
+            .instructions
+            .iter()
+            .any(|op| matches!(op, Instruction::GetNamedProperty { .. }));
     Ok(VerifiedBytecode {
         bytecode,
         max_stack,
+        has_backedge,
+        has_own_property_cache,
     })
 }
 

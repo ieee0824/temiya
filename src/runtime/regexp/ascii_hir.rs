@@ -2,12 +2,17 @@
 //! An unrecognized form returns None, leaving validation to the normal parser.
 use regex_syntax::hir::{Capture, Class, ClassBytes, ClassBytesRange, Hir, Repetition};
 
+#[cfg(test)]
 pub(super) fn parse(source: &str) -> Option<Hir> {
-    if !source.is_ascii() {
+    parse_units(&source.encode_utf16().collect::<Vec<_>>())
+}
+
+pub(super) fn parse_units(source: &[u16]) -> Option<Hir> {
+    if source.iter().any(|unit| *unit >= 128) {
         return None;
     }
     let mut parser = Parser {
-        bytes: source.as_bytes(),
+        bytes: source,
         offset: 0,
         next_capture: 1,
     };
@@ -16,14 +21,14 @@ pub(super) fn parse(source: &str) -> Option<Hir> {
 }
 
 struct Parser<'a> {
-    bytes: &'a [u8],
+    bytes: &'a [u16],
     offset: usize,
     next_capture: u32,
 }
 
 impl Parser<'_> {
     fn peek(&self) -> Option<u8> {
-        self.bytes.get(self.offset).copied()
+        self.bytes.get(self.offset).map(|unit| *unit as u8)
     }
 
     fn expression(&mut self, depth: usize) -> Option<Hir> {
@@ -56,7 +61,7 @@ impl Parser<'_> {
                 }
                 self.offset += 1;
                 let capture = if self.peek() == Some(b'?') {
-                    if self.bytes.get(self.offset + 1) != Some(&b':') {
+                    if self.bytes.get(self.offset + 1) != Some(&u16::from(b':')) {
                         return None;
                     }
                     self.offset += 2;
@@ -84,7 +89,7 @@ impl Parser<'_> {
             byte if literal(byte) => {
                 let start = self.offset;
                 let mut end = start + 1;
-                while self.bytes.get(end).is_some_and(|b| literal(*b)) {
+                while self.bytes.get(end).is_some_and(|b| literal(*b as u8)) {
                     end += 1;
                 }
                 // A following quantifier binds to the last byte, not the run.
@@ -92,12 +97,17 @@ impl Parser<'_> {
                     && self
                         .bytes
                         .get(end)
-                        .is_some_and(|b| matches!(b, b'*' | b'+' | b'?' | b'{'))
+                        .is_some_and(|b| matches!(*b as u8, b'*' | b'+' | b'?' | b'{'))
                 {
                     end -= 1;
                 }
                 self.offset = end;
-                Some(Hir::literal(&self.bytes[start..end]))
+                Some(Hir::literal(
+                    self.bytes[start..end]
+                        .iter()
+                        .map(|unit| *unit as u8)
+                        .collect::<Vec<_>>(),
+                ))
             }
             _ => None,
         }

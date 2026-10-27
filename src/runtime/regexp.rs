@@ -85,7 +85,7 @@ const MATCHER_CACHE_BYTES: usize = 8 * 1024 * 1024;
 const MATCHER_CACHE_ENTRIES: usize = 256;
 
 struct CachedMatcher {
-    source: String,
+    source: Vec<u16>,
     flags: RegExpFlags,
     matcher: Matcher,
     bytes: usize,
@@ -108,18 +108,14 @@ struct MatcherCache {
 }
 
 impl MatcherCache {
-    fn key_hash(&self, source: &str, flags: RegExpFlags) -> u64 {
+    fn key_hash(&self, source: &[u16], flags: RegExpFlags) -> u64 {
         let mut hasher = self.hash_builder.build_hasher();
         source.hash(&mut hasher);
         flags.hash(&mut hasher);
         hasher.finish()
     }
 
-    fn get(&mut self, source: &str, flags: RegExpFlags) -> Option<Matcher> {
-        self.get_hashed(source, flags, self.key_hash(source, flags))
-    }
-
-    fn get_hashed(&mut self, source: &str, flags: RegExpFlags, hash: u64) -> Option<Matcher> {
+    fn get_hashed(&mut self, source: &[u16], flags: RegExpFlags, hash: u64) -> Option<Matcher> {
         let mut index = *self.index.get(&hash)?;
         loop {
             let entry = self.entries[index].as_ref().expect("indexed cache entry");
@@ -195,13 +191,9 @@ impl MatcherCache {
         self.free.push(index);
     }
 
-    fn insert(&mut self, source: &str, flags: RegExpFlags, matcher: Matcher, bytes: usize) {
-        self.insert_hashed(source, flags, matcher, bytes, self.key_hash(source, flags));
-    }
-
     fn insert_hashed(
         &mut self,
-        source: &str,
+        source: &[u16],
         flags: RegExpFlags,
         matcher: Matcher,
         bytes: usize,
@@ -237,13 +229,32 @@ thread_local! {
     static MATCHERS: RefCell<MatcherCache> = RefCell::new(MatcherCache::default());
 }
 
-fn compile_matcher(source: &str, flags: RegExpFlags) -> RuntimeResult<Matcher> {
-    if let Some(matcher) = MATCHERS.with(|cache| cache.borrow_mut().get(source, flags)) {
+fn compile_matcher(pattern: &JsString, flags: RegExpFlags) -> RuntimeResult<Matcher> {
+    let units = pattern.code_units();
+    // ASCII proves scalar validity; other patterns retain validation before lookup.
+    let scalar = if units.iter().all(|unit| *unit < 128) {
+        None
+    } else {
+        Some(scalar_string(pattern)?)
+    };
+    let (hash, cached) = MATCHERS.with(|cache| {
+        let mut cache = cache.borrow_mut();
+        let hash = cache.key_hash(units, flags);
+        (hash, cache.get_hashed(units, flags, hash))
+    });
+    if let Some(matcher) = cached {
         return Ok(matcher);
     }
-    let mut builder = Regex::builder();
-    builder
-        // Preserve the limits and UTF-8 policies of regex::RegexBuilder.
+    if !flags.ignore_case {
+        if let Some(hir) = ascii_hir::parse_units(units) {
+            return finish_matcher(units, flags, hash, Matcher::from_hir(&hir)?);
+        }
+    }
+    let source = match scalar {
+        Some(source) => source,
+        None => scalar_string(pattern)?,
+    };
+    let matcher = Regex::builder()
         .configure(
             Regex::config()
                 .nfa_size_limit(Some(10 * (1 << 20)))
@@ -257,28 +268,27 @@ fn compile_matcher(source: &str, flags: RegExpFlags) -> RuntimeResult<Matcher> {
                 .multi_line(flags.multiline)
                 .dot_matches_new_line(flags.dot_all)
                 .unicode(flags.unicode),
-        );
-    let direct = (!flags.ignore_case)
-        .then(|| ascii_hir::parse(source))
-        .flatten();
-    let matcher = match direct {
-        Some(hir) => return finish_matcher(source, flags, Matcher::from_hir(&hir)?),
-        None => builder.build(&translate_named_groups(source)),
-    }
-    .map_err(|error| RuntimeError::syntax_error(error.to_string()))?;
-    finish_matcher(source, flags, Matcher::Meta(matcher))
+        )
+        .build(&translate_named_groups(&source))
+        .map_err(|error| RuntimeError::syntax_error(error.to_string()))?;
+    finish_matcher(units, flags, hash, Matcher::Meta(matcher))
 }
 
-fn finish_matcher(source: &str, flags: RegExpFlags, matcher: Matcher) -> RuntimeResult<Matcher> {
+fn finish_matcher(
+    source: &[u16],
+    flags: RegExpFlags,
+    hash: u64,
+    matcher: Matcher,
+) -> RuntimeResult<Matcher> {
     let bytes = matcher
         .template_memory_usage()
-        .saturating_add(source.len())
+        .saturating_add(source.len().saturating_mul(std::mem::size_of::<u16>()))
         .saturating_add(std::mem::size_of::<CachedMatcher>());
     if bytes <= MATCHER_CACHE_BYTES {
         MATCHERS.with(|cache| {
             cache
                 .borrow_mut()
-                .insert(source, flags, matcher.clone(), bytes)
+                .insert_hashed(source, flags, matcher.clone(), bytes, hash)
         });
     }
     Ok(matcher)
@@ -303,8 +313,7 @@ impl RegExp {
     /// Compiles a pattern and its flags.
     pub fn new(pattern: JsString, flags: &str) -> RuntimeResult<Self> {
         let flags = RegExpFlags::parse(flags)?;
-        let source = scalar_string(&pattern)?;
-        let matcher = compile_matcher(&source, flags)?;
+        let matcher = compile_matcher(&pattern, flags)?;
         let captures = RefCell::new(matcher.create_captures());
         let scratch = RefCell::new(matcher.create_scratch());
         let object = Object::new();
@@ -532,6 +541,9 @@ fn utf16_range(text: &str, start: usize, end: usize) -> RuntimeResult<String> {
 #[cfg(test)]
 mod cache_tests {
     use super::*;
+    fn units(source: &str) -> Vec<u16> {
+        source.encode_utf16().collect()
+    }
 
     #[test]
     fn hash_collisions_check_full_keys_and_evict_both_chain_positions() {
@@ -539,13 +551,13 @@ mod cache_tests {
         let matcher = |source| Matcher::from_hir(&ascii_hir::parse(source).unwrap()).unwrap();
         for evict_hash_head in [false, true] {
             let mut cache = MatcherCache::default();
-            cache.insert_hashed("a", flags, matcher("a"), 100, 7);
-            cache.insert_hashed("b", flags, matcher("b"), 100, 7);
-            assert!(cache.get_hashed("absent", flags, 7).is_none());
+            cache.insert_hashed(&units("a"), flags, matcher("a"), 100, 7);
+            cache.insert_hashed(&units("b"), flags, matcher("b"), 100, 7);
+            assert!(cache.get_hashed(&units("absent"), flags, 7).is_none());
             assert!(
                 cache
                     .get_hashed(
-                        "a",
+                        &units("a"),
                         RegExpFlags {
                             global: true,
                             ..flags
@@ -555,7 +567,7 @@ mod cache_tests {
                     .is_none()
             );
             if evict_hash_head {
-                assert!(cache.get_hashed("a", flags, 7).is_some());
+                assert!(cache.get_hashed(&units("a"), flags, 7).is_some());
             }
             cache.evict_tail();
             let (remaining, removed, start) = if evict_hash_head {
@@ -563,8 +575,8 @@ mod cache_tests {
             } else {
                 ("b", "a", 1)
             };
-            assert!(cache.get_hashed(removed, flags, 7).is_none());
-            let selected = cache.get_hashed(remaining, flags, 7).unwrap();
+            assert!(cache.get_hashed(&units(removed), flags, 7).is_none());
+            let selected = cache.get_hashed(&units(remaining), flags, 7).unwrap();
             let mut captures = selected.create_captures();
             selected.search(
                 &Input::new("ab"),
@@ -578,8 +590,8 @@ mod cache_tests {
             assert!(cache.index.is_empty());
             assert_eq!(cache.head, None);
             assert_eq!(cache.tail, None);
-            cache.insert_hashed("c", flags, matcher("c"), 100, 7);
-            assert!(cache.get_hashed("c", flags, 7).is_some());
+            cache.insert_hashed(&units("c"), flags, matcher("c"), 100, 7);
+            assert!(cache.get_hashed(&units("c"), flags, 7).is_some());
             assert_eq!(cache.entries.len(), 2, "reuse vacated slots");
         }
     }
@@ -637,7 +649,7 @@ mod cache_tests {
                     .entries
                     .iter()
                     .flatten()
-                    .any(|entry| entry.source == "(?<keep>a+)")
+                    .any(|entry| entry.source == units("(?<keep>a+)"))
             )
         });
         let matched = original.exec(&input).unwrap().unwrap();

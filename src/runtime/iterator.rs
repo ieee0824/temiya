@@ -169,28 +169,43 @@ pub(super) fn install(
         iterator_key.clone(),
         PropertyDescriptor::data(array.get(&"values".into())?, true, false, true),
     )?;
-    symbol_method(
-        &intrinsics.get(IntrinsicId::StringPrototype),
+    let values = Object::native_function_with_object_capture(
         &function,
-        iterator_key,
         "[Symbol.iterator]",
-        move |this, _| {
-            if matches!(this, Value::Undefined | Value::Null) {
-                return Err(RuntimeError::type_error(
-                    "string iterator receiver is null or undefined",
-                ));
-            }
-            let text = primitive(&this, &to_primitive, true)?.to_js_string()?;
-            let result = Object::new_for(&string_iterator);
-            result.set_prototype(Some(string_iterator.clone()));
-            result.0.state.borrow_mut().iterator = Some(Box::new(IteratorSlot::String {
-                text: Some(text),
-                index: 0,
-            }));
-            Ok(Value::Object(result))
-        },
+        0,
+        &string_iterator,
+        Some(to_primitive),
+        string_values,
     )?;
+    intrinsics
+        .get(IntrinsicId::StringPrototype)
+        .define_own_property(
+            iterator_key,
+            PropertyDescriptor::data(Value::Object(values), true, false, true),
+        )?;
     Ok(())
+}
+
+fn string_values(
+    prototype: &Object,
+    key: Option<&PropertyKey>,
+    this: Value,
+    _: &[Value],
+) -> RuntimeResult<Value> {
+    if matches!(this, Value::Undefined | Value::Null) {
+        return Err(RuntimeError::type_error(
+            "string iterator receiver is null or undefined",
+        ));
+    }
+    let text =
+        primitive(&this, key.expect("string iterator primitive key"), true)?.to_js_string()?;
+    let result = Object::new_for(prototype);
+    result.initialize_prototype(Some(prototype.clone()));
+    result.0.state.borrow_mut().iterator = Some(Box::new(IteratorSlot::String {
+        text: Some(text),
+        index: 0,
+    }));
+    Ok(Value::Object(result))
 }
 
 fn symbol_method(
@@ -309,6 +324,68 @@ fn string_next(this: Value, prototype: &Object) -> RuntimeResult<Value> {
 mod managed_tests {
     use super::*;
     use crate::runtime::ArrayObject;
+
+    #[test]
+    fn managed_string_factory_capture_survives_conversion_reentry_and_iterator_escape() {
+        let runtime = crate::runtime::Runtime::new();
+        let function_prototype = Object::new_in(&runtime);
+        let iterator_prototype = Object::new_in(&runtime);
+        let weak_prototype = iterator_prototype.downgrade();
+        let factory = Object::native_function_with_object_capture(
+            &function_prototype,
+            "[Symbol.iterator]",
+            0,
+            &iterator_prototype,
+            Some("unused".into()),
+            string_values,
+        )
+        .unwrap();
+        drop(function_prototype);
+        drop(iterator_prototype);
+        runtime.collect_migration_graph().unwrap();
+        let receiver = Object::new_in(&runtime);
+        let callback_runtime = runtime.clone();
+        let calls = std::rc::Rc::new(std::cell::Cell::new(0));
+        let callback_calls = calls.clone();
+        receiver.set_to_string_hook(move || {
+            callback_runtime.collect_migration_graph().unwrap();
+            let _temporary = Object::new_in(&callback_runtime);
+            callback_calls.set(callback_calls.get() + 1);
+            Ok(Value::String("💡x".into()))
+        });
+        let Value::Object(iterator) = factory.call(Value::Object(receiver.clone()), &[]).unwrap()
+        else {
+            panic!("string iterator");
+        };
+        assert_eq!(calls.get(), 1);
+        drop(receiver);
+        drop(factory);
+        runtime.collect_migration_graph().unwrap();
+        assert_eq!(iterator.prototype(), weak_prototype.upgrade());
+        for expected in [Some("💡"), Some("x"), None] {
+            let Value::Object(step) = string_next(
+                Value::Object(iterator.clone()),
+                &iterator.prototype().unwrap(),
+            )
+            .unwrap() else {
+                panic!("iterator result");
+            };
+            assert_eq!(
+                step.get(&"done".into()).unwrap().to_boolean(),
+                expected.is_none()
+            );
+            if let Some(expected) = expected {
+                assert!(
+                    step.get(&"value".into())
+                        .unwrap()
+                        .same_value(&Value::String(expected.into()))
+                );
+            }
+        }
+        drop(iterator);
+        assert_eq!(runtime.collect_migration_graph().unwrap().retained, 0);
+        assert!(weak_prototype.upgrade().is_none());
+    }
 
     #[test]
     fn managed_iterator_keeps_target_until_exhaustion_then_releases_it() {

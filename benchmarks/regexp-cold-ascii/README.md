@@ -66,7 +66,7 @@ cold and macro statistics, fixed oracles, checked counts and decisions.
 A valid report with a false speed gate remains false. For a single cold report,
 run node benchmarks/regexp-cold-ascii/verify-cold-report.mjs PATH.
 
-The inventory covers 611 files, 62 cold reports and 77 macro reports. Macro
+The inventory covers 631 files, 62 cold reports and 77 macro reports. Macro
 coverage is 3834 workers, 61344 checked results and 1917 decisions. This is an
 archive verification, not a new timing experiment, binary rebuild, whole-app
 throughput claim, full-conformance claim or hard process-RSS bound. Compressed
@@ -123,3 +123,8 @@ Intel-specific profiles are still missing. The first two four-probe requests
 (40609718685,40610915908) obtained no matched CPUs, and are retained only
 as unavailable-hardware observations in intel6973-probes/. Additional
 predeclared replication/profile attempts keep the source and thresholds fixed.
+
+All24 matched-Intel probes across40609718685/40610915908,
+40611651311/40611654149 and40613588449/40613591371 were unavailable.
+Their hardware files and workflow revisions are retained; no profile or
+replicated cold result is inferred from successful skipped jobs.

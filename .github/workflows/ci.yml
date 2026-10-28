@@ -49,6 +49,10 @@ jobs:
         run: node benchmarks/regexp-cold-ascii/verify-integrity.mjs
       - name: Verify original arithmetic Intel instruction evidence
         run: node benchmarks/intel-arithmetic/verify.mjs
+      - name: Verify checked component records and rejection gates
+        run: |
+          node benchmarks/components/verify-integrity.mjs
+          node scripts/check-component-records.mjs
       - name: Run Clippy
         run: cargo +stable clippy --locked --all-targets --all-features -- -D warnings
 
@@ -77,6 +81,10 @@ jobs:
         run: |
           cargo +${{ matrix.toolchain }} build --locked --release --example measure_workload
           node scripts/check-workload-workers.mjs target/release/examples/measure_workload
+      - name: Verify checked component worker contracts
+        run: |
+          cargo +${{ matrix.toolchain }} build --locked --release --no-default-features --example measure_components
+          node scripts/check-component-workers.mjs target/release/examples/measure_components
       - name: Verify runtime string allocation budgets
         run: |
           cargo +${{ matrix.toolchain }} run --locked --release --example string_allocation_probe > target/string-allocations.json

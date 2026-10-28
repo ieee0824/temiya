@@ -27,13 +27,15 @@ exceeds the actual pinned omoikane Boa on the original eleven workloads in all
 limited to those inputs and conditions, not complete application superiority.
 A [subsequent Intel follow-up](promise-rejection-performance.md) did not pass
 the all-eleven gate: arithmetic was slower than actual Boa in three pairs.
-That target remains open in #510, alongside the separately preserved ARM result.
+That historical result remains preserved alongside the ARM result.
 The later [typed Number and binding-read comparison](typed-number-dispatch.md)
 records source 37e09968 faster than actual Boa in all 99 original-eleven pairs
 on its two AMD x64 hosts and ARM64 host, with no before/after slower decisions.
-Earlier Intel arithmetic remains below its acceptance condition; these AMD/ARM
-results do not close #510. All raw cohorts and same-executable controls remain
-available, including the controls with variability beyond the fixed threshold.
+The later matched Intel original-input comparison satisfies all three arithmetic
+actual-Boa gates, and the [actual Intel profile](../benchmarks/intel-arithmetic/README.md)
+completes #510. AMD/ARM success was never substituted for that target. All raw
+cohorts and same-executable controls remain available, including controls with
+variability beyond the fixed threshold.
 The [pinned native SpiderMonkey comparison](spidermonkey-workloads.md) completes
 the same inputs in both modes, but Temiya is slower in all 33 comparisons per
 mode. The SpiderMonkey speed target remains unmet; default-mode enabled JIT
@@ -579,3 +581,18 @@ bounded matcher reuse, the complete rejected configurations, and separate warm
 and cold/unique measurements. Warm-suite ARM64 wins do not remove the recorded
 cold-construction gap against actual Boa (#516). Two independent x64 cohorts
 confirm the warm-suite wins; all negative control observations are retained.
+
+## Checked component phase groups
+
+The [component suite](component-benchmarks.md) separately measures public parser,
+Engine compile/startup, JavaScript object operations and standalone collector
+graph lifecycles. It records three rotated serial rounds of15 checked samples,
+source/compiler/binary/machine provenance and an independent Engine retention
+probe. Standalone Heap results never override an unreclaimed Engine ownership
+probe or establish JavaScript/application GC performance. Original-eleven and
+authored async/RegExp cross-engine comparisons retain their existing boundaries.
+
+The [coverage and remaining-gap matrix](benchmark-suite-coverage.md) maps each
+phase to actual evidence and explicitly distinguishes standalone collector
+measurements from missing Engine collection. It also distinguishes historical
+SpiderMonkey source results from newer production changes.

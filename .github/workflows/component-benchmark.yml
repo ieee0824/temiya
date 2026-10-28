@@ -1,0 +1,49 @@
+name: Checked Engine component measurements
+on:
+  push:
+    branches: [bench/engine-component-phases]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: component-benchmark-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  measure:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    env:
+      CARGO_BUILD_JOBS: 2
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Install stable compiler
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+      - name: Build frozen workers before measurement
+        run: node scripts/build-component-worker.mjs "$RUNNER_TEMP/component-build"
+      - name: Check actual workers and reject invalid protocol data
+        run: node scripts/check-component-workers.mjs "$RUNNER_TEMP/component-build/target/release/examples/measure_components" > "$RUNNER_TEMP/component-checks.json"
+      - name: Measure serial isolated components and actual ownership state
+        run: node scripts/measure-components.mjs "$RUNNER_TEMP/component-build/build-info.json" > "$RUNNER_TEMP/components.json" 2> "$RUNNER_TEMP/components.progress"
+      - name: Independently verify observations including GC readiness
+        run: node scripts/verify-components.mjs "$RUNNER_TEMP/components.json" > "$RUNNER_TEMP/component-verification.json"
+      - name: Retain observations even on failure
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: components-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.runner }}
+          path: |
+            ${{ runner.temp }}/component-build/build-info.json
+            ${{ runner.temp }}/component-checks.json
+            ${{ runner.temp }}/components.json
+            ${{ runner.temp }}/components.progress
+            ${{ runner.temp }}/component-verification.json
+          if-no-files-found: error
+          retention-days: 30

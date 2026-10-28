@@ -1,14 +1,47 @@
 # Runtime ownership migration
 
 Decision for #256, based on main `4866b4de8ea03de01066fcfd450b9a16d011c948`.
-This is the implementation contract for #257, #313 and #340. The migration
-branch now uses a shared tracing heap for public Engine Realms, with allocation
+This is the implementation contract for #257, #313 and #340. Engine now uses a shared tracing heap for public Realms, with allocation
 safepoints and an explicit `Engine::collect_garbage` hook. Public factories now
 use explicit or inherited allocation contexts; Legacy facade/storage variants
 and the private Legacy queue fallback have been removed. The original
 baseline observations below describe the starting point, not the current branch.
 
 ## Measured runtime integration
+
+Runtime source `6c33f6e6b5d4ebe59ea73b2ad8b2bbbc3f326d3c` reuses at most five primitive
+prototype facades within each fixed-Realm VM invocation. The immutable intrinsic
+registry already retains their identities; descriptors and values remain live
+reads, including after mutation, collection and nested entry into another Realm.
+[Source-specific evidence](../benchmarks/runtime-gc/experiments/primitive-prototypes-6c3) records659 native passes,
+21 ignored, Clippy, selected pinned Test262, a new exact integration Miri pass,
+and public ownership/clone probes. Its separate original-eleven diagnostic
+profile verifies all oracles, balanced root registrations, zero final live/rooted
+cells and pause accounting. Repeated components on hosted ARM64 and AMD9V74
+validate36 workers/576 values and all seven default-Engine reclamation fixtures.
+
+The local original-eleven actual-Boa comparison records32 faster decisions and
+one within noise (prop-mega pair2, ratio0.6981 and threshold0.4795). All three
+primitive-string-method pairs pass, but this is not full33 qualification.
+Before/after against872 records33 noise decisions; nominal shorter times are
+not a qualified improvement. The two independent hosted follow-ups qualify all33 actual-Boa decisions
+on each host: AMD EPYC9V45 time ratios0.408–0.810, AMD EPYC7763 ratios0.417–0.738.
+Every report has66 correct workers/1056 values. Both main/Boa controls pass33;
+same-binary controls have33 noise and32 noise/1 slower respectively. Both main
+comparisons retain9 faster/17 noise/7 slower. The
+[full raw reports and controls](../benchmarks/runtime-gc/experiments/primitive-prototypes-6c3/hosted-general) retain all observations,
+including slower comparisons and variability. This is a bounded qualification
+on these hosts, not universal absence of regressions. The [current full library Miri proof](../benchmarks/runtime-gc/experiments/primitive-prototypes-6c3/ci/full-miri16.json)
+qualifies119 distinct exact executions,0 ignored, all16 shards/aggregate plus
+ASan/audit success at head4b256bd in run40773845352. Snapshot6b1's CI/ASan failed an existing policy
+test that still expected8 shards; head4b256bd changes that expectation to16
+without changing runtime/examples/Cargo/runner source. Its current CI40773845349
+passes all four jobs, with660 passed/21 ignored in each x64 stable/MSRV run
+(the x64 JIT has two tests versus one unsupported-platform test on ARM64).
+The superseded run was
+cancelled for this actual source correction; it is not a passing Miri result.
+
+The following direct-read stage predates that invocation-local optimization.
 
 Runtime source `8727ebcc4d809a126aadd9a59c2f993ca7a0c6dd` adds direct ordinary
 own-data reads, including named String-object properties while retaining the
@@ -24,7 +57,7 @@ The authored async comparison has2 faster and7 noise decisions, so it does
 not qualify all three async workloads. Full application and SpiderMonkey
 superiority remain unproved.
 
-The later runtime source `efd0de57abca28fb00807f78e386bf94ef09f4b2`
+The earlier runtime source `efd0de57abca28fb00807f78e386bf94ef09f4b2`
 records its own [original-eleven comparison and checks](../benchmarks/runtime-gc/experiments/own-write-efd).
 On local ARM64 guest CPU0, all66 workers/1056 warmup and sample values are
 correct and all33 comparisons pass the unchanged10%/MAD gate against the
@@ -139,6 +172,10 @@ is observable but does not excuse or erase the failed candidate qualification.
 retain both hosts and all controls. The local CPU0 result above remains bounded
 to its recorded condition. It does not prove the required speed goal on these
 hosted machines; allocation and execution costs still need improvement.
+
+PR #522 merged the verified implementation at
+`05ca830a5c217c27cf6e6e9e7c2d8542007950a2`. The checked head4b256bd and measured
+snapshot6b1 have identical runtime, worker and manifest objects.
 
 ### Separate allocation, root and pause observations
 

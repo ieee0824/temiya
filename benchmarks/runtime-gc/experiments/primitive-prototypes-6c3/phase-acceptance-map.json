@@ -1,0 +1,70 @@
+{
+  "audited_at": "2026-10-28T21:50:44.262Z",
+  "issue": 427,
+  "criterion": "Measure parse/startup/objects/async/RegExp/GC separately and record revision and machine",
+  "phase_evidence": [
+    {
+      "group": "parse/startup/objects",
+      "source": "6b1a8d1a22a48206c65c9d92e296dd858de0b826",
+      "evidence": "components/{arm64,x64}/components.json",
+      "scope": "Repeated checked public parse_script, Engine::compile, fresh Engine/Realm construction and actual JS getter/write/delete; source/build/machine retained."
+    },
+    {
+      "group": "async",
+      "source": "8727ebcc4d809a126aadd9a59c2f993ca7a0c6dd",
+      "evidence": "../own-read-872/async",
+      "scope": "Actual public Engine/modified JsRuntime scheduling and completed jobs; source and machine retained,18 workers/288 values;2 faster/7 noise. Not all9 qualified, not current-runtime speed proof."
+    },
+    {
+      "group": "RegExp",
+      "evidence": "../../../regexp-cold-ascii and docs/regexp-ascii-compilation.md",
+      "scope": "Actual public Engine/modified JsRuntime unique-pattern construction and capture/exec phase records retain their original source and machine identities. Historical source qualification cannot be relabelled current."
+    },
+    {
+      "group": "GC component",
+      "source": "6b1a8d1a22a48206c65c9d92e296dd858de0b826",
+      "evidence": "components/{arm64,x64}/components.json",
+      "scope": "Standalone Heap real cyclic graph/destructors/barrier timing. Separate from Engine GC."
+    },
+    {
+      "group": "Engine GC",
+      "source": "13abc79f99ffdd6df9433b578847dbafd414d212",
+      "evidence": [
+        "runtime-profile-audited.json",
+        "runtime-profile-audited-info.json",
+        "runtime-profile-audited.log"
+      ],
+      "scope": "Actual default Engine, original eleven counts, one instrumented invocation per case after setup/precollection; separate collection accounting, not repeated or cross-engine GC performance qualification.",
+      "machine": {
+        "platform": "linux",
+        "release": "6.8.0-100-generic",
+        "architecture": "arm64",
+        "logical_cpus": 4,
+        "cpu_models": [
+          "unknown"
+        ]
+      }
+    }
+  ],
+  "interpretation": "Source-specific phase coverage only. No combining different sources/hosts into a speed win; instrumented single-pass Engine GC remains separate from repeated competitive timing.",
+  "remaining": [
+    "Integrate these qualification records into main and close issue427"
+  ],
+  "issue_complete": false,
+  "hosted_follow_up": {
+    "run": 40773535786,
+    "source": "6b1a8d1a22a48206c65c9d92e296dd858de0b826",
+    "both_hosts_actual_boa_33_faster": true,
+    "scope": "Unchanged original eleven suite on AMD9V45 and AMD7763; all main regressions and same-binary variability retained."
+  },
+  "full_miri": {
+    "source": "4b256bd98b3eb4262e6f12501bffff6e91efd61f",
+    "run": 40773845352,
+    "exact_passed": 119,
+    "ignored": 0,
+    "all_19_jobs": "success"
+  },
+  "measurement_criterion_verified": true,
+  "implementation_merge": "05ca830a5c217c27cf6e6e9e7c2d8542007950a2",
+  "status_scope": "Final phase measurement audit; issue_complete=false records capture-time issue state before the record PR is merged."
+}

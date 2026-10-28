@@ -235,6 +235,51 @@ mod stored_graph_tests {
     use super::*;
     use crate::runtime::{PropertyDescriptor, Value};
     #[test]
+    fn proxy_cycles_are_traced_and_revocation_releases_target_and_handler() {
+        for revoke in [false, true] {
+            let runtime = Runtime::new();
+            let target = Object::new_in(&runtime);
+            target.set_native_call(|_, _| Ok(Value::Number(42.0)));
+            let handler = Object::new_in(&runtime);
+            let proxy =
+                crate::runtime::ProxyObject::try_new(target.clone(), handler.clone()).unwrap();
+            for object in [&target, &handler] {
+                object
+                    .create_data_property("back".into(), Value::Object(proxy.object()))
+                    .unwrap();
+            }
+            let weak = [
+                target.downgrade(),
+                handler.downgrade(),
+                proxy.object().downgrade(),
+            ];
+            drop(target);
+            drop(handler);
+            assert_eq!(runtime.diagnostics().rooted, 1);
+            assert_eq!(runtime.collect_migration_graph().unwrap().retained, 3);
+            assert!(
+                proxy
+                    .object()
+                    .call(Value::Undefined, &[])
+                    .unwrap()
+                    .same_value(&Value::Number(42.0))
+            );
+            if revoke {
+                proxy.revoke();
+                assert!(
+                    proxy.object().is_callable(),
+                    "revocation preserves callable identity"
+                );
+                assert!(proxy.object().call(Value::Undefined, &[]).is_err());
+                assert_eq!(runtime.collect_migration_graph().unwrap().reclaimed, 2);
+                assert!(weak[..2].iter().all(|object| object.upgrade().is_none()));
+            }
+            drop(proxy);
+            assert_eq!(runtime.collect_migration_graph().unwrap().retained, 0);
+            assert!(weak.iter().all(|object| object.upgrade().is_none()));
+        }
+    }
+    #[test]
     fn bound_function_captures_are_traced_without_rooting_their_cycles() {
         let runtime = Runtime::new();
         let target = Object::new_in(&runtime);

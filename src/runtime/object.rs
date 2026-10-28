@@ -350,7 +350,7 @@ pub(super) struct ObjectState {
     pub(super) weak_set_data: Option<super::collections::WeakSetSlot>,
     pub(super) date_value: Option<f64>,
     pub(super) iterator: Option<Box<super::iterator::IteratorSlot>>,
-    pub(super) proxy: Option<super::proxy::ProxySlot>,
+    pub(super) proxy: Option<Box<super::proxy::ProxySlot>>,
 }
 
 pub(super) fn ordinary_state() -> ObjectState {
@@ -601,7 +601,9 @@ impl Object {
     #[must_use]
     pub fn is_callable(&self) -> bool {
         let state = self.0.state.borrow();
-        state.callable.is_some() || state.bound.is_some()
+        state.callable.is_some()
+            || state.bound.is_some()
+            || state.proxy.as_ref().is_some_and(|proxy| proxy.callable)
     }
 
     /// Invokes this object's `[[Call]]` internal method.
@@ -609,11 +611,15 @@ impl Object {
     /// Calls and construction share a per-thread nesting limit of 32. Exceeding
     /// the limit returns RangeError; normal and abrupt exits release the budget.
     pub fn call(&self, this_value: Value, arguments: &[Value]) -> RuntimeResult<Value> {
-        let (callback, bound) = {
+        let (callback, bound, proxy) = {
             let state = self.0.state.borrow();
-            (state.callable.clone(), state.bound.clone())
+            (
+                state.callable.clone(),
+                state.bound.clone(),
+                state.proxy.as_ref().is_some_and(|proxy| proxy.callable),
+            )
         };
-        if callback.is_none() && bound.is_none() {
+        if callback.is_none() && bound.is_none() && !proxy {
             return Err(RuntimeError::type_error(
                 "object does not have a [[Call]] internal method",
             ));
@@ -629,7 +635,9 @@ impl Object {
             }
         }
         let _depth = CallDepthGuard::enter()?;
-        let result = if let Some(bound) = bound {
+        let result = if proxy {
+            super::proxy::apply_slot(self, this_value, arguments)
+        } else if let Some(bound) = bound {
             let target = bound.target.load(self)?;
             let this_value = bound.this_value.load(self)?;
             let arguments = bound.arguments(self, arguments)?;
@@ -653,17 +661,23 @@ impl Object {
     #[must_use]
     pub fn is_constructor(&self) -> bool {
         let state = self.0.state.borrow();
-        state.construct.is_some() || state.bound.as_ref().is_some_and(|bound| bound.constructor)
+        state.construct.is_some()
+            || state.bound.as_ref().is_some_and(|bound| bound.constructor)
+            || state.proxy.as_ref().is_some_and(|proxy| proxy.constructor)
     }
 
     /// Invokes this object's `[[Construct]]` internal method.
     /// Shares the nesting limit documented on [`Self::call`].
     pub fn construct(&self, arguments: &[Value], new_target: Self) -> RuntimeResult<Self> {
-        let (callback, bound) = {
+        let (callback, bound, proxy) = {
             let state = self.0.state.borrow();
-            (state.construct.clone(), state.bound.clone())
+            (
+                state.construct.clone(),
+                state.bound.clone(),
+                state.proxy.as_ref().is_some_and(|proxy| proxy.constructor),
+            )
         };
-        if callback.is_none() && !bound.as_ref().is_some_and(|bound| bound.constructor) {
+        if callback.is_none() && !bound.as_ref().is_some_and(|bound| bound.constructor) && !proxy {
             return Err(RuntimeError::type_error(
                 "object does not have a [[Construct]] internal method",
             ));
@@ -677,7 +691,9 @@ impl Object {
             }
         }
         let _depth = CallDepthGuard::enter()?;
-        let result = if let Some(bound) = bound {
+        let result = if proxy {
+            super::proxy::construct_slot(self, arguments, new_target)
+        } else if let Some(bound) = bound {
             let target = bound.target.load(self)?;
             let arguments = bound.arguments(self, arguments)?;
             let new_target = if new_target == *self {
@@ -1515,6 +1531,9 @@ impl super::ObjectData {
         }
         if let Some(iterator) = &state.iterator {
             iterator.trace(tracer);
+        }
+        if let Some(proxy) = &state.proxy {
+            proxy.trace(tracer);
         }
         for entry in &state.properties {
             entry.descriptor.trace(tracer);

@@ -1,13 +1,31 @@
 //! Proxy exotic objects and trap invariant enforcement.
 
-use std::{cell::RefCell, rc::Rc};
-
 use super::{
     ArrayObject, JsString, Object, PropertyDescriptor, PropertyKey, RuntimeError, RuntimeResult,
     Value, is_compatible_property_descriptor,
 };
 
-pub(super) type ProxySlot = Rc<RefCell<Option<(Object, Object)>>>;
+#[derive(Clone)]
+pub(super) struct ProxySlot {
+    pair: Option<(super::stored::StoredObject, super::stored::StoredObject)>,
+    pub(super) callable: bool,
+    pub(super) constructor: bool,
+}
+impl ProxySlot {
+    pub(super) fn target(&self, owner: &Object) -> RuntimeResult<Object> {
+        self.pair
+            .as_ref()
+            .ok_or_else(|| RuntimeError::type_error("revoked Proxy"))?
+            .0
+            .load(owner)
+    }
+    pub(super) fn trace(&self, tracer: &mut crate::gc::Tracer<'_>) {
+        if let Some((target, handler)) = &self.pair {
+            target.trace(tracer);
+            handler.trace(tracer);
+        }
+    }
+}
 
 /// A revocable Proxy object.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -15,36 +33,29 @@ pub struct ProxyObject(Object);
 
 impl ProxyObject {
     /// Creates a Proxy around a target and handler object.
+    ///
+    /// # Panics
+    /// Panics if target and handler belong to different allocation contexts.
+    /// Use [`Self::try_new`] to handle that error.
     #[must_use]
     pub fn new(target: Object, handler: Object) -> Self {
-        let slot = Rc::new(RefCell::new(Some((target.clone(), handler))));
-        let object = match (target.is_callable(), target.is_constructor()) {
-            (true, true) => {
-                let call_slot = slot.clone();
-                let construct_state = slot.clone();
-                Object::native_callable_constructor(
-                    move |this, arguments| apply_slot(&call_slot, this, arguments),
-                    move |arguments, new_target| {
-                        construct_slot(&construct_state, arguments, new_target)
-                    },
-                )
-            }
-            (true, false) => {
-                let call_slot = slot.clone();
-                Object::native_function(move |this, arguments| {
-                    apply_slot(&call_slot, this, arguments)
-                })
-            }
-            (false, true) => {
-                let construct_state = slot.clone();
-                Object::native_constructor(move |arguments, new_target| {
-                    construct_slot(&construct_state, arguments, new_target)
-                })
-            }
-            (false, false) => Object::new(),
+        Self::try_new(target, handler).expect("Proxy allocation context")
+    }
+
+    /// Creates a Proxy, rejecting objects from different allocation contexts.
+    pub fn try_new(target: Object, handler: Object) -> RuntimeResult<Self> {
+        super::stored::StoredObject::check_context(&target, &handler)?;
+        let object = Object::new_for(&target);
+        let slot = ProxySlot {
+            pair: Some((
+                super::stored::StoredObject::store(&object, &target)?,
+                super::stored::StoredObject::store(&object, &handler)?,
+            )),
+            callable: target.is_callable(),
+            constructor: target.is_constructor(),
         };
-        object.0.state.borrow_mut().proxy = Some(slot);
-        Self(object)
+        object.0.state.borrow_mut().proxy = Some(Box::new(slot));
+        Ok(Self(object))
     }
 
     /// Returns the underlying Proxy object.
@@ -55,23 +66,24 @@ impl ProxyObject {
 
     /// Revokes this Proxy. Every later internal operation fails with TypeError.
     pub fn revoke(&self) {
-        if let Some(slot) = &self.0.0.state.borrow().proxy {
-            *slot.borrow_mut() = None;
+        if let Some(slot) = &mut self.0.0.state.borrow_mut().proxy {
+            slot.pair = None;
         }
     }
 }
 
 fn state(proxy: &Object) -> RuntimeResult<(Object, Object)> {
-    proxy
+    let pair = proxy
         .0
         .state
         .borrow()
         .proxy
-        .clone()
+        .as_ref()
         .expect("Proxy slot")
-        .borrow()
+        .pair
         .clone()
-        .ok_or_else(|| RuntimeError::type_error("Proxy has been revoked"))
+        .ok_or_else(|| RuntimeError::type_error("Proxy has been revoked"))?;
+    Ok((pair.0.load(proxy)?, pair.1.load(proxy)?))
 }
 
 fn trap(handler: &Object, name: &str) -> RuntimeResult<Option<Object>> {
@@ -399,11 +411,8 @@ pub(super) fn prevent_extensions(proxy: &Object) -> RuntimeResult<bool> {
     Ok(result)
 }
 
-fn apply_slot(slot: &ProxySlot, this: Value, arguments: &[Value]) -> RuntimeResult<Value> {
-    let (target, handler) = slot
-        .borrow()
-        .clone()
-        .ok_or_else(|| RuntimeError::type_error("Proxy has been revoked"))?;
+pub(super) fn apply_slot(proxy: &Object, this: Value, arguments: &[Value]) -> RuntimeResult<Value> {
+    let (target, handler) = state(proxy)?;
     let Some(trap) = trap(&handler, "apply")? else {
         return target.call(this, arguments);
     };
@@ -412,20 +421,17 @@ fn apply_slot(slot: &ProxySlot, this: Value, arguments: &[Value]) -> RuntimeResu
         &[
             Value::Object(target),
             this,
-            Value::Object(arguments_array(arguments)?),
+            Value::Object(arguments_array(proxy, arguments)?),
         ],
     )
 }
 
-fn construct_slot(
-    slot: &ProxySlot,
+pub(super) fn construct_slot(
+    proxy: &Object,
     arguments: &[Value],
     new_target: Object,
 ) -> RuntimeResult<Object> {
-    let (target, handler) = slot
-        .borrow()
-        .clone()
-        .ok_or_else(|| RuntimeError::type_error("Proxy has been revoked"))?;
+    let (target, handler) = state(proxy)?;
     let Some(trap) = trap(&handler, "construct")? else {
         return target.construct(arguments, new_target);
     };
@@ -433,7 +439,7 @@ fn construct_slot(
         Value::Object(handler),
         &[
             Value::Object(target),
-            Value::Object(arguments_array(arguments)?),
+            Value::Object(arguments_array(proxy, arguments)?),
             Value::Object(new_target),
         ],
     )?;
@@ -445,8 +451,8 @@ fn construct_slot(
     }
 }
 
-fn arguments_array(arguments: &[Value]) -> RuntimeResult<Object> {
-    let array = ArrayObject::new(arguments.len() as u32)?;
+fn arguments_array(context: &Object, arguments: &[Value]) -> RuntimeResult<Object> {
+    let array = ArrayObject::new_for(context, arguments.len() as u32)?;
     for (index, value) in arguments.iter().cloned().enumerate() {
         array
             .object()

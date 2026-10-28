@@ -29,7 +29,7 @@ fn install_proxy(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {
     constructor.set_native_construct(|arguments, _| {
         let target = object_arg(arguments.first(), "Proxy target")?;
         let handler = object_arg(arguments.get(1), "Proxy handler")?;
-        Ok(ProxyObject::new(target, handler).object())
+        Ok(ProxyObject::try_new(target, handler)?.object())
     });
     let prototype = intrinsics.get(IntrinsicId::FunctionPrototype);
     method(
@@ -40,8 +40,8 @@ fn install_proxy(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {
         move |_, arguments| {
             let target = object_arg(arguments.first(), "Proxy target")?;
             let handler = object_arg(arguments.get(1), "Proxy handler")?;
-            let proxy = ProxyObject::new(target, handler);
-            let revocable = Object::new();
+            let proxy = ProxyObject::try_new(target, handler)?;
+            let revocable = Object::new_for(&prototype);
             revocable.create_data_property("proxy".into(), Value::Object(proxy.object()))?;
             revocable.create_data_property(
                 "revoke".into(),

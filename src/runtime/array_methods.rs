@@ -278,12 +278,7 @@ fn is_array(object: &Object) -> RuntimeResult<bool> {
         let Some(proxy) = proxy else {
             return Ok(false);
         };
-        object = proxy
-            .borrow()
-            .as_ref()
-            .ok_or_else(|| RuntimeError::type_error("revoked Proxy"))?
-            .0
-            .clone();
+        object = proxy.target(&object)?;
     }
 }
 

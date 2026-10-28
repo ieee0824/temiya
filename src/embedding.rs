@@ -100,9 +100,6 @@ pub struct Engine {
     host_state: Option<Box<dyn Any>>,
     backend: ScriptBackend,
     runtime: crate::runtime::Runtime,
-    // Transitional allocation selection. Removed when all traced payload and
-    // active-root families are migrated; not an alternate execution backend.
-    managed_allocation: bool,
     thread_confined: PhantomData<Rc<()>>,
 }
 
@@ -131,7 +128,6 @@ impl Engine {
             host_state,
             backend,
             runtime: crate::runtime::Runtime::new(),
-            managed_allocation: false,
             thread_confined: PhantomData,
         }
     }
@@ -140,6 +136,11 @@ impl Engine {
     #[must_use]
     pub fn options(&self) -> &EngineOptions {
         &self.options
+    }
+
+    /// Borrows the shared context used by this engine and all its Realms.
+    pub fn allocation_context(&self) -> &crate::runtime::AllocationContext {
+        &self.runtime
     }
 
     /// Borrows host state when its concrete type matches `T`.
@@ -151,16 +152,18 @@ impl Engine {
     /// Creates a fresh Realm owned by this engine.
     #[must_use]
     pub fn create_realm(&self) -> RealmHandle {
-        let realm = if self.managed_allocation {
-            Realm::ordinary_in(&self.runtime)
-        } else {
-            Realm::ordinary()
-        };
+        let realm = Realm::ordinary_in(&self.runtime);
         RealmHandle {
             engine_id: self.id,
             realm_id: realm.identity(),
             realm,
         }
+    }
+
+    /// Collects unreachable runtime objects across all Realms of this engine.
+    /// Owned value, object, script and module handles remain valid.
+    pub fn collect_garbage(&self) -> Result<crate::gc::CollectionStats, EmbedError> {
+        self.runtime.collect_garbage().map_err(EmbedError::Host)
     }
 
     /// Roots a runtime value in an owned handle for a Realm.
@@ -737,10 +740,7 @@ mod managed_allocation_tests {
     use super::*;
     #[test]
     fn public_engine_evaluation_uses_the_owned_heap_in_the_migration_context() {
-        let engine = Engine {
-            managed_allocation: true,
-            ..Engine::default()
-        };
+        let engine = Engine::default();
         let realm = engine.create_realm();
         let baseline = engine.runtime.diagnostics().live;
         assert!(
@@ -771,14 +771,8 @@ mod managed_allocation_tests {
     #[test]
     fn managed_host_boundaries_reject_foreign_objects_without_repeating_effects() {
         use std::cell::Cell;
-        let first = Engine {
-            managed_allocation: true,
-            ..Engine::default()
-        };
-        let second = Engine {
-            managed_allocation: true,
-            ..Engine::default()
-        };
+        let first = Engine::default();
+        let second = Engine::default();
         let realm = first.create_realm();
         let other_realm = second.create_realm();
         let foreign = second
@@ -845,7 +839,7 @@ mod managed_allocation_tests {
         impl Drop for Reenter {
             fn drop(&mut self) {
                 assert!(
-                    self.engine.runtime.collect_migration_graph().is_err(),
+                    self.engine.collect_garbage().is_err(),
                     "retirement must reject recursive collection without holding the Heap borrow"
                 );
                 let script = self
@@ -862,10 +856,7 @@ mod managed_allocation_tests {
                 self.observed.set(true);
             }
         }
-        let base = Engine {
-            managed_allocation: true,
-            ..Engine::default()
-        };
+        let base = Engine::default();
         let engine = Rc::new(base);
         let realm = engine.create_realm();
         let observed = Rc::new(Cell::new(false));
@@ -889,7 +880,7 @@ mod managed_allocation_tests {
         let clear = engine.compile(&realm, "delete retire;").unwrap();
         engine.evaluate(&clear).unwrap();
         drop(clear);
-        engine.runtime.collect_migration_graph().unwrap();
+        engine.collect_garbage().unwrap();
         assert!(
             observed.get(),
             "host Drop must run after retirement without a Heap borrow"
@@ -903,8 +894,7 @@ mod managed_allocation_tests {
     #[test]
     fn a_partial_array_literal_keeps_its_first_object_alive_during_host_reentry_and_collection() {
         for backend in [ScriptBackend::Ast, ScriptBackend::Bytecode] {
-            let mut base = Engine::builder().script_backend(backend).build();
-            base.managed_allocation = true;
+            let base = Engine::builder().script_backend(backend).build();
             let engine = Rc::new(base);
             let realm = engine.create_realm();
             let token = Rc::new(());
@@ -960,7 +950,7 @@ mod managed_allocation_tests {
             engine.evaluate(&clear).unwrap();
             drop(clear);
             drop(value);
-            engine.runtime.collect_migration_graph().unwrap();
+            engine.collect_garbage().unwrap();
             assert!(
                 weak.upgrade().is_none(),
                 "partial-literal roots must end with evaluation/returned-handle lifetime"
@@ -971,8 +961,7 @@ mod managed_allocation_tests {
     #[test]
     fn migrated_function_allocations_execute_through_the_public_ast_and_vm_apis() {
         for backend in [ScriptBackend::Ast, ScriptBackend::Bytecode] {
-            let mut engine = Engine::builder().script_backend(backend).build();
-            engine.managed_allocation = true;
+            let engine = Engine::builder().script_backend(backend).build();
             engine.runtime.set_allocation_collection_interval(0);
             let realm = engine.create_realm();
             for source in [
@@ -1087,8 +1076,7 @@ mod managed_allocation_tests {
     #[test]
     fn managed_allocation_stress_passes_the_original_seven_teardown_fixtures() {
         for case in crate::ownership_probe::CASES {
-            let mut engine = Engine::builder().build();
-            engine.managed_allocation = true;
+            let engine = Engine::builder().build();
             engine.runtime.set_allocation_collection_interval(0);
             let observation = crate::ownership_probe::observe_with_engine(case, engine).unwrap();
             assert!(
@@ -1102,8 +1090,7 @@ mod managed_allocation_tests {
     #[test]
     fn original_ownership_fixtures_release_after_last_handle_in_a_live_engine() {
         for case in crate::ownership_probe::CASES {
-            let mut engine = Engine::builder().build();
-            engine.managed_allocation = true;
+            let engine = Engine::builder().build();
             engine.runtime.set_allocation_collection_interval(0);
             let realm = engine.create_realm();
             let token = Rc::new(());
@@ -1122,7 +1109,7 @@ mod managed_allocation_tests {
                 .unwrap();
             engine.evaluate(&cleanup).unwrap();
             drop((script, cleanup));
-            engine.runtime.collect_migration_graph().unwrap();
+            engine.collect_garbage().unwrap();
             assert!(weak.upgrade().is_some(), "{}", case.name);
             let Value::Object(object) = root.value() else {
                 panic!("object")
@@ -1153,10 +1140,10 @@ mod managed_allocation_tests {
                     .same_value(&Value::Number(42.0))
             );
             drop((marker, target, root));
-            engine.runtime.collect_migration_graph().unwrap();
+            engine.collect_garbage().unwrap();
             assert!(weak.upgrade().is_some(), "clone: {}", case.name);
             drop(clone);
-            engine.runtime.collect_migration_graph().unwrap();
+            engine.collect_garbage().unwrap();
             assert!(weak.upgrade().is_none(), "last handle: {}", case.name);
             let runtime = engine.runtime.clone();
             drop((realm, engine));
@@ -1167,8 +1154,7 @@ mod managed_allocation_tests {
     #[test]
     fn every_allocation_collection_preserves_ast_and_vm_execution() {
         for backend in [ScriptBackend::Ast, ScriptBackend::Bytecode] {
-            let mut engine = Engine::builder().script_backend(backend).build();
-            engine.managed_allocation = true;
+            let engine = Engine::builder().script_backend(backend).build();
             engine.runtime.set_allocation_collection_interval(0);
             let realm = engine.create_realm();
             for source in [
@@ -1204,8 +1190,7 @@ mod managed_allocation_tests {
 
     #[test]
     fn managed_with_boxes_primitives_in_the_current_realm() {
-        let mut engine = Engine::builder().script_backend(ScriptBackend::Ast).build();
-        engine.managed_allocation = true;
+        let engine = Engine::builder().script_backend(ScriptBackend::Ast).build();
         engine.runtime.set_allocation_collection_interval(0);
         let realm = engine.create_realm();
         for source in [
@@ -1224,7 +1209,7 @@ mod managed_allocation_tests {
                 "{source}"
             );
             engine.runtime.verify_migration_barriers().unwrap();
-            engine.runtime.collect_migration_graph().unwrap();
+            engine.collect_garbage().unwrap();
         }
         for source in ["with(null){}", "with(undefined){}"] {
             let script = engine.compile(&realm, source).unwrap();
@@ -1237,8 +1222,7 @@ mod managed_allocation_tests {
 
     #[test]
     fn managed_module_handles_keep_dependency_cycles_after_engine_drop() {
-        let mut engine = Engine::builder().build();
-        engine.managed_allocation = true;
+        let engine = Engine::builder().build();
         engine.runtime.set_allocation_collection_interval(0);
         let realm = engine.create_realm();
         let runtime = engine.runtime.clone();
@@ -1270,8 +1254,7 @@ mod managed_allocation_tests {
     #[test]
     fn managed_generator_frames_survive_gc_and_reject_execution_reentry() {
         use crate::runtime::{Generator, GeneratorState};
-        let mut engine = Engine::builder().script_backend(ScriptBackend::Ast).build();
-        engine.managed_allocation = true;
+        let engine = Engine::builder().script_backend(ScriptBackend::Ast).build();
         engine.runtime.set_allocation_collection_interval(0);
         let realm = engine.create_realm();
         let runtime = engine.runtime.clone();
@@ -1359,8 +1342,7 @@ mod managed_allocation_tests {
     #[test]
     fn managed_generator_references_keep_uncoerced_keys_and_aliases_across_suspension() {
         use crate::runtime::Generator;
-        let mut engine = Engine::builder().script_backend(ScriptBackend::Ast).build();
-        engine.managed_allocation = true;
+        let engine = Engine::builder().script_backend(ScriptBackend::Ast).build();
         engine.runtime.set_allocation_collection_interval(0);
         let realm = engine.create_realm();
         let runtime = engine.runtime.clone();
@@ -1461,8 +1443,7 @@ mod managed_allocation_tests {
     #[test]
     fn managed_generator_delegation_traces_only_remaining_values() {
         use crate::runtime::Generator;
-        let mut engine = Engine::builder().script_backend(ScriptBackend::Ast).build();
-        engine.managed_allocation = true;
+        let engine = Engine::builder().script_backend(ScriptBackend::Ast).build();
         engine.runtime.set_allocation_collection_interval(0);
         let realm = engine.create_realm();
         let script = engine.compile(&realm, "var abandon;function* values(items){arguments=undefined;abandon=function(){items=undefined;};yield* items;return 42;}var delegatedItems=[{answer:20},{answer:22}];var delegatedGenerator=values(delegatedItems);delegatedGenerator;").unwrap();
@@ -1490,7 +1471,7 @@ mod managed_allocation_tests {
         let clear = engine.compile(&realm, "abandon();abandon=undefined;delegatedItems=undefined;delegatedGenerator=undefined;").unwrap();
         engine.evaluate(&clear).unwrap();
         drop(clear);
-        engine.runtime.collect_migration_graph().unwrap();
+        engine.collect_garbage().unwrap();
         assert!(weak[0].upgrade().is_none());
         assert!(weak[1].upgrade().is_some());
         let next = generator.next(Value::Undefined).unwrap();
@@ -1504,7 +1485,7 @@ mod managed_allocation_tests {
                 .same_value(&Value::Number(22.0))
         );
         drop(value);
-        engine.runtime.collect_migration_graph().unwrap();
+        engine.collect_garbage().unwrap();
         assert!(weak[1].upgrade().is_none());
         assert!(
             generator
@@ -1522,8 +1503,7 @@ mod managed_allocation_tests {
     fn managed_generator_abrupt_completion_releases_frames_and_keeps_escaped_errors() {
         use crate::runtime::{Generator, GeneratorState};
         for mode in 0..3 {
-            let mut engine = Engine::builder().script_backend(ScriptBackend::Ast).build();
-            engine.managed_allocation = true;
+            let engine = Engine::builder().script_backend(ScriptBackend::Ast).build();
             engine.runtime.set_allocation_collection_interval(0);
             let realm = engine.create_realm();
             let runtime = engine.runtime.clone();
@@ -1577,8 +1557,7 @@ mod managed_allocation_tests {
     fn managed_promise_reactions_execute_ast_and_vm_callbacks_across_collection() {
         use crate::runtime::Promise;
         for backend in [ScriptBackend::Ast, ScriptBackend::Bytecode] {
-            let mut engine = Engine::builder().script_backend(backend).build();
-            engine.managed_allocation = true;
+            let engine = Engine::builder().script_backend(backend).build();
             engine.runtime.set_allocation_collection_interval(0);
             let realm = engine.create_realm();
             let runtime = engine.runtime.clone();
@@ -1643,8 +1622,7 @@ mod managed_allocation_tests {
     #[test]
     fn managed_async_results_keep_values_and_rejections_in_promise_slots() {
         use crate::runtime::Promise;
-        let mut engine = Engine::builder().script_backend(ScriptBackend::Ast).build();
-        engine.managed_allocation = true;
+        let engine = Engine::builder().script_backend(ScriptBackend::Ast).build();
         engine.runtime.set_allocation_collection_interval(0);
         let realm = engine.create_realm();
         for source in [
@@ -1654,7 +1632,7 @@ mod managed_allocation_tests {
             let script = engine.compile(&realm, source).unwrap();
             let handle = engine.evaluate(&script).unwrap();
             engine.runtime.verify_migration_barriers().unwrap();
-            engine.runtime.collect_migration_graph().unwrap();
+            engine.collect_garbage().unwrap();
             let Value::Object(object) = handle.value() else {
                 panic!("async Promise")
             };
@@ -1680,8 +1658,7 @@ mod managed_allocation_tests {
     #[test]
     fn managed_object_statics_survive_proxy_and_descriptor_collection_reentry() {
         for backend in [ScriptBackend::Ast, ScriptBackend::Bytecode] {
-            let mut engine = Engine::builder().script_backend(backend).build();
-            engine.managed_allocation = true;
+            let engine = Engine::builder().script_backend(backend).build();
             let realm = engine.create_realm();
             let runtime = engine.runtime.clone();
             engine
@@ -1740,15 +1717,14 @@ mod managed_allocation_tests {
                 .try_delete(&"forceCollection".into())
                 .unwrap();
             engine.runtime.verify_migration_barriers().unwrap();
-            engine.runtime.collect_migration_graph().unwrap();
+            engine.collect_garbage().unwrap();
         }
     }
 
     #[test]
     fn managed_json_revivers_keep_partial_graphs_alive_during_gc_and_evaluation_reentry() {
         for backend in [ScriptBackend::Ast, ScriptBackend::Bytecode] {
-            let mut base = Engine::builder().script_backend(backend).build();
-            base.managed_allocation = true;
+            let base = Engine::builder().script_backend(backend).build();
             let engine = Rc::new(base);
             let realm = engine.create_realm();
             let calls = Rc::new(std::cell::RefCell::new(Vec::new()));
@@ -1758,7 +1734,7 @@ mod managed_allocation_tests {
             engine
                 .register_global_function(&realm, "revive", move |context, _, arguments| {
                     callback_engine.runtime.verify_migration_barriers().unwrap();
-                    callback_engine.runtime.collect_migration_graph().unwrap();
+                    callback_engine.collect_garbage().unwrap();
                     let nested = callback_engine.compile(&callback_realm, "40+2;").unwrap();
                     assert!(
                         callback_engine
@@ -1823,10 +1799,10 @@ mod managed_allocation_tests {
                 .unwrap();
             engine.evaluate(&clear).unwrap();
             drop(clear);
-            engine.runtime.collect_migration_graph().unwrap();
+            engine.collect_garbage().unwrap();
             assert!(weak.upgrade().is_some());
             drop(value);
-            engine.runtime.collect_migration_graph().unwrap();
+            engine.collect_garbage().unwrap();
             assert!(weak.upgrade().is_none());
         }
     }
@@ -1839,8 +1815,7 @@ mod managed_allocation_tests {
                 "var escaped=(()=>{let payload={probe:marker};let read=()=>payload.probe();payload.back=read;return read;})();delete marker;escaped;",
                 "var escaped=(function make(){var probe=marker;function Box(){return probe();}return Box.prototype;})();delete marker;escaped;",
             ] {
-                let mut engine = Engine::builder().script_backend(backend).build();
-                engine.managed_allocation = true;
+                let engine = Engine::builder().script_backend(backend).build();
                 let realm = engine.create_realm();
                 let token = Rc::new(());
                 let weak = Rc::downgrade(&token);
@@ -1859,7 +1834,7 @@ mod managed_allocation_tests {
                 engine.evaluate(&clear).unwrap();
                 drop(clear);
                 drop(value);
-                engine.runtime.collect_migration_graph().unwrap();
+                engine.collect_garbage().unwrap();
                 assert!(weak.upgrade().is_some());
                 {
                     let Value::Object(function) = clone.value() else {
@@ -1883,7 +1858,7 @@ mod managed_allocation_tests {
                     );
                 }
                 drop(clone);
-                engine.runtime.collect_migration_graph().unwrap();
+                engine.collect_garbage().unwrap();
                 assert!(
                     weak.upgrade().is_none(),
                     "unrooted closure/environment cycle: {backend:?} {source}"
@@ -1902,8 +1877,7 @@ mod managed_allocation_tests {
                 "var value=[marker,,null];value.probe=marker;value[3]=value;delete marker;value;",
                 "var value=[];value.probe=marker;value[1000000]=value;delete marker;value;",
             ] {
-                let mut engine = Engine::builder().script_backend(backend).build();
-                engine.managed_allocation = true;
+                let engine = Engine::builder().script_backend(backend).build();
                 let realm = engine.create_realm();
                 let token = Rc::new(());
                 let weak = Rc::downgrade(&token);
@@ -1921,10 +1895,10 @@ mod managed_allocation_tests {
                 let clear = engine.compile(&realm, "value=undefined;").unwrap();
                 engine.evaluate(&clear).unwrap();
                 drop(clear);
-                engine.runtime.collect_migration_graph().unwrap();
+                engine.collect_garbage().unwrap();
                 assert!(weak.upgrade().is_some(), "{backend:?} {source}");
                 drop(value);
-                engine.runtime.collect_migration_graph().unwrap();
+                engine.collect_garbage().unwrap();
                 assert!(weak.upgrade().is_some());
                 let Value::Object(object) = cloned.value() else {
                     panic!("object result")
@@ -1940,7 +1914,7 @@ mod managed_allocation_tests {
                 );
                 drop(callback);
                 drop(cloned);
-                engine.runtime.collect_migration_graph().unwrap();
+                engine.collect_garbage().unwrap();
                 assert!(
                     weak.upgrade().is_none(),
                     "unrooted JS graph should release its marker: {backend:?} {source}"

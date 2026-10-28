@@ -639,7 +639,6 @@ impl Heap {
         self.collect_with_retire(drop, None)
     }
 
-    #[cfg(test)]
     pub(crate) fn collect_retiring(&mut self) -> (CollectionStats, RetiredAllocations) {
         let mut retired = RetiredAllocations(Vec::new());
         let stats = self.collect_with_retire(|value| retired.0.push(value), None);

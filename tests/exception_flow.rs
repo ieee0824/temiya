@@ -101,7 +101,12 @@ fn native_errors_are_catchable_with_intrinsic_prototypes() {
 fn embedding_and_module_boundaries_retain_owned_values() {
     let engine = Engine::default();
     let realm = engine.create_realm();
-    let marker = engine.value(&realm, Value::Object(Object::new())).unwrap();
+    let marker = engine
+        .value(
+            &realm,
+            Value::Object(Object::new_in(engine.allocation_context())),
+        )
+        .unwrap();
     engine.set_global(&realm, "marker", marker.clone()).unwrap();
     let script = engine
         .compile(&realm, "function fail() { throw marker; } fail();")

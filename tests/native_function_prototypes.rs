@@ -136,12 +136,13 @@ fn registered_host_function_and_low_level_native_allocation_have_distinct_contra
         ));
     }
     assert!(
-        Object::native_function(|_, _| Ok(Value::Undefined))
+        Object::native_function_in(engine.allocation_context(), |_, _| Ok(Value::Undefined))
             .prototype()
             .is_none()
     );
     assert!(weak.upgrade().is_some());
     drop(realm);
+    engine.collect_garbage().unwrap();
     assert!(weak.upgrade().is_none());
 }
 #[test]

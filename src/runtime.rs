@@ -61,6 +61,8 @@ pub(crate) use interpreter::{
 pub use intrinsics::{IntrinsicId, IntrinsicRegistry, WellKnownSymbol, WellKnownSymbols};
 pub use job_queue::JobQueue;
 pub(crate) use managed::Runtime;
+/// Explicit owner for a traced runtime heap and its host-created objects.
+pub use managed::Runtime as AllocationContext;
 pub use numeric::{BigIntObject, Math, NumberObject, parse_float, parse_int};
 pub use object::{PropertyDescriptor, PropertyKey, is_compatible_property_descriptor};
 pub use pipeline::{ModuleGraph, ModuleStatus, SourceTextModule};
@@ -317,7 +319,8 @@ impl Object {
         Self(managed::ObjectReference::legacy(ObjectData::ordinary()))
     }
 
-    pub(crate) fn new_in(runtime: &managed::Runtime) -> Self {
+    /// Allocates an ordinary object in an explicit shared context.
+    pub fn new_in(runtime: &AllocationContext) -> Self {
         runtime.allocate_object(ObjectData::ordinary())
     }
 

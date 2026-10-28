@@ -616,6 +616,25 @@ pub(super) fn ordinary_state() -> ObjectState {
 }
 
 impl Object {
+    /// Creates a Realm-independent native callback in an explicit context.
+    pub fn native_function_in(
+        context: &super::AllocationContext,
+        callback: impl Fn(Value, &[Value]) -> RuntimeResult<Value> + 'static,
+    ) -> Self {
+        let object = Self::new_in(context);
+        object.set_native_call(callback);
+        object
+    }
+
+    /// Creates a native constructor in an explicit context.
+    pub fn native_constructor_in(
+        context: &super::AllocationContext,
+        callback: impl Fn(&[Value], Object) -> RuntimeResult<Object> + 'static,
+    ) -> Self {
+        let object = Self::new_in(context);
+        object.set_native_construct(callback);
+        object
+    }
     pub(super) fn source_realm(&self) -> Option<StoredRealm> {
         self.0.runtime()?;
         let state = self.0.state.borrow();

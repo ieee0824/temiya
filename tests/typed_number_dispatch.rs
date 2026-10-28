@@ -62,22 +62,25 @@ fn coercion_throw_keeps_identity_and_skips_the_right_callback() {
         let engine = Engine::builder().script_backend(backend).build();
         let realm = engine.create_realm();
         let calls = Rc::new(Cell::new(0));
-        let reason = Value::Object(Object::new());
+        let reason = Value::Object(Object::new_in(engine.allocation_context()));
         for (name, throws) in [("left", true), ("right", false)] {
-            let object = Object::new();
+            let object = Object::new_in(engine.allocation_context());
             let observed = calls.clone();
             let thrown = reason.clone();
             object
                 .create_data_property(
                     "valueOf".into(),
-                    Value::Object(Object::native_function(move |_, _| {
-                        observed.set(observed.get() + 1);
-                        if throws {
-                            Err(RuntimeError::thrown(thrown.clone()))
-                        } else {
-                            Ok(Value::Number(7.0))
-                        }
-                    })),
+                    Value::Object(Object::native_function_in(
+                        engine.allocation_context(),
+                        move |_, _| {
+                            observed.set(observed.get() + 1);
+                            if throws {
+                                Err(RuntimeError::thrown(thrown.clone()))
+                            } else {
+                                Ok(Value::Number(7.0))
+                            }
+                        },
+                    )),
                 )
                 .unwrap();
             engine

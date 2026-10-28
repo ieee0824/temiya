@@ -1,7 +1,7 @@
 //! Shared allocation context for the coordinated runtime graph migration.
 //!
-//! Allocation collection stays disabled until stored edges and every callable,
-//! environment, frame and host boundary have moved to the tracing protocol.
+//! Engine Realms share this context. Allocation safepoints trace incoming records
+//! before publication; public facades register roots in the same heap.
 use std::{
     cell::{Cell, RefCell},
     ops::Deref,
@@ -12,7 +12,12 @@ use super::{Object, ObjectData};
 use crate::gc::{Handle, Heap, HeapOptions, Root, Trace, Tracer};
 
 #[derive(Clone)]
-pub(crate) struct Runtime(Rc<RuntimeData>);
+pub struct Runtime(Rc<RuntimeData>);
+impl Default for Runtime {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 pub(super) struct RuntimeData {
     heap: RefCell<Heap>,
     collecting: Cell<bool>,
@@ -322,15 +327,17 @@ impl Runtime {
         *data.facade.borrow_mut() = Rc::downgrade(&facade);
         super::Environment(EnvironmentReference::Managed(facade))
     }
-    pub(crate) fn new() -> Self {
+    /// Creates an independent allocation context. An Engine shares one context
+    /// across all its Realms; use Engine::allocation_context for host values.
+    pub fn new() -> Self {
         Self(Rc::new(RuntimeData {
             heap: RefCell::new(Heap::with_options(HeapOptions {
                 allocation_threshold: usize::MAX,
                 max_allocations: None,
             })),
             collecting: Cell::new(false),
-            allocation_interval: Cell::new(usize::MAX),
-            allocation_remaining: Cell::new(usize::MAX),
+            allocation_interval: Cell::new(4096),
+            allocation_remaining: Cell::new(4096),
         }))
     }
     pub(super) fn allocate_object(&self, data: ObjectData) -> Object {
@@ -366,8 +373,10 @@ impl Runtime {
     pub(crate) fn collect_migration_graph(
         &self,
     ) -> super::RuntimeResult<crate::gc::CollectionStats> {
-        // An explicit test safepoint for migrated graph subsets, not the public
-        // allocation-collection enablement gate.
+        self.collect_garbage()
+    }
+    /// Collects unreachable allocations while preserving every owning facade.
+    pub fn collect_garbage(&self) -> super::RuntimeResult<crate::gc::CollectionStats> {
         if self.0.collecting.replace(true) {
             return Err(super::RuntimeError::type_error(
                 "collection is already active",

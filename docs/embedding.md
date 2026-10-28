@@ -13,6 +13,26 @@ rejected. Compile failures use `EmbedError`; evaluation failures use an owned
 values. A returned `ValueHandle` owns its value and remains valid until dropped,
 without borrowing the engine through a Rust lifetime.
 
+On the 0.2 migration branch, all Engine Realms share one tracing heap. Allocation
+safepoints collect unreachable graphs; `engine.collect_garbage()?` also requests
+an explicit collection. Owned handles register roots, including handles kept
+after the Engine is dropped. Dropping a Realm handle alone does not promise
+immediate destruction while another owner keeps the heap alive.
+
+Host objects with custom runtime hooks must use
+`Object::new_in(engine.allocation_context())`. Low-level callbacks can use
+`Object::native_function_in(engine.allocation_context(), callback)`; this
+allocates in the shared heap without attaching a Realm's Function prototype.
+Use `register_global_function` for the Realm-aware callback contract. Objects
+from a separate `AllocationContext::new()` cannot be passed to this Engine;
+the boundary rejects them instead of copying their identity or graph. The
+contextless low-level constructors still use the legacy representation during
+the migration and cannot supply objects to Engine APIs.
+
+Opaque host callback captures are externally owned Rust values. Capturing an
+owned JavaScript handle keeps its root alive; hosts must release their own
+Rust ownership cycles. JavaScript edges stored by the runtime are traced.
+
 Explicit JavaScript throws keep their original value in `Exception::thrown`,
 including throws that cross function or module boundaries. The handle retains
 the engine and evaluation Realm provenance. A native language error keeps its

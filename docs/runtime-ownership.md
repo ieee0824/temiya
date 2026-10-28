@@ -1,9 +1,11 @@
 # Runtime ownership migration
 
 Decision for #256, based on main `4866b4de8ea03de01066fcfd450b9a16d011c948`.
-This is the implementation contract for #257, #313 and #340. The public Engine
-still uses Rc objects. The collector in `gc.rs` is a separate component; this
-plan and its probes do not make runtime collection implemented.
+This is the implementation contract for #257, #313 and #340. The migration
+branch now uses a shared tracing heap for public Engine Realms, with allocation
+safepoints and an explicit `Engine::collect_garbage` hook. Contextless low-level
+constructors still use the legacy representation pending removal. The original
+baseline observations below describe the starting point, not the current branch.
 
 ## Evidence and acceptance probe
 
@@ -38,10 +40,9 @@ checks live-handle/clone/function/prototype safety and acyclic release; it does
 not require known leaks to persist after migration. The strict command is the
 post-migration reclamation acceptance test.
 
-These probes cover runtime teardown, not collection within a live Engine.
-After integration, add the explicit `Engine::collect_garbage` development hook
-and run the same root transitions before Engine teardown, collecting after each
-step. That API does not exist today. Pending jobs, suspended generators,
+These probes cover runtime teardown. Live-Engine tests additionally run the same
+root transitions with explicit collection before Engine teardown. The public
+`Engine::collect_garbage` hook is available on the migration branch. Pending jobs, suspended generators,
 modules and ephemerons have additional phase gates below; the seven fixtures
 alone cannot establish complete GC integration. No Test262 pass count is
 assigned to host-token destruction: the standard does not expose this Rust
@@ -253,6 +254,22 @@ inference, restricted properties, broader metadata and full prototype-chain
 coverage remain tracked separately (#202, #210).
 
 ## Pending 0.2 API migration
+
+The public Engine now creates every Realm in its shared tracing context; the
+private allocation-mode switch has been removed. Normal allocation safepoints
+run every 4096 managed allocations. This initial interval is subject to the
+original-workload memory and speed gates, not a measured optimum. Incoming
+unpublished records participate in tracing before collection. Retired records
+are destroyed outside the heap borrow, so host destructors can reenter runtime
+allocation without resurrecting retired generations.
+
+`Engine::allocation_context()` exposes the explicit context for host object and
+native-function factories. A cloned context may outlive the Engine and request
+collection through `AllocationContext::collect_garbage`. Contextless factories
+remain legacy and are rejected at Engine object boundaries; removing those
+factories and representations is still required before the coordinated migration
+is considered complete. The version is now 0.2.0 for these Rust API changes;
+this does not publish a release or change the opaque C ABI version.
 
 The coordinated tracing migration changes `Realm::intrinsics()` from a borrowed
 registry to an owning `IntrinsicRegistry` snapshot. The snapshot and its clones

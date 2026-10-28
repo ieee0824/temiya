@@ -214,12 +214,12 @@ fn embedding_conversion_hooks_remain_supported_for_length_values() {
     use temiya::runtime::Object;
     let calls = Rc::new(Cell::new(0));
     let observed = calls.clone();
-    let length = Object::new();
+    let engine = Engine::default();
+    let length = Object::new_in(engine.allocation_context());
     length.set_value_of_hook(move || {
         observed.set(observed.get() + 1);
         Ok(Value::Number(2.0))
     });
-    let engine = Engine::default();
     let realm = engine.create_realm();
     let handle = engine.value(&realm, Value::Object(length)).unwrap();
     engine.set_global(&realm, "hostLength", handle).unwrap();

@@ -8,6 +8,18 @@ until 1.0, a minor version may contain breaking API changes.
 ### Added
 
 - Bootstrap ECMAScript engine components and stable embedding boundaries.
+- Shared tracing heap for Engine Realms, allocation safepoints, and explicit
+  `Engine::collect_garbage` / `AllocationContext::collect_garbage` hooks.
+- Explicit `Object::new_in`, `native_function_in`, and `native_constructor_in`
+  factories for host objects in an Engine's allocation context.
+
+### Changed
+
+- The 0.2 Rust boundary rejects host objects from a different allocation context.
+  Contextless low-level constructors remain legacy during migration; use the
+  Engine's allocation context when supplying objects to its APIs.
+- Realm handle destruction may defer host callback destruction until collection
+  when another owner keeps the shared heap alive.
 
 ## [0.1.0] - 2026-10-26
 

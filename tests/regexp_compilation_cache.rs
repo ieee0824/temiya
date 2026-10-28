@@ -12,7 +12,7 @@ fn cached_construction_keeps_coercion_order_identity_and_abrupt_values() {
         let realm = engine.create_realm();
         let calls = Rc::new(RefCell::new(String::new()));
         for (name, marker, text) in [("pattern", 'P', "a"), ("flags", 'F', "g")] {
-            let object = Object::new();
+            let object = Object::new_in(engine.allocation_context());
             let observed = calls.clone();
             object.set_to_string_hook(move || {
                 observed.borrow_mut().push(marker);
@@ -43,10 +43,10 @@ fn cached_construction_keeps_coercion_order_identity_and_abrupt_values() {
         assert_eq!(first.exec(&input).unwrap().unwrap().index, 0);
         assert_eq!(second.exec(&input).unwrap().unwrap().index, 0);
         assert_eq!(first.exec(&input).unwrap().unwrap().index, 1);
-        let reason = Value::Object(Object::new());
+        let reason = Value::Object(Object::new_in(engine.allocation_context()));
         let thrown = reason.clone();
         let observed = calls.clone();
-        let flags = Object::new();
+        let flags = Object::new_in(engine.allocation_context());
         flags.set_to_string_hook(move || {
             observed.borrow_mut().push('E');
             Err(RuntimeError::thrown(thrown.clone()))

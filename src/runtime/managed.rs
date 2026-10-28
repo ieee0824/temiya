@@ -173,6 +173,13 @@ impl Runtime {
             active.borrow_mut().clear();
         }
     }
+
+    fn last_active_object(&self, handle: Handle<ManagedObject>) -> Option<Object> {
+        let active = self.0.active_objects.borrow().upgrade()?;
+        let objects = active.borrow();
+        let object = objects.last()?;
+        (object.0.handle() == Some(handle)).then(|| object.clone())
+    }
     fn allocation_safepoint(&self, incoming: &impl Trace) {
         let interval = self.0.allocation_interval.get();
         if interval == usize::MAX || self.0.collecting.get() {
@@ -390,6 +397,11 @@ impl Runtime {
         Object(ObjectReference(facade))
     }
     pub(super) fn root_object(&self, handle: Handle<ManagedObject>) -> Option<Object> {
+        // Reusing the most recent activation root needs neither a heap lookup
+        // nor an LRU update. Collection clears this region before tracing.
+        if let Some(object) = self.last_active_object(handle) {
+            return Some(object);
+        }
         if let Some(object) = self.cached_object(handle) {
             self.remember_active_object(&object);
             return Some(object);
@@ -468,6 +480,26 @@ impl Runtime {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn recent_activation_lookup_checks_full_identity_and_clears_before_collection() {
+        let runtime = Runtime::new();
+        let foreign_runtime = Runtime::new();
+        let object = Object::new_in(&runtime);
+        let foreign = Object::new_in(&foreign_runtime);
+        let handle = object.0.handle().unwrap();
+        let foreign_handle = foreign.0.handle().unwrap();
+        assert_eq!(handle.slot_index(), foreign_handle.slot_index());
+        let _region = runtime.enter_object_root_region().unwrap();
+        runtime.root_object(handle).unwrap();
+        assert_eq!(runtime.last_active_object(handle), Some(object.clone()));
+        assert!(runtime.last_active_object(foreign_handle).is_none());
+        assert!(runtime.root_object(foreign_handle).is_none());
+        drop(object);
+        assert_eq!(runtime.collect_garbage().unwrap().retained, 0);
+        assert!(runtime.last_active_object(handle).is_none());
+        assert!(runtime.root_object(handle).is_none());
+    }
+
     #[test]
     fn weak_facade_index_preserves_canonical_roots_and_rejects_reused_or_foreign_slots() {
         let runtime = Runtime::new();

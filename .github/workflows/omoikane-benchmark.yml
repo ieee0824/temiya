@@ -1,4 +1,4 @@
-name: Omoikane benchmark measurements
+name: Inline string key cold RegExp diagnostic
 
 on:
   workflow_dispatch:
@@ -32,12 +32,13 @@ concurrency:
 jobs:
   measure:
     if: github.event_name == 'workflow_dispatch' || github.event.label.name == 'benchmark-omoikane'
-    name: Record comparisons, copy ${{ matrix.copy }} (speed gates separate)
+    name: Record comparisons, ${{ matrix.architecture }}, copy ${{ matrix.copy }} (speed gates separate)
     strategy:
       fail-fast: false
       matrix:
+        architecture: [ubuntu-24.04, ubuntu-24.04-arm]
         copy: ${{ fromJSON(inputs.two_runners && '[1,2]' || '[1]') }}
-    runs-on: ubuntu-24.04
+    runs-on: ${{ matrix.architecture }}
     timeout-minutes: 90
     defaults:
       run:
@@ -45,7 +46,7 @@ jobs:
         shell: bash
     env:
       CARGO_BUILD_JOBS: 2
-      INCLUDE_CONTROLS: ${{ inputs.include_controls || false }}
+      INCLUDE_CONTROLS: 'true'
       REQUIRED_CPU_MODEL: ${{ inputs.required_cpu_model || '' }}
     steps:
       - name: Check out measured revision
@@ -133,65 +134,36 @@ jobs:
         run: |
           node scripts/build-omoikane-worker.mjs "$GITHUB_WORKSPACE/omoikane" "$RUNNER_TEMP/omoikane-worker-build" "$RUNNER_TEMP/omoikane-worker-target"
           cp "$RUNNER_TEMP/omoikane-worker-build/build-info.json" "$RUNNER_TEMP/comparison-output/boa-build-info.json"
-      - name: Extract original eleven workloads
+      - name: Record current build metadata
         if: steps.hardware.outputs.matches == 'true'
         run: |
-          node scripts/extract-omoikane-workloads.mjs "$GITHUB_WORKSPACE/omoikane" "$RUNNER_TEMP/omoikane-workloads"
-          cp "$RUNNER_TEMP/omoikane-workloads/manifest.json" "$RUNNER_TEMP/comparison-output/manifest.json"
-      - name: Measure baseline and changed Temiya serially
+          node <<'JS'
+          const fs=require('node:fs'),path=require('node:path');
+          const dir=path.join(process.env.RUNNER_TEMP,'comparison-output');
+          const info=JSON.parse(fs.readFileSync(path.join(dir,'same-binary-build-info.json')));
+          delete info.qualification;
+          fs.writeFileSync(path.join(dir,'current-build-info.json'),JSON.stringify(info,null,2)+'\n');
+          JS
+      - name: Measure exact fresh pattern input and all three real workers
         if: steps.hardware.outputs.matches == 'true'
         run: |
-          export TEMIYA_REVISION="$(git -c safe.directory="$GITHUB_WORKSPACE/temiya" -C "$GITHUB_WORKSPACE/temiya" rev-parse HEAD)"
-          export BENCH_NOTES='GitHub hosted runner; same compiler, isolated build targets, all builds completed before timing; original eleven inputs, 15 samples and three alternating pairs. Job success means validated measurements, not a passing speed gate.'
-          node scripts/compare-omoikane-workloads.mjs --temiya-baseline "$RUNNER_TEMP/omoikane-workloads" "$RUNNER_TEMP/temiya-current-target/release/examples/measure_workload" "$RUNNER_TEMP/comparison-output/baseline-build-info.json" 15 3 > "$RUNNER_TEMP/comparison-output/beforeafter.json" 2> "$RUNNER_TEMP/comparison-output/beforeafter.progress"
-      - name: Measure changed Temiya and actual Boa serially
+          node scripts/measure-regexp-cold-diagnostic.mjs "$RUNNER_TEMP/comparison-output/current-build-info.json" "$RUNNER_TEMP/comparison-output/baseline-build-info.json" "$RUNNER_TEMP/comparison-output/boa-build-info.json" > "$RUNNER_TEMP/comparison-output/cold.json" 2> "$RUNNER_TEMP/comparison-output/cold.progress"
+      - name: Measure identical executable control and actual Boa again
         if: steps.hardware.outputs.matches == 'true'
         run: |
-          export TEMIYA_REVISION="$(git -c safe.directory="$GITHUB_WORKSPACE/temiya" -C "$GITHUB_WORKSPACE/temiya" rev-parse HEAD)"
-          export BENCH_NOTES='GitHub hosted runner; same compiler and original pinned public application embedding; no builds during measurements. Job success means validated measurements, not a passing speed gate.'
-          node scripts/compare-omoikane-workloads.mjs "$RUNNER_TEMP/omoikane-workloads" "$RUNNER_TEMP/temiya-current-target/release/examples/measure_workload" "$RUNNER_TEMP/comparison-output/boa-build-info.json" 15 3 > "$RUNNER_TEMP/comparison-output/boa.json" 2> "$RUNNER_TEMP/comparison-output/boa.progress"
-      - name: Measure baseline and actual Boa on the same machine
-        if: inputs.include_controls && steps.hardware.outputs.matches == 'true'
-        run: |
-          export TEMIYA_REVISION="$(cat "$RUNNER_TEMP/comparison-output/baseline-revision.txt")"
-          export BENCH_NOTES='Direct baseline/actual Boa control on this same runner; Auto Script baseline verified before timing. Original eleven inputs and unchanged statistical/limit protocol. No candidate source speedup is inferred from this control.'
-          node scripts/compare-omoikane-workloads.mjs "$RUNNER_TEMP/omoikane-workloads" "$RUNNER_TEMP/temiya-baseline-target/release/examples/measure_workload" "$RUNNER_TEMP/comparison-output/boa-build-info.json" 15 3 > "$RUNNER_TEMP/comparison-output/baseline-boa.json" 2> "$RUNNER_TEMP/comparison-output/baseline-boa.progress"
-      - name: Measure candidate against the identical executable
-        if: inputs.include_controls && steps.hardware.outputs.matches == 'true'
-        run: |
-          export TEMIYA_REVISION="$(cat "$RUNNER_TEMP/comparison-output/measured-revision.txt")"
-          export BENCH_NOTES='SAME EXECUTABLE CONTROL: identical source and SHA for both labels. Full original11/15samples/3pairs protocol diagnoses process/environment variability; any faster/slower outcome is not a source change.'
-          node scripts/compare-omoikane-workloads.mjs --temiya-baseline "$RUNNER_TEMP/omoikane-workloads" "$RUNNER_TEMP/temiya-current-target/release/examples/measure_workload" "$RUNNER_TEMP/comparison-output/same-binary-build-info.json" 15 3 > "$RUNNER_TEMP/comparison-output/same-binary-control.json" 2> "$RUNNER_TEMP/comparison-output/same-binary-control.progress"
-      - name: Summarize validity and speed gates separately
+          node scripts/measure-regexp-cold-diagnostic.mjs "$RUNNER_TEMP/comparison-output/current-build-info.json" "$RUNNER_TEMP/comparison-output/current-build-info.json" "$RUNNER_TEMP/comparison-output/boa-build-info.json" > "$RUNNER_TEMP/comparison-output/cold-same-binary.json" 2> "$RUNNER_TEMP/comparison-output/cold-same-binary.progress"
+      - name: Summarize correctness and speed gates separately
         if: always()
         run: |
           node <<'JS'
-          const fs = require('node:fs');
-          const path = require('node:path');
-          const lines = ['## Measurement results', '', 'A successful job records correct benchmark outputs; it does not mean Temiya is faster.', ''];
-          const availability = JSON.parse(fs.readFileSync(path.join(process.env.RUNNER_TEMP,'comparison-output/hardware-availability.json')));
-          if (!availability.target_available) {
-            fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,'Requested CPU unavailable. Measurements were not run and do not count as a correctness or speed pass.\n');
-            process.exit(0);
-          }
-          const names = ['beforeafter','boa',...(process.env.INCLUDE_CONTROLS === 'true' ? ['baseline-boa','same-binary-control'] : [])];
-          for (const name of names) {
-            try {
-              const r = JSON.parse(fs.readFileSync(path.join(process.env.RUNNER_TEMP, 'comparison-output', `${name}.json`)));
-              const field = name.endsWith('boa') ? 'all_eleven_workloads_faster_beyond_threshold' : 'all_eleven_workloads_after_faster_beyond_threshold';
-              lines.push(`- ${name}: correct outputs = ${r.all_workloads_valid}; all-eleven speed gate = ${r[field]}`);
-              if (name === 'same-binary-control') lines.push('  Identical executable control; faster/slower labels are variability observations, not a code improvement.');
-            } catch {
-              lines.push(`- ${name}: no complete measurement report; inspect logs and artifacts.`);
-            }
-          }
-          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, lines.join('\n') + '\n');
+          const fs=require('node:fs'),path=require('node:path'),dir=path.join(process.env.RUNNER_TEMP,'comparison-output');
+          for(const name of ['cold','cold-same-binary']){try{const r=JSON.parse(fs.readFileSync(path.join(dir,name+'.json')));fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,name+': checked outputs='+r.all_workloads_valid+', all three actual Boa speed comparisons='+r.all_cold_comparisons_faster_than_actual_boa+'\n');}catch{fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,name+': no complete report; unavailable hardware, errors or skipped measurement are not a speed pass.\n');}}
           JS
       - name: Retain raw observations and provenance
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: omoikane-comparison-${{ github.run_id }}-${{ github.run_attempt }}${{ inputs.two_runners && format('-copy-{0}', matrix.copy) || '' }}
+          name: regexp-inline-key-eq-${{ matrix.architecture }}-${{ github.run_id }}-${{ github.run_attempt }}${{ inputs.two_runners && format('-copy-{0}', matrix.copy) || '' }}
           path: ${{ runner.temp }}/comparison-output
           if-no-files-found: error
           retention-days: 30

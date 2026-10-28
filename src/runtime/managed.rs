@@ -195,7 +195,7 @@ impl Runtime {
             runtime: self.clone(),
         });
         *data.facade.borrow_mut() = Rc::downgrade(&facade);
-        super::SourceTextModule(ModuleReference::Managed(facade))
+        super::SourceTextModule(ModuleReference(facade))
     }
     pub(super) fn root_module(
         &self,
@@ -205,7 +205,7 @@ impl Runtime {
         let heap = self.0.heap.borrow();
         let data = heap.with(handle, |module| module.data.clone())?;
         if let Some(facade) = data.facade.borrow().upgrade() {
-            return Some(super::SourceTextModule(ModuleReference::Managed(facade)));
+            return Some(super::SourceTextModule(ModuleReference(facade)));
         }
         let root = heap.root(handle)?;
         drop(heap);
@@ -215,7 +215,7 @@ impl Runtime {
             runtime: self.clone(),
         });
         *data.facade.borrow_mut() = Rc::downgrade(&facade);
-        Some(super::SourceTextModule(ModuleReference::Managed(facade)))
+        Some(super::SourceTextModule(ModuleReference(facade)))
     }
     pub(super) fn allocate_job_queue(
         &self,
@@ -232,7 +232,7 @@ impl Runtime {
             runtime: self.clone(),
         });
         data.borrow_mut().facade = Rc::downgrade(&facade);
-        super::JobQueue(JobQueueReference::Managed(facade))
+        super::JobQueue(JobQueueReference(facade))
     }
 
     pub(super) fn root_job_queue(
@@ -243,7 +243,7 @@ impl Runtime {
         let heap = self.0.heap.borrow();
         let data = heap.with(handle, |queue| queue.data.clone())?;
         if let Some(facade) = data.borrow().facade.upgrade() {
-            return Some(super::JobQueue(JobQueueReference::Managed(facade)));
+            return Some(super::JobQueue(JobQueueReference(facade)));
         }
         let root = heap.root(handle)?;
         drop(heap);
@@ -253,7 +253,7 @@ impl Runtime {
             runtime: self.clone(),
         });
         data.borrow_mut().facade = Rc::downgrade(&facade);
-        Some(super::JobQueue(JobQueueReference::Managed(facade)))
+        Some(super::JobQueue(JobQueueReference(facade)))
     }
 
     pub(super) fn record_job_edges(
@@ -278,7 +278,7 @@ impl Runtime {
         let heap = self.0.heap.borrow();
         let data = heap.with(handle, |realm| realm.data.clone())?;
         if let Some(facade) = data.facade.borrow().upgrade() {
-            return Some(super::Realm(RealmReference::Managed(facade)));
+            return Some(super::Realm(RealmReference(facade)));
         }
         let root = heap.root(handle)?;
         drop(heap);
@@ -288,7 +288,7 @@ impl Runtime {
             runtime: self.clone(),
         });
         *data.facade.borrow_mut() = Rc::downgrade(&facade);
-        Some(super::Realm(RealmReference::Managed(facade)))
+        Some(super::Realm(RealmReference(facade)))
     }
     pub(super) fn allocate_realm(&self, data: super::execution::RealmData) -> super::Realm {
         use super::execution::{ManagedRealm, RealmReference, RealmRoot};
@@ -302,7 +302,7 @@ impl Runtime {
             runtime: self.clone(),
         });
         *data.facade.borrow_mut() = Rc::downgrade(&facade);
-        super::Realm(RealmReference::Managed(facade))
+        super::Realm(RealmReference(facade))
     }
     pub(super) fn root_environment(
         &self,
@@ -312,7 +312,7 @@ impl Runtime {
         let heap = self.0.heap.borrow();
         let data = heap.with(handle, |environment| environment.data.clone())?;
         if let Some(facade) = data.facade.borrow().upgrade() {
-            return Some(super::Environment(EnvironmentReference::Managed(facade)));
+            return Some(super::Environment(EnvironmentReference(facade)));
         }
         let root = heap.root(handle)?;
         drop(heap);
@@ -322,7 +322,7 @@ impl Runtime {
             runtime: self.clone(),
         });
         *data.facade.borrow_mut() = Rc::downgrade(&facade);
-        Some(super::Environment(EnvironmentReference::Managed(facade)))
+        Some(super::Environment(EnvironmentReference(facade)))
     }
     pub(super) fn allocate_environment(
         &self,
@@ -339,7 +339,7 @@ impl Runtime {
             runtime: self.clone(),
         });
         *data.facade.borrow_mut() = Rc::downgrade(&facade);
-        super::Environment(EnvironmentReference::Managed(facade))
+        super::Environment(EnvironmentReference(facade))
     }
     /// Creates an independent allocation context. An Engine shares one context
     /// across all its Realms; use Engine::allocation_context for host values.
@@ -955,9 +955,7 @@ mod stored_graph_tests {
             &capture,
             Some("answer".into()),
             |owner, capture, key, _, arguments| {
-                let super::super::stored::StoredObject::Managed(handle) = capture else {
-                    panic!("managed capture");
-                };
+                let super::super::stored::StoredObject(handle) = capture;
                 let runtime = owner.0.runtime().unwrap();
                 assert!(
                     runtime

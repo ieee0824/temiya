@@ -88,17 +88,11 @@ pub(super) struct ModuleData {
 pub struct SourceTextModule(pub(super) ModuleReference);
 
 #[derive(Clone)]
-pub(super) enum ModuleReference {
-    Legacy(Rc<ModuleData>),
-    Managed(Rc<ModuleRoot>),
-}
+pub(super) struct ModuleReference(pub(super) Rc<ModuleRoot>);
 impl Deref for ModuleReference {
     type Target = ModuleData;
     fn deref(&self) -> &Self::Target {
-        match self {
-            Self::Legacy(data) => data,
-            Self::Managed(root) => &root.data,
-        }
+        &self.0.data
     }
 }
 pub(super) struct ModuleRoot {
@@ -130,60 +124,47 @@ impl Trace for ManagedModule {
 impl StoredOwner for SourceTextModule {
     type Allocation = ManagedModule;
     fn runtime(&self) -> Option<&Runtime> {
-        match &self.0 {
-            ModuleReference::Legacy(_) => None,
-            ModuleReference::Managed(root) => Some(&root.runtime),
-        }
+        Some(&self.0.0.runtime)
     }
     fn handle(&self) -> Option<Handle<ManagedModule>> {
-        match &self.0 {
-            ModuleReference::Legacy(_) => None,
-            ModuleReference::Managed(root) => Some(root.root.handle()),
-        }
+        Some(self.0.0.root.handle())
     }
 }
 #[derive(Clone)]
-pub(super) enum StoredModule {
-    Legacy(SourceTextModule),
-    Managed(Handle<ManagedModule>),
-}
+pub(super) struct StoredModule(pub(super) Handle<ManagedModule>);
 impl StoredModule {
-    fn initial(runtime: Option<&Runtime>, module: &SourceTextModule) -> RuntimeResult<Self> {
-        match (runtime, module.runtime()) {
-            (None, None) => Ok(Self::Legacy(module.clone())),
+    pub(super) fn initial(
+        runtime: Option<&Runtime>,
+        value: &SourceTextModule,
+    ) -> RuntimeResult<Self> {
+        match (runtime, value.runtime()) {
             (Some(left), Some(right)) if left.same_heap(right) => {
-                Ok(Self::Managed(module.handle().expect("managed module")))
+                Ok(Self(value.handle().expect("managed module")))
             }
             _ => Err(RuntimeError::type_error(
                 "Module allocation context mismatch",
             )),
         }
     }
-    fn store(owner: &impl StoredOwner, module: &SourceTextModule) -> RuntimeResult<Self> {
-        let stored = Self::initial(owner.runtime(), module)?;
-        if let (Self::Managed(target), Some(runtime)) = (&stored, owner.runtime()) {
-            runtime.record_object_edge(owner.handle().expect("managed owner"), *target)?;
-        }
+    pub(super) fn store(owner: &impl StoredOwner, value: &SourceTextModule) -> RuntimeResult<Self> {
+        let stored = Self::initial(owner.runtime(), value)?;
+        owner
+            .runtime()
+            .expect("validated allocation context")
+            .record_object_edge(owner.handle().expect("managed owner"), stored.0)?;
         Ok(stored)
     }
-    fn load(&self, owner: &impl StoredOwner) -> RuntimeResult<SourceTextModule> {
-        match (self, owner.runtime()) {
-            (Self::Legacy(module), None) => Ok(module.clone()),
-            (Self::Managed(handle), Some(runtime)) => runtime
-                .root_module(*handle)
-                .ok_or_else(|| RuntimeError::internal_error("stale module edge")),
-            _ => Err(RuntimeError::internal_error(
-                "Module allocation context mismatch",
-            )),
-        }
+    pub(super) fn load(&self, owner: &impl StoredOwner) -> RuntimeResult<SourceTextModule> {
+        owner
+            .runtime()
+            .ok_or_else(|| RuntimeError::internal_error("Module allocation context mismatch"))?
+            .root_module(self.0)
+            .ok_or_else(|| RuntimeError::internal_error("stale module edge"))
     }
     pub(super) fn trace(&self, tracer: &mut Tracer<'_>) {
-        if let Self::Managed(handle) = self {
-            tracer.mark(*handle);
-        }
+        tracer.mark(self.0);
     }
 }
-
 impl std::fmt::Debug for SourceTextModule {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter
@@ -211,10 +192,7 @@ impl SourceTextModule {
             evaluation: RefCell::new(None),
             namespace: RefCell::new(None),
         };
-        Ok(match realm.runtime() {
-            Some(runtime) => runtime.allocate_module(data),
-            None => Self(ModuleReference::Legacy(Rc::new(data))),
-        })
+        Ok(realm.allocation_context().allocate_module(data))
     }
 
     /// Returns the host-facing module specifier.
@@ -929,10 +907,7 @@ mod managed_tests {
         (realm, graph)
     }
     fn weak_data(module: &SourceTextModule) -> Weak<ModuleData> {
-        match &module.0 {
-            ModuleReference::Managed(root) => Rc::downgrade(&root.data),
-            _ => panic!("managed module"),
-        }
+        Rc::downgrade(&module.0.0.data)
     }
 
     #[test]

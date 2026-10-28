@@ -54,17 +54,11 @@ pub enum ThisBindingStatus {
 pub struct Environment(pub(super) EnvironmentReference);
 
 #[derive(Clone)]
-pub(super) enum EnvironmentReference {
-    Legacy(Rc<EnvironmentData>),
-    Managed(Rc<EnvironmentRoot>),
-}
+pub(super) struct EnvironmentReference(pub(super) Rc<EnvironmentRoot>);
 impl Deref for EnvironmentReference {
     type Target = EnvironmentData;
     fn deref(&self) -> &Self::Target {
-        match self {
-            Self::Legacy(data) => data,
-            Self::Managed(root) => &root.data,
-        }
+        &self.0.data
     }
 }
 pub(super) struct EnvironmentRoot {
@@ -77,51 +71,38 @@ pub(super) struct ManagedEnvironment {
 }
 
 #[derive(Clone)]
-pub(super) enum StoredEnvironment {
-    Legacy(Environment),
-    Managed(Handle<ManagedEnvironment>),
-}
+pub(super) struct StoredEnvironment(pub(super) Handle<ManagedEnvironment>);
 impl StoredEnvironment {
-    fn check_context(runtime: Option<&Runtime>, value: &Environment) -> RuntimeResult<()> {
+    pub(super) fn initial(runtime: Option<&Runtime>, value: &Environment) -> RuntimeResult<Self> {
         match (runtime, value.runtime()) {
-            (None, None) => Ok(()),
-            (Some(left), Some(right)) if left.same_heap(right) => Ok(()),
+            (Some(left), Some(right)) if left.same_heap(right) => {
+                Ok(Self(value.handle().expect("managed environment")))
+            }
             _ => Err(RuntimeError::type_error(
-                "environment belongs to a different allocation context",
+                "Environment allocation context mismatch",
             )),
         }
+    }
+    fn check_context(runtime: Option<&Runtime>, value: &Environment) -> RuntimeResult<()> {
+        Self::initial(runtime, value).map(|_| ())
     }
     pub(super) fn store(owner: &impl StoredOwner, value: &Environment) -> RuntimeResult<Self> {
         let stored = Self::initial(owner.runtime(), value)?;
-        if let (Some(runtime), Self::Managed(target)) = (owner.runtime(), &stored) {
-            runtime
-                .record_object_edge(owner.handle().expect("managed environment owner"), *target)?;
-        }
+        owner
+            .runtime()
+            .expect("validated allocation context")
+            .record_object_edge(owner.handle().expect("managed owner"), stored.0)?;
         Ok(stored)
     }
-    // Initial edges are installed before the new, young owner is allocated.
-    pub(super) fn initial(runtime: Option<&Runtime>, value: &Environment) -> RuntimeResult<Self> {
-        Self::check_context(runtime, value)?;
-        Ok(match value.handle() {
-            Some(handle) => Self::Managed(handle),
-            None => Self::Legacy(value.clone()),
-        })
-    }
     pub(super) fn load(&self, owner: &impl StoredOwner) -> RuntimeResult<Environment> {
-        match (self, owner.runtime()) {
-            (Self::Legacy(value), None) => Ok(value.clone()),
-            (Self::Managed(handle), Some(runtime)) => runtime
-                .root_environment(*handle)
-                .ok_or_else(|| RuntimeError::internal_error("stale managed environment edge")),
-            _ => Err(RuntimeError::internal_error(
-                "environment allocation context mismatch",
-            )),
-        }
+        owner
+            .runtime()
+            .ok_or_else(|| RuntimeError::internal_error("Environment allocation context mismatch"))?
+            .root_environment(self.0)
+            .ok_or_else(|| RuntimeError::internal_error("stale environment edge"))
     }
     pub(super) fn trace(&self, tracer: &mut Tracer<'_>) {
-        if let Self::Managed(handle) = self {
-            tracer.mark(*handle);
-        }
+        tracer.mark(self.0);
     }
 }
 impl Trace for ManagedEnvironment {
@@ -132,16 +113,10 @@ impl Trace for ManagedEnvironment {
 impl StoredOwner for Environment {
     type Allocation = ManagedEnvironment;
     fn runtime(&self) -> Option<&Runtime> {
-        match &self.0 {
-            EnvironmentReference::Legacy(_) => None,
-            EnvironmentReference::Managed(root) => Some(&root.runtime),
-        }
+        Some(&self.0.0.runtime)
     }
     fn handle(&self) -> Option<Handle<ManagedEnvironment>> {
-        match &self.0 {
-            EnvironmentReference::Legacy(_) => None,
-            EnvironmentReference::Managed(root) => Some(root.root.handle()),
-        }
+        Some(self.0.0.root.handle())
     }
 }
 
@@ -545,19 +520,17 @@ impl Environment {
         record: EnvironmentRecord,
         runtime: Option<Runtime>,
     ) -> Self {
+        let runtime = runtime.expect("environment allocation context");
         let data = EnvironmentData {
             facade: RefCell::new(Weak::new()),
             outer: outer
                 .as_ref()
-                .map(|outer| StoredEnvironment::initial(runtime.as_ref(), outer))
+                .map(|outer| StoredEnvironment::initial(Some(&runtime), outer))
                 .transpose()
                 .expect("outer environment allocation context"),
             record: RefCell::new(record),
         };
-        match runtime {
-            Some(runtime) => runtime.allocate_environment(data),
-            None => Self(EnvironmentReference::Legacy(Rc::new(data))),
-        }
+        runtime.allocate_environment(data)
     }
 
     /// Returns this environment record's category.

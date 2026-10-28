@@ -59,87 +59,59 @@ pub(super) struct JobQueueRoot {
     pub(super) runtime: Runtime,
 }
 #[derive(Clone)]
-pub(super) enum JobQueueReference {
-    Legacy(Rc<RefCell<JobQueueData>>),
-    Managed(Rc<JobQueueRoot>),
-}
+pub(super) struct JobQueueReference(pub(super) Rc<JobQueueRoot>);
 impl Deref for JobQueueReference {
     type Target = RefCell<JobQueueData>;
     fn deref(&self) -> &Self::Target {
-        match self {
-            Self::Legacy(data) => data,
-            Self::Managed(root) => &root.data,
-        }
+        &self.0.data
     }
 }
 
 /// A Realm-local FIFO queue for Promise reactions and thenable jobs.
 #[derive(Clone)]
 pub struct JobQueue(pub(super) JobQueueReference);
-impl JobQueue {
-    pub(super) fn legacy() -> Self {
-        Self(JobQueueReference::Legacy(Rc::new(RefCell::new(
-            JobQueueData::default(),
-        ))))
-    }
-}
 impl StoredOwner for JobQueue {
     type Allocation = ManagedJobQueue;
     fn runtime(&self) -> Option<&Runtime> {
-        match &self.0 {
-            JobQueueReference::Legacy(_) => None,
-            JobQueueReference::Managed(root) => Some(&root.runtime),
-        }
+        Some(&self.0.0.runtime)
     }
     fn handle(&self) -> Option<Handle<ManagedJobQueue>> {
-        match &self.0 {
-            JobQueueReference::Legacy(_) => None,
-            JobQueueReference::Managed(root) => Some(root.root.handle()),
-        }
+        Some(self.0.0.root.handle())
     }
 }
 
-pub(super) enum StoredJobQueue {
-    Legacy(JobQueue),
-    Managed(Handle<ManagedJobQueue>),
-}
+#[derive(Clone)]
+pub(super) struct StoredJobQueue(pub(super) Handle<ManagedJobQueue>);
 impl StoredJobQueue {
-    pub(super) fn store(owner: &impl StoredOwner, queue: &JobQueue) -> RuntimeResult<Self> {
-        let stored = Self::initial(owner.runtime(), queue)?;
-        if let (Self::Managed(target), Some(runtime)) = (&stored, owner.runtime()) {
-            runtime.record_object_edge(owner.handle().expect("managed owner"), *target)?;
-        }
-        Ok(stored)
-    }
-    pub(super) fn initial(runtime: Option<&Runtime>, queue: &JobQueue) -> RuntimeResult<Self> {
-        match (runtime, queue.runtime()) {
-            (None, None) => Ok(Self::Legacy(queue.clone())),
+    pub(super) fn initial(runtime: Option<&Runtime>, value: &JobQueue) -> RuntimeResult<Self> {
+        match (runtime, value.runtime()) {
             (Some(left), Some(right)) if left.same_heap(right) => {
-                Ok(Self::Managed(queue.handle().expect("managed queue")))
+                Ok(Self(value.handle().expect("managed job_queue")))
             }
             _ => Err(RuntimeError::type_error(
                 "Job Queue allocation context mismatch",
             )),
         }
     }
+    pub(super) fn store(owner: &impl StoredOwner, value: &JobQueue) -> RuntimeResult<Self> {
+        let stored = Self::initial(owner.runtime(), value)?;
+        owner
+            .runtime()
+            .expect("validated allocation context")
+            .record_object_edge(owner.handle().expect("managed owner"), stored.0)?;
+        Ok(stored)
+    }
     pub(super) fn load(&self, owner: &impl StoredOwner) -> RuntimeResult<JobQueue> {
-        match (self, owner.runtime()) {
-            (Self::Legacy(queue), None) => Ok(queue.clone()),
-            (Self::Managed(handle), Some(runtime)) => runtime
-                .root_job_queue(*handle)
-                .ok_or_else(|| RuntimeError::internal_error("stale Job Queue edge")),
-            _ => Err(RuntimeError::internal_error(
-                "Job Queue allocation context mismatch",
-            )),
-        }
+        owner
+            .runtime()
+            .ok_or_else(|| RuntimeError::internal_error("Job Queue allocation context mismatch"))?
+            .root_job_queue(self.0)
+            .ok_or_else(|| RuntimeError::internal_error("stale job_queue edge"))
     }
     pub(super) fn trace(&self, tracer: &mut Tracer<'_>) {
-        if let Self::Managed(handle) = self {
-            tracer.mark(*handle);
-        }
+        tracer.mark(self.0);
     }
 }
-
 impl fmt::Debug for JobQueue {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
@@ -402,16 +374,7 @@ mod tests {
         let weak = realm.global_object().downgrade();
         let queue = realm.job_queue();
         let clone = realm.job_queue();
-        assert!(Rc::ptr_eq(
-            match &queue.0 {
-                JobQueueReference::Managed(root) => root,
-                _ => panic!("managed"),
-            },
-            match &clone.0 {
-                JobQueueReference::Managed(root) => root,
-                _ => panic!("managed"),
-            }
-        ));
+        assert!(Rc::ptr_eq(&queue.0.0, &clone.0.0));
         drop(realm);
         assert_eq!(runtime.collect_migration_graph().unwrap().retained, 1);
         assert!(weak.upgrade().is_none());

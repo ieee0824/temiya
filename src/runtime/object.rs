@@ -709,11 +709,6 @@ impl Object {
     }
 
     pub(super) fn initialize_native_realm(&self, realm: &super::Realm) -> RuntimeResult<()> {
-        // Legacy Rc graphs have not yet been removed. Do not create permanent
-        // owning Realm cycles in that transitional representation.
-        if self.0.runtime().is_none() {
-            return Ok(());
-        }
         let mut state = self.0.state.borrow_mut();
         if state.callable.is_none() && state.construct.is_none() && state.managed_callable.is_none()
         {
@@ -2155,7 +2150,7 @@ impl super::ObjectData {
         }
         if let Some(entries) = &state.weak_map_data {
             for (key, value) in entries.borrow().iter() {
-                if let (Some(key), StoredValue::Object(StoredObject::Managed(value))) =
+                if let (Some(key), StoredValue::Object(StoredObject(value))) =
                     (key.0.handle(), value)
                 {
                     tracer.ephemeron(key, *value);

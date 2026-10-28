@@ -26,17 +26,11 @@ use super::{
 pub struct Realm(pub(super) RealmReference);
 
 #[derive(Clone)]
-pub(super) enum RealmReference {
-    Legacy(Rc<RealmData>),
-    Managed(Rc<RealmRoot>),
-}
+pub(super) struct RealmReference(pub(super) Rc<RealmRoot>);
 impl Deref for RealmReference {
     type Target = RealmData;
     fn deref(&self) -> &Self::Target {
-        match self {
-            Self::Legacy(data) => data,
-            Self::Managed(root) => &root.data,
-        }
+        &self.0.data
     }
 }
 pub(super) struct RealmRoot {
@@ -49,16 +43,12 @@ pub(super) struct ManagedRealm {
 }
 
 #[derive(Clone)]
-pub(super) enum StoredRealm {
-    Legacy(Realm),
-    Managed(Handle<ManagedRealm>),
-}
+pub(super) struct StoredRealm(pub(super) Handle<ManagedRealm>);
 impl StoredRealm {
-    pub(super) fn initial(runtime: Option<&Runtime>, realm: &Realm) -> RuntimeResult<Self> {
-        match (runtime, realm.runtime()) {
-            (None, None) => Ok(Self::Legacy(realm.clone())),
+    pub(super) fn initial(runtime: Option<&Runtime>, value: &Realm) -> RuntimeResult<Self> {
+        match (runtime, value.runtime()) {
             (Some(left), Some(right)) if left.same_heap(right) => {
-                Ok(Self::Managed(realm.handle().expect("managed Realm")))
+                Ok(Self(value.handle().expect("managed realm")))
             }
             _ => Err(RuntimeError::type_error(
                 "Realm allocation context mismatch",
@@ -66,44 +56,27 @@ impl StoredRealm {
         }
     }
     pub(super) fn record_owner(&self, owner: &Object) -> RuntimeResult<()> {
-        match (self, owner.0.runtime()) {
-            (Self::Managed(handle), Some(runtime)) => {
-                runtime.record_object_edge(owner.0.handle().expect("managed owner"), *handle)
-            }
-            (Self::Legacy(_), None) => Ok(()),
-            _ => Err(RuntimeError::type_error(
-                "Realm allocation context mismatch",
-            )),
-        }
+        owner
+            .allocation_context()
+            .record_object_edge(owner.0.handle().expect("managed owner"), self.0)
     }
-    pub(super) fn store(owner: &impl StoredOwner, realm: &Realm) -> RuntimeResult<Self> {
-        match (owner.runtime(), realm.runtime()) {
-            (None, None) => Ok(Self::Legacy(realm.clone())),
-            (Some(left), Some(right)) if left.same_heap(right) => {
-                let target = realm.handle().expect("managed Realm");
-                left.record_object_edge(owner.handle().expect("managed owner"), target)?;
-                Ok(Self::Managed(target))
-            }
-            _ => Err(RuntimeError::type_error(
-                "Realm belongs to a different allocation context",
-            )),
-        }
+    pub(super) fn store(owner: &impl StoredOwner, value: &Realm) -> RuntimeResult<Self> {
+        let stored = Self::initial(owner.runtime(), value)?;
+        owner
+            .runtime()
+            .expect("validated allocation context")
+            .record_object_edge(owner.handle().expect("managed owner"), stored.0)?;
+        Ok(stored)
     }
     pub(super) fn load(&self, owner: &impl StoredOwner) -> RuntimeResult<Realm> {
-        match (self, owner.runtime()) {
-            (Self::Legacy(realm), None) => Ok(realm.clone()),
-            (Self::Managed(handle), Some(runtime)) => runtime
-                .root_realm(*handle)
-                .ok_or_else(|| RuntimeError::internal_error("stale managed Realm edge")),
-            _ => Err(RuntimeError::internal_error(
-                "Realm allocation context mismatch",
-            )),
-        }
+        owner
+            .runtime()
+            .ok_or_else(|| RuntimeError::internal_error("Realm allocation context mismatch"))?
+            .root_realm(self.0)
+            .ok_or_else(|| RuntimeError::internal_error("stale realm edge"))
     }
     pub(super) fn trace(&self, tracer: &mut Tracer<'_>) {
-        if let Self::Managed(handle) = self {
-            tracer.mark(*handle);
-        }
+        tracer.mark(self.0);
     }
 }
 impl Trace for ManagedRealm {
@@ -114,16 +87,10 @@ impl Trace for ManagedRealm {
 impl StoredOwner for Realm {
     type Allocation = ManagedRealm;
     fn runtime(&self) -> Option<&Runtime> {
-        match &self.0 {
-            RealmReference::Legacy(_) => None,
-            RealmReference::Managed(root) => Some(&root.runtime),
-        }
+        Some(&self.0.0.runtime)
     }
     fn handle(&self) -> Option<Handle<ManagedRealm>> {
-        match &self.0 {
-            RealmReference::Legacy(_) => None,
-            RealmReference::Managed(root) => Some(root.root.handle()),
-        }
+        Some(self.0.0.root.handle())
     }
 }
 
@@ -216,27 +183,22 @@ impl Realm {
         }
         static NEXT_ID: AtomicU64 = AtomicU64::new(1);
         let well_known_symbols = WellKnownSymbols::initialize();
-        let runtime = global_object.0.runtime().cloned();
-        let stored_global_this = StoredValue::initial(runtime.as_ref(), &global_this_value)?;
+        let runtime = global_object.allocation_context().clone();
+        let stored_global_this = StoredValue::initial(Some(&runtime), &global_this_value)?;
         let global_environment = Environment::global(global_object.clone(), global_this_value);
-        let queue = runtime
-            .as_ref()
-            .map_or_else(JobQueue::legacy, JobQueue::new);
+        let queue = JobQueue::new(&runtime);
         let data = RealmData {
             facade: RefCell::new(Weak::new()),
             id: next_id(&NEXT_ID, "Realm"),
-            global_object: StoredObject::initial(runtime.as_ref(), &global_object)?,
-            global_environment: StoredEnvironment::initial(runtime.as_ref(), &global_environment)?,
+            global_object: StoredObject::initial(Some(&runtime), &global_object)?,
+            global_environment: StoredEnvironment::initial(Some(&runtime), &global_environment)?,
             global_this_value: stored_global_this,
-            job_queue: super::job_queue::StoredJobQueue::initial(runtime.as_ref(), &queue)?,
+            job_queue: super::job_queue::StoredJobQueue::initial(Some(&runtime), &queue)?,
             intrinsics: OnceCell::new(),
             well_known_symbols,
             host_hooks,
         };
-        let realm = match runtime {
-            Some(runtime) => runtime.allocate_realm(data),
-            None => Self(RealmReference::Legacy(Rc::new(data))),
-        };
+        let realm = runtime.allocate_realm(data);
         let intrinsics = IntrinsicRegistry::initialize(
             &global_object,
             realm.0.host_hooks.clone(),

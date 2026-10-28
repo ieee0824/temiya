@@ -3,8 +3,9 @@
 Decision for #256, based on main `4866b4de8ea03de01066fcfd450b9a16d011c948`.
 This is the implementation contract for #257, #313 and #340. The migration
 branch now uses a shared tracing heap for public Engine Realms, with allocation
-safepoints and an explicit `Engine::collect_garbage` hook. Contextless low-level
-constructors still use the legacy representation pending removal. The original
+safepoints and an explicit `Engine::collect_garbage` hook. Public factories now
+use explicit or inherited allocation contexts; Legacy facade/storage variants
+and the private Legacy queue fallback have been removed. The original
 baseline observations below describe the starting point, not the current branch.
 
 ## Evidence and acceptance probe
@@ -253,7 +254,7 @@ This is eight passing variants, not full Function conformance. Function name
 inference, restricted properties, broader metadata and full prototype-chain
 coverage remain tracked separately (#202, #210).
 
-## Pending 0.2 API migration
+## 0.2 API migration
 
 The public Engine now creates every Realm in its shared tracing context; the
 private allocation-mode switch has been removed. Normal allocation safepoints
@@ -265,18 +266,16 @@ allocation without resurrecting retired generations.
 
 `Engine::allocation_context()` exposes the explicit context for host object and
 native-function factories. A cloned context may outlive the Engine and request
-collection through `AllocationContext::collect_garbage`. Contextless factories
-remain legacy and are rejected at Engine object boundaries; removing those
-factories and representations is still required before the coordinated migration
-is considered complete. The version is now 0.2.0 for these Rust API changes;
+collection through `AllocationContext::collect_garbage`. Contextless Object and
+native factories have been removed. Cross-heap objects are rejected at Engine
+and stored-edge boundaries. The version is now 0.2.0 for these Rust API changes;
 this does not publish a release or change the opaque C ABI version.
 
 Public collection, indexed, primitive-wrapper, Date and RegExp constructors now
 require an explicit `AllocationContext`; collection `Default` implementations
 have been removed. Descriptor materialization also requires the context.
 `Realm::ordinary_in` is public for low-level callers sharing that heap.
-The private `new_for` paths still inherit the required object's context during
-the remaining Realm/Object migration. Standalone JSON, JobQueue and Promise
+The private `new_for` paths inherit the required object's context. Standalone JSON, JobQueue and Promise
 factories now require context; parentless declarative/module Environments use
 explicit `*_in(context)` factories, while child records require a parent.
 VM blocks and cloned loop Environments require the parent guaranteed by the
@@ -285,8 +284,9 @@ Contextless Object/native factories and Object `Default` are now removed.
 Object and WeakObject have only the traced representation. Standalone
 `Realm::ordinary` owns a fresh tracing context, while `ordinary_in` shares an
 explicit context. Native allocation callbacks can borrow their owner's context
-per invocation without capturing Runtime ownership. Other Legacy facade/storage
-variants and the unreachable private Legacy queue path still need removal.
+per invocation without capturing Runtime ownership. All facade families now
+hold rooted registrations in the shared heap, and all stored Object,
+Environment, Realm, JobQueue and Module edges hold only typed handles.
 
 The coordinated tracing migration changes `Realm::intrinsics()` from a borrowed
 registry to an owning `IntrinsicRegistry` snapshot. The snapshot and its clones
@@ -347,9 +347,8 @@ AST/VM closures keep their existing explicit Realm edge without duplicating it.
 Successful calls do not load or root a Realm. Unmaterialized native exceptions
 load the source Realm only on failure, before crossing a caller boundary.
 Escaped native functions and exceptions keep the source graph alive, and its
-cycles are reclaimed after the last external root is dropped. Transitional
-Legacy objects do not acquire native source metadata; removal of that
-representation and enabling managed allocation remain required release gates.
+cycles are reclaimed after the last external root is dropped. All runtime
+objects now use this traced representation; allocation collection is enabled.
 
 Realm job queues now have managed heap records and rooted public facades. The
 Realm stores a typed queue handle rather than an owning public queue. Repeated
@@ -402,7 +401,7 @@ iterator-result objects allocate in their source context with Object.prototype.
 Code vectors move between active/suspended states without per-resume deep
 copies; yield* resumes pop one stored delegated value without decoding or
 rewriting the remaining vector. Existing generator syntax/protocol limitations
-and the Legacy representation remain pending release gates.
+are unchanged by the ownership migration.
 
 Source Text Module records now use the shared managed heap with rooted public
 facades. Their dependency records, Realm/environment, cached evaluation Promise,
@@ -474,6 +473,7 @@ Engine constructor. They now pass strict reclamation with managed allocation
 and every-allocation GC, without an extra collection after final handle drop.
 An additional test runs the same root/clone transitions with a live Engine and
 collects after each transition, preserving callbacks/constructors/closures and
-releasing the host token after the last handle. These are internal migration
-checks; the public default, strict CLI default, API/version migration, complete
-stress/ABI/toolchain gates, and performance qualification remain pending.
+releasing the host token after the last handle. These fixtures now also pass
+through the public default Engine and strict CLI, with the 0.2 context APIs and
+without Legacy storage variants. Complete external stress/ABI/toolchain gates
+and performance qualification remain pending.

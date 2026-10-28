@@ -59,19 +59,14 @@ impl StoredOwner for Object {
 }
 
 #[derive(Clone, Debug)]
-pub(super) enum StoredObject {
-    // Transitional context-free runtime APIs; never accepted by a managed owner.
-    Legacy(Object),
-    Managed(Handle<ManagedObject>),
-}
+pub(super) struct StoredObject(pub(super) Handle<ManagedObject>);
 impl StoredObject {
     // For edges prepared before allocation of their new, young owner.
     pub(super) fn initial(runtime: Option<&Runtime>, value: &Object) -> RuntimeResult<Self> {
         match (runtime, value.0.runtime()) {
-            (None, None) => Ok(Self::Legacy(value.clone())),
-            (Some(left), Some(right)) if left.same_heap(right) => Ok(Self::Managed(
-                value.0.handle().expect("managed object handle"),
-            )),
+            (Some(left), Some(right)) if left.same_heap(right) => {
+                Ok(Self(value.0.handle().expect("managed object handle")))
+            }
             _ => Err(RuntimeError::type_error(
                 "object belongs to a different allocation context",
             )),
@@ -79,7 +74,6 @@ impl StoredObject {
     }
     pub(super) fn check_context(owner: &impl StoredOwner, value: &Object) -> RuntimeResult<()> {
         match (owner.runtime(), value.0.runtime()) {
-            (None, None) => Ok(()),
             (Some(left), Some(right)) if left.same_heap(right) => Ok(()),
             _ => Err(RuntimeError::type_error(
                 "object belongs to a different allocation context",
@@ -88,11 +82,10 @@ impl StoredObject {
     }
     pub(super) fn store(owner: &impl StoredOwner, value: &Object) -> RuntimeResult<Self> {
         match (owner.runtime(), value.0.runtime()) {
-            (None, None) => Ok(Self::Legacy(value.clone())),
             (Some(left), Some(right)) if left.same_heap(right) => {
                 let target = value.0.handle().expect("managed object handle");
                 left.record_object_edge(owner.handle().expect("managed owner handle"), target)?;
-                Ok(Self::Managed(target))
+                Ok(Self(target))
             }
             _ => Err(RuntimeError::type_error(
                 "object belongs to a different allocation context",
@@ -100,10 +93,9 @@ impl StoredObject {
         }
     }
     pub(super) fn load(&self, owner: &impl StoredOwner) -> RuntimeResult<Object> {
-        match (self, owner.runtime()) {
-            (Self::Legacy(value), None) => Ok(value.clone()),
-            (Self::Managed(handle), Some(runtime)) => runtime
-                .root_object(*handle)
+        match owner.runtime() {
+            Some(runtime) => runtime
+                .root_object(self.0)
                 .ok_or_else(|| RuntimeError::internal_error("stale managed object edge")),
             _ => Err(RuntimeError::internal_error(
                 "object edge allocation context mismatch",
@@ -111,9 +103,7 @@ impl StoredObject {
         }
     }
     pub(super) fn trace(&self, tracer: &mut Tracer<'_>) {
-        if let Self::Managed(handle) = self {
-            tracer.mark(*handle);
-        }
+        tracer.mark(self.0);
     }
 }
 
@@ -151,8 +141,7 @@ impl StoredValue {
             (Self::String(a), Value::String(b)) => a == b,
             (Self::Symbol(a), Value::Symbol(b)) => a == b,
             (Self::BigInt(a), Value::BigInt(b)) => a == b,
-            (Self::Object(StoredObject::Legacy(a)), Value::Object(b)) => a == b,
-            (Self::Object(StoredObject::Managed(a)), Value::Object(b)) => Some(*a) == b.0.handle(),
+            (Self::Object(StoredObject(a)), Value::Object(b)) => Some(*a) == b.0.handle(),
             _ => false,
         }
     }

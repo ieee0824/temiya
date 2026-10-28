@@ -15,6 +15,9 @@ until 1.0, a minor version may contain breaking API changes.
 
 ### Changed
 
+- Remove Legacy Environment, Realm, JobQueue, Module and stored-edge variants;
+  managed records retain typed handles instead of owning public facades.
+
 - Remove contextless Object/native factories and Object `Default`; all Objects
   now use the traced representation. Standalone Realms own a tracing context.
 - Native allocation callbacks can borrow their owner's context through

@@ -94,6 +94,21 @@ pub(super) enum StoredValue {
     Object(StoredObject),
 }
 impl StoredValue {
+    // Collection scans compare stored keys directly, without registering roots
+    // or materializing Object facades for each candidate.
+    pub(super) fn same_value_zero(&self, value: &Value) -> bool {
+        match (self, value) {
+            (Self::Undefined, Value::Undefined) | (Self::Null, Value::Null) => true,
+            (Self::Boolean(a), Value::Boolean(b)) => a == b,
+            (Self::Number(a), Value::Number(b)) => a == b || (a.is_nan() && b.is_nan()),
+            (Self::String(a), Value::String(b)) => a == b,
+            (Self::Symbol(a), Value::Symbol(b)) => a == b,
+            (Self::BigInt(a), Value::BigInt(b)) => a == b,
+            (Self::Object(StoredObject::Legacy(a)), Value::Object(b)) => a == b,
+            (Self::Object(StoredObject::Managed(a)), Value::Object(b)) => Some(*a) == b.0.handle(),
+            _ => false,
+        }
+    }
     pub(super) fn initial(runtime: Option<&Runtime>, value: &Value) -> RuntimeResult<Self> {
         Ok(match value {
             Value::Undefined => Self::Undefined,

@@ -99,16 +99,20 @@ fn date_receiver(value: Value) -> RuntimeResult<DateObject> {
 fn install_collections(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {
     let map = intrinsics.get(IntrinsicId::Map);
     let map_prototype = intrinsics.get(IntrinsicId::MapPrototype);
-    map.clear_native_call();
-    map.set_native_construct(move |_, _| {
-        let object = MapObject::new().object();
-        object.set_prototype(Some(map_prototype.clone()));
-        Ok(object)
-    });
+    map.set_captured_factory(
+        &map_prototype,
+        None,
+        None,
+        Some(|prototype, _, _, _| {
+            let object = MapObject::new_for(prototype).object();
+            object.initialize_prototype(Some(prototype.clone()));
+            Ok(object)
+        }),
+    )?;
     let map_prototype = intrinsics.get(IntrinsicId::MapPrototype);
     method(intrinsics, &map_prototype, "set", 2, |this, arguments| {
         let map = map_receiver(this)?;
-        map.set(value_arg(arguments.first()), value_arg(arguments.get(1)));
+        map.try_set(value_arg(arguments.first()), value_arg(arguments.get(1)))?;
         Ok(Value::Object(map.object()))
     })?;
     method(intrinsics, &map_prototype, "get", 1, |this, arguments| {
@@ -133,16 +137,20 @@ fn install_collections(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {
 
     let set = intrinsics.get(IntrinsicId::Set);
     let set_prototype = intrinsics.get(IntrinsicId::SetPrototype);
-    set.clear_native_call();
-    set.set_native_construct(move |_, _| {
-        let object = SetObject::new().object();
-        object.set_prototype(Some(set_prototype.clone()));
-        Ok(object)
-    });
+    set.set_captured_factory(
+        &set_prototype,
+        None,
+        None,
+        Some(|prototype, _, _, _| {
+            let object = SetObject::new_for(prototype).object();
+            object.initialize_prototype(Some(prototype.clone()));
+            Ok(object)
+        }),
+    )?;
     let set_prototype = intrinsics.get(IntrinsicId::SetPrototype);
     method(intrinsics, &set_prototype, "add", 1, |this, arguments| {
         let set = set_receiver(this)?;
-        set.add(value_arg(arguments.first()));
+        set.try_add(value_arg(arguments.first()))?;
         Ok(Value::Object(set.object()))
     })?;
     method(intrinsics, &set_prototype, "has", 1, |this, arguments| {

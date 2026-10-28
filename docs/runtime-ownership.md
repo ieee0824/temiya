@@ -274,3 +274,11 @@ a snapshot of the complete table. Object identities remain stable across
 snapshots. This change is part of the required 0.2 release, not a compatible
 0.1 patch. The tracing branch must still satisfy the coordinated graph,
 reclamation, rooting, ABI, and performance gates above before release.
+
+Collection writes must also share their owner's allocation context. Use
+`MapObject::try_set` and `SetObject::try_add` to receive a `RuntimeError` for a
+foreign Object key/value before any entry is changed. The existing `set`/`add`
+conveniences panic on this error; JavaScript builtins use the fallible methods.
+Primitive keys and values remain immediate stored values. Public Map/Set
+iterators retain their owning Object and its runtime graph until they are
+dropped, including when the original collection facade has been released.

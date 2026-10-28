@@ -1883,6 +1883,17 @@ impl super::ObjectData {
         if let Some(proxy) = &state.proxy {
             proxy.trace(tracer);
         }
+        if let Some(entries) = &state.map_data {
+            for (key, value) in entries.borrow().iter().flatten() {
+                key.trace(tracer);
+                value.trace(tracer);
+            }
+        }
+        if let Some(entries) = &state.set_data {
+            for value in entries.borrow().iter().flatten() {
+                value.trace(tracer);
+            }
+        }
         for entry in &state.properties {
             entry.descriptor.trace(tracer);
         }

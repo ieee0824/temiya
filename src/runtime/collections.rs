@@ -2,10 +2,13 @@
 
 use std::{cell::RefCell, rc::Rc};
 
-use super::{Object, RuntimeError, RuntimeResult, Value, WeakObject};
+use super::{
+    Object, RuntimeError, RuntimeResult, Value, WeakObject,
+    stored::{StoredObject, StoredValue},
+};
 
-type MapEntries = Vec<Option<(Value, Value)>>;
-type SetEntries = Vec<Option<Value>>;
+type MapEntries = Vec<Option<(StoredValue, StoredValue)>>;
+type SetEntries = Vec<Option<StoredValue>>;
 pub(super) type MapSlot = Rc<RefCell<MapEntries>>;
 pub(super) type SetSlot = Rc<RefCell<SetEntries>>;
 pub(super) type WeakMapSlot = Rc<RefCell<Vec<(WeakObject, Value)>>>;
@@ -19,7 +22,14 @@ impl MapObject {
     /// Creates an empty Map.
     #[must_use]
     pub fn new() -> Self {
-        let object = Object::new();
+        Self::from_empty(Object::new())
+    }
+
+    pub(super) fn new_for(context: &Object) -> Self {
+        Self::from_empty(Object::new_for(context))
+    }
+
+    fn from_empty(object: Object) -> Self {
         object.0.state.borrow_mut().map_data = Some(Rc::new(RefCell::new(Vec::new())));
         Self(object)
     }
@@ -38,7 +48,23 @@ impl MapObject {
     }
 
     /// Inserts or replaces a key while retaining its original order.
+    ///
+    /// # Panics
+    /// Panics if an Object key or value belongs to another allocation context.
+    /// Use `try_set` to handle that error.
     pub fn set(&self, key: Value, value: Value) {
+        self.try_set(key, value)
+            .expect("Map entries must share their allocation context");
+    }
+
+    /// Inserts a key and value, rejecting foreign allocation contexts before mutation.
+    pub fn try_set(&self, key: Value, value: Value) -> RuntimeResult<()> {
+        for item in [&key, &value] {
+            if let Value::Object(object) = item {
+                StoredObject::check_context(&self.0, object)?;
+            }
+        }
+        let value = StoredValue::store_owned(&self.0, value)?;
         let slot = self.slot();
         let mut entries = slot.borrow_mut();
         if let Some((_, existing)) = entries
@@ -48,8 +74,12 @@ impl MapObject {
         {
             *existing = value;
         } else {
-            entries.push(Some((normalize_zero(key), value)));
+            entries.push(Some((
+                StoredValue::store_owned(&self.0, normalize_zero(key))?,
+                value,
+            )));
         }
+        Ok(())
     }
 
     /// Returns a value for a key, or `undefined` when absent.
@@ -60,7 +90,9 @@ impl MapObject {
             .iter()
             .flatten()
             .find(|(existing, _)| existing.same_value_zero(key))
-            .map_or(Value::Undefined, |(_, value)| value.clone())
+            .map_or(Value::Undefined, |(_, value)| {
+                value.load(&self.0).expect("live Map entry")
+            })
     }
 
     /// Returns whether a key exists.
@@ -99,6 +131,7 @@ impl MapObject {
     pub fn entries(&self) -> MapIterator {
         MapIterator {
             entries: self.slot(),
+            owner: self.0.clone(),
             index: 0,
         }
     }
@@ -116,6 +149,7 @@ impl Default for MapObject {
 
 /// A live Map entry iterator.
 pub struct MapIterator {
+    owner: Object,
     entries: MapSlot,
     index: usize,
 }
@@ -127,7 +161,12 @@ impl Iterator for MapIterator {
             let value = self.entries.borrow().get(self.index).cloned();
             self.index += 1;
             match value {
-                Some(Some(value)) => return Some(value),
+                Some(Some((key, value))) => {
+                    return Some((
+                        key.load(&self.owner).expect("live Map key"),
+                        value.load(&self.owner).expect("live Map value"),
+                    ));
+                }
                 Some(None) => {}
                 None => return None,
             }
@@ -143,7 +182,14 @@ impl SetObject {
     /// Creates an empty Set.
     #[must_use]
     pub fn new() -> Self {
-        let object = Object::new();
+        Self::from_empty(Object::new())
+    }
+
+    pub(super) fn new_for(context: &Object) -> Self {
+        Self::from_empty(Object::new_for(context))
+    }
+
+    fn from_empty(object: Object) -> Self {
         object.0.state.borrow_mut().set_data = Some(Rc::new(RefCell::new(Vec::new())));
         Self(object)
     }
@@ -159,10 +205,27 @@ impl SetObject {
         self.0.clone()
     }
     /// Adds a value if absent.
+    ///
+    /// # Panics
+    /// Panics if an Object value belongs to another allocation context.
+    /// Use `try_add` to handle that error.
     pub fn add(&self, value: Value) {
-        if !self.has(&value) {
-            self.slot().borrow_mut().push(Some(normalize_zero(value)));
+        self.try_add(value)
+            .expect("Set entries must share their allocation context");
+    }
+
+    /// Adds a value, rejecting a foreign allocation context before mutation.
+    pub fn try_add(&self, value: Value) -> RuntimeResult<()> {
+        if let Value::Object(object) = &value {
+            StoredObject::check_context(&self.0, object)?;
         }
+        if !self.has(&value) {
+            self.slot().borrow_mut().push(Some(StoredValue::store_owned(
+                &self.0,
+                normalize_zero(value),
+            )?));
+        }
+        Ok(())
     }
     /// Returns whether a value exists.
     #[must_use]
@@ -196,6 +259,7 @@ impl SetObject {
     pub fn values(&self) -> SetIterator {
         SetIterator {
             entries: self.slot(),
+            owner: self.0.clone(),
             index: 0,
         }
     }
@@ -212,6 +276,7 @@ impl Default for SetObject {
 
 /// A live Set value iterator.
 pub struct SetIterator {
+    owner: Object,
     entries: SetSlot,
     index: usize,
 }
@@ -222,7 +287,7 @@ impl Iterator for SetIterator {
             let value = self.entries.borrow().get(self.index).cloned();
             self.index += 1;
             match value {
-                Some(Some(value)) => return Some(value),
+                Some(Some(value)) => return Some(value.load(&self.owner).expect("live Set value")),
                 Some(None) => {}
                 None => return None,
             }
@@ -383,4 +448,125 @@ fn normalize_zero(value: Value) -> Value {
         }
     }
     value
+}
+
+#[cfg(test)]
+mod managed_tests {
+    use super::*;
+    use crate::runtime::Runtime;
+
+    #[test]
+    fn managed_collection_cycles_remain_live_through_public_iterators() {
+        let runtime = Runtime::new();
+        let context = Object::new_in(&runtime);
+        let map = MapObject::new_for(&context);
+        let set = SetObject::new_for(&context);
+        drop(context);
+        runtime.collect_migration_graph().unwrap();
+        let key = Object::new_in(&runtime);
+        let value = Object::new_in(&runtime);
+        value
+            .create_data_property("answer".into(), Value::Number(42.0))
+            .unwrap();
+        key.create_data_property("map".into(), Value::Object(map.object()))
+            .unwrap();
+        value
+            .create_data_property("set".into(), Value::Object(set.object()))
+            .unwrap();
+        map.try_set(Value::Object(key.clone()), Value::Object(value.clone()))
+            .unwrap();
+        set.try_add(Value::Object(map.object())).unwrap();
+        let weak = [
+            map.object().downgrade(),
+            set.object().downgrade(),
+            key.downgrade(),
+            value.downgrade(),
+        ];
+        runtime.verify_migration_barriers().unwrap();
+        let mut entries = map.entries();
+        let mut values = set.values();
+        drop(key);
+        drop(value);
+        drop(map);
+        drop(set);
+        assert_eq!(runtime.diagnostics().rooted, 2);
+        assert_eq!(runtime.collect_migration_graph().unwrap().retained, 4);
+        let (key, value) = entries.next().unwrap();
+        let Value::Object(value) = value else {
+            panic!("object value")
+        };
+        assert!(
+            value
+                .get(&"answer".into())
+                .unwrap()
+                .same_value(&Value::Number(42.0))
+        );
+        let Value::Object(map) = values.next().unwrap() else {
+            panic!("map value")
+        };
+        let map = MapObject::from_object(map).unwrap();
+        assert!(map.has(&key));
+        map.try_set(Value::Number(1.0), Value::Number(42.0))
+            .unwrap();
+        assert!(entries.next().unwrap().1.same_value(&Value::Number(42.0)));
+        drop((key, value, map, entries));
+        assert_eq!(runtime.collect_migration_graph().unwrap().retained, 4);
+        drop(values);
+        assert_eq!(runtime.collect_migration_graph().unwrap().retained, 0);
+        assert!(weak.iter().all(|weak| weak.upgrade().is_none()));
+    }
+
+    #[test]
+    fn managed_collection_foreign_writes_are_atomic_and_keys_need_no_facades() {
+        let runtime = Runtime::new();
+        let context = Object::new_in(&runtime);
+        let map = MapObject::new_for(&context);
+        let set = SetObject::new_for(&context);
+        let key = Object::new_in(&runtime);
+        map.try_set(Value::Object(key.clone()), Value::Number(42.0))
+            .unwrap();
+        let foreign = Object::new();
+        assert!(
+            map.try_set(Value::Object(key.clone()), Value::Object(foreign.clone()))
+                .is_err()
+        );
+        assert!(
+            map.get(&Value::Object(key.clone()))
+                .same_value(&Value::Number(42.0))
+        );
+        assert!(
+            map.try_set(Value::Object(foreign.clone()), Value::Number(1.0))
+                .is_err()
+        );
+        assert!(set.try_add(Value::Object(foreign)).is_err());
+        assert_eq!(map.size(), 1);
+        assert_eq!(set.size(), 0);
+        map.try_set(Value::Number(f64::NAN), Value::Number(1.0))
+            .unwrap();
+        map.try_set(Value::Number(f64::NAN), Value::Number(42.0))
+            .unwrap();
+        map.try_set(Value::Number(-0.0), Value::Number(42.0))
+            .unwrap();
+        assert!(
+            map.get(&Value::Number(0.0))
+                .same_value(&Value::Number(42.0))
+        );
+        assert_eq!(map.size(), 3);
+        let before = runtime.diagnostics().rooted;
+        for _ in 0..100 {
+            assert!(map.has(&Value::Number(f64::NAN)));
+            assert!(!map.has(&Value::Number(99.0)));
+        }
+        assert_eq!(runtime.diagnostics().rooted, before);
+        assert!(!map.has(&Value::Object(Object::new())));
+        assert!(map.delete(&Value::Number(f64::NAN)));
+        set.try_add(Value::Number(-0.0)).unwrap();
+        set.try_add(Value::Number(0.0)).unwrap();
+        let Value::Number(zero) = set.values().next().unwrap() else {
+            panic!("number")
+        };
+        assert!(!zero.is_sign_negative());
+        assert_eq!(set.size(), 1);
+        assert!(set.delete(&Value::Number(-0.0)));
+    }
 }

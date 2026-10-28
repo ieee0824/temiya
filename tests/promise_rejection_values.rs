@@ -12,7 +12,7 @@ fn evaluate(engine: &Engine, realm: &RealmHandle, source: &str) {
     engine.evaluate(&script).unwrap();
 }
 
-fn reasons() -> Vec<Value> {
+fn reasons(engine: &Engine) -> Vec<Value> {
     vec![
         Value::Undefined,
         Value::Null,
@@ -25,15 +25,15 @@ fn reasons() -> Vec<Value> {
         Value::String(JsString::from_code_units(vec![0, 0xd800])),
         Value::BigInt(BigInt::from(123456789)),
         Value::Symbol(Symbol::new(Some("reason".into()))),
-        Value::Object(Object::new()),
+        Value::Object(Object::new_in(engine.allocation_context())),
     ]
 }
 
 #[test]
 fn javascript_reactions_and_unhandled_hook_preserve_every_value_kind() {
     for backend in [ScriptBackend::Ast, ScriptBackend::Auto] {
-        for reason in reasons() {
-            let engine = Engine::builder().script_backend(backend).build();
+        let engine = Engine::builder().script_backend(backend).build();
+        for reason in reasons(&engine) {
             let realm = engine.create_realm();
             engine
                 .set_global(
@@ -92,7 +92,7 @@ fn javascript_reactions_and_unhandled_hook_preserve_every_value_kind() {
 fn thenable_reject_callback_and_throwing_getter_keep_the_original_object() {
     let engine = Engine::default();
     let realm = engine.create_realm();
-    let reason = Value::Object(Object::new());
+    let reason = Value::Object(Object::new_in(engine.allocation_context()));
     engine
         .set_global(
             &realm,
@@ -124,15 +124,16 @@ fn thenable_reject_callback_and_throwing_getter_keep_the_original_object() {
          adopt({then:function(resolve,reject){reject(reason);}}).then(undefined,capture); \
          adopt({then:function(){throw reason;}}).then(undefined,capture);",
     );
-    let thenable = Object::new();
+    let thenable = Object::new_in(engine.allocation_context());
     let thrown = reason.clone();
     thenable
         .define_own_property(
             "then".into(),
             PropertyDescriptor::accessor(
-                Some(Object::native_function(move |_, _| {
-                    Err(RuntimeError::thrown(thrown.clone()))
-                })),
+                Some(Object::native_function_in(
+                    engine.allocation_context(),
+                    move |_, _| Err(RuntimeError::thrown(thrown.clone())),
+                )),
                 None,
                 true,
                 true,

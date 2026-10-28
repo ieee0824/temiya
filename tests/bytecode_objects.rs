@@ -22,14 +22,15 @@ fn check(realm: &Realm, source: &str, vm: bool) {
 }
 #[test]
 fn data_keys_duplicates_shorthands_and_prototype_setters_are_distinct() {
+    let allocation_context = temiya::runtime::AllocationContext::new();
     for vm in [false, true] {
         check(
-            &Realm::ordinary(),
+            &Realm::ordinary_in(&allocation_context),
             "var n=2;var o={a:1,a:42,n,[1+1]:3,0x10:4,__proto__:null};o.a===42&&o.n===2&&o[2]===3&&o[16]===4&&Object.getPrototypeOf(o)===null&&!Object.prototype.hasOwnProperty.call(o,'__proto__');",
             vm,
         );
         check(
-            &Realm::ordinary(),
+            &Realm::ordinary_in(&allocation_context),
             "var __proto__=42;var a={__proto__};var b={['__proto__']:7};var c={__proto__:3};a.__proto__===42&&b.__proto__===7&&Object.getPrototypeOf(c)===Object.prototype&&!Object.prototype.hasOwnProperty.call(c,'__proto__');",
             vm,
         );
@@ -37,8 +38,9 @@ fn data_keys_duplicates_shorthands_and_prototype_setters_are_distinct() {
 }
 #[test]
 fn computed_key_conversion_precedes_value_evaluation_once() {
+    let allocation_context = temiya::runtime::AllocationContext::new();
     for vm in [false, true] {
-        let realm = Realm::ordinary();
+        let realm = Realm::ordinary_in(&allocation_context);
         execute(
             &realm,
             "var log='';var key={ [Symbol.toPrimitive](hint){log+=hint;return 'x';} };",
@@ -52,10 +54,23 @@ fn computed_key_conversion_precedes_value_evaluation_once() {
         );
     }
 }
+
 #[test]
-fn spread_copies_enumerable_values_symbols_and_utf16_without_setters() {
+fn named_keys_preserve_utf16_order_and_define_data_without_prototype_setters() {
     for vm in [false, true] {
         let realm = Realm::ordinary();
+        check(
+            &realm,
+            r#"var log='';Object.defineProperty(Object.prototype,'x',{set:function(v){throw 'setter';},configurable:true});var o={x:(log+='a',1),'\uD800':(log+='b',2),x:(log+='c',42),__proto__:null};var keys=Object.getOwnPropertyNames(o);o.x===42&&o['\uD800']===2&&log==='abc'&&keys[0]==='x'&&keys[1]==='\uD800'&&Object.getPrototypeOf(o)===null;"#,
+            vm,
+        );
+    }
+}
+#[test]
+fn spread_copies_enumerable_values_symbols_and_utf16_without_setters() {
+    let allocation_context = temiya::runtime::AllocationContext::new();
+    for vm in [false, true] {
+        let realm = Realm::ordinary_in(&allocation_context);
         execute(&realm, "var hits=0;var sym=Symbol('x');var src={ get x(){hits++;return 42;} };src[sym]=7;Object.defineProperty(src,'hidden',{value:9,enumerable:false});", false).unwrap();
         check(
             &realm,
@@ -66,9 +81,10 @@ fn spread_copies_enumerable_values_symbols_and_utf16_without_setters() {
 }
 #[test]
 fn spread_propagates_own_keys_descriptor_and_getter_errors() {
+    let allocation_context = temiya::runtime::AllocationContext::new();
     for trap in ["ownKeys", "getOwnPropertyDescriptor", "get"] {
         for vm in [false, true] {
-            let realm = Realm::ordinary();
+            let realm = Realm::ordinary_in(&allocation_context);
             let setup = format!(
                 "var log='';var marker={{}};var target={{x:42}};var handler={{}};handler.{trap}=function(){{log+='T';throw marker;}};var src=new Proxy(target,handler);function hit(){{log+='H';return 0;}}"
             );
@@ -84,6 +100,7 @@ fn spread_propagates_own_keys_descriptor_and_getter_errors() {
 #[test]
 #[ignore = "requires pinned Test262 corpus in TEST262_DIR"]
 fn pinned_test262_object_prototypes() {
+    let allocation_context = temiya::runtime::AllocationContext::new();
     use std::process::Command;
     use temiya::test262::{NegativePhase, TEST262_REVISION, TestCase};
     let root = std::env::var("TEST262_DIR").expect("TEST262_DIR required");
@@ -124,7 +141,7 @@ fn pinned_test262_object_prototypes() {
                             Err("parse-negative accepted".into())
                         };
                     }
-                    let realm = Realm::ordinary();
+                    let realm = Realm::ordinary_in(&allocation_context);
                     for harness in ["sta.js", "assert.js"]
                         .into_iter()
                         .chain(case.metadata.includes.iter().map(String::as_str))
@@ -195,5 +212,40 @@ fn object_instructions_require_scope_and_operands() {
             code.verify().unwrap_err().kind(),
             VerifyErrorKind::StackUnderflow
         );
+    }
+}
+
+#[test]
+fn named_object_definition_rejects_nonstring_and_missing_constant_names() {
+    use temiya::bytecode::{
+        Bytecode, Constant, Instruction, ScopeDescriptor, ScopeKind, VerifyErrorKind,
+    };
+    for (name, expected) in [
+        (1, VerifyErrorKind::InvalidConstantKind),
+        (2, VerifyErrorKind::ConstantOutOfBounds),
+    ] {
+        let code = Bytecode {
+            constants: vec![
+                Constant::Scope(ScopeDescriptor {
+                    kind: ScopeKind::Global,
+                    strict: false,
+                    bindings: vec![],
+                    functions: vec![],
+                }),
+                Constant::Number(42.0),
+            ],
+            instructions: vec![
+                Instruction::EnterScope(0),
+                Instruction::CreateObject,
+                Instruction::LoadConstant(1),
+                Instruction::DefineNamedObjectProperty {
+                    name,
+                    prototype_setter: false,
+                },
+                Instruction::Return,
+            ],
+            local_count: 0,
+        };
+        assert_eq!(code.verify().unwrap_err().kind(), expected);
     }
 }

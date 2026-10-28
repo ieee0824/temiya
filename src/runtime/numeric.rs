@@ -11,8 +11,14 @@ pub struct NumberObject(Object);
 impl NumberObject {
     /// Boxes a Number value.
     #[must_use]
-    pub fn new(value: f64) -> Self {
-        let object = Object::new();
+    pub fn new(context: &super::AllocationContext, value: f64) -> Self {
+        let object = Object::new_in(context);
+        object.0.state.borrow_mut().primitive_data = Some(Value::Number(value));
+        Self(object)
+    }
+
+    pub(crate) fn new_for(context: &Object, value: f64) -> Self {
+        let object = Object::new_for(context);
         object.0.state.borrow_mut().primitive_data = Some(Value::Number(value));
         Self(object)
     }
@@ -40,8 +46,14 @@ pub struct BigIntObject(Object);
 impl BigIntObject {
     /// Boxes a BigInt value.
     #[must_use]
-    pub fn new(value: BigInt) -> Self {
-        let object = Object::new();
+    pub fn new(context: &super::AllocationContext, value: BigInt) -> Self {
+        let object = Object::new_in(context);
+        object.0.state.borrow_mut().primitive_data = Some(Value::BigInt(value));
+        Self(object)
+    }
+
+    pub(crate) fn new_for(context: &Object, value: BigInt) -> Self {
+        let object = Object::new_for(context);
         object.0.state.borrow_mut().primitive_data = Some(Value::BigInt(value));
         Self(object)
     }

@@ -12,7 +12,7 @@ fn cached_construction_keeps_coercion_order_identity_and_abrupt_values() {
         let realm = engine.create_realm();
         let calls = Rc::new(RefCell::new(String::new()));
         for (name, marker, text) in [("pattern", 'P', "a"), ("flags", 'F', "g")] {
-            let object = Object::new();
+            let object = Object::new_in(engine.allocation_context());
             let observed = calls.clone();
             object.set_to_string_hook(move || {
                 observed.borrow_mut().push(marker);
@@ -43,10 +43,10 @@ fn cached_construction_keeps_coercion_order_identity_and_abrupt_values() {
         assert_eq!(first.exec(&input).unwrap().unwrap().index, 0);
         assert_eq!(second.exec(&input).unwrap().unwrap().index, 0);
         assert_eq!(first.exec(&input).unwrap().unwrap().index, 1);
-        let reason = Value::Object(Object::new());
+        let reason = Value::Object(Object::new_in(engine.allocation_context()));
         let thrown = reason.clone();
         let observed = calls.clone();
-        let flags = Object::new();
+        let flags = Object::new_in(engine.allocation_context());
         flags.set_to_string_hook(move || {
             observed.borrow_mut().push('E');
             Err(RuntimeError::thrown(thrown.clone()))
@@ -133,7 +133,8 @@ fn pinned_test262_regexp_compilation() {
 
 #[test]
 fn reused_capture_storage_clears_unmatched_groups_and_old_inputs() {
-    let regexp = RegExp::new(JsString::from("(?<optional>a)?b"), "").unwrap();
+    let context = temiya::runtime::AllocationContext::new();
+    let regexp = RegExp::new(&context, JsString::from("(?<optional>a)?b"), "").unwrap();
     assert_eq!(
         regexp
             .exec(&JsString::from("ab"))
@@ -161,8 +162,9 @@ fn reused_capture_storage_clears_unmatched_groups_and_old_inputs() {
 
 #[test]
 fn cached_matcher_preserves_utf16_boundaries_and_current_surrogate_errors() {
-    let original = RegExp::new(JsString::from("(.)"), "gu").unwrap();
-    let cached = RegExp::new(JsString::from("(.)"), "gu").unwrap();
+    let context = temiya::runtime::AllocationContext::new();
+    let original = RegExp::new(&context, JsString::from("(.)"), "gu").unwrap();
+    let cached = RegExp::new(&context, JsString::from("(.)"), "gu").unwrap();
     let lone = JsString::from_code_units(vec![0xd800]);
     cached.set_last_index(1);
     assert_eq!(
@@ -182,20 +184,21 @@ fn cached_matcher_preserves_utf16_boundaries_and_current_surrogate_errors() {
     assert_eq!(cached.last_index(), 2);
     assert_eq!(original.last_index(), 0);
     assert_eq!(
-        RegExp::new(lone.clone(), "u").unwrap_err().kind(),
+        RegExp::new(&context, lone.clone(), "u").unwrap_err().kind(),
         RuntimeErrorKind::TypeError
     );
     assert_eq!(
-        RegExp::new(lone, "gg").unwrap_err().kind(),
+        RegExp::new(&context, lone, "gg").unwrap_err().kind(),
         RuntimeErrorKind::SyntaxError
     );
 }
 
 #[test]
 fn non_ascii_cache_keys_preserve_scalar_patterns_and_independent_state() {
+    let context = temiya::runtime::AllocationContext::new();
     for _ in 0..2 {
-        let astral = RegExp::new(JsString::from("😀"), "gu").unwrap();
-        let latin = RegExp::new(JsString::from("é"), "gu").unwrap();
+        let astral = RegExp::new(&context, JsString::from("😀"), "gu").unwrap();
+        let latin = RegExp::new(&context, JsString::from("é"), "gu").unwrap();
         let input = JsString::from("😀é");
         assert_eq!(astral.source(), JsString::from("😀"));
         assert_eq!(latin.source(), JsString::from("é"));
@@ -240,9 +243,10 @@ fn builtin_exec_owns_each_capture_array_and_clears_optional_groups() {
 
 #[test]
 fn short_ascii_input_and_unicode_fallback_keep_owned_captures_at_buffer_boundary() {
+    let context = temiya::runtime::AllocationContext::new();
     for len in [63, 64, 65] {
         let input = JsString::from("a".repeat(len));
-        let regexp = RegExp::new(JsString::from("(a+)"), "gu").unwrap();
+        let regexp = RegExp::new(&context, JsString::from("(a+)"), "gu").unwrap();
         let found = regexp.exec(&input).unwrap().unwrap();
         assert_eq!(found.index, 0);
         assert_eq!(
@@ -256,7 +260,7 @@ fn short_ascii_input_and_unicode_fallback_keep_owned_captures_at_buffer_boundary
     }
     let input = JsString::from(format!("{}😀{}", "a".repeat(31), "a".repeat(31)));
     assert_eq!(input.code_units().len(), 64);
-    let regexp = RegExp::new(JsString::from("(?<value>.)"), "gu").unwrap();
+    let regexp = RegExp::new(&context, JsString::from("(?<value>.)"), "gu").unwrap();
     regexp.set_last_index(31);
     let found = regexp.exec(&input).unwrap().unwrap();
     assert_eq!(found.index, 31);

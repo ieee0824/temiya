@@ -26,8 +26,9 @@ fn assert_value(actual: Value, expected: &Value) {
 
 #[test]
 fn array_push_length_reads_keep_coercion_getters_and_setters_ordered() {
+    let allocation_context = temiya::runtime::AllocationContext::new();
     for vm in [false, true] {
-        let realm = Realm::ordinary();
+        let realm = Realm::ordinary_in(&allocation_context);
         setup(
             &realm,
             "var log='';var receiver={length:{valueOf:function(){log+='N';receiver.length=100;return 2;}}};Object.defineProperty(receiver,'2',{set:function(value){log+='I';if(this!==receiver||value!==7)throw 99;}});",
@@ -40,7 +41,7 @@ fn array_push_length_reads_keep_coercion_getters_and_setters_ordered() {
             )),
             &Value::String("NI:3:3".into()),
         );
-        let realm = Realm::ordinary();
+        let realm = Realm::ordinary_in(&allocation_context);
         setup(&realm, "var log='';var receiver={get length(){log+='G';return 2;},set length(value){log+='L';if(value!==3)throw 99;}};Object.defineProperty(receiver,'2',{set:function(value){log+='I';if(this!==receiver||value!==7)throw 99;}});
 ");
         assert_value(
@@ -56,6 +57,7 @@ fn array_push_length_reads_keep_coercion_getters_and_setters_ordered() {
 
 #[test]
 fn literal_string_compound_assignment_preserves_captures_results_and_coercion() {
+    let allocation_context = temiya::runtime::AllocationContext::new();
     for vm in [false, true] {
         for (source, expected) in [
             (
@@ -74,20 +76,24 @@ fn literal_string_compound_assignment_preserves_captures_results_and_coercion() 
             ("function f(){let s='a';s+='b';return s;}f();", "ab"),
         ] {
             assert_value(
-                value(execute(&Realm::ordinary(), source, vm)),
+                value(execute(
+                    &Realm::ordinary_in(&allocation_context),
+                    source,
+                    vm,
+                )),
                 &Value::String(expected.into()),
             );
         }
         assert_value(
             value(execute(
-                &Realm::ordinary(),
+                &Realm::ordinary_in(&allocation_context),
                 "(function(){var s='';var alias='';for(var i=0;i<200;i++){s+='ab';if(i===100)alias=s;}var second=s;for(var j=0;j<100;j++)s+='cd';return alias.length===202 && second.length===400 && s.length===600 && alias.charCodeAt(201)===98 && second.charCodeAt(399)===98 && s.charCodeAt(400)===99;})();",
                 vm,
             )),
             &Value::Boolean(true),
         );
         for suffix in ["", "b"] {
-            let realm = Realm::ordinary();
+            let realm = Realm::ordinary_in(&allocation_context);
             let source = format!(
                 "var read;function f(){{const s='a';read=function(){{return s;}};s+='{suffix}';}}f();"
             );
@@ -105,6 +111,7 @@ fn literal_string_compound_assignment_preserves_captures_results_and_coercion() 
 
 #[test]
 fn primitive_string_concat_preserves_snapshots_utf16_and_evaluation_order() {
+    let allocation_context = temiya::runtime::AllocationContext::new();
     for vm in [false, true] {
         for source in [
             r#"var log='';function left(){log+='L';return 'A\ud800';}function right(){log+='R';return '\udc00B';}var joined=left()+right();joined.length===4 && joined.charCodeAt(1)===55296 && joined.charCodeAt(2)===56320 && log==='LR';"#,
@@ -113,7 +120,11 @@ fn primitive_string_concat_preserves_snapshots_utf16_and_evaluation_order() {
             "var s='ab';var alias=s;s+='';s.length===2 && alias==='ab' && (s+'cd').length===4;",
         ] {
             assert_value(
-                value(execute(&Realm::ordinary(), source, vm)),
+                value(execute(
+                    &Realm::ordinary_in(&allocation_context),
+                    source,
+                    vm,
+                )),
                 &Value::Boolean(true),
             );
         }
@@ -122,8 +133,9 @@ fn primitive_string_concat_preserves_snapshots_utf16_and_evaluation_order() {
 
 #[test]
 fn numeric_array_reads_preserve_canonical_keys_holes_and_getters() {
+    let allocation_context = temiya::runtime::AllocationContext::new();
     for vm in [false, true] {
-        let realm = Realm::ordinary();
+        let realm = Realm::ordinary_in(&allocation_context);
         setup(
             &realm,
             "var calls=0;var array=[11,undefined];array['-0']=90;array[-1]=91;array[1.5]=92;array[4294967295]=93;array[NaN]=94;array[Infinity]=95;Object.setPrototypeOf(array,{get 1(){calls++;return this[0]+20;}});",
@@ -151,8 +163,9 @@ fn numeric_array_reads_preserve_canonical_keys_holes_and_getters() {
 
 #[test]
 fn numeric_string_reads_return_utf16_units_and_keep_prototype_fallback_receiver() {
+    let allocation_context = temiya::runtime::AllocationContext::new();
     for vm in [false, true] {
-        let realm = Realm::ordinary();
+        let realm = Realm::ordinary_in(&allocation_context);
         setup(
             &realm,
             "var calls=0;var s='A😀';Object.defineProperty(String.prototype,'0',{get:function(){calls++;return 'wrong';},configurable:true});Object.defineProperty(String.prototype,'4',{get:function(){'use strict';calls++;return typeof this+':'+this.length;},configurable:true});",
@@ -170,8 +183,9 @@ fn numeric_string_reads_return_utf16_units_and_keep_prototype_fallback_receiver(
 
 #[test]
 fn loop_named_reads_observe_reordering_accessors_and_prototype_changes() {
+    let allocation_context = temiya::runtime::AllocationContext::new();
     for vm in [false, true] {
-        let realm = Realm::ordinary();
+        let realm = Realm::ordinary_in(&allocation_context);
         let source = "var log='';var obj={prefix:0,x:1};var sum=0;for(var i=0;i<4;i++){sum+=obj.x;if(i===0){delete obj.prefix;obj.other=99;}if(i===1){delete obj.x;Object.defineProperty(obj,'x',{get:function(){log+='G';return this.other===99?4:400;},configurable:true});}if(i===2){delete obj.x;Object.setPrototypeOf(obj,{x:8});}}sum+':'+log;";
         assert_value(
             value(execute(&realm, source, vm)),
@@ -182,9 +196,10 @@ fn loop_named_reads_observe_reordering_accessors_and_prototype_changes() {
 
 #[test]
 fn static_and_computed_method_names_retain_receiver_across_getter_reentry() {
+    let allocation_context = temiya::runtime::AllocationContext::new();
     for vm in [false, true] {
         for call in ["obj.method()", "obj['method']()"] {
-            let realm = Realm::ordinary();
+            let realm = Realm::ordinary_in(&allocation_context);
             setup(
                 &realm,
                 "var log='';var other={x:2};var obj={x:1,get method(){log+='G';obj=other;return function(){return this.x;};}};",
@@ -203,8 +218,9 @@ fn static_and_computed_method_names_retain_receiver_across_getter_reentry() {
 
 #[test]
 fn member_reads_writes_and_parentheses_match_ast() {
+    let allocation_context = temiya::runtime::AllocationContext::new();
     for vm in [false, true] {
-        let realm = Realm::ordinary();
+        let realm = Realm::ordinary_in(&allocation_context);
         setup(
             &realm,
             "var obj={x:1,get y(){log=log+'g';return this.x;},set y(v){log=log+'s';this.x=v;}}; var log='';",
@@ -234,8 +250,9 @@ fn member_reads_writes_and_parentheses_match_ast() {
 
 #[test]
 fn optional_members_preserve_chain_boundaries_and_skip_key_evaluation() {
+    let allocation_context = temiya::runtime::AllocationContext::new();
     for vm in [false, true] {
-        let realm = Realm::ordinary();
+        let realm = Realm::ordinary_in(&allocation_context);
         setup(
             &realm,
             "var absent=null; var count=0; var obj={x:{value:7}};",
@@ -274,8 +291,9 @@ fn optional_members_preserve_chain_boundaries_and_skip_key_evaluation() {
 
 #[test]
 fn computed_key_expression_rhs_and_coercion_have_correct_order() {
+    let allocation_context = temiya::runtime::AllocationContext::new();
     for vm in [false, true] {
-        let realm = Realm::ordinary();
+        let realm = Realm::ordinary_in(&allocation_context);
         setup(
             &realm,
             "var log=''; var old={}; var obj=old; var key={toString:function(){log=log+'K';return 'x';}}; var rhs={get value(){log=log+'R';obj={};return 9;}};",
@@ -319,8 +337,9 @@ fn computed_key_expression_rhs_and_coercion_have_correct_order() {
 
 #[test]
 fn deletion_does_not_get_the_property_and_obeys_strict_failures() {
+    let allocation_context = temiya::runtime::AllocationContext::new();
     for vm in [false, true] {
-        let realm = Realm::ordinary();
+        let realm = Realm::ordinary_in(&allocation_context);
         setup(
             &realm,
             "var count=0; var obj={get value(){count=count+1;return 2;}}; Object.defineProperty(obj,'fixed',{value:1,configurable:false});",
@@ -359,8 +378,9 @@ fn deletion_does_not_get_the_property_and_obeys_strict_failures() {
 
 #[test]
 fn primitive_prototypes_and_property_assignment_failures_match() {
+    let allocation_context = temiya::runtime::AllocationContext::new();
     for vm in [false, true] {
-        let realm = Realm::ordinary();
+        let realm = Realm::ordinary_in(&allocation_context);
         setup(
             &realm,
             "Object.defineProperty(String.prototype,'receiver',{get:function(){'use strict';return this;}});",
@@ -388,34 +408,38 @@ fn primitive_prototypes_and_property_assignment_failures_match() {
 
 #[test]
 fn proxy_receiver_symbol_keys_and_abrupt_deletion_are_preserved() {
+    let allocation_context = temiya::runtime::AllocationContext::new();
     use std::{cell::RefCell, rc::Rc};
     use temiya::runtime::{Object, ProxyObject, Symbol};
     for vm in [false, true] {
-        let realm = Realm::ordinary();
+        let realm = Realm::ordinary_in(&allocation_context);
         let symbol = Symbol::new(Some("key".into()));
-        let target = Object::new();
+        let target = Object::new_in(&allocation_context);
         target
             .create_data_property(symbol.clone().into(), Value::Number(7.0))
             .unwrap();
         let receiver = Rc::new(RefCell::new(None::<Object>));
         let seen = receiver.clone();
-        let handler = Object::new();
+        let handler = Object::new_in(&allocation_context);
         handler
             .create_data_property(
                 "get".into(),
-                Value::Object(Object::native_function(move |_, args| {
-                    assert!(args[2].same_value(&Value::Object(seen.borrow().clone().unwrap())));
-                    let Value::Object(target) = &args[0] else {
-                        panic!()
-                    };
-                    target.get(&args[1].to_property_key()?)
-                })),
+                Value::Object(Object::native_function_in(
+                    &allocation_context,
+                    move |_, args| {
+                        assert!(args[2].same_value(&Value::Object(seen.borrow().clone().unwrap())));
+                        let Value::Object(target) = &args[0] else {
+                            panic!()
+                        };
+                        target.get(&args[1].to_property_key()?)
+                    },
+                )),
             )
             .unwrap();
         handler
             .create_data_property(
                 "deleteProperty".into(),
-                Value::Object(Object::native_function(|_, _| {
+                Value::Object(Object::native_function_in(&allocation_context, |_, _| {
                     Err(RuntimeError::thrown(Value::Number(17.0)))
                 })),
             )
@@ -424,12 +448,16 @@ fn proxy_receiver_symbol_keys_and_abrupt_deletion_are_preserved() {
         handler
             .create_data_property(
                 "set".into(),
-                Value::Object(Object::native_function(move |_, args| {
-                    assert!(
-                        args[3].same_value(&Value::Object(set_receiver.borrow().clone().unwrap()))
-                    );
-                    Ok(Value::Boolean(false))
-                })),
+                Value::Object(Object::native_function_in(
+                    &allocation_context,
+                    move |_, args| {
+                        assert!(
+                            args[3]
+                                .same_value(&Value::Object(set_receiver.borrow().clone().unwrap()))
+                        );
+                        Ok(Value::Boolean(false))
+                    },
+                )),
             )
             .unwrap();
         let proxy = ProxyObject::new(target, handler);
@@ -468,8 +496,9 @@ fn proxy_receiver_symbol_keys_and_abrupt_deletion_are_preserved() {
 
 #[test]
 fn primitive_inherited_setters_keep_the_original_receiver() {
+    let allocation_context = temiya::runtime::AllocationContext::new();
     for vm in [false, true] {
-        let realm = Realm::ordinary();
+        let realm = Realm::ordinary_in(&allocation_context);
         setup(
             &realm,
             "var log=''; Object.defineProperty(Number.prototype,'sink',{set:function(v){'use strict';log=(typeof this)+v;}});",
@@ -487,13 +516,14 @@ fn primitive_inherited_setters_keep_the_original_receiver() {
 
 #[test]
 fn supplied_global_this_and_function_receiver_match_ast() {
+    let allocation_context = temiya::runtime::AllocationContext::new();
     use temiya::{
         ast::StmtKind,
         parser::parse_script,
         runtime::{Environment, Object, StatementEvaluator, ThisBindingStatus},
     };
-    let global = Object::new();
-    let receiver = Object::new();
+    let global = Object::new_in(&allocation_context);
+    let receiver = Object::new_in(&allocation_context);
     receiver
         .create_data_property("answer".into(), Value::Number(42.0))
         .unwrap();
@@ -541,9 +571,10 @@ fn supplied_global_this_and_function_receiver_match_ast() {
 
 #[test]
 fn javascript_exotic_key_conversion_receives_string_hint_and_preserves_symbols() {
+    let allocation_context = temiya::runtime::AllocationContext::new();
     use temiya::runtime::{Symbol, WellKnownSymbol};
     for vm in [false, true] {
-        let realm = Realm::ordinary();
+        let realm = Realm::ordinary_in(&allocation_context);
         setup(
             &realm,
             "var log=''; var key={}; var obj={}; var convert=function(hint){if(this!==key) throw 1; log=hint; return sym;};",
@@ -591,9 +622,10 @@ fn javascript_exotic_key_conversion_receives_string_hint_and_preserves_symbols()
 
 #[test]
 fn nested_references_and_reentrant_getters_keep_independent_stacks() {
+    let allocation_context = temiya::runtime::AllocationContext::new();
     use temiya::runtime::{Object, PropertyDescriptor};
     for vm in [false, true] {
-        let realm = Realm::ordinary();
+        let realm = Realm::ordinary_in(&allocation_context);
         setup(&realm, "var first={}; var second={}; var obj={value:0};");
         assert_value(
             value(execute(&realm, "first.x=second.y=7; first.x+second.y;", vm)),
@@ -612,7 +644,8 @@ fn nested_references_and_reentrant_getters_keep_independent_stacks() {
             .define_own_property(
                 "reenter".into(),
                 PropertyDescriptor::accessor(
-                    Some(Object::native_function(
+                    Some(Object::native_function_in(
+                        &allocation_context,
                         move |_, _| match VirtualMachine::execute_in_realm(
                             &nested,
                             &callback_realm,
@@ -646,6 +679,7 @@ fn nested_references_and_reentrant_getters_keep_independent_stacks() {
 #[test]
 #[ignore = "requires pinned Test262 corpus; records current frontend gaps without fallback"]
 fn pinned_test262_property_audit() {
+    let allocation_context = temiya::runtime::AllocationContext::new();
     use std::process::Command;
     use temiya::test262::{TEST262_REVISION, TestCase};
     let corpus = std::env::var("TEST262_DIR").expect("TEST262_DIR required");
@@ -698,7 +732,7 @@ fn pinned_test262_property_audit() {
                     None
                 };
                 let run = || -> Result<(), String> {
-                    let realm = Realm::ordinary();
+                    let realm = Realm::ordinary_in(&allocation_context);
                     for harness in ["sta.js", "assert.js"]
                         .into_iter()
                         .chain(case.metadata.includes.iter().map(String::as_str))
@@ -745,6 +779,7 @@ fn pinned_test262_property_audit() {
 }
 #[test]
 fn ordinary_array_push_keeps_prototype_setters_readonly_lengths_and_proxy_order() {
+    let allocation_context = temiya::runtime::AllocationContext::new();
     for (setup, source, expected) in [
         (
             "var a=[1,,3];a.length=1000000;",
@@ -783,7 +818,7 @@ fn ordinary_array_push_keeps_prototype_setters_readonly_lengths_and_proxy_order(
         ),
     ] {
         for vm in [false, true] {
-            let realm = Realm::ordinary();
+            let realm = Realm::ordinary_in(&allocation_context);
             execute(&realm, setup, false).unwrap();
             assert!(
                 value(execute(&realm, source, vm)).same_value(&expected),
@@ -793,7 +828,7 @@ fn ordinary_array_push_keeps_prototype_setters_readonly_lengths_and_proxy_order(
     }
     for vm in [false, true] {
         for source in ["a.push();", "a.push(42);"] {
-            let realm = Realm::ordinary();
+            let realm = Realm::ordinary_in(&allocation_context);
             execute(&realm, "var seen=0;Object.defineProperty(Array.prototype,'0',{set:function(v){seen=v;}});var a=[];Object.defineProperty(a,'length',{writable:false});", false).unwrap();
             assert_eq!(
                 execute(&realm, source, vm).unwrap_err().kind(),
@@ -806,7 +841,7 @@ fn ordinary_array_push_keeps_prototype_setters_readonly_lengths_and_proxy_order(
                 ))
             );
         }
-        let realm = Realm::ordinary();
+        let realm = Realm::ordinary_in(&allocation_context);
         execute(&realm, "var a=[];a.length=4294967295;", false).unwrap();
         assert_eq!(
             execute(&realm, "a.push(42);", vm).unwrap_err().kind(),

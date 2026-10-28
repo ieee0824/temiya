@@ -1,11 +1,12 @@
 use temiya::runtime::{
-    IntrinsicId, MapObject, Object, Realm, RuntimeErrorKind, SetObject, Value, WeakMapObject,
-    WeakSetObject,
+    AllocationContext, IntrinsicId, MapObject, Object, Realm, RuntimeErrorKind, SetObject, Value,
+    WeakMapObject, WeakSetObject,
 };
 
 #[test]
 fn map_and_set_use_same_value_zero_and_insertion_order() {
-    let map = MapObject::new();
+    let context = AllocationContext::new();
+    let map = MapObject::new(&context);
     map.set(Value::Number(f64::NAN), Value::Number(1.0));
     map.set(Value::Number(f64::NAN), Value::Number(2.0));
     map.set(Value::Number(-0.0), Value::String("zero".into()));
@@ -18,7 +19,7 @@ fn map_and_set_use_same_value_zero_and_insertion_order() {
     let entries = map.entries().collect::<Vec<_>>();
     assert!(matches!(entries[0].0, Value::Number(value) if value.is_nan()));
 
-    let set = SetObject::new();
+    let set = SetObject::new(&context);
     set.add(Value::Number(-0.0));
     set.add(Value::Number(0.0));
     set.add(Value::Number(f64::NAN));
@@ -28,7 +29,8 @@ fn map_and_set_use_same_value_zero_and_insertion_order() {
 
 #[test]
 fn live_iterators_observe_deletion_and_later_addition() {
-    let map = MapObject::new();
+    let context = AllocationContext::new();
+    let map = MapObject::new(&context);
     map.set(Value::String("a".into()), Value::Number(1.0));
     map.set(Value::String("b".into()), Value::Number(2.0));
     let mut iterator = map.entries();
@@ -44,7 +46,7 @@ fn live_iterators_observe_deletion_and_later_addition() {
     ));
     assert!(iterator.next().is_none());
 
-    let set = SetObject::new();
+    let set = SetObject::new(&context);
     set.add(Value::Number(1.0));
     let mut values = set.values();
     assert!(matches!(values.next(), Some(Value::Number(1.0))));
@@ -54,23 +56,26 @@ fn live_iterators_observe_deletion_and_later_addition() {
 
 #[test]
 fn weak_collections_do_not_retain_keys() {
-    let map = WeakMapObject::new();
-    let set = WeakSetObject::new();
-    let key = Object::new();
+    let context = AllocationContext::new();
+    let map = WeakMapObject::new(&context);
+    let set = WeakSetObject::new(&context);
+    let key = Object::new_in(&context);
     map.set(&Value::Object(key.clone()), Value::String("value".into()))
         .unwrap();
     set.add(&Value::Object(key.clone())).unwrap();
     assert_eq!(map.live_len(), 1);
     assert_eq!(set.live_len(), 1);
     drop(key);
+    context.collect_garbage().unwrap();
     assert_eq!(map.live_len(), 0);
     assert_eq!(set.live_len(), 0);
 }
 
 #[test]
 fn weak_collections_reject_primitive_keys() {
-    let map = WeakMapObject::new();
-    let set = WeakSetObject::new();
+    let context = AllocationContext::new();
+    let map = WeakMapObject::new(&context);
+    let set = WeakSetObject::new(&context);
     assert_eq!(
         map.set(&Value::Number(1.0), Value::Undefined)
             .unwrap_err()
@@ -85,7 +90,8 @@ fn weak_collections_reject_primitive_keys() {
 
 #[test]
 fn realm_collection_constructors_and_methods_use_internal_slots() {
-    let realm = Realm::ordinary();
+    let context = AllocationContext::new();
+    let realm = Realm::ordinary_in(&context);
     let constructor = realm.intrinsic(IntrinsicId::Map);
     let object = constructor.construct(&[], constructor.clone()).unwrap();
     let prototype = realm.intrinsic(IntrinsicId::MapPrototype);

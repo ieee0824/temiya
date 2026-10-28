@@ -13,6 +13,7 @@ impl Trace for Leaf {
 }
 
 fn main() {
+    let allocation_context = temiya::runtime::AllocationContext::new();
     if env::var("TEMIYA_RUN_BENCHMARKS").as_deref() != Ok("1") {
         return;
     }
@@ -61,7 +62,7 @@ fn main() {
             samples,
             iterations,
             || {
-                let object = Object::new();
+                let object = Object::new_in(&allocation_context);
                 for index in 0..100 {
                     let key = index.to_string();
                     object

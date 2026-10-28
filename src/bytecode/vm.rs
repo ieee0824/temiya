@@ -1,6 +1,6 @@
 use crate::runtime::{
-    ArrayObject, Completion, Environment, EnvironmentKind, Object, Realm, Reference,
-    ReferencedName, RuntimeError, RuntimeResult, Value, binary_number, binary_values,
+    ArrayObject, Completion, Environment, EnvironmentKind, Object, PropertyReferenceContext, Realm,
+    Reference, ReferencedName, RuntimeError, RuntimeResult, Value, binary_number, binary_values,
     binary_values_in_realm,
 };
 
@@ -24,7 +24,7 @@ impl VirtualMachine {
         {
             return Self::execute_in_realm(bytecode, &Realm::ordinary());
         }
-        Self::run(bytecode, None, None)
+        Self::run::<false>(bytecode, None, None)
     }
 
     /// Executes Script bytecode in a persistent host-supplied Realm.
@@ -32,7 +32,7 @@ impl VirtualMachine {
         bytecode: &VerifiedBytecode,
         realm: &Realm,
     ) -> RuntimeResult<Completion> {
-        Self::run(bytecode, Some(realm), None)
+        Self::run::<false>(bytecode, Some(realm), None)
     }
 
     /// Executes function-body bytecode with a caller-prepared function frame.
@@ -47,15 +47,33 @@ impl VirtualMachine {
                 "bytecode requires a function environment",
             ));
         }
-        Self::run(bytecode, Some(realm), Some(frame))
+        Self::run::<false>(bytecode, Some(realm), Some(frame))
     }
 
-    fn run(
+    // Only a freshly instantiated, nonescaping internal function frame may
+    // keep scalar locals outside its Environment. The public prepared-frame
+    // API must publish every write to the caller's observable Environment.
+    pub(crate) fn execute_with_private_frame(
+        bytecode: &VerifiedBytecode,
+        realm: &Realm,
+        frame: &Environment,
+    ) -> RuntimeResult<Completion> {
+        if scalar_loop_locals(bytecode) {
+            Self::run::<true>(bytecode, Some(realm), Some(frame))
+        } else {
+            Self::run::<false>(bytecode, Some(realm), Some(frame))
+        }
+    }
+
+    fn run<const SCALAR_LOCALS: bool>(
         bytecode: &VerifiedBytecode,
         realm: Option<&Realm>,
         function: Option<&Environment>,
     ) -> RuntimeResult<Completion> {
+        let _object_roots = realm.and_then(Realm::enter_object_root_region);
+        let mut property_context = realm.map(PropertyReferenceContext::new);
         let body = bytecode.bytecode();
+        let mut scalar_values: Option<Box<[Value]>> = None;
         let mut scopes: Vec<ScopeFrame<'_>> = vec![];
         let mut references: Vec<Reference> = vec![];
         let mut calls: Vec<Invocation> = vec![];
@@ -93,6 +111,27 @@ impl VirtualMachine {
                     crate::runtime::object_literal::define_data(
                         &object,
                         key,
+                        value,
+                        prototype_setter,
+                    )?;
+                    stack.push(Value::Object(object));
+                }
+                Instruction::DefineNamedObjectProperty {
+                    name,
+                    prototype_setter,
+                } => {
+                    let value = pop(&mut stack)?;
+                    let Value::Object(object) = pop(&mut stack)? else {
+                        return Err(RuntimeError::type_error(
+                            "object initializer target is not an object",
+                        ));
+                    };
+                    let Constant::String(name) = &body.constants[name as usize] else {
+                        unreachable!("verified String property name")
+                    };
+                    crate::runtime::object_literal::define_data(
+                        &object,
+                        name.clone().into(),
                         value,
                         prototype_setter,
                     )?;
@@ -146,8 +185,23 @@ impl VirtualMachine {
                         unreachable!()
                     };
                     let environment = enter_scope(plan, &scopes, (pc - 1) as u32, realm, function)?;
-                    let binding_hints =
-                        (bytecode.has_backedge() && plan.kind == ScopeKind::Function).then(|| {
+                    if SCALAR_LOCALS && plan.kind == ScopeKind::Function {
+                        let values = plan
+                            .bindings
+                            .iter()
+                            .map(|binding| {
+                                environment.get_binding_value(&binding.name, plan.strict)
+                            })
+                            .collect::<RuntimeResult<Box<[_]>>>()?;
+                        scalar_values = values
+                            .iter()
+                            .all(|value| matches!(value, Value::Number(_) | Value::Undefined))
+                            .then_some(values);
+                    }
+                    let binding_hints = ((!SCALAR_LOCALS || scalar_values.is_none())
+                        && bytecode.has_backedge()
+                        && plan.kind == ScopeKind::Function)
+                        .then(|| {
                             plan.bindings
                                 .iter()
                                 .map(|binding| environment.function_binding_index(&binding.name))
@@ -165,7 +219,9 @@ impl VirtualMachine {
                 }
                 Instruction::CloneLoopBindings => {
                     let frame = scopes.last_mut().expect("verified loop environment");
-                    let next = Environment::declarative(frame.environment.outer());
+                    let next = Environment::declarative(
+                        frame.environment.outer().expect("verified loop parent"),
+                    );
                     for binding in &frame.plan.bindings {
                         let value = frame
                             .environment
@@ -176,6 +232,15 @@ impl VirtualMachine {
                     frame.environment = next;
                 }
                 Instruction::LoadBinding { scope, slot } => {
+                    if SCALAR_LOCALS {
+                        if let Some(values) = &scalar_values {
+                            stack.push(match &values[slot as usize] {
+                                Value::Number(value) => Value::Number(*value),
+                                value => value.clone(),
+                            });
+                            continue;
+                        }
+                    }
                     let frame = binding_frame(&scopes, scope);
                     let name = &frame.plan.bindings[slot as usize].name;
                     stack.push(match &frame.binding_hints {
@@ -210,6 +275,18 @@ impl VirtualMachine {
                     increment,
                     prefix,
                 } => {
+                    if SCALAR_LOCALS {
+                        if let Some(values) = &mut scalar_values {
+                            let old = match &values[slot as usize] {
+                                Value::Number(value) => *value,
+                                value => value.to_number()?,
+                            };
+                            let new = if increment { old + 1.0 } else { old - 1.0 };
+                            values[slot as usize] = Value::Number(new);
+                            stack.push(Value::Number(if prefix { new } else { old }));
+                            continue;
+                        }
+                    }
                     let frame = binding_frame(&scopes, scope);
                     let name = &frame.plan.bindings[slot as usize].name;
                     let hint = frame
@@ -274,9 +351,15 @@ impl VirtualMachine {
                     )?;
                 }
                 Instruction::StoreBinding { scope, slot } => {
+                    let value = pop(&mut stack)?;
+                    if SCALAR_LOCALS {
+                        if let Some(values) = &mut scalar_values {
+                            values[slot as usize] = value;
+                            continue;
+                        }
+                    }
                     let frame = binding_frame(&scopes, scope);
                     let name = &frame.plan.bindings[slot as usize].name;
-                    let value = pop(&mut stack)?;
                     match &frame.binding_hints {
                         Some(hints) => frame.environment.set_function_binding_at(
                             name,
@@ -380,12 +463,10 @@ impl VirtualMachine {
                             *hint = None;
                         }
                     }
-                    let reference = Reference::property_in_realm(
-                        realm.expect("verified scoped property access"),
-                        base,
-                        ReferencedName::PropertyKey(key),
-                        strict,
-                    );
+                    let reference = property_context
+                        .as_mut()
+                        .expect("verified scoped property access")
+                        .reference(base, ReferencedName::PropertyKey(key), strict);
                     if matches!(instruction, Instruction::GetNamedProperty { .. }) {
                         stack.push(reference.get_value()?);
                     } else {
@@ -401,12 +482,10 @@ impl VirtualMachine {
                             continue;
                         }
                     }
-                    let reference = Reference::property_in_realm(
-                        realm.expect("verified scoped property access"),
-                        base,
-                        ReferencedName::Value(key),
-                        strict,
-                    );
+                    let reference = property_context
+                        .as_mut()
+                        .expect("verified scoped property access")
+                        .reference(base, ReferencedName::Value(key), strict);
                     if matches!(instruction, Instruction::GetProperty { .. }) {
                         stack.push(reference.get_value()?);
                     } else {
@@ -803,6 +882,73 @@ struct ScopeFrame<'a> {
     binding_hints: Option<Box<[Option<usize>]>>,
 }
 
+// Conservative whole-body proof: no captures, calls, property operations,
+// arguments access, reference escape or lexical bindings. Initial arguments
+// are Number leaves and var bindings are undefined; these instructions can
+// produce only primitive values. The frame is private to the internal caller,
+// so its intermediate var writes cannot be observed outside this activation.
+fn scalar_loop_locals(bytecode: &VerifiedBytecode) -> bool {
+    if !bytecode.has_backedge() {
+        return false;
+    }
+    let body = bytecode.bytecode();
+    if !matches!(body.instructions.first(), Some(Instruction::EnterScope(index))
+        if matches!(&body.constants[*index as usize], Constant::Scope(plan) if plan.kind == ScopeKind::Function))
+    {
+        return false;
+    }
+    body.instructions
+        .iter()
+        .enumerate()
+        .all(|(offset, instruction)| match *instruction {
+            Instruction::EnterScope(index) => {
+                let Constant::Scope(plan) = &body.constants[index as usize] else {
+                    return false;
+                };
+                plan.functions.is_empty()
+                    && match plan.kind {
+                        ScopeKind::Function => {
+                            offset == 0 && plan.bindings.iter().all(|b| b.kind == BindingKind::Var)
+                        }
+                        ScopeKind::Block => plan.bindings.is_empty(),
+                        ScopeKind::Global => false,
+                    }
+            }
+            Instruction::LoadBinding { scope, .. }
+            | Instruction::StoreBinding { scope, .. }
+            | Instruction::UpdateBinding { scope, .. } => scope == 0,
+            Instruction::LoadConstant(index) => matches!(
+                body.constants[index as usize],
+                Constant::Undefined
+                    | Constant::Null
+                    | Constant::Boolean(_)
+                    | Constant::Number(_)
+                    | Constant::String(_)
+            ),
+            Instruction::Jump(target)
+            | Instruction::JumpIfFalse(target)
+            | Instruction::JumpIfNullish(target) => target != 0,
+            Instruction::ExitScope
+            | Instruction::LoadLocal(_)
+            | Instruction::StoreLocal(_)
+            | Instruction::Duplicate
+            | Instruction::Pop
+            | Instruction::TypeOf
+            | Instruction::UnaryNumeric(_)
+            | Instruction::Binary(_)
+            | Instruction::Add
+            | Instruction::Subtract
+            | Instruction::Multiply
+            | Instruction::Divide
+            | Instruction::StrictEqual
+            | Instruction::LogicalNot
+            | Instruction::Return
+            | Instruction::Complete
+            | Instruction::Throw => true,
+            _ => false,
+        })
+}
+
 fn binding_frame<'a, 'b>(scopes: &'a [ScopeFrame<'b>], entry: u32) -> &'a ScopeFrame<'b> {
     scopes
         .iter()
@@ -825,9 +971,13 @@ fn enter_scope(
         ScopeKind::Function => function
             .ok_or_else(|| RuntimeError::type_error("function scope requires a prepared frame"))?
             .clone(),
-        ScopeKind::Block => {
-            Environment::declarative(parents.last().map(|frame| frame.environment.clone()))
-        }
+        ScopeKind::Block => Environment::declarative(
+            parents
+                .last()
+                .expect("verified block parent")
+                .environment
+                .clone(),
+        ),
     };
     // Global eligibility is atomic with respect to binding/function creation.
     if plan.kind == ScopeKind::Global {

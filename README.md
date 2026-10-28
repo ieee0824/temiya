@@ -53,17 +53,19 @@ Run `cargo run --example backend_scope --all-features` to check these examples
 through the public APIs, including the unsupported cases. See
 [bytecode and JIT](docs/bytecode.md) for their explicit error contracts.
 
-The tracing collector, debugger, and optimizing-tier contracts are development
-components; their APIs do not imply a collecting heap, debugger, or optimizing
-tier integrated into `Engine`. Runtime objects currently use `Rc` ownership,
-which does not reclaim reference cycles. The Test262 tooling records corpus
-metadata but does not yet establish whole-engine conformance. The default API
-passes the fixed original-eleven omoikane Boa comparison on the recorded x64
-and ARM64 machines; see [results and scope](docs/auto-backend-integration.md).
+The 0.2 migration branch integrates a shared tracing heap into `Engine`, with
+allocation safepoints and `Engine::collect_garbage`. Host-created objects use
+the Engine's explicit allocation context; see [embedding](docs/embedding.md).
+Runtime collection is undergoing conformance and performance qualification. Debugger and
+optimizing-tier contracts are development components. The Test262 tooling
+records corpus metadata but does not yet establish whole-engine conformance.
+The previous default API passed the fixed original-eleven omoikane Boa comparison
+on the recorded x64 and ARM64 machines; see
+[results and scope](docs/auto-backend-integration.md). Those measurements do not
+qualify the new GC branch, whose performance checks remain outstanding.
 Separate async, RegExp, component and pinned SpiderMonkey results are recorded
-in the [benchmark coverage matrix](docs/benchmark-suite-coverage.md). Engine
-cycle reclamation, broader application performance and SpiderMonkey superiority
-remain unverified.
+in the [benchmark coverage matrix](docs/benchmark-suite-coverage.md).
+Broader application performance and SpiderMonkey superiority remain unverified.
 
 An initial lexer is available as `temiya::lexer::tokenize`; its supported subset
 and next steps are documented in [docs/lexer.md](docs/lexer.md).

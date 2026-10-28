@@ -3,20 +3,32 @@
 use super::{
     IntrinsicId, IntrinsicRegistry, JsString, Object, PropertyDescriptor, PropertyKey, Realm,
     Reference, ReferencedName, RuntimeError, RuntimeResult, Value, WellKnownSymbol,
-    WellKnownSymbols, array_methods::method, coercion::primitive,
+    WellKnownSymbols, coercion::primitive,
 };
 
 pub(crate) const MAX_ARGUMENTS: usize = 65_536;
 
 pub(super) enum IteratorSlot {
     Array {
-        target: Option<Object>,
+        target: Option<super::stored::StoredObject>,
         index: u64,
     },
     String {
         text: Option<JsString>,
         index: usize,
     },
+}
+
+impl IteratorSlot {
+    pub(super) fn trace(&self, tracer: &mut crate::gc::Tracer<'_>) {
+        if let Self::Array {
+            target: Some(target),
+            ..
+        } = self
+        {
+            target.trace(tracer);
+        }
+    }
 }
 
 pub(crate) fn push_argument(arguments: &mut Vec<Value>, value: Value) -> RuntimeResult<()> {
@@ -113,55 +125,91 @@ pub(super) fn install(
             PropertyDescriptor::data(Value::String(tag.into()), false, false, true),
         )?;
     }
-    let result_prototype = object.clone();
     let to_primitive: PropertyKey = symbols.get(WellKnownSymbol::ToPrimitive).into();
     let length_key = to_primitive.clone();
-    method(&array_iterator, &function, "next", 0, move |this, _| {
-        array_next(this, &length_key, &result_prototype)
-    })?;
-    let result_prototype = object;
-    method(&string_iterator, &function, "next", 0, move |this, _| {
-        string_next(this, &result_prototype)
-    })?;
+    let next = Object::native_function_with_object_capture(
+        &function,
+        "next",
+        0,
+        &object,
+        Some(length_key),
+        |prototype, key, this, _| array_next(this, key.expect("iterator primitive key"), prototype),
+    )?;
+    array_iterator.define_own_property(
+        "next".into(),
+        PropertyDescriptor::data(Value::Object(next), true, false, true),
+    )?;
+    let next = Object::native_function_with_object_capture(
+        &function,
+        "next",
+        0,
+        &object,
+        None,
+        |prototype, _, this, _| string_next(this, prototype),
+    )?;
+    string_iterator.define_own_property(
+        "next".into(),
+        PropertyDescriptor::data(Value::Object(next), true, false, true),
+    )?;
     let array = intrinsics.get(IntrinsicId::ArrayPrototype);
     // Borrow the same ToObject implementation as other generic Array methods.
-    let boxing = super::array_methods::iterator_boxing(intrinsics, symbols);
-    method(&array, &function, "values", 0, move |this, _| {
-        let target = boxing(this)?;
-        let result = Object::new();
-        result.set_prototype(Some(array_iterator.clone()));
-        result.0.state.borrow_mut().iterator = Some(Box::new(IteratorSlot::Array {
-            target: Some(target),
-            index: 0,
-        }));
-        Ok(Value::Object(result))
-    })?;
+    let values = super::array_methods::values_function(intrinsics, symbols, &array_iterator)?;
+    array.define_own_property(
+        "values".into(),
+        PropertyDescriptor::data(Value::Object(values), true, false, true),
+    )?;
     array.define_own_property(
         iterator_key.clone(),
         PropertyDescriptor::data(array.get(&"values".into())?, true, false, true),
     )?;
-    symbol_method(
-        &intrinsics.get(IntrinsicId::StringPrototype),
+    let values = Object::native_function_with_object_capture(
         &function,
-        iterator_key,
         "[Symbol.iterator]",
-        move |this, _| {
-            if matches!(this, Value::Undefined | Value::Null) {
-                return Err(RuntimeError::type_error(
-                    "string iterator receiver is null or undefined",
-                ));
-            }
-            let text = primitive(&this, &to_primitive, true)?.to_js_string()?;
-            let result = Object::new();
-            result.set_prototype(Some(string_iterator.clone()));
-            result.0.state.borrow_mut().iterator = Some(Box::new(IteratorSlot::String {
-                text: Some(text),
-                index: 0,
-            }));
-            Ok(Value::Object(result))
-        },
+        0,
+        &string_iterator,
+        Some(to_primitive),
+        string_values,
     )?;
+    intrinsics
+        .get(IntrinsicId::StringPrototype)
+        .define_own_property(
+            iterator_key,
+            PropertyDescriptor::data(Value::Object(values), true, false, true),
+        )?;
     Ok(())
+}
+
+pub(super) fn array_values(prototype: &Object, target: Object) -> RuntimeResult<Object> {
+    let result = Object::new_for(prototype);
+    let target = super::stored::StoredObject::store(&result, &target)?;
+    result.initialize_prototype(Some(prototype.clone()));
+    result.0.state.borrow_mut().iterator = Some(Box::new(IteratorSlot::Array {
+        target: Some(target),
+        index: 0,
+    }));
+    Ok(result)
+}
+
+fn string_values(
+    prototype: &Object,
+    key: Option<&PropertyKey>,
+    this: Value,
+    _: &[Value],
+) -> RuntimeResult<Value> {
+    if matches!(this, Value::Undefined | Value::Null) {
+        return Err(RuntimeError::type_error(
+            "string iterator receiver is null or undefined",
+        ));
+    }
+    let text =
+        primitive(&this, key.expect("string iterator primitive key"), true)?.to_js_string()?;
+    let result = Object::new_for(prototype);
+    result.initialize_prototype(Some(prototype.clone()));
+    result.0.state.borrow_mut().iterator = Some(Box::new(IteratorSlot::String {
+        text: Some(text),
+        index: 0,
+    }));
+    Ok(Value::Object(result))
 }
 
 fn symbol_method(
@@ -171,7 +219,7 @@ fn symbol_method(
     name: &str,
     callback: impl Fn(Value, &[Value]) -> RuntimeResult<Value> + 'static,
 ) -> RuntimeResult<()> {
-    let function = Object::native_function(callback);
+    let function = Object::native_function_for(prototype, callback);
     function.set_prototype(Some(prototype.clone()));
     function.define_own_property(
         "name".into(),
@@ -189,7 +237,7 @@ fn symbol_method(
 }
 
 fn result(prototype: &Object, value: Value, done: bool) -> RuntimeResult<Value> {
-    let result = Object::new();
+    let result = Object::new_for(prototype);
     result.set_prototype(Some(prototype.clone()));
     result.create_data_property("value".into(), value)?;
     result.create_data_property("done".into(), Value::Boolean(done))?;
@@ -214,6 +262,7 @@ fn array_next(this: Value, to_primitive: &PropertyKey, prototype: &Object) -> Ru
     let Some(target) = target else {
         return result(prototype, Value::Undefined, true);
     };
+    let target = target.load(&iterator)?;
     let length = primitive(&target.get(&"length".into())?, to_primitive, false)?.to_number()?;
     let length = (length as u64).min(9_007_199_254_740_991);
     if index >= length {
@@ -273,4 +322,122 @@ fn string_next(this: Value, prototype: &Object) -> RuntimeResult<Value> {
     };
     let done = value.is_none();
     result(prototype, value.unwrap_or(Value::Undefined), done)
+}
+
+#[cfg(test)]
+mod managed_tests {
+    use super::*;
+    use crate::runtime::ArrayObject;
+
+    #[test]
+    fn managed_string_factory_capture_survives_conversion_reentry_and_iterator_escape() {
+        let runtime = crate::runtime::Runtime::new();
+        let function_prototype = Object::new_in(&runtime);
+        let iterator_prototype = Object::new_in(&runtime);
+        let weak_prototype = iterator_prototype.downgrade();
+        let factory = Object::native_function_with_object_capture(
+            &function_prototype,
+            "[Symbol.iterator]",
+            0,
+            &iterator_prototype,
+            Some("unused".into()),
+            string_values,
+        )
+        .unwrap();
+        drop(function_prototype);
+        drop(iterator_prototype);
+        runtime.collect_migration_graph().unwrap();
+        let receiver = Object::new_in(&runtime);
+        let callback_runtime = runtime.clone();
+        let calls = std::rc::Rc::new(std::cell::Cell::new(0));
+        let callback_calls = calls.clone();
+        receiver.set_to_string_hook(move || {
+            callback_runtime.collect_migration_graph().unwrap();
+            let _temporary = Object::new_in(&callback_runtime);
+            callback_calls.set(callback_calls.get() + 1);
+            Ok(Value::String("💡x".into()))
+        });
+        let Value::Object(iterator) = factory.call(Value::Object(receiver.clone()), &[]).unwrap()
+        else {
+            panic!("string iterator");
+        };
+        assert_eq!(calls.get(), 1);
+        drop(receiver);
+        drop(factory);
+        runtime.collect_migration_graph().unwrap();
+        assert_eq!(iterator.prototype(), weak_prototype.upgrade());
+        for expected in [Some("💡"), Some("x"), None] {
+            let Value::Object(step) = string_next(
+                Value::Object(iterator.clone()),
+                &iterator.prototype().unwrap(),
+            )
+            .unwrap() else {
+                panic!("iterator result");
+            };
+            assert_eq!(
+                step.get(&"done".into()).unwrap().to_boolean(),
+                expected.is_none()
+            );
+            if let Some(expected) = expected {
+                assert!(
+                    step.get(&"value".into())
+                        .unwrap()
+                        .same_value(&Value::String(expected.into()))
+                );
+            }
+        }
+        drop(iterator);
+        assert_eq!(runtime.collect_migration_graph().unwrap().retained, 0);
+        assert!(weak_prototype.upgrade().is_none());
+    }
+
+    #[test]
+    fn managed_iterator_keeps_target_until_exhaustion_then_releases_it() {
+        let runtime = crate::runtime::Runtime::new();
+        let prototype = Object::new_in(&runtime);
+        let target = ArrayObject::new_for(&prototype, 1).unwrap().object();
+        target
+            .create_data_property("0".into(), Value::Number(42.0))
+            .unwrap();
+        let weak = target.downgrade();
+        let iterator = Object::new_in(&runtime);
+        let stored = super::super::stored::StoredObject::store(&iterator, &target).unwrap();
+        iterator.0.state.borrow_mut().iterator = Some(Box::new(IteratorSlot::Array {
+            target: Some(stored),
+            index: 0,
+        }));
+        drop(target);
+        runtime.collect_migration_graph().unwrap();
+        assert!(weak.upgrade().is_some());
+        let Value::Object(first) = array_next(
+            Value::Object(iterator.clone()),
+            &"unused".into(),
+            &prototype,
+        )
+        .unwrap() else {
+            panic!("iterator result");
+        };
+        assert!(
+            first
+                .get(&"value".into())
+                .unwrap()
+                .same_value(&Value::Number(42.0))
+        );
+        drop(first);
+        let Value::Object(last) = array_next(
+            Value::Object(iterator.clone()),
+            &"unused".into(),
+            &prototype,
+        )
+        .unwrap() else {
+            panic!("iterator result");
+        };
+        assert!(last.get(&"done".into()).unwrap().to_boolean());
+        drop(last);
+        runtime.collect_migration_graph().unwrap();
+        assert!(weak.upgrade().is_none());
+        drop(iterator);
+        drop(prototype);
+        assert_eq!(runtime.collect_migration_graph().unwrap().retained, 0);
+    }
 }

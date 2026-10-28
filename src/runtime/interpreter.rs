@@ -89,8 +89,13 @@ mod function_reference_tests {
 
     #[test]
     fn retained_function_hint_survives_binding_vector_changes() {
-        let environment =
-            Environment::function(None, Object::new(), None, ThisBindingStatus::Uninitialized);
+        let context = crate::runtime::AllocationContext::new();
+        let environment = Environment::function(
+            None,
+            Object::new_in(&context),
+            None,
+            ThisBindingStatus::Uninitialized,
+        );
         let prefix: JsString = "prefix".into();
         let value: JsString = "value".into();
         environment
@@ -205,6 +210,38 @@ pub struct Reference {
     primitive_prototype: Option<Object>,
 }
 
+// The Realm registry is immutable after bootstrap. These external facades live
+// only for one VM invocation and retain objects already reachable through its
+// borrowed, rooted Realm. Property values/descriptors are never cached, and a
+// nested invocation gets an independent context even when it enters another Realm.
+pub(crate) struct PropertyReferenceContext<'a> {
+    realm: &'a Realm,
+    prototypes: [Option<Object>; 5],
+}
+
+impl<'a> PropertyReferenceContext<'a> {
+    pub(crate) fn new(realm: &'a Realm) -> Self {
+        Self {
+            realm,
+            prototypes: Default::default(),
+        }
+    }
+
+    pub(crate) fn reference(
+        &mut self,
+        base: Value,
+        name: ReferencedName,
+        strict: bool,
+    ) -> Reference {
+        let realm = self.realm;
+        Reference::property_with_prototypes(realm, base, name, strict, |id, index| {
+            self.prototypes[index]
+                .get_or_insert_with(|| realm.intrinsic(id))
+                .clone()
+        })
+    }
+}
+
 impl Reference {
     // Only VM-verified function slots provide hints. Each read/write validates
     // the name again, so reentrant deletion or insertion cannot retarget it.
@@ -263,12 +300,22 @@ impl Reference {
         name: ReferencedName,
         strict: bool,
     ) -> Self {
+        Self::property_with_prototypes(realm, base, name, strict, |id, _| realm.intrinsic(id))
+    }
+
+    fn property_with_prototypes(
+        realm: &Realm,
+        base: Value,
+        name: ReferencedName,
+        strict: bool,
+        prototype_for: impl FnOnce(super::IntrinsicId, usize) -> Object,
+    ) -> Self {
         let prototype = match &base {
-            Value::String(_) => Some(super::IntrinsicId::StringPrototype),
-            Value::Number(_) => Some(super::IntrinsicId::NumberPrototype),
-            Value::Boolean(_) => Some(super::IntrinsicId::BooleanPrototype),
-            Value::BigInt(_) => Some(super::IntrinsicId::BigIntPrototype),
-            Value::Symbol(_) => Some(super::IntrinsicId::SymbolPrototype),
+            Value::String(_) => Some((super::IntrinsicId::StringPrototype, 0)),
+            Value::Number(_) => Some((super::IntrinsicId::NumberPrototype, 1)),
+            Value::Boolean(_) => Some((super::IntrinsicId::BooleanPrototype, 2)),
+            Value::BigInt(_) => Some((super::IntrinsicId::BigIntPrototype, 3)),
+            Value::Symbol(_) => Some((super::IntrinsicId::SymbolPrototype, 4)),
             _ => None,
         };
         let name = match name {
@@ -279,7 +326,7 @@ impl Reference {
             name => name,
         };
         let mut reference = Self::property(base, name, strict, None);
-        reference.primitive_prototype = prototype.map(|id| realm.intrinsic(id));
+        reference.primitive_prototype = prototype.map(|(id, index)| prototype_for(id, index));
         reference
     }
 
@@ -813,10 +860,9 @@ impl ExpressionEvaluator {
     fn literal(&self, literal: &Literal) -> RuntimeResult<Value> {
         match literal {
             Literal::RegExp(spelling) => {
-                let regexp = super::RegExp::from_literal(spelling)?;
-                regexp.object().set_prototype(Some(
-                    self.realm.intrinsic(super::IntrinsicId::RegExpPrototype),
-                ));
+                let prototype = self.realm.intrinsic(super::IntrinsicId::RegExpPrototype);
+                let regexp = super::RegExp::from_literal_for(&prototype, spelling)?;
+                regexp.object().initialize_prototype(Some(prototype));
                 Ok(Value::Object(regexp.object()))
             }
             _ => literal_value(literal, self.strict),
@@ -1340,5 +1386,183 @@ pub(crate) fn unary_numeric_value(
         _ => Err(RuntimeError::internal_error(
             "invalid numeric unary operator",
         )),
+    }
+}
+
+// Heap snapshots used by suspended generators. Active evaluators/references
+// remain public rooted facades while user code is executing.
+pub(super) struct StoredExpressionEvaluator {
+    realm: super::execution::StoredRealm,
+    environment: super::environment::StoredEnvironment,
+    this_value: super::stored::StoredValue,
+    new_target: Option<super::stored::StoredObject>,
+    strict: bool,
+}
+impl StoredExpressionEvaluator {
+    pub(super) fn store(owner: &Object, evaluator: ExpressionEvaluator) -> RuntimeResult<Self> {
+        Ok(Self {
+            realm: super::execution::StoredRealm::store(owner, &evaluator.realm)?,
+            environment: super::environment::StoredEnvironment::store(
+                owner,
+                &evaluator.environment,
+            )?,
+            this_value: super::stored::StoredValue::store_owned(owner, evaluator.this_value)?,
+            new_target: evaluator
+                .new_target
+                .as_ref()
+                .map(|target| super::stored::StoredObject::store(owner, target))
+                .transpose()?,
+            strict: evaluator.strict,
+        })
+    }
+    pub(super) fn load(self, owner: &Object) -> RuntimeResult<ExpressionEvaluator> {
+        Ok(ExpressionEvaluator {
+            realm: self.realm.load(owner)?,
+            environment: self.environment.load(owner)?,
+            this_value: self.this_value.into_value(owner)?,
+            new_target: self
+                .new_target
+                .as_ref()
+                .map(|target| target.load(owner))
+                .transpose()?,
+            strict: self.strict,
+        })
+    }
+    pub(super) fn trace(&self, tracer: &mut crate::gc::Tracer<'_>) {
+        self.realm.trace(tracer);
+        self.environment.trace(tracer);
+        self.this_value.trace(tracer);
+        if let Some(target) = &self.new_target {
+            target.trace(tracer);
+        }
+    }
+}
+
+enum StoredReferenceBase {
+    Environment(super::environment::StoredEnvironment),
+    FunctionBinding(super::environment::StoredEnvironment, usize),
+    Property(super::stored::StoredValue),
+    Unresolvable(super::stored::StoredObject),
+}
+enum StoredReferencedName {
+    PropertyKey(PropertyKey),
+    Value(super::stored::StoredValue),
+    Computed(super::stored::StoredValue, super::Symbol),
+}
+pub(super) struct StoredReference {
+    base: StoredReferenceBase,
+    name: StoredReferencedName,
+    strict: bool,
+    this_value: Option<super::stored::StoredValue>,
+    primitive_prototype: Option<super::stored::StoredObject>,
+}
+impl StoredReference {
+    pub(super) fn store(owner: &Object, reference: Reference) -> RuntimeResult<Self> {
+        use super::{
+            environment::StoredEnvironment,
+            stored::{StoredObject, StoredValue},
+        };
+        let name = match reference.name {
+            ReferenceName::Plain(name) => name,
+            ReferenceName::Computed(cell) => cell.into_inner(),
+        };
+        Ok(Self {
+            base: match reference.base {
+                ReferenceBase::Environment(env) => {
+                    StoredReferenceBase::Environment(StoredEnvironment::store(owner, &env)?)
+                }
+                ReferenceBase::FunctionBinding(env, index) => StoredReferenceBase::FunctionBinding(
+                    StoredEnvironment::store(owner, &env)?,
+                    index,
+                ),
+                ReferenceBase::Property(value) => {
+                    StoredReferenceBase::Property(StoredValue::store_owned(owner, value)?)
+                }
+                ReferenceBase::Unresolvable(global) => {
+                    StoredReferenceBase::Unresolvable(StoredObject::store(owner, &global)?)
+                }
+            },
+            name: match name {
+                ReferencedName::PropertyKey(key) => StoredReferencedName::PropertyKey(key),
+                ReferencedName::Value(value) => {
+                    StoredReferencedName::Value(StoredValue::store_owned(owner, value)?)
+                }
+                ReferencedName::Computed {
+                    value,
+                    to_primitive,
+                } => StoredReferencedName::Computed(
+                    StoredValue::store_owned(owner, value)?,
+                    to_primitive,
+                ),
+            },
+            strict: reference.strict,
+            this_value: reference
+                .this_value
+                .map(|value| StoredValue::store_owned(owner, value))
+                .transpose()?,
+            primitive_prototype: reference
+                .primitive_prototype
+                .as_ref()
+                .map(|prototype| StoredObject::store(owner, prototype))
+                .transpose()?,
+        })
+    }
+    pub(super) fn load(self, owner: &Object) -> RuntimeResult<Reference> {
+        Ok(Reference {
+            base: match self.base {
+                StoredReferenceBase::Environment(env) => {
+                    ReferenceBase::Environment(env.load(owner)?)
+                }
+                StoredReferenceBase::FunctionBinding(env, index) => {
+                    ReferenceBase::FunctionBinding(env.load(owner)?, index)
+                }
+                StoredReferenceBase::Property(value) => {
+                    ReferenceBase::Property(value.into_value(owner)?)
+                }
+                StoredReferenceBase::Unresolvable(global) => {
+                    ReferenceBase::Unresolvable(global.load(owner)?)
+                }
+            },
+            name: ReferenceName::new(match self.name {
+                StoredReferencedName::PropertyKey(key) => ReferencedName::PropertyKey(key),
+                StoredReferencedName::Value(value) => {
+                    ReferencedName::Value(value.into_value(owner)?)
+                }
+                StoredReferencedName::Computed(value, to_primitive) => ReferencedName::Computed {
+                    value: value.into_value(owner)?,
+                    to_primitive,
+                },
+            }),
+            strict: self.strict,
+            this_value: self
+                .this_value
+                .map(|value| value.into_value(owner))
+                .transpose()?,
+            primitive_prototype: self
+                .primitive_prototype
+                .as_ref()
+                .map(|prototype| prototype.load(owner))
+                .transpose()?,
+        })
+    }
+    pub(super) fn trace(&self, tracer: &mut crate::gc::Tracer<'_>) {
+        match &self.base {
+            StoredReferenceBase::Environment(env)
+            | StoredReferenceBase::FunctionBinding(env, _) => env.trace(tracer),
+            StoredReferenceBase::Property(value) => value.trace(tracer),
+            StoredReferenceBase::Unresolvable(global) => global.trace(tracer),
+        }
+        match &self.name {
+            StoredReferencedName::Value(value) | StoredReferencedName::Computed(value, _) => {
+                value.trace(tracer)
+            }
+            StoredReferencedName::PropertyKey(_) => {}
+        }
+        if let Some(value) = &self.this_value {
+            value.trace(tracer);
+        }
+        if let Some(prototype) = &self.primitive_prototype {
+            prototype.trace(tracer);
+        }
     }
 }

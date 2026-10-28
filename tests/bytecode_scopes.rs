@@ -4,11 +4,74 @@ use temiya::{
     runtime::{Completion, Realm, RuntimeErrorKind, StatementEvaluator, Value},
 };
 
+#[test]
+fn block_iteration_clone_preserves_the_supplied_realms_context() {
+    use temiya::bytecode::{
+        BindingKind, Bytecode, Constant, Instruction, ScopeBinding, ScopeDescriptor, ScopeKind,
+    };
+    use temiya::runtime::{AllocationContext, Object};
+    let context = AllocationContext::new();
+    let realm = Realm::ordinary_in(&context);
+    let code = Bytecode {
+        constants: vec![
+            Constant::Scope(ScopeDescriptor {
+                kind: ScopeKind::Global,
+                strict: false,
+                bindings: vec![],
+                functions: vec![],
+            }),
+            Constant::Scope(ScopeDescriptor {
+                kind: ScopeKind::Block,
+                strict: false,
+                bindings: vec![ScopeBinding {
+                    name: "value".into(),
+                    kind: BindingKind::Let,
+                }],
+                functions: vec![],
+            }),
+        ],
+        instructions: vec![
+            Instruction::EnterScope(0),
+            Instruction::EnterScope(1),
+            Instruction::CreateObject,
+            Instruction::InitializeBinding { scope: 1, slot: 0 },
+            Instruction::CloneLoopBindings,
+            Instruction::LoadBinding { scope: 1, slot: 0 },
+            Instruction::ExitScope,
+            Instruction::ExitScope,
+            Instruction::Complete,
+        ],
+        local_count: 0,
+    }
+    .verify()
+    .unwrap();
+    let Completion::Normal(Some(Value::Object(object))) =
+        VirtualMachine::execute_in_realm(&code, &realm).unwrap()
+    else {
+        panic!("object result")
+    };
+    let peer = Object::new_in(&context);
+    object
+        .create_data_property("peer".into(), Value::Object(peer.clone()))
+        .unwrap();
+    context.collect_garbage().unwrap();
+    assert!(
+        object
+            .get(&"peer".into())
+            .unwrap()
+            .same_value(&Value::Object(peer.clone()))
+    );
+    drop((object, peer, realm));
+    assert_eq!(context.collect_garbage().unwrap().retained, 0);
+}
+
 fn compare(source: &str) {
+    let allocation_context = temiya::runtime::AllocationContext::new();
     let program = parse_script(source).unwrap();
-    let ast = StatementEvaluator::new(Realm::ordinary()).evaluate_program(&program);
+    let ast =
+        StatementEvaluator::new(Realm::ordinary_in(&allocation_context)).evaluate_program(&program);
     let code = BytecodeCompiler::compile_program(&program).unwrap();
-    let vm = VirtualMachine::execute_in_realm(&code, &Realm::ordinary());
+    let vm = VirtualMachine::execute_in_realm(&code, &Realm::ordinary_in(&allocation_context));
     match (ast, vm) {
         (Ok(Completion::Normal(Some(a))), Ok(Completion::Normal(Some(b))))
         | (Ok(Completion::Throw(a)), Ok(Completion::Throw(b))) => {
@@ -54,7 +117,8 @@ fn tdz_and_const_errors_match_ast() {
 
 #[test]
 fn persistent_global_records_and_preflight() {
-    let realm = Realm::ordinary();
+    let allocation_context = temiya::runtime::AllocationContext::new();
+    let realm = Realm::ordinary_in(&allocation_context);
     let execute = |source| {
         VirtualMachine::execute_in_realm(&BytecodeCompiler::compile(source).unwrap(), &realm)
     };
@@ -109,7 +173,8 @@ fn persistent_global_records_and_preflight() {
 
 #[test]
 fn errors_and_throw_discard_block_frames() {
-    let realm = Realm::ordinary();
+    let allocation_context = temiya::runtime::AllocationContext::new();
+    let realm = Realm::ordinary_in(&allocation_context);
     for source in [
         "{let temporary=1; throw temporary;}",
         "{let temporary=temporary;}",
@@ -132,11 +197,12 @@ fn errors_and_throw_discard_block_frames() {
 
 #[test]
 fn function_frame_var_block_and_outer_bindings_are_distinct() {
+    let allocation_context = temiya::runtime::AllocationContext::new();
     use temiya::{
         ast::{FunctionBody, StmtKind},
         runtime::{Environment, ThisBindingStatus},
     };
-    let realm = Realm::ordinary();
+    let realm = Realm::ordinary_in(&allocation_context);
     let program = parse_script(
         "var captured=3; function f(){ var x=4; { let x=5; captured=x; } return x+captured; }",
     )
@@ -195,8 +261,45 @@ fn function_frame_var_block_and_outer_bindings_are_distinct() {
 }
 
 #[test]
-fn scoped_addition_calls_real_javascript_coercion() {
+fn caller_prepared_scalar_loop_frames_publish_their_binding_writes() {
+    use temiya::{
+        ast::StmtKind,
+        runtime::{Environment, ThisBindingStatus},
+    };
     let realm = Realm::ordinary();
+    let program =
+        parse_script("function f(){var n=3;var sum=0;for(var i=0;i<n;i++){sum+=i;}return sum;}")
+            .unwrap();
+    let StmtKind::FunctionDeclaration(function) = &program.body[0].kind else {
+        panic!("function")
+    };
+    let object = temiya::runtime::Object::new_in(realm.allocation_context());
+    let frame = Environment::function(
+        Some(realm.global_environment()),
+        object,
+        None,
+        ThisBindingStatus::Initialized,
+    );
+    let code = BytecodeCompiler::compile_function_body(function).unwrap();
+    assert!(matches!(
+        VirtualMachine::execute_in_function(&code, &realm, &frame).unwrap(),
+        Completion::Return(Value::Number(3.0))
+    ));
+    for name in ["sum", "i", "n"] {
+        assert!(
+            frame
+                .get_binding_value(&name.into(), true)
+                .unwrap()
+                .same_value(&Value::Number(3.0)),
+            "{name}"
+        );
+    }
+}
+
+#[test]
+fn scoped_addition_calls_real_javascript_coercion() {
+    let allocation_context = temiya::runtime::AllocationContext::new();
+    let realm = Realm::ordinary_in(&allocation_context);
     StatementEvaluator::new(realm.clone()).evaluate_program(&parse_script("var order=''; var a={valueOf:function(){order=order+'L';return 'a';}}; var b={valueOf:function(){order=order+'R';return 2;}};").unwrap()).unwrap();
     let code = BytecodeCompiler::compile("a+b;").unwrap();
     let Completion::Normal(Some(value)) = VirtualMachine::execute_in_realm(&code, &realm).unwrap()
@@ -216,6 +319,7 @@ fn scoped_addition_calls_real_javascript_coercion() {
 #[test]
 #[ignore = "requires scripts/test262 pinned corpus"]
 fn pinned_test262_bytecode_scope_tdz() {
+    let allocation_context = temiya::runtime::AllocationContext::new();
     use std::process::Command;
     use temiya::test262::{NegativePhase, TEST262_REVISION, TestCase, TestVariant};
     let root = std::env::var("TEST262_DIR").expect("TEST262_DIR required");
@@ -258,7 +362,10 @@ fn pinned_test262_bytecode_scope_tdz() {
                 let program = parse_script(&source).unwrap();
                 // Runtime-negative tests must successfully compile before execution.
                 let code = BytecodeCompiler::compile_program(&program).unwrap();
-                for (is_vm, realm) in [(true, Realm::ordinary()), (false, Realm::ordinary())] {
+                for (is_vm, realm) in [
+                    (true, Realm::ordinary_in(&allocation_context)),
+                    (false, Realm::ordinary_in(&allocation_context)),
+                ] {
                     for harness in ["sta.js", "assert.js"] {
                         let source = read_pinned(&format!("harness/{harness}"));
                         StatementEvaluator::new(realm.clone())
@@ -286,12 +393,13 @@ fn pinned_test262_bytecode_scope_tdz() {
 
 #[test]
 fn dynamic_assignment_resolves_before_rhs_coercion_changes_environment() {
+    let allocation_context = temiya::runtime::AllocationContext::new();
     use temiya::runtime::Object;
     for is_vm in [false, true] {
-        let realm = Realm::ordinary();
+        let realm = Realm::ordinary_in(&allocation_context);
         let environment = realm.global_environment();
         let callback_environment = environment.clone();
-        let trigger = Object::new();
+        let trigger = Object::new_in(&allocation_context);
         trigger.set_to_primitive_hook(move |_| {
             callback_environment.create_global_lexical_binding("target".into(), true, false)?;
             callback_environment.initialize_binding(&"target".into(), Value::Number(99.0))?;
@@ -331,8 +439,9 @@ fn dynamic_assignment_resolves_before_rhs_coercion_changes_environment() {
 
 #[test]
 fn global_restrictions_are_checked_before_binding_creation() {
+    let allocation_context = temiya::runtime::AllocationContext::new();
     use temiya::runtime::PropertyDescriptor;
-    let realm = Realm::ordinary();
+    let realm = Realm::ordinary_in(&allocation_context);
     realm
         .global_object()
         .define_own_property(
@@ -371,6 +480,7 @@ fn global_restrictions_are_checked_before_binding_creation() {
 
 #[test]
 fn function_body_tdz_const_and_hoisting_match_real_ast_calls() {
+    let allocation_context = temiya::runtime::AllocationContext::new();
     use temiya::{
         ast::StmtKind,
         runtime::{Environment, ThisBindingStatus},
@@ -381,7 +491,7 @@ fn function_body_tdz_const_and_hoisting_match_real_ast_calls() {
         "function f(){ { const x=2; return x; } }",
         "function f(){ return x; var x=1; }",
     ] {
-        let realm = Realm::ordinary();
+        let realm = Realm::ordinary_in(&allocation_context);
         let program = parse_script(source).unwrap();
         StatementEvaluator::new(realm.clone())
             .evaluate_program(&program)

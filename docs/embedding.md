@@ -13,6 +13,79 @@ rejected. Compile failures use `EmbedError`; evaluation failures use an owned
 values. A returned `ValueHandle` owns its value and remains valid until dropped,
 without borrowing the engine through a Rust lifetime.
 
+On the 0.2 migration branch, all Engine Realms share one tracing heap. Allocation
+safepoints collect unreachable graphs; `engine.collect_garbage()?` also requests
+an explicit collection. Owned handles register roots, including handles kept
+after the Engine is dropped. Dropping a Realm handle alone does not promise
+immediate destruction while another owner keeps the heap alive.
+
+A panic from a retired Rust host capture becomes a host integration error during
+explicit collection, or an Engine exception when automatic collection unwinds
+Script evaluation. The collector releases its borrow before running destructors
+and resets its collection guard during unwind, allowing later evaluation and
+collection. Low-level infallible Rust allocation APIs retain Rust panic behavior.
+
+`engine.create_realm_with_host(HostHooks::new(|| 42.0))` injects the UTC
+millisecond clock used by that Realm's Date constructor and Date.now. The Realm
+uses the same engine heap and provenance checks as `create_realm`. This permits
+deterministic tests and hosts without a wall clock. Rust captures in HostHooks
+remain external host state and follow the ownership contract below.
+
+Host objects with custom runtime hooks must use
+`Object::new_in(engine.allocation_context())`. Low-level callbacks can use
+`Object::native_function_in(engine.allocation_context(), callback)`; this
+allocates in the shared heap without attaching a Realm's Function prototype.
+Use `register_global_function` for the Realm-aware callback contract. Objects
+from a separate `AllocationContext::new()` cannot be passed to this Engine;
+the boundary rejects them instead of copying their identity or graph. The
+contextless `Object::new`, `native_function`, `native_constructor`, and Object
+`Default` factories have been removed. Use `new_in`, `native_function_in`, and
+`native_constructor_in` with an explicit context. The combined
+`native_callable_constructor` also requires its context as the first argument.
+
+`Object::allocation_context`, `Environment::allocation_context`, and
+`Realm::allocation_context` borrow an existing owner's context.
+`Object::native_function_with_context(context, callback)` passes that context
+to the callback as its first argument on each call, allowing allocation without
+capturing a Runtime owner. Native constructors can use their supplied
+new-target object's context. `Realm::ordinary()` creates a standalone Realm
+with its own heap; use `ordinary_in(context)` when multiple Realms share values.
+
+Opaque host callback captures are externally owned Rust values. Capturing an
+owned JavaScript handle keeps its root alive; hosts must release their own
+Rust ownership cycles. JavaScript edges stored by the runtime are traced.
+
+Collection and indexed-object constructors now require an explicit context:
+`MapObject::new(context)`, `SetObject::new(context)`,
+`WeakMapObject::new(context)`, `WeakSetObject::new(context)`,
+`ArrayObject::new(context, length)`, and `ArrayBuffer::new(context, byte_length)`.
+The same rule applies to `StringObject::new(context, value)`,
+`DateObject::new(context, milliseconds)`, `DateObject::now(context, host)`,
+`RegExp::new(context, pattern, flags)`, and `RegExp::from_literal(context, spelling)`.
+Number and BigInt wrappers use `NumberObject::new(context, value)` and
+`BigIntObject::new(context, value)`. Standalone low-level Realm users can create
+`Realm::ordinary_in(context)` to share the same heap with these objects.
+`PropertyDescriptor::to_object(context)` creates the descriptor object in that
+heap and rejects getter, setter, or value objects from another context.
+The collection types no longer implement `Default`. Use the same context for
+objects stored as keys, values, or elements. Weak keys become eligible for
+removal after their last strong root is dropped and the context is collected.
+TypedArray and DataView constructors continue to derive their context from
+the required buffer, preserving the shared bytes and detachment behavior.
+
+`Json::parse(context, source, reviver)` allocates its entire object/array tree
+in the supplied heap. Reviver replacements at child and root boundaries must
+also belong to that heap. `JobQueue::new(context)` has no `Default` counterpart.
+`Promise::pending(context)`, `fulfilled(context, value)`, and
+`rejected(context, error)` create fresh queues in that context; the existing
+`*_on(queue, ...)` APIs use the explicitly supplied queue.
+
+`Environment::declarative(parent)` and `Environment::module(parent)` require
+an owning parent Environment and inherit its context. Use
+`Environment::declarative_in(context)` or `Environment::module_in(context)`
+for parentless records. Object, global and function Environment factories
+derive their context from their required Object argument.
+
 Explicit JavaScript throws keep their original value in `Exception::thrown`,
 including throws that cross function or module boundaries. The handle retains
 the engine and evaluation Realm provenance. A native language error keeps its

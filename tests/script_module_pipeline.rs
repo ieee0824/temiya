@@ -6,7 +6,12 @@ use temiya::runtime::{
 
 #[test]
 fn scripts_parse_and_evaluate_in_their_realm() {
-    let script = ScriptRecord::parse(Realm::ordinary(), "let value = 40; value + 2;").unwrap();
+    let allocation_context = temiya::runtime::AllocationContext::new();
+    let script = ScriptRecord::parse(
+        Realm::ordinary_in(&allocation_context),
+        "let value = 40; value + 2;",
+    )
+    .unwrap();
     let Completion::Normal(Some(value)) = script.evaluate().unwrap() else {
         panic!("expected normal Script completion")
     };
@@ -14,13 +19,14 @@ fn scripts_parse_and_evaluate_in_their_realm() {
 }
 
 fn graph(sources: &[(&str, &str)]) -> (ModuleGraph, Rc<RefCell<Vec<String>>>) {
+    let allocation_context = temiya::runtime::AllocationContext::new();
     let sources = sources
         .iter()
         .map(|(name, source)| ((*name).to_owned(), (*source).to_owned()))
         .collect::<Vec<_>>();
     let loads = Rc::new(RefCell::new(Vec::new()));
     let observed = loads.clone();
-    let graph = ModuleGraph::new(Realm::ordinary(), move |request| {
+    let graph = ModuleGraph::new(Realm::ordinary_in(&allocation_context), move |request| {
         let name = String::from_utf16_lossy(&request.specifier);
         observed.borrow_mut().push(name.clone());
         sources

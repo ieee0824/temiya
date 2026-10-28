@@ -1,0 +1,85 @@
+{
+  "recorded_at": "2026-10-28T16:04:24.808Z",
+  "qualified_source_revision": "4ca6287ce18e5e8baaf11f465ed923eca6496565",
+  "source_git_objects": {
+    "src": "783b056ae2fd5f317b1686355e3153752ab82863",
+    "Cargo.toml": "f863e0d9af0b72db8c8fdf59a244a7e9cbd56dae",
+    "Cargo.lock": "e0e7f6ac7e4abfa3c12c3af30d305bbb87af50fc",
+    "examples": "ffdda6d7c05676adbd99a47b9866e6f25b911e69"
+  },
+  "qualified_and_built_worker_sha256": "1d698f118405d27b66110ba3c7cc081765584b0657b9b6f2d70557afe49c9a12",
+  "binary_identical": true,
+  "qualified_comparison": {
+    "samples": 15,
+    "pairs": 3,
+    "worker_runs": 66,
+    "comparisons": 33,
+    "all_valid": true,
+    "all_beyond_existing_noise_threshold": true,
+    "cpu_affinity": "0",
+    "scope": "Runner affinity inherited by both workers; guest CPUs only, not host physical-core placement"
+  },
+  "ownership_probe": {
+    "exit_code": 0,
+    "cases": 7,
+    "reclamation_ready": true,
+    "scope": "public Engine; globals removed, scripts/Realm/Engine and both value handles dropped"
+  },
+  "all_features": {
+    "passed": 650,
+    "ignored": 21,
+    "suites": 86,
+    "source_revision": "4ca6287ce18e5e8baaf11f465ed923eca6496565"
+  },
+  "profile": {
+    "file": "runtime-profile.json",
+    "timing_instrumentation": true,
+    "competitive_acceptance": false
+  },
+  "thread_confinement": {
+    "file": "thread-confinement.json",
+    "positive_controls": 2,
+    "rejected_send_sync_probes": 26
+  },
+  "miri": {
+    "full_library_pass": false,
+    "actual_library_test_count": 119,
+    "local_targeted_passes": [
+      "shared records (3; earlier equivalent allocation implementation)",
+      "injected Engine clock (1)",
+      "collector host-panic/reuse boundary (1)",
+      "activation collection/unwind (2)",
+      "unpublished prototype (1)",
+      "numeric return lifetime (1)"
+    ],
+    "flags": [
+      "-Zmiri-strict-provenance",
+      "-Zmiri-symbolic-alignment-check"
+    ],
+    "clock_isolation": "kept enabled; test injects HostHooks",
+    "prior_full_run": "13ab45f: seven shards passed; shard7 stopped at unsupported REALTIME clock before remaining tests; not counted as a complete pass"
+  },
+  "target_audit": {
+    "observed_head": "e989a76ab44bf0dbc95a75f839dce53b3263df71",
+    "measured_revision": "007556adccb8fb4329236932ca8175f8e8d119d2",
+    "unchanged_git_objects": {
+      "engine/boa": "40987e9103fb3cd52085cb70158eb6802f2e61e3",
+      "engine/regress": "09bcfd279ffd58acdb8ec72291cd0460ed260d01",
+      "Cargo.toml": "5789a24e6f572121111f1c63af0f177723b0aae1",
+      "Cargo.lock": "5d41d8f1f3496384d49a8965734e2b3f7e546479"
+    },
+    "embedding_src_js_changed": true,
+    "scope": "Timings use the measured pinned embedding. Matching engine trees do not measure the newer application embedding."
+  },
+  "limitations": [
+    "one local Linux ARM64 guest CPU0; host physical-core placement is uncontrolled",
+    "eleven original workloads only",
+    "an unaffined run has one prop-mono pair within noise, retained in experiments/4ca-unaffined-boa.json; source of process bimodality not established",
+    "material throughput regressions versus main retained in main-comparison.json"
+  ],
+  "pending_at_recording": [
+    "latest HEAD full Miri",
+    "latest HEAD stable/MSRV/ASan/C ABI CI",
+    "acceptance-condition and remote-merge audit"
+  ]
+}

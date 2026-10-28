@@ -1,0 +1,11 @@
+{
+  "name": "promise-rejection-chain",
+  "group": "async",
+  "iterations": 2048,
+  "expected": 2048,
+  "before_drain_expected": -1,
+  "setup": "async function seed(value){return value;}\nvar completed=-1;\nfunction rejectNext(value){throw value+1;}\nfunction recover(reason){return reason;}\nfunction record(value){completed=value;}\nfunction launch(count){completed=-1;var result=seed(0);for(var i=0;i<count;i++)result=result.then(rejectNext).then(undefined,recover);result.then(record);return completed;}",
+  "invocation": "launch(2048);",
+  "completion": "completed;",
+  "oracle": "2048 increments carried as numeric rejection reasons and recovered unchanged"
+}

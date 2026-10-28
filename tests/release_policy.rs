@@ -5,7 +5,7 @@ const DOCS: &str = include_str!("../docs/releasing.md");
 
 #[test]
 fn version_msrv_and_tag_contract_are_explicit() {
-    assert!(CARGO.contains("version = \"0.1.0\""));
+    assert!(CARGO.contains("version = \"0.2.0\""));
     assert!(CARGO.contains("rust-version = \"1.85\""));
     assert!(RELEASE.contains("tag $release_tag does not match Cargo version"));
     assert!(RELEASE.contains("tag $release_tag does not point at HEAD"));

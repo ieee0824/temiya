@@ -26,6 +26,12 @@ pub mod tiering;
 pub use embedding::{Engine, EngineBuilder, EngineOptions};
 
 #[cfg(test)]
+extern crate self as temiya;
+#[cfg(test)]
+#[path = "../examples/support/ownership.rs"]
+pub mod ownership_probe;
+
+#[cfg(test)]
 mod tests {
     use super::*;
 

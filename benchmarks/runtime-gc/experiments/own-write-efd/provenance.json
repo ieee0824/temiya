@@ -1,0 +1,76 @@
+{
+  "source_revision": "efd0de57abca28fb00807f78e386bf94ef09f4b2",
+  "files": {
+    "worker-info.json": "c8ba9008eb5d72fe5bf66648c2c426b1f898234b9cf99dd3fa657b1b5fab57de",
+    "agent-affinity.log": "f58c9701059a96fdd5c24a6eba8b29072278b42dda6bc2cbc6f840e6dd411999",
+    "ownership-probe.json": "e1015cc117fa13d5e9986fa02482a7682c4232c3e782879ec444b8639e8d684a",
+    "all-features.log": "45d675fc20ed4533f330ea32969c1697b15c7fe578ec8849fa8f9011f09cfad5",
+    "clippy.log": "08393e8e574c6a5864976fccf743fb41e14c38c88eefc237ae877a63bb2f63a2",
+    "miri.log": "93be2ad7aec551b2a95a1317915dcf15b22ef37291c9846869f9a8731bdbb2c4",
+    "test262.log": "40055fe8d525827a3d3bb0d716ddb6673c2a5a242dd8834f1d6f21083fdc7afc",
+    "release.log": "65f0284c66a5cd8b7c5935c9ef67de4554c2f19a8c79da46ae6930e1326b252c",
+    "worker-checks.log": "4159114e98b912b297ec93978ac30d21cbe9fc58218f2dba671642b6ef468367",
+    "beforeafter.json": "59f3b50a0fb4c0b5dc134378638bba2ee611e44d1c93ddf4d27caf9dd222b825",
+    "beforeafter.progress": "65e3aadb0c7b083d8ef84a1b8e17ca5a4fb44a04a4bd27bee34465a85149ad1b",
+    "boa.json": "92b48264986b79e20be360ad161818a5413b7f82cb0d22be69df76e717d3fe74",
+    "boa.progress": "b9b14897a0228af42e9f0c5f1687033a18706119ec7e385ba8fadf729c1cf954",
+    "ci-status.json": "08e49f6fab8d8dba2bebce176e0ce33a31c2cb07bd7d8664df76a3d5b16961e5",
+    "runtime-profile.json": "a4f3e9080c4d53d7cb9bb281e801958126f9527eaccf5382f5d76fd5b6eacbe2",
+    "runtime-profile.log": "5beac4ac4a9c3375eb9cff5144ab8d5d1269694c507530b73f7c3cdf54a6c625",
+    "agent-affinity-restored.log": "6e800b388d13ffbe314844eaf69edaa258329b777ac68a424a1ffeffe9a50def"
+  },
+  "native": {
+    "passed": 657,
+    "ignored": 21,
+    "suites": 86
+  },
+  "miri": {
+    "passed": 2,
+    "ignored": 0,
+    "flags": [
+      "-Zmiri-strict-provenance",
+      "-Zmiri-symbolic-alignment-check"
+    ],
+    "scope": "Two actual public Object Set, GC, foreign-heap rejection and explicit-receiver integration tests. Not the full library Miri gate."
+  },
+  "qualification": "Actual pinned modifiedBoa original11 all66 workers/1056 values correct; all33 comparisons faster beyond unchanged gate. Time ratios.391–.718, localARM64 guestCPU0, agents1-3, no overlapping builds/tests/profilers. Beforeafter4 faster29 noise0 slower; mono all3 .698–.754. Exact-source CI all4 success. Full119 Miri40752694688 and hosted40752838591 pending; neither prior-source successes nor partial statuses are a full latest-source pass.",
+  "beforeafter_statistics": {
+    "verified_at": "2026-10-28T19:15:03.602Z",
+    "reports": [
+      {
+        "file": "/tmp/temiya-own-write-beforeafter.json",
+        "sha256": "59f3b50a0fb4c0b5dc134378638bba2ee611e44d1c93ddf4d27caf9dd222b825",
+        "runs": 66,
+        "checked_values": 1056,
+        "comparisons": 33,
+        "outcomes": {
+          "within noise threshold": 29,
+          "after faster beyond threshold": 4
+        }
+      }
+    ]
+  },
+  "boa_statistics": {
+    "verified_at": "2026-10-28T19:19:21.302Z",
+    "reports": [
+      {
+        "file": "/tmp/temiya-own-write-boa.json",
+        "sha256": "92b48264986b79e20be360ad161818a5413b7f82cb0d22be69df76e717d3fe74",
+        "runs": 66,
+        "checked_values": 1056,
+        "comparisons": 33,
+        "outcomes": {
+          "Temiya faster beyond threshold": 33
+        }
+      }
+    ]
+  },
+  "profile_validation": {
+    "cases": 11,
+    "oracles_and_counts_match_manifest": true,
+    "all_final_live_and_rooted_zero": true,
+    "root_registration_removal_balanced": true,
+    "pause_and_remaining_wall_accounting": true,
+    "scope": "Separate instrumented cfg(test,not(miri)) single pass, not speed acceptance or all Rust allocations."
+  }
+}

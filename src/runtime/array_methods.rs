@@ -1,28 +1,53 @@
 //! Generic Array stack/queue algorithms. Keep observable Get/Has/Set/Delete
 //! operations ordered; indexed storage can optimize those internal methods.
 
-use std::rc::Rc;
-
 use super::{
     BigIntObject, IntrinsicId, IntrinsicRegistry, JsString, NumberObject, Object,
     PropertyDescriptor, PropertyKey, RuntimeError, RuntimeResult, StringObject, Value,
-    WellKnownSymbol, WellKnownSymbols,
+    WellKnownSymbol, WellKnownSymbols, stored::StoredObject,
 };
+use std::rc::Rc;
 
 const MAX_LENGTH: u64 = 9_007_199_254_740_991;
 
-struct Coercion {
-    string: Object,
-    number: Object,
-    boolean: Object,
-    symbol: Object,
-    bigint: Object,
+struct StoredCoercion {
+    string: StoredObject,
+    number: StoredObject,
+    boolean: StoredObject,
+    symbol: StoredObject,
+    bigint: StoredObject,
     to_primitive: PropertyKey,
     to_string_tag: PropertyKey,
 }
-
-impl Coercion {
-    fn object(&self, value: Value) -> RuntimeResult<Object> {
+impl StoredCoercion {
+    fn new(
+        context: &Object,
+        intrinsics: &IntrinsicRegistry,
+        symbols: &WellKnownSymbols,
+    ) -> RuntimeResult<Self> {
+        let capture = |id| StoredObject::initial(context.0.runtime(), &intrinsics.get(id));
+        Ok(Self {
+            string: capture(IntrinsicId::StringPrototype)?,
+            number: capture(IntrinsicId::NumberPrototype)?,
+            boolean: capture(IntrinsicId::BooleanPrototype)?,
+            symbol: capture(IntrinsicId::SymbolPrototype)?,
+            bigint: capture(IntrinsicId::BigIntPrototype)?,
+            to_primitive: symbols.get(WellKnownSymbol::ToPrimitive).into(),
+            to_string_tag: symbols.get(WellKnownSymbol::ToStringTag).into(),
+        })
+    }
+    fn trace(&self, tracer: &mut crate::gc::Tracer<'_>) {
+        for object in [
+            &self.string,
+            &self.number,
+            &self.boolean,
+            &self.symbol,
+            &self.bigint,
+        ] {
+            object.trace(tracer);
+        }
+    }
+    fn object(&self, owner: &Object, value: Value) -> RuntimeResult<Object> {
         let (object, prototype) = match value {
             Value::Object(object) => return Ok(object),
             Value::Undefined | Value::Null => {
@@ -30,29 +55,33 @@ impl Coercion {
                     "array method receiver is null or undefined",
                 ));
             }
-            Value::String(value) => (StringObject::new(value).object(), &self.string),
-            Value::Number(value) => (NumberObject::new(value).object(), &self.number),
-            Value::BigInt(value) => (BigIntObject::new(value).object(), &self.bigint),
+            Value::String(value) => {
+                let prototype = self.string.load(owner)?;
+                (StringObject::new_for(&prototype, value).object(), prototype)
+            }
+            Value::Number(value) => {
+                let prototype = self.number.load(owner)?;
+                (NumberObject::new_for(&prototype, value).object(), prototype)
+            }
+            Value::BigInt(value) => {
+                let prototype = self.bigint.load(owner)?;
+                (BigIntObject::new_for(&prototype, value).object(), prototype)
+            }
             value @ Value::Boolean(_) | value @ Value::Symbol(_) => {
                 let prototype = if matches!(value, Value::Boolean(_)) {
                     &self.boolean
                 } else {
                     &self.symbol
-                };
-                let object = Object::new();
-                // The primitive slot is also used by the Number/BigInt wrappers.
+                }
+                .load(owner)?;
+                let object = Object::new_for(&prototype);
                 object.0.state.borrow_mut().primitive_data = Some(value);
                 (object, prototype)
             }
         };
-        object.set_prototype(Some(prototype.clone()));
+        object.initialize_prototype(Some(prototype));
         Ok(object)
     }
-
-    fn number(&self, value: Value) -> RuntimeResult<f64> {
-        super::coercion::primitive(&value, &self.to_primitive, false)?.to_number()
-    }
-
     fn length(&self, object: &Object) -> RuntimeResult<u64> {
         let key: PropertyKey = "length".into();
         let value = match object.own_data_value_with_hint(&key, None) {
@@ -61,83 +90,136 @@ impl Coercion {
         };
         let number = match value {
             Value::Number(number) => number,
-            value => self.number(value)?,
+            value => super::coercion::primitive(&value, &self.to_primitive, false)?.to_number()?,
         };
-        // Rust's saturating float cast maps NaN and negative values to zero.
-        // Explicit clamping implements ToLength for positive infinity as well.
         Ok((number as u64).min(MAX_LENGTH))
     }
 }
 
+enum BuiltinOperation {
+    ValueOf,
+    ToString,
+    Array(Operation),
+    Values(StoredObject),
+}
+pub(super) struct ArrayBuiltin {
+    coercion: Rc<StoredCoercion>,
+    operation: BuiltinOperation,
+}
+impl ArrayBuiltin {
+    pub(super) fn call(
+        &self,
+        owner: &Object,
+        this: Value,
+        arguments: &[Value],
+    ) -> RuntimeResult<Value> {
+        match &self.operation {
+            BuiltinOperation::ValueOf => self.coercion.object(owner, this).map(Value::Object),
+            BuiltinOperation::ToString => {
+                match this {
+                    Value::Undefined => return Ok(Value::String("[object Undefined]".into())),
+                    Value::Null => return Ok(Value::String("[object Null]".into())),
+                    _ => {}
+                }
+                let object = self.coercion.object(owner, this)?;
+                let tag = object_tag(&object)?;
+                let tag = match object.get(&self.coercion.to_string_tag)? {
+                    Value::String(tag) => tag,
+                    _ => tag.into(),
+                };
+                let mut units = JsString::from("[object ").code_units().to_vec();
+                units.extend_from_slice(tag.code_units());
+                units.push(u16::from(b']'));
+                Ok(Value::String(JsString::from_code_units(units)))
+            }
+            BuiltinOperation::Array(operation) => {
+                let object = self.coercion.object(owner, this)?;
+                let length = self.coercion.length(&object)?;
+                operation(&object, length, arguments)
+            }
+            BuiltinOperation::Values(prototype) => {
+                let target = self.coercion.object(owner, this)?;
+                super::iterator::array_values(&prototype.load(owner)?, target).map(Value::Object)
+            }
+        }
+    }
+    pub(super) fn trace(&self, tracer: &mut crate::gc::Tracer<'_>) {
+        self.coercion.trace(tracer);
+        if let BuiltinOperation::Values(prototype) = &self.operation {
+            prototype.trace(tracer);
+        }
+    }
+}
+fn create_builtin(
+    prototype: &Object,
+    name: &str,
+    length: u32,
+    coercion: Rc<StoredCoercion>,
+    operation: BuiltinOperation,
+) -> Object {
+    Object::managed_function_with_metadata(
+        prototype,
+        name,
+        length,
+        super::object::ManagedCallable::Array(ArrayBuiltin {
+            coercion,
+            operation,
+        }),
+    )
+}
 pub(super) fn install(
     intrinsics: &IntrinsicRegistry,
     symbols: &WellKnownSymbols,
 ) -> RuntimeResult<()> {
-    let coercion = Rc::new(Coercion {
-        string: intrinsics.get(IntrinsicId::StringPrototype),
-        number: intrinsics.get(IntrinsicId::NumberPrototype),
-        boolean: intrinsics.get(IntrinsicId::BooleanPrototype),
-        symbol: intrinsics.get(IntrinsicId::SymbolPrototype),
-        bigint: intrinsics.get(IntrinsicId::BigIntPrototype),
-        to_primitive: symbols.get(WellKnownSymbol::ToPrimitive).into(),
-        to_string_tag: symbols.get(WellKnownSymbol::ToStringTag).into(),
-    });
-    let function_prototype = intrinsics.get(IntrinsicId::FunctionPrototype);
-    let object_prototype = intrinsics.get(IntrinsicId::ObjectPrototype);
-    let boxing = coercion.clone();
-    method(
-        &object_prototype,
-        &function_prototype,
-        "valueOf",
-        0,
-        move |this, _| boxing.object(this).map(Value::Object),
-    )?;
-    let boxing = coercion.clone();
-    method(
-        &object_prototype,
-        &function_prototype,
-        "toString",
-        0,
-        move |this, _| {
-            match this {
-                Value::Undefined => return Ok(Value::String("[object Undefined]".into())),
-                Value::Null => return Ok(Value::String("[object Null]".into())),
-                _ => {}
-            };
-            let object = boxing.object(this)?;
-            let tag = object_tag(&object)?;
-            let tag = match object.get(&boxing.to_string_tag)? {
-                Value::String(tag) => tag,
-                _ => tag.into(),
-            };
-            let mut units = JsString::from("[object ").code_units().to_vec();
-            units.extend_from_slice(tag.code_units());
-            units.push(u16::from(b']'));
-            Ok(Value::String(JsString::from_code_units(units)))
-        },
-    )?;
-
-    let prototype = intrinsics.get(IntrinsicId::ArrayPrototype);
+    let function = intrinsics.get(IntrinsicId::FunctionPrototype);
+    let object = intrinsics.get(IntrinsicId::ObjectPrototype);
+    let coercion = Rc::new(StoredCoercion::new(&function, intrinsics, symbols)?);
+    for (name, operation) in [
+        ("valueOf", BuiltinOperation::ValueOf),
+        ("toString", BuiltinOperation::ToString),
+    ] {
+        let method = create_builtin(&function, name, 0, coercion.clone(), operation);
+        object.define_own_property(
+            name.into(),
+            PropertyDescriptor::data(Value::Object(method), true, false, true),
+        )?;
+    }
+    let array = intrinsics.get(IntrinsicId::ArrayPrototype);
     for (name, arity, operation) in [
         ("push", 1, push as Operation),
         ("pop", 0, pop as Operation),
         ("shift", 0, shift as Operation),
         ("unshift", 1, unshift as Operation),
     ] {
-        let coercion = coercion.clone();
-        method(
-            &prototype,
-            &function_prototype,
+        let method = create_builtin(
+            &function,
             name,
             arity,
-            move |this, items| {
-                let object = coercion.object(this)?;
-                let length = coercion.length(&object)?;
-                operation(&object, length, items)
-            },
+            coercion.clone(),
+            BuiltinOperation::Array(operation),
+        );
+        array.define_own_property(
+            name.into(),
+            PropertyDescriptor::data(Value::Object(method), true, false, true),
         )?;
     }
     Ok(())
+}
+pub(super) fn values_function(
+    intrinsics: &IntrinsicRegistry,
+    symbols: &WellKnownSymbols,
+    iterator_prototype: &Object,
+) -> RuntimeResult<Object> {
+    let function = intrinsics.get(IntrinsicId::FunctionPrototype);
+    let coercion = Rc::new(StoredCoercion::new(&function, intrinsics, symbols)?);
+    let prototype = StoredObject::initial(function.0.runtime(), iterator_prototype)?;
+    Ok(create_builtin(
+        &function,
+        "values",
+        0,
+        coercion,
+        BuiltinOperation::Values(prototype),
+    ))
 }
 
 type Operation = fn(&Object, u64, &[Value]) -> RuntimeResult<Value>;
@@ -278,12 +360,7 @@ fn is_array(object: &Object) -> RuntimeResult<bool> {
         let Some(proxy) = proxy else {
             return Ok(false);
         };
-        object = proxy
-            .borrow()
-            .as_ref()
-            .ok_or_else(|| RuntimeError::type_error("revoked Proxy"))?
-            .0
-            .clone();
+        object = proxy.target(&object)?;
     }
 }
 
@@ -310,26 +387,57 @@ fn object_tag(object: &Object) -> RuntimeResult<&'static str> {
     })
 }
 
-// Preserve ordinary prototype lookup when boxing primitive generic receivers.
-pub(super) fn iterator_boxing(
-    intrinsics: &IntrinsicRegistry,
-    symbols: &WellKnownSymbols,
-) -> impl Fn(Value) -> RuntimeResult<Object> + 'static {
-    let coercion = Coercion {
-        string: intrinsics.get(IntrinsicId::StringPrototype),
-        number: intrinsics.get(IntrinsicId::NumberPrototype),
-        boolean: intrinsics.get(IntrinsicId::BooleanPrototype),
-        symbol: intrinsics.get(IntrinsicId::SymbolPrototype),
-        bigint: intrinsics.get(IntrinsicId::BigIntPrototype),
-        to_primitive: symbols.get(WellKnownSymbol::ToPrimitive).into(),
-        to_string_tag: symbols.get(WellKnownSymbol::ToStringTag).into(),
-    };
-    move |value| coercion.object(value)
-}
-
 #[cfg(test)]
 mod key_tests {
     use super::*;
+
+    #[test]
+    fn managed_coercion_captures_are_traced_and_boxed_values_keep_their_prototypes() {
+        let runtime = crate::runtime::Runtime::new();
+        let function_prototype = Object::new_in(&runtime);
+        let prototypes: [Object; 5] = std::array::from_fn(|_| Object::new_in(&runtime));
+        let captured = |index: usize| {
+            StoredObject::initial(function_prototype.0.runtime(), &prototypes[index]).unwrap()
+        };
+        let coercion = Rc::new(StoredCoercion {
+            string: captured(0),
+            number: captured(1),
+            boolean: captured(2),
+            symbol: captured(3),
+            bigint: captured(4),
+            to_primitive: "unused".into(),
+            to_string_tag: "unusedTag".into(),
+        });
+        let method = create_builtin(
+            &function_prototype,
+            "valueOf",
+            0,
+            coercion,
+            BuiltinOperation::ValueOf,
+        );
+        for prototype in &prototypes {
+            prototype
+                .create_data_property("back".into(), Value::Object(method.clone()))
+                .unwrap();
+        }
+        let weak = prototypes.map(|prototype| prototype.downgrade());
+        drop(function_prototype);
+        assert_eq!(runtime.diagnostics().rooted, 1);
+        assert_eq!(runtime.collect_migration_graph().unwrap().retained, 7);
+        let Value::Object(boxed) = method.call(Value::Number(42.0), &[]).unwrap() else {
+            panic!("boxed number");
+        };
+        assert_eq!(boxed.prototype(), weak[1].upgrade());
+        assert!(matches!(
+            boxed.0.state.borrow().primitive_data,
+            Some(Value::Number(42.0))
+        ));
+        drop(method);
+        assert_eq!(runtime.collect_migration_graph().unwrap().retained, 8);
+        drop(boxed);
+        assert_eq!(runtime.collect_migration_graph().unwrap().retained, 0);
+        assert!(weak.iter().all(|prototype| prototype.upgrade().is_none()));
+    }
 
     #[test]
     fn integer_keys_preserve_decimal_boundaries_without_number_rounding() {

@@ -1,0 +1,62 @@
+{
+  "source_revision": "c74fa92a56acc727347237ea28e870272eb6dad8",
+  "files": {
+    "same-binary.json": "4d7a71bd11973dfed0828a93ee84cb2dd8336191b711cc2a0fc9eacd1a1f26fc",
+    "boa.json": "d34b24d2c464adebfe20aaaf92fd82b29dfe2ccd44e099234928c8314496da59",
+    "main.json": "939d732496438fc7d5776be528aa8a44e4d12813de8d88f714a30008fc984024",
+    "agent-affinity-before.json": "db6123cbdf598a30d7c00c838d2c2afe5e9dc56c1a58a323b9b278adb6b1e68d",
+    "agent-affinity-change.log": "5b074ad0fe8bbc8037508f1332dd1a00cae476ab646549f12fc64adcf7199bf3"
+  },
+  "condition": "Same guestCPU0 for both worker labels, Codex agent2188 and code-mode2558 moved to guestCPUs1-3 to reduce agent contention. No claim of physical-host isolation or identified cause for previous variance. All previous reports retained.",
+  "statistics": [
+    {
+      "verified_at": "2026-10-28T18:05:18.859Z",
+      "reports": [
+        {
+          "file": "/tmp/temiya-private-scalars-same-binary-agent-separated.json",
+          "sha256": "4d7a71bd11973dfed0828a93ee84cb2dd8336191b711cc2a0fc9eacd1a1f26fc",
+          "runs": 66,
+          "checked_values": 1056,
+          "comparisons": 33,
+          "outcomes": {
+            "within noise threshold": 33
+          }
+        }
+      ]
+    },
+    {
+      "verified_at": "2026-10-28T18:11:47.011Z",
+      "reports": [
+        {
+          "file": "/tmp/temiya-private-scalars-boa-agent-separated.json",
+          "sha256": "d34b24d2c464adebfe20aaaf92fd82b29dfe2ccd44e099234928c8314496da59",
+          "runs": 66,
+          "checked_values": 1056,
+          "comparisons": 33,
+          "outcomes": {
+            "Temiya faster beyond threshold": 31,
+            "within noise threshold": 2
+          }
+        }
+      ]
+    },
+    {
+      "verified_at": "2026-10-28T18:16:16.948Z",
+      "reports": [
+        {
+          "file": "/tmp/temiya-private-scalars-main-agent-separated.json",
+          "sha256": "939d732496438fc7d5776be528aa8a44e4d12813de8d88f714a30008fc984024",
+          "runs": 66,
+          "checked_values": 1056,
+          "comparisons": 33,
+          "outcomes": {
+            "after faster beyond threshold": 9,
+            "after slower beyond threshold": 20,
+            "within noise threshold": 4
+          }
+        }
+      ]
+    }
+  ],
+  "qualification": "Same-binary33noise. ActualBoa31faster2noise, all-eleven gateFALSE. Main9faster20slower4noise. Not a regression-free or whole-suite speed pass."
+}

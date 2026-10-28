@@ -8,7 +8,7 @@ if (existsSync(executable) || existsSync(infoPath)) throw Error('baseline output
 const report = JSON.parse(readFileSync(reportPath));
 const worker = report.workers?.[0];
 const hash = createHash('sha256').update(readFileSync(source)).digest('hex');
-if ((worker?.engine ?? worker?.name) !== 'Temiya' || worker.mode !== 'AST interpreter' ||
+if ((worker?.engine ?? worker?.name) !== 'Temiya' || !['AST interpreter', 'Auto Script', 'Auto Script+loop'].includes(worker.mode) ||
     worker.profile !== 'release' || !Array.isArray(worker.features) || worker.features.length !== 0 ||
     !/^[a-f0-9]{40}$/.test(worker.revision ?? '') || worker.executable_sha256 !== hash || typeof report.rustc !== 'string') {
   throw Error('source binary does not match a measured release Temiya worker');

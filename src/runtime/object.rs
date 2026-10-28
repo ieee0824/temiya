@@ -4,6 +4,8 @@ use std::cell::Cell;
 use std::hash::{Hash, Hasher};
 use std::rc::Rc;
 
+use super::execution::StoredRealm;
+use super::stored::{StoredDescriptor, StoredObject, StoredValue};
 use super::{JsString, Object, RuntimeError, RuntimeResult, Symbol, Value};
 
 // Native callbacks and the current AST function implementation recurse through
@@ -178,9 +180,24 @@ impl PropertyDescriptor {
     }
 
     /// Converts a descriptor record to the ordinary object form used by Reflect APIs.
-    pub fn to_object(&self) -> RuntimeResult<Object> {
+    pub fn to_object(&self, context: &super::AllocationContext) -> RuntimeResult<Object> {
         self.validate()?;
-        let object = Object::new();
+        self.fill_object(Object::new_in(context))
+    }
+
+    pub(super) fn to_object_for(&self, prototype: &Object) -> RuntimeResult<Object> {
+        self.validate()?;
+        let object = Object::new_for(prototype);
+        object.initialize_prototype(Some(prototype.clone()));
+        self.fill_object(object)
+    }
+
+    pub(super) fn to_object_in(&self, context: &Object) -> RuntimeResult<Object> {
+        self.validate()?;
+        self.fill_object(Object::new_for(context))
+    }
+
+    fn fill_object(&self, object: Object) -> RuntimeResult<Object> {
         if let Some(value) = &self.value {
             object.create_data_property("value".into(), value.clone())?;
         }
@@ -287,31 +304,313 @@ fn callable_or_undefined(value: Value, name: &str) -> RuntimeResult<Option<Objec
     }
 }
 
-type NativeCall = Rc<dyn Fn(Value, &[Value]) -> RuntimeResult<Value>>;
-type NativeConstruct = Rc<dyn Fn(&[Value], Object) -> RuntimeResult<Object>>;
+pub(super) trait NativeMetadata {
+    fn source(&self) -> Option<&StoredRealm>;
+    fn source_mut(&mut self) -> &mut Option<StoredRealm>;
+}
+pub(super) trait NativeCallBody: NativeMetadata {
+    fn invoke(&self, owner: &Object, this: Value, arguments: &[Value]) -> RuntimeResult<Value>;
+}
+pub(super) trait NativeConstructBody: NativeMetadata {
+    fn invoke(&self, arguments: &[Value], new_target: Object) -> RuntimeResult<Object>;
+}
+type NativeCall = Rc<dyn NativeCallBody>;
+type NativeConstruct = Rc<dyn NativeConstructBody>;
+
+pub(super) struct FunctionPayload<T> {
+    source: Option<StoredRealm>,
+    body: T,
+}
+impl<T> std::ops::Deref for FunctionPayload<T> {
+    type Target = T;
+    fn deref(&self) -> &T {
+        &self.body
+    }
+}
+impl<T> NativeMetadata for FunctionPayload<T> {
+    fn source(&self) -> Option<&StoredRealm> {
+        self.source.as_ref()
+    }
+    fn source_mut(&mut self) -> &mut Option<StoredRealm> {
+        &mut self.source
+    }
+}
+impl<F: Fn(Value, &[Value]) -> RuntimeResult<Value>> NativeCallBody for FunctionPayload<F> {
+    fn invoke(&self, _: &Object, this: Value, arguments: &[Value]) -> RuntimeResult<Value> {
+        (self.body)(this, arguments)
+    }
+}
+
+struct ContextFunctionPayload<F> {
+    source: Option<StoredRealm>,
+    body: F,
+}
+impl<F> NativeMetadata for ContextFunctionPayload<F> {
+    fn source(&self) -> Option<&StoredRealm> {
+        self.source.as_ref()
+    }
+    fn source_mut(&mut self) -> &mut Option<StoredRealm> {
+        &mut self.source
+    }
+}
+impl<F: Fn(&super::AllocationContext, Value, &[Value]) -> RuntimeResult<Value>> NativeCallBody
+    for ContextFunctionPayload<F>
+{
+    fn invoke(&self, owner: &Object, this: Value, arguments: &[Value]) -> RuntimeResult<Value> {
+        (self.body)(owner.allocation_context(), this, arguments)
+    }
+}
+impl<F: Fn(&[Value], Object) -> RuntimeResult<Object>> NativeConstructBody for FunctionPayload<F> {
+    fn invoke(&self, arguments: &[Value], new_target: Object) -> RuntimeResult<Object> {
+        (self.body)(arguments, new_target)
+    }
+}
+
+pub(super) type CapturedObjectCallback =
+    fn(&Object, Option<&PropertyKey>, Value, &[Value]) -> RuntimeResult<Value>;
+pub(super) type LazyCapturedObjectCallback =
+    fn(&Object, &StoredObject, Option<&PropertyKey>, Value, &[Value]) -> RuntimeResult<Value>;
+enum CapturedObjectHandler {
+    Eager(CapturedObjectCallback),
+    Lazy(LazyCapturedObjectCallback),
+}
+pub(super) struct CapturedObjectCall {
+    object: StoredObject,
+    key: Option<PropertyKey>,
+    callback: CapturedObjectHandler,
+}
+
+pub(super) type CapturedFactoryCallback =
+    fn(Option<&Object>, Option<&PropertyKey>, Value, &[Value]) -> RuntimeResult<Value>;
+pub(super) type CapturedFactoryConstructor =
+    fn(&Object, Option<&PropertyKey>, &[Value], Object) -> RuntimeResult<Object>;
+pub(super) struct CapturedFactory {
+    object: StoredObject,
+    key: Option<PropertyKey>,
+    // Calls such as Number(number) need only a leaf coercion key, not a rooted prototype.
+    call: Option<(bool, CapturedFactoryCallback)>,
+    construct: Option<CapturedFactoryConstructor>,
+}
+
+pub(super) struct BoundFunction {
+    pub(super) target: StoredObject,
+    this_value: StoredValue,
+    arguments: Vec<StoredValue>,
+    constructor: bool,
+}
+
+pub(super) enum ManagedCallable {
+    ModuleBinding(super::pipeline::ModuleBinding),
+    Generator(super::generator::GeneratorAction),
+    Promise(super::promise::PromiseAction),
+    ProxyRevocable(super::proxy::ProxyRevocable),
+    ObjectFactory(super::intrinsics::ObjectFactory),
+    JsonParse(super::host_data::JsonParseBuiltin),
+    Date(super::host_data::DateFactory),
+    Factory(CapturedFactory),
+    Array(super::array_methods::ArrayBuiltin),
+    CapturedObject(CapturedObjectCall),
+    Bytecode(super::bytecode_function::StoredClosure),
+    Ast(super::function::StoredFunctionClosure),
+    Bound(BoundFunction),
+    ProxyRevoker(std::cell::RefCell<Option<StoredObject>>),
+}
+
+impl ManagedCallable {
+    pub(super) fn bound_target(&self, owner: &Object) -> RuntimeResult<Option<Object>> {
+        match self {
+            Self::ModuleBinding(_) => Ok(None),
+            Self::Generator(_) => Ok(None),
+            Self::Promise(_) => Ok(None),
+            Self::ProxyRevocable(_) => Ok(None),
+            Self::ObjectFactory(_) => Ok(None),
+            Self::Bound(bound) => bound.target.load(owner).map(Some),
+            Self::ProxyRevoker(_) => Ok(None),
+            Self::Ast(_) => Ok(None),
+            Self::Bytecode(_) => Ok(None),
+            Self::CapturedObject(_) => Ok(None),
+            Self::Array(_) => Ok(None),
+            Self::Factory(_) => Ok(None),
+            Self::Date(_) => Ok(None),
+            Self::JsonParse(_) => Ok(None),
+        }
+    }
+    fn is_callable(&self) -> bool {
+        match self {
+            Self::Factory(factory) => factory.call.is_some(),
+            _ => true,
+        }
+    }
+    fn is_constructor(&self) -> bool {
+        match self {
+            Self::ModuleBinding(_) => false,
+            Self::Generator(_) => false,
+            Self::Promise(_) => false,
+            Self::ProxyRevocable(_) => false,
+            Self::ObjectFactory(_) => true,
+            Self::Bound(bound) => bound.constructor,
+            Self::Ast(closure) => closure.is_constructor(),
+            Self::Bytecode(closure) => closure.is_constructor(),
+            Self::ProxyRevoker(_) => false,
+            Self::CapturedObject(_) => false,
+            Self::Array(_) => false,
+            Self::Factory(factory) => factory.construct.is_some(),
+            Self::Date(_) => true,
+            Self::JsonParse(_) => false,
+        }
+    }
+    fn call(&self, owner: &Object, this: Value, arguments: &[Value]) -> RuntimeResult<Value> {
+        match self {
+            Self::ModuleBinding(binding) => binding.call(owner),
+            Self::Generator(action) => action.call(owner, arguments),
+            Self::Promise(action) => action.call(owner, arguments),
+            Self::ProxyRevocable(factory) => factory.call(owner, arguments),
+            Self::ObjectFactory(factory) => factory.create(owner, arguments).map(Value::Object),
+            Self::JsonParse(builtin) => builtin.call(owner, arguments),
+            Self::Date(factory) => factory.call(),
+            Self::Factory(factory) => {
+                let (needs_object, callback) = factory
+                    .call
+                    .ok_or_else(|| RuntimeError::type_error("object is not callable"))?;
+                let object = if needs_object {
+                    Some(factory.object.load(owner)?)
+                } else {
+                    None
+                };
+                callback(object.as_ref(), factory.key.as_ref(), this, arguments)
+            }
+            Self::Array(call) => call.call(owner, this, arguments),
+            Self::CapturedObject(call) => match call.callback {
+                CapturedObjectHandler::Eager(callback) => {
+                    let object = call.object.load(owner)?;
+                    callback(&object, call.key.as_ref(), this, arguments)
+                }
+                CapturedObjectHandler::Lazy(callback) => {
+                    callback(owner, &call.object, call.key.as_ref(), this, arguments)
+                }
+            },
+            Self::Ast(closure) => closure.call(owner, this, arguments),
+            Self::Bytecode(closure) => closure.call(owner, this, arguments),
+            Self::Bound(bound) => {
+                let target = bound.target.load(owner)?;
+                let this_value = bound.this_value.load(owner)?;
+                let arguments = bound.arguments(owner, arguments)?;
+                target.call(this_value, &arguments)
+            }
+            Self::ProxyRevoker(slot) => {
+                let proxy = slot.borrow_mut().take();
+                if let Some(proxy) = proxy {
+                    let proxy = proxy.load(owner)?;
+                    if let Some(slot) = &mut proxy.0.state.borrow_mut().proxy {
+                        slot.revoke();
+                    }
+                }
+                Ok(Value::Undefined)
+            }
+        }
+    }
+    fn construct(
+        &self,
+        owner: &Object,
+        arguments: &[Value],
+        new_target: Object,
+    ) -> RuntimeResult<Object> {
+        if let Self::ObjectFactory(factory) = self {
+            return factory.create(owner, arguments);
+        }
+        if let Self::Date(factory) = self {
+            return factory.construct(owner, arguments);
+        }
+        if let Self::Factory(factory) = self {
+            let callback = factory
+                .construct
+                .ok_or_else(|| RuntimeError::type_error("object is not a constructor"))?;
+            let object = factory.object.load(owner)?;
+            return callback(&object, factory.key.as_ref(), arguments, new_target);
+        }
+        if let Self::Ast(closure) = self {
+            return closure.construct(owner, arguments, new_target);
+        }
+        if let Self::Bytecode(closure) = self {
+            return closure.construct(owner, arguments, new_target);
+        }
+        let Self::Bound(bound) = self else {
+            return Err(RuntimeError::type_error("object is not a constructor"));
+        };
+        let target = bound.target.load(owner)?;
+        let arguments = bound.arguments(owner, arguments)?;
+        let new_target = if new_target == *owner {
+            target.clone()
+        } else {
+            new_target
+        };
+        target.construct(&arguments, new_target)
+    }
+    fn trace(&self, tracer: &mut crate::gc::Tracer<'_>) {
+        match self {
+            Self::ModuleBinding(binding) => binding.trace(tracer),
+            Self::Generator(action) => action.trace(tracer),
+            Self::Promise(action) => action.trace(tracer),
+            Self::ProxyRevocable(factory) => factory.trace(tracer),
+            Self::ObjectFactory(factory) => factory.trace(tracer),
+            Self::Ast(closure) => closure.trace(tracer),
+            Self::Bytecode(closure) => closure.trace(tracer),
+            Self::CapturedObject(call) => call.object.trace(tracer),
+            Self::Array(call) => call.trace(tracer),
+            Self::Factory(factory) => factory.object.trace(tracer),
+            Self::Date(factory) => factory.trace(tracer),
+            Self::JsonParse(builtin) => builtin.trace(tracer),
+            Self::Bound(bound) => bound.trace(tracer),
+            Self::ProxyRevoker(slot) => {
+                if let Some(proxy) = &*slot.borrow() {
+                    proxy.trace(tracer);
+                }
+            }
+        }
+    }
+}
+
+impl BoundFunction {
+    fn arguments(&self, owner: &Object, suffix: &[Value]) -> RuntimeResult<Vec<Value>> {
+        let mut arguments = Vec::with_capacity(self.arguments.len() + suffix.len());
+        for value in &self.arguments {
+            arguments.push(value.load(owner)?);
+        }
+        arguments.extend_from_slice(suffix);
+        Ok(arguments)
+    }
+
+    fn trace(&self, tracer: &mut crate::gc::Tracer<'_>) {
+        self.target.trace(tracer);
+        self.this_value.trace(tracer);
+        for argument in &self.arguments {
+            argument.trace(tracer);
+        }
+    }
+}
 
 #[derive(Clone)]
 struct PropertyEntry {
     key: PropertyKey,
-    descriptor: PropertyDescriptor,
+    descriptor: StoredDescriptor,
 }
 
 #[derive(Default)]
 pub(super) struct ObjectState {
-    prototype: Option<Object>,
+    prototype: Option<StoredObject>,
     extensible: bool,
     properties: Vec<PropertyEntry>,
     // A position hint only. Bounds and the complete key are checked on every
     // read, so deleting/reordering properties never returns a stale descriptor.
     last_property: Cell<usize>,
     callable: Option<NativeCall>,
-    pub(super) bound_target: Option<Object>,
+    pub(super) managed_callable: Option<Rc<FunctionPayload<ManagedCallable>>>,
     construct: Option<NativeConstruct>,
     // The own data property already exists. Only its initial object value is
     // deferred until an operation observes or redefines that descriptor.
-    lazy_function_prototype: Option<Object>,
+    lazy_function_prototype: Option<StoredObject>,
     pub(super) array: bool,
-    pub(super) elements: Option<Box<super::elements::Elements>>,
+    pub(super) elements: Option<Box<super::elements::Elements<StoredDescriptor>>>,
     pub(super) buffer: Option<super::indexed::BufferSlot>,
     pub(super) view: Option<super::indexed::ViewSlot>,
     pub(super) string_data: Option<JsString>,
@@ -321,9 +620,12 @@ pub(super) struct ObjectState {
     pub(super) set_data: Option<super::collections::SetSlot>,
     pub(super) weak_map_data: Option<super::collections::WeakMapSlot>,
     pub(super) weak_set_data: Option<super::collections::WeakSetSlot>,
+    pub(super) promise_data: Option<Rc<std::cell::RefCell<super::promise::PromiseData>>>,
+    pub(super) generator_data: Option<Rc<std::cell::RefCell<super::generator::GeneratorSlot>>>,
+    pub(super) module_namespace: Option<Box<super::pipeline::StoredModule>>,
     pub(super) date_value: Option<f64>,
     pub(super) iterator: Option<Box<super::iterator::IteratorSlot>>,
-    pub(super) proxy: Option<super::proxy::ProxySlot>,
+    pub(super) proxy: Option<Box<super::proxy::ProxySlot>>,
 }
 
 pub(super) fn ordinary_state() -> ObjectState {
@@ -334,6 +636,183 @@ pub(super) fn ordinary_state() -> ObjectState {
 }
 
 impl Object {
+    pub(super) fn new_with_prototype(prototype: Self) -> Self {
+        let runtime = prototype.allocation_context().clone();
+        let mut data = super::ObjectData::ordinary();
+        data.state.get_mut().prototype = Some(
+            StoredObject::initial(Some(&runtime), &prototype)
+                .expect("prototype supplies the new object's allocation context"),
+        );
+        // The unpublished record itself protects this edge at the allocation
+        // safepoint, including when this was the prototype's last public root.
+        drop(prototype);
+        runtime.allocate_object(data)
+    }
+
+    /// Creates a native callback that can allocate in its owner's context.
+    /// The context is borrowed for each call and is not captured by the payload.
+    pub fn native_function_with_context(
+        context: &super::AllocationContext,
+        callback: impl Fn(&super::AllocationContext, Value, &[Value]) -> RuntimeResult<Value> + 'static,
+    ) -> Self {
+        let object = Self::new_in(context);
+        object.0.state.borrow_mut().callable = Some(Rc::new(ContextFunctionPayload {
+            source: None,
+            body: callback,
+        }));
+        object
+    }
+    /// Creates a Realm-independent native callback in an explicit context.
+    pub fn native_function_in(
+        context: &super::AllocationContext,
+        callback: impl Fn(Value, &[Value]) -> RuntimeResult<Value> + 'static,
+    ) -> Self {
+        let object = Self::new_in(context);
+        object.set_native_call(callback);
+        object
+    }
+
+    /// Creates a native constructor in an explicit context.
+    pub fn native_constructor_in(
+        context: &super::AllocationContext,
+        callback: impl Fn(&[Value], Object) -> RuntimeResult<Object> + 'static,
+    ) -> Self {
+        let object = Self::new_in(context);
+        object.set_native_construct(callback);
+        object
+    }
+    pub(super) fn source_realm(&self) -> Option<StoredRealm> {
+        self.0.runtime()?;
+        let state = self.0.state.borrow();
+        if let Some(call) = &state.managed_callable {
+            return match &call.body {
+                ManagedCallable::Ast(closure) => Some(closure.source_realm().clone()),
+                ManagedCallable::Bytecode(closure) => Some(closure.source_realm().clone()),
+                _ => call.source.clone(),
+            };
+        }
+        state
+            .callable
+            .as_ref()
+            .and_then(|call| call.source().cloned())
+            .or_else(|| {
+                state
+                    .construct
+                    .as_ref()
+                    .and_then(|body| body.source().cloned())
+            })
+    }
+
+    fn bind_native_exception(
+        &self,
+        source: Option<&StoredRealm>,
+        error: RuntimeError,
+    ) -> RuntimeError {
+        if error.thrown_value().is_some() || error.kind() == super::RuntimeErrorKind::InternalError
+        {
+            return error;
+        }
+        match source {
+            Some(source) => match source.load(self) {
+                Ok(realm) => realm.bind_exception(error),
+                Err(failure) => failure,
+            },
+            None => error,
+        }
+    }
+
+    pub(super) fn initialize_native_realm(&self, realm: &super::Realm) -> RuntimeResult<()> {
+        let mut state = self.0.state.borrow_mut();
+        if state.callable.is_none() && state.construct.is_none() && state.managed_callable.is_none()
+        {
+            return Ok(());
+        }
+        let source = StoredRealm::store(self, realm)?;
+        if let Some(body) = &mut state.callable {
+            *Rc::get_mut(body)
+                .ok_or_else(|| RuntimeError::internal_error("native body already active"))?
+                .source_mut() = Some(source.clone());
+        }
+        if let Some(body) = &mut state.construct {
+            *Rc::get_mut(body)
+                .ok_or_else(|| RuntimeError::internal_error("constructor body already active"))?
+                .source_mut() = Some(source.clone());
+        }
+        if let Some(body) = &mut state.managed_callable {
+            Rc::get_mut(body)
+                .ok_or_else(|| RuntimeError::internal_error("managed body already active"))?
+                .source = Some(source);
+        }
+        Ok(())
+    }
+
+    pub(super) fn set_captured_factory(
+        &self,
+        capture: &Object,
+        key: Option<PropertyKey>,
+        call: Option<(bool, CapturedFactoryCallback)>,
+        construct: Option<CapturedFactoryConstructor>,
+    ) -> RuntimeResult<()> {
+        let factory = CapturedFactory {
+            object: StoredObject::store(self, capture)?,
+            key,
+            call,
+            construct,
+        };
+        self.set_managed_callable(ManagedCallable::Factory(factory));
+        Ok(())
+    }
+
+    pub(super) fn set_managed_callable(&self, callable: ManagedCallable) {
+        let source = self.source_realm();
+        let source = if matches!(
+            callable,
+            ManagedCallable::Ast(_) | ManagedCallable::Bytecode(_)
+        ) {
+            None
+        } else {
+            source
+        };
+        let callable = FunctionPayload {
+            source,
+            body: callable,
+        };
+        let retired = {
+            let mut state = self.0.state.borrow_mut();
+            (
+                state.callable.take(),
+                state.construct.take(),
+                state.managed_callable.replace(Rc::new(callable)),
+            )
+        };
+        drop(retired);
+    }
+    pub(super) fn new_bound(
+        target: &Object,
+        this_value: &Value,
+        arguments: &[Value],
+    ) -> RuntimeResult<Self> {
+        let object = Self::new_for(target);
+        let bound = BoundFunction {
+            target: StoredObject::store(&object, target)?,
+            this_value: StoredValue::store(&object, this_value)?,
+            arguments: arguments
+                .iter()
+                .map(|value| StoredValue::store(&object, value))
+                .collect::<RuntimeResult<_>>()?,
+            constructor: target.is_constructor(),
+        };
+        object.set_managed_callable(ManagedCallable::Bound(bound));
+        Ok(object)
+    }
+    #[cfg(test)]
+    pub(super) fn initialize_proxy_revoker(&self, proxy: &Object) -> RuntimeResult<()> {
+        let proxy = StoredObject::store(self, proxy)?;
+        self.set_managed_callable(ManagedCallable::ProxyRevoker(std::cell::RefCell::new(
+            Some(proxy),
+        )));
+        Ok(())
+    }
     pub(crate) fn own_element_value(&self, index: u32) -> Option<Value> {
         let state = self.0.state.borrow();
         if !state.array
@@ -345,9 +824,7 @@ impl Object {
             return None;
         }
         let descriptor = state.elements.as_ref()?.get(index)?;
-        descriptor
-            .is_data_descriptor()
-            .then(|| descriptor.value.clone().unwrap_or(Value::Undefined))
+        descriptor.value()?.load(self).ok()
     }
 
     // A hint identifies a position, never a cached Value or assumed shape.
@@ -358,9 +835,13 @@ impl Object {
         hint: Option<usize>,
     ) -> Option<(Value, usize)> {
         let state = self.0.state.borrow();
+        // String length and canonical indices are virtual properties; named
+        // ordinary data properties can use the same checked lookup as objects.
         if state.proxy.is_some()
             || state.lazy_function_prototype.is_some()
-            || state.string_data.is_some()
+            || (state.string_data.is_some()
+                && (matches!(key, PropertyKey::String(name) if name.code_units().iter().copied().eq("length".encode_utf16()))
+                    || key.array_index().is_some()))
             || (state.elements.is_some() && key.array_index().is_some())
             || state.view.is_some()
             || state.buffer.is_some()
@@ -368,6 +849,7 @@ impl Object {
             return None;
         }
         let (index, entry) = hint
+            .or(Some(state.last_property.get()))
             .and_then(|index| {
                 state
                     .properties
@@ -382,12 +864,55 @@ impl Object {
                     .enumerate()
                     .find(|(_, entry)| entry.key == *key)
             })?;
-        entry.descriptor.is_data_descriptor().then(|| {
-            (
-                entry.descriptor.value.clone().unwrap_or(Value::Undefined),
-                index,
-            )
-        })
+        let value = entry.descriptor.value()?.load(self).ok()?;
+        state.last_property.set(index);
+        Some((value, index))
+    }
+
+    // Only for a newly allocated ordinary bytecode function, before it is
+    // published. Both values are leaves and the standard descriptors are known.
+    pub(super) fn initialize_function_properties(
+        &self,
+        length: usize,
+        name: JsString,
+        object_prototype: Option<Object>,
+    ) -> RuntimeResult<()> {
+        let object_prototype = object_prototype
+            .as_ref()
+            .map(|parent| StoredObject::store(self, parent))
+            .transpose()?;
+        let mut state = self.0.state.borrow_mut();
+        debug_assert!(state.properties.is_empty());
+        debug_assert!(state.proxy.is_none() && !state.array);
+        // Leave room for the default constructable function's prototype entry.
+        state.properties.reserve(3);
+        for (key, value) in [
+            ("length", StoredValue::Number(length as f64)),
+            ("name", StoredValue::String(name)),
+        ] {
+            state.properties.push(PropertyEntry {
+                key: key.into(),
+                descriptor: StoredDescriptor::Data {
+                    value,
+                    writable: false,
+                    enumerable: false,
+                    configurable: true,
+                },
+            });
+        }
+        if let Some(parent) = object_prototype {
+            state.properties.push(PropertyEntry {
+                key: "prototype".into(),
+                descriptor: StoredDescriptor::Data {
+                    value: StoredValue::Undefined,
+                    writable: true,
+                    enumerable: false,
+                    configurable: false,
+                },
+            });
+            state.lazy_function_prototype = Some(parent);
+        }
+        Ok(())
     }
 
     pub(super) fn install_lazy_function_prototype(
@@ -398,7 +923,8 @@ impl Object {
             "prototype".into(),
             PropertyDescriptor::data(Value::Undefined, true, false, false),
         )?;
-        self.0.state.borrow_mut().lazy_function_prototype = Some(object_prototype);
+        self.0.state.borrow_mut().lazy_function_prototype =
+            Some(StoredObject::store(self, &object_prototype)?);
         Ok(())
     }
 
@@ -410,7 +936,8 @@ impl Object {
         let Some(parent) = self.0.state.borrow_mut().lazy_function_prototype.take() else {
             return Ok(());
         };
-        let prototype = Object::new();
+        let parent = parent.load(self)?;
+        let prototype = Object::new_in(self.allocation_context());
         prototype.set_prototype(Some(parent));
         prototype.define_own_property(
             "constructor".into(),
@@ -425,7 +952,9 @@ impl Object {
             .iter_mut()
             .find(|entry| entry.key == *key)
             .expect("lazy function prototype property");
-        entry.descriptor.value = Some(Value::Object(prototype));
+        entry
+            .descriptor
+            .set_value(StoredValue::store(self, &Value::Object(prototype))?);
         Ok(())
     }
 
@@ -433,31 +962,61 @@ impl Object {
         &self,
         callback: impl Fn(Value, &[Value]) -> RuntimeResult<Value> + 'static,
     ) {
-        self.0.state.borrow_mut().callable = Some(Rc::new(callback));
+        let source = self.source_realm();
+        let retired = self
+            .0
+            .state
+            .borrow_mut()
+            .callable
+            .replace(Rc::new(FunctionPayload {
+                source,
+                body: callback,
+            }));
+        drop(retired);
     }
 
     pub(crate) fn set_native_construct(
         &self,
         callback: impl Fn(&[Value], Object) -> RuntimeResult<Object> + 'static,
     ) {
-        self.0.state.borrow_mut().construct = Some(Rc::new(callback));
+        let source = self.source_realm();
+        let retired = self
+            .0
+            .state
+            .borrow_mut()
+            .construct
+            .replace(Rc::new(FunctionPayload {
+                source,
+                body: callback,
+            }));
+        drop(retired);
     }
 
     pub(crate) fn clear_native_construct(&self) {
-        self.0.state.borrow_mut().construct = None;
+        let retired = self.0.state.borrow_mut().construct.take();
+        drop(retired);
     }
 
     pub(crate) fn clear_native_call(&self) {
-        self.0.state.borrow_mut().callable = None;
+        let retired = self.0.state.borrow_mut().callable.take();
+        drop(retired);
     }
 
-    /// Allocates a callable object backed by a native Rust closure.
-    #[must_use]
-    pub fn native_function(
+    pub(super) fn native_function_for(
+        context: &Object,
         callback: impl Fn(Value, &[Value]) -> RuntimeResult<Value> + 'static,
     ) -> Self {
-        let object = Self::new();
-        object.0.state.borrow_mut().callable = Some(Rc::new(callback));
+        let object = Self::new_for(context);
+        object.set_native_call(callback);
+        object
+    }
+
+    pub(super) fn native_constructor_for(
+        context: &Object,
+        callback: impl Fn(&[Value], Object) -> RuntimeResult<Object> + 'static,
+    ) -> Self {
+        let object = Self::new_for(context);
+        object.set_native_construct(callback);
         object
     }
 
@@ -467,64 +1026,159 @@ impl Object {
         length: u32,
         callback: impl Fn(Value, &[Value]) -> RuntimeResult<Value> + 'static,
     ) -> Self {
+        Self::function_with_metadata(
+            prototype,
+            name,
+            length,
+            Some(Rc::new(FunctionPayload {
+                source: None,
+                body: callback,
+            })),
+            None,
+        )
+    }
+
+    pub(super) fn native_function_with_object_capture(
+        prototype: &Object,
+        name: &str,
+        length: u32,
+        capture: &Object,
+        key: Option<PropertyKey>,
+        callback: CapturedObjectCallback,
+    ) -> RuntimeResult<Self> {
+        Self::captured_function_with_metadata(
+            prototype,
+            name,
+            length,
+            capture,
+            key,
+            CapturedObjectHandler::Eager(callback),
+        )
+    }
+
+    pub(super) fn native_function_with_lazy_object_capture(
+        prototype: &Object,
+        name: &str,
+        length: u32,
+        capture: &Object,
+        key: Option<PropertyKey>,
+        callback: LazyCapturedObjectCallback,
+    ) -> RuntimeResult<Self> {
+        Self::captured_function_with_metadata(
+            prototype,
+            name,
+            length,
+            capture,
+            key,
+            CapturedObjectHandler::Lazy(callback),
+        )
+    }
+
+    fn captured_function_with_metadata(
+        prototype: &Object,
+        name: &str,
+        length: u32,
+        capture: &Object,
+        key: Option<PropertyKey>,
+        callback: CapturedObjectHandler,
+    ) -> RuntimeResult<Self> {
+        let call = CapturedObjectCall {
+            object: StoredObject::initial(prototype.0.runtime(), capture)?,
+            key,
+            callback,
+        };
+        Ok(Self::function_with_metadata(
+            prototype,
+            name,
+            length,
+            None,
+            Some(ManagedCallable::CapturedObject(call)),
+        ))
+    }
+
+    pub(super) fn managed_function_with_metadata(
+        prototype: &Object,
+        name: &str,
+        length: u32,
+        callable: ManagedCallable,
+    ) -> Self {
+        Self::function_with_metadata(prototype, name, length, None, Some(callable))
+    }
+
+    fn function_with_metadata(
+        prototype: &Object,
+        name: &str,
+        length: u32,
+        mut callable: Option<NativeCall>,
+        managed: Option<ManagedCallable>,
+    ) -> Self {
         // This fresh ordinary object has no existing descriptors, exotic hooks,
         // or observable identity. Seed complete properties in insertion order
         // without descriptor validation or a Vec growth allocation for four
         // entries when only two are needed. Later mutations use normal methods.
-        let object = Self::new();
+        let object = Self::new_for(prototype);
+        let source = prototype.source_realm();
+        if let Some(source) = &source {
+            source.record_owner(&object).expect("native source context");
+        }
+        if let Some(callback) = &mut callable {
+            *Rc::get_mut(callback)
+                .expect("fresh native body")
+                .source_mut() = source.clone();
+        }
+        let managed = managed.map(|body| Rc::new(FunctionPayload { source, body }));
         {
             let mut state = object.0.state.borrow_mut();
-            state.prototype = Some(prototype.clone());
-            state.callable = Some(Rc::new(callback));
+            state.callable = callable;
+            state.managed_callable = managed;
+            state.prototype =
+                Some(StoredObject::store(&object, prototype).expect("native prototype context"));
             state.properties = vec![
                 PropertyEntry {
                     key: "name".into(),
-                    descriptor: PropertyDescriptor::data(
-                        Value::String(name.into()),
-                        false,
-                        false,
-                        true,
-                    ),
+                    descriptor: StoredDescriptor::Data {
+                        value: StoredValue::String(name.into()),
+                        writable: false,
+                        enumerable: false,
+                        configurable: true,
+                    },
                 },
                 PropertyEntry {
                     key: "length".into(),
-                    descriptor: PropertyDescriptor::data(
-                        Value::Number(f64::from(length)),
-                        false,
-                        false,
-                        true,
-                    ),
+                    descriptor: StoredDescriptor::Data {
+                        value: StoredValue::Number(f64::from(length)),
+                        writable: false,
+                        enumerable: false,
+                        configurable: true,
+                    },
                 },
             ];
         }
         object
     }
 
-    /// Allocates a constructable object backed by a native Rust closure.
-    #[must_use]
-    pub fn native_constructor(
-        callback: impl Fn(&[Value], Object) -> RuntimeResult<Object> + 'static,
-    ) -> Self {
-        let object = Self::new();
-        object.0.state.borrow_mut().construct = Some(Rc::new(callback));
-        object
-    }
-
     /// Allocates an object with both native `[[Call]]` and `[[Construct]]` methods.
     #[must_use]
     pub fn native_callable_constructor(
+        context: &super::AllocationContext,
         call: impl Fn(Value, &[Value]) -> RuntimeResult<Value> + 'static,
         construct: impl Fn(&[Value], Object) -> RuntimeResult<Object> + 'static,
     ) -> Self {
-        let object = Self::native_function(call);
-        object.0.state.borrow_mut().construct = Some(Rc::new(construct));
+        let object = Self::native_function_in(context, call);
+        object.set_native_construct(construct);
         object
     }
 
     /// Returns whether this object has a `[[Call]]` internal method.
     #[must_use]
     pub fn is_callable(&self) -> bool {
-        self.0.state.borrow().callable.is_some()
+        let state = self.0.state.borrow();
+        state.callable.is_some()
+            || state
+                .managed_callable
+                .as_ref()
+                .is_some_and(|call| call.is_callable())
+            || state.proxy.as_ref().is_some_and(|proxy| proxy.callable)
     }
 
     /// Invokes this object's `[[Call]]` internal method.
@@ -532,34 +1186,143 @@ impl Object {
     /// Calls and construction share a per-thread nesting limit of 32. Exceeding
     /// the limit returns RangeError; normal and abrupt exits release the budget.
     pub fn call(&self, this_value: Value, arguments: &[Value]) -> RuntimeResult<Value> {
-        let callback = self.0.state.borrow().callable.clone().ok_or_else(|| {
-            RuntimeError::type_error("object does not have a [[Call]] internal method")
-        })?;
+        let (callback, bound, proxy) = {
+            let state = self.0.state.borrow();
+            (
+                state.callable.clone(),
+                state
+                    .managed_callable
+                    .as_ref()
+                    .filter(|call| call.is_callable())
+                    .cloned(),
+                state.proxy.as_ref().is_some_and(|proxy| proxy.callable),
+            )
+        };
+        if callback.is_none() && bound.is_none() && !proxy {
+            return Err(RuntimeError::type_error(
+                "object does not have a [[Call]] internal method",
+            ));
+        }
+        if self.0.runtime().is_some() {
+            if let Value::Object(value) = &this_value {
+                StoredObject::check_context(self, value)?;
+            }
+            for value in arguments {
+                if let Value::Object(value) = value {
+                    StoredObject::check_context(self, value)?;
+                }
+            }
+        }
         let _depth = CallDepthGuard::enter()?;
-        callback(this_value, arguments)
+        let result = if proxy {
+            super::proxy::apply_slot(self, this_value, arguments)
+        } else if let Some(bound) = &bound {
+            bound.call(self, this_value, arguments)
+        } else {
+            callback
+                .as_ref()
+                .expect("validated callable")
+                .invoke(self, this_value, arguments)
+        };
+        let result = result.map_err(|error| {
+            self.bind_native_exception(
+                bound
+                    .as_ref()
+                    .and_then(|body| body.source.as_ref())
+                    .or_else(|| callback.as_ref().and_then(|body| body.source())),
+                error,
+            )
+        });
+        if let Err(error) = &result {
+            self.check_abrupt_context(error)?;
+        }
+        let result = result?;
+        if self.0.runtime().is_some() {
+            if let Value::Object(value) = &result {
+                StoredObject::check_context(self, value)?;
+            }
+        }
+        Ok(result)
     }
 
     /// Returns whether this object has a `[[Construct]]` internal method.
     #[must_use]
     pub fn is_constructor(&self) -> bool {
-        self.0.state.borrow().construct.is_some()
+        let state = self.0.state.borrow();
+        state.construct.is_some()
+            || state
+                .managed_callable
+                .as_ref()
+                .is_some_and(|bound| bound.is_constructor())
+            || state.proxy.as_ref().is_some_and(|proxy| proxy.constructor)
     }
 
     /// Invokes this object's `[[Construct]]` internal method.
     /// Shares the nesting limit documented on [`Self::call`].
     pub fn construct(&self, arguments: &[Value], new_target: Self) -> RuntimeResult<Self> {
-        let callback = self.0.state.borrow().construct.clone().ok_or_else(|| {
-            RuntimeError::type_error("object does not have a [[Construct]] internal method")
-        })?;
+        let (callback, bound, proxy) = {
+            let state = self.0.state.borrow();
+            (
+                state.construct.clone(),
+                state.managed_callable.clone(),
+                state.proxy.as_ref().is_some_and(|proxy| proxy.constructor),
+            )
+        };
+        if callback.is_none()
+            && !bound.as_ref().is_some_and(|bound| bound.is_constructor())
+            && !proxy
+        {
+            return Err(RuntimeError::type_error(
+                "object does not have a [[Construct]] internal method",
+            ));
+        }
+        if self.0.runtime().is_some() {
+            StoredObject::check_context(self, &new_target)?;
+            for value in arguments {
+                if let Value::Object(value) = value {
+                    StoredObject::check_context(self, value)?;
+                }
+            }
+        }
         let _depth = CallDepthGuard::enter()?;
-        callback(arguments, new_target)
+        let result = if proxy {
+            super::proxy::construct_slot(self, arguments, new_target)
+        } else if let Some(bound) = &bound {
+            bound.construct(self, arguments, new_target)
+        } else {
+            callback
+                .as_ref()
+                .expect("validated constructor")
+                .invoke(arguments, new_target)
+        };
+        let result = result.map_err(|error| {
+            self.bind_native_exception(
+                bound
+                    .as_ref()
+                    .and_then(|body| body.source.as_ref())
+                    .or_else(|| callback.as_ref().and_then(|body| body.source())),
+                error,
+            )
+        });
+        if let Err(error) = &result {
+            self.check_abrupt_context(error)?;
+        }
+        let result = result?;
+        if self.0.runtime().is_some() {
+            StoredObject::check_context(self, &result)?;
+        }
+        Ok(result)
     }
 
     /// Initializes an unexposed fresh ordinary object's prototype. Creation is
     /// not SetPrototypeOf: no cycle walk or user Proxy callbacks are required.
     pub(super) fn initialize_prototype(&self, prototype: Option<Self>) {
         debug_assert!(self.0.state.borrow().prototype.is_none());
-        self.0.state.borrow_mut().prototype = prototype;
+        self.0.state.borrow_mut().prototype = prototype
+            .as_ref()
+            .map(|value| StoredObject::store(self, value))
+            .transpose()
+            .expect("fresh prototype allocation context");
     }
 
     /// Returns this object's prototype.
@@ -573,7 +1336,13 @@ impl Object {
         if self.0.state.borrow().proxy.is_some() {
             return super::proxy::get_prototype_of(self);
         }
-        Ok(self.0.state.borrow().prototype.clone())
+        self.0
+            .state
+            .borrow()
+            .prototype
+            .as_ref()
+            .map(|value| value.load(self))
+            .transpose()
     }
 
     /// Implements `[[SetPrototypeOf]]`, rejecting cycles and forbidden changes.
@@ -583,6 +1352,10 @@ impl Object {
 
     /// Fallible `[[SetPrototypeOf]]`, including Proxy traps and invariants.
     pub fn try_set_prototype(&self, prototype: Option<Self>) -> RuntimeResult<bool> {
+        let stored = prototype
+            .as_ref()
+            .map(|value| StoredObject::store(self, value))
+            .transpose()?;
         if self.0.state.borrow().proxy.is_some() {
             return super::proxy::set_prototype_of(self, prototype);
         }
@@ -600,7 +1373,7 @@ impl Object {
             }
             candidate = object.prototype();
         }
-        self.0.state.borrow_mut().prototype = prototype;
+        self.0.state.borrow_mut().prototype = stored;
         Ok(true)
     }
 
@@ -677,7 +1450,10 @@ impl Object {
         }
         if let Some(elements) = &state.elements {
             if let Some(index) = key.array_index() {
-                return Ok(elements.get(index).cloned());
+                return elements
+                    .get(index)
+                    .map(|descriptor| descriptor.load(self))
+                    .transpose();
             }
         }
         if let Some(entry) = state
@@ -685,17 +1461,19 @@ impl Object {
             .get(state.last_property.get())
             .filter(|entry| entry.key == *key)
         {
-            return Ok(Some(entry.descriptor.clone()));
+            return Ok(Some(entry.descriptor.load(self)?));
         }
         let found = state
             .properties
             .iter()
             .enumerate()
             .find(|(_, entry)| entry.key == *key);
-        Ok(found.map(|(index, entry)| {
-            state.last_property.set(index);
-            entry.descriptor.clone()
-        }))
+        found
+            .map(|(index, entry)| {
+                state.last_property.set(index);
+                entry.descriptor.load(self)
+            })
+            .transpose()
     }
 
     /// Implements `[[DefineOwnProperty]]` and descriptor compatibility rules.
@@ -705,6 +1483,16 @@ impl Object {
         descriptor: PropertyDescriptor,
     ) -> RuntimeResult<bool> {
         descriptor.validate()?;
+        if let Some(Value::Object(value)) = &descriptor.value {
+            StoredObject::check_context(self, value)?;
+        }
+        for value in [&descriptor.get, &descriptor.set]
+            .into_iter()
+            .flatten()
+            .flatten()
+        {
+            StoredObject::check_context(self, value)?;
+        }
         if self.0.state.borrow().proxy.is_some() {
             return super::proxy::define_own_property(self, key, descriptor);
         }
@@ -742,20 +1530,32 @@ impl Object {
         if state.array {
             if let Some(index) = key.array_index() {
                 let elements = state.elements.as_ref().expect("array elements");
+                let current = elements
+                    .get(index)
+                    .map(|value| value.load(self))
+                    .transpose()?;
                 let Some(updated) =
-                    validate_and_apply(elements.get(index), state.extensible, &descriptor)
+                    validate_and_apply(current.as_ref(), state.extensible, &descriptor)
                 else {
                     return Ok(false);
                 };
-                state.elements.as_mut().unwrap().insert(index, updated);
+                state
+                    .elements
+                    .as_mut()
+                    .unwrap()
+                    .insert(index, StoredDescriptor::store(self, &updated)?);
                 return Ok(true);
             }
         }
         let position = state.properties.iter().position(|entry| entry.key == key);
-        let current = position.map(|index| &state.properties[index].descriptor);
-        let Some(updated) = validate_and_apply(current, state.extensible, &descriptor) else {
+        let current = position
+            .map(|index| state.properties[index].descriptor.load(self))
+            .transpose()?;
+        let Some(updated) = validate_and_apply(current.as_ref(), state.extensible, &descriptor)
+        else {
             return Ok(false);
         };
+        let updated = StoredDescriptor::store(self, &updated)?;
         if let Some(position) = position {
             state.properties[position].descriptor = updated;
         } else {
@@ -790,8 +1590,8 @@ impl Object {
             })?;
             let descriptor = &state.properties[slot].descriptor;
             if !descriptor.is_data_descriptor()
-                || descriptor.writable != Some(true)
-                || !matches!(&descriptor.value, Some(Value::Number(n)) if *n == f64::from(length))
+                || descriptor.writable() != Some(true)
+                || !matches!(descriptor.value(), Some(StoredValue::Number(n)) if *n == f64::from(length))
             {
                 return None;
             }
@@ -799,7 +1599,15 @@ impl Object {
             if (length..end).any(|index| elements.get(index).is_some()) {
                 return None;
             }
-            (slot, state.prototype.clone())
+            (
+                slot,
+                state
+                    .prototype
+                    .as_ref()
+                    .map(|value| value.load(self))
+                    .transpose()
+                    .ok()?,
+            )
         };
         if !values.is_empty() {
             let mut depth = 0;
@@ -826,7 +1634,17 @@ impl Object {
                 {
                     return None;
                 }
-                prototype = state.prototype.clone();
+                prototype = state
+                    .prototype
+                    .as_ref()
+                    .map(|value| value.load(&object))
+                    .transpose()
+                    .ok()?;
+            }
+        }
+        for value in values {
+            if let Value::Object(value) = value {
+                StoredObject::store(self, value).ok()?;
             }
         }
         let mut state = self.0.state.borrow_mut();
@@ -840,11 +1658,18 @@ impl Object {
             let index = length + offset as u32;
             elements.insert(
                 index,
-                PropertyDescriptor::data(value.clone(), true, true, true),
+                StoredDescriptor::Data {
+                    value: StoredValue::store(self, value).ok()?,
+                    writable: true,
+                    enumerable: true,
+                    configurable: true,
+                },
             );
             // Maintain Array length after every inserted index, as generic
             // DefineOwnProperty does, including if host allocation unwinds.
-            properties[length_slot].descriptor.value = Some(Value::Number(f64::from(index + 1)));
+            properties[length_slot]
+                .descriptor
+                .set_value(StoredValue::Number(f64::from(index + 1)));
         }
         Some(end)
     }
@@ -862,10 +1687,10 @@ impl Object {
         let entry = state.properties.iter().find(|entry| {
             matches!(&entry.key, PropertyKey::String(name) if name.code_units().iter().copied().eq("length".encode_utf16()))
         })?;
-        let Some(Value::Number(length)) = &entry.descriptor.value else {
+        let Some(StoredValue::Number(length)) = entry.descriptor.value() else {
             return None;
         };
-        Some((*length as u32, entry.descriptor.writable == Some(true)))
+        Some((*length as u32, entry.descriptor.writable() == Some(true)))
     }
 
     pub(super) fn array_length(&self) -> u32 {
@@ -897,7 +1722,9 @@ impl Object {
             .iter_mut()
             .find(|entry| entry.key == PropertyKey::from("length"))
             .expect("array length property");
-        entry.descriptor.value = Some(Value::Number(f64::from(length)));
+        entry
+            .descriptor
+            .set_value(StoredValue::Number(f64::from(length)));
     }
 
     fn define_array_length(&self, mut descriptor: PropertyDescriptor) -> RuntimeResult<bool> {
@@ -955,6 +1782,43 @@ impl Object {
 
     /// Defines a writable, enumerable, configurable own data property.
     pub fn create_data_property(&self, key: PropertyKey, value: Value) -> RuntimeResult<bool> {
+        if let Value::Object(value) = &value {
+            StoredObject::check_context(self, value)?;
+        }
+        {
+            let mut state = self.0.state.borrow_mut();
+            if state.proxy.is_none()
+                && !state.array
+                && state.string_data.is_none()
+                && state.lazy_function_prototype.is_none()
+            {
+                let position = state.properties.iter().position(|entry| entry.key == key);
+                if let Some(position) = position {
+                    // CreateDataProperty requests configurable=true, so an
+                    // existing nonconfigurable property always rejects it.
+                    if state.properties[position].descriptor.configurable() != Some(true) {
+                        return Ok(false);
+                    }
+                } else if !state.extensible {
+                    return Ok(false);
+                }
+                // All attributes are supplied and true. A configurable own
+                // descriptor can be replaced without loading its old value or
+                // getter facades. Validate/store the new edge before publishing.
+                let descriptor = StoredDescriptor::Data {
+                    value: StoredValue::store_owned(self, value)?,
+                    writable: true,
+                    enumerable: true,
+                    configurable: true,
+                };
+                if let Some(position) = position {
+                    state.properties[position].descriptor = descriptor;
+                } else {
+                    state.properties.push(PropertyEntry { key, descriptor });
+                }
+                return Ok(true);
+            }
+        }
         self.define_own_property(key, PropertyDescriptor::data(value, true, true, true))
     }
 
@@ -977,6 +1841,12 @@ impl Object {
 
     /// Implements ordinary `[[Get]]` with an explicit receiver.
     pub fn get_with_receiver(&self, key: &PropertyKey, receiver: Value) -> RuntimeResult<Value> {
+        // Ordinary own data reads ignore the receiver. Preserve the generic
+        // path for accessors, proxies and virtual/exotic properties, and revive
+        // only the current stored value rather than a complete descriptor.
+        if let Some((value, _)) = self.own_data_value_with_hint(key, None) {
+            return Ok(value);
+        }
         if self.0.state.borrow().proxy.is_some() {
             return super::proxy::get(self, key, receiver);
         }
@@ -1008,6 +1878,29 @@ impl Object {
     ) -> RuntimeResult<bool> {
         if self.0.state.borrow().proxy.is_some() {
             return super::proxy::set(self, key, value, receiver);
+        }
+        // An own writable data property shadows every prototype. With the same
+        // ordinary receiver, Set changes only its value; no descriptor needs to
+        // be loaded into rooted facades and then rebuilt by DefineOwnProperty.
+        if matches!(&receiver, Value::Object(receiver) if self.0.same_object(&receiver.0)) {
+            let mut state = self.0.state.borrow_mut();
+            if !state.array
+                && state.lazy_function_prototype.is_none()
+                && state.string_data.is_none()
+                && state.view.is_none()
+                && state.buffer.is_none()
+            {
+                if let Some(index) = state.properties.iter().position(|entry| entry.key == *key) {
+                    if state.properties[index].descriptor.writable() == Some(true) {
+                        // Check heap ownership and record the strong edge before
+                        // changing the value. This performs no JS call or GC.
+                        let stored = StoredValue::store(self, &value)?;
+                        state.properties[index].descriptor.set_value(stored);
+                        state.last_property.set(index);
+                        return Ok(true);
+                    }
+                }
+            }
         }
         let descriptor = self.get_own_property(key);
         let Some(descriptor) = descriptor else {
@@ -1065,7 +1958,7 @@ impl Object {
             if let Some(index) = key.array_index() {
                 if elements
                     .get(index)
-                    .is_some_and(|d| d.configurable != Some(true))
+                    .is_some_and(|d| d.configurable() != Some(true))
                 {
                     return Ok(false);
                 }
@@ -1076,11 +1969,54 @@ impl Object {
         let Some(position) = state.properties.iter().position(|entry| entry.key == *key) else {
             return Ok(true);
         };
-        if state.properties[position].descriptor.configurable != Some(true) {
+        if state.properties[position].descriptor.configurable() != Some(true) {
             return Ok(false);
         }
         state.properties.remove(position);
         Ok(true)
+    }
+
+    /// Reads ordinary enumerable key flags without rooting property values.
+    pub(super) fn enumerable_own_string_keys(&self) -> RuntimeResult<Vec<JsString>> {
+        let state = self.0.state.borrow();
+        if state.proxy.is_none() && state.string_data.is_none() && state.elements.is_none() {
+            let mut indices = Vec::new();
+            let mut strings = Vec::new();
+            for entry in &state.properties {
+                if !entry.descriptor.enumerable() {
+                    continue;
+                }
+                let PropertyKey::String(name) = &entry.key else {
+                    continue;
+                };
+                if let Some(index) = entry.key.array_index() {
+                    indices.push((index, name.clone()));
+                } else {
+                    strings.push(name.clone());
+                }
+            }
+            indices.sort_unstable_by_key(|(index, _)| *index);
+            let mut result: Vec<_> = indices.into_iter().map(|(_, name)| name).collect();
+            result.extend(strings);
+            return Ok(result);
+        }
+        drop(state);
+        let mut result = Vec::new();
+        for key in self.try_own_property_keys()? {
+            if !matches!(key, PropertyKey::String(_)) {
+                continue;
+            }
+            if self
+                .try_get_own_property(&key)?
+                .is_some_and(|descriptor| descriptor.enumerable == Some(true))
+            {
+                let PropertyKey::String(name) = key else {
+                    unreachable!()
+                };
+                result.push(name);
+            }
+        }
+        Ok(result)
     }
 
     /// Implements ordinary `[[OwnPropertyKeys]]` ordering.
@@ -1287,13 +2223,84 @@ fn complete_descriptor(mut descriptor: PropertyDescriptor) -> PropertyDescriptor
     descriptor
 }
 
+impl super::ObjectData {
+    // Allocation collection remains disabled until the remaining payloads have
+    // non-owning, typed captures and active evaluator roots.
+    pub(super) fn trace_object_edges(&self, tracer: &mut crate::gc::Tracer<'_>) {
+        let state = self.state.borrow();
+        if let Some(module) = &state.module_namespace {
+            module.trace(tracer);
+        }
+        if let Some(generator) = &state.generator_data {
+            generator.borrow().trace(tracer);
+        }
+        if let Some(promise) = &state.promise_data {
+            promise.borrow().trace(tracer);
+        }
+        if let Some(prototype) = &state.prototype {
+            prototype.trace(tracer);
+        }
+        if let Some(parent) = &state.lazy_function_prototype {
+            parent.trace(tracer);
+        }
+        if let Some(bound) = &state.managed_callable {
+            bound.trace(tracer);
+            if let Some(source) = &bound.source {
+                source.trace(tracer);
+            }
+        }
+        for source in [
+            state.callable.as_ref().and_then(|body| body.source()),
+            state.construct.as_ref().and_then(|body| body.source()),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            source.trace(tracer);
+        }
+        if let Some(iterator) = &state.iterator {
+            iterator.trace(tracer);
+        }
+        if let Some(proxy) = &state.proxy {
+            proxy.trace(tracer);
+        }
+        if let Some(entries) = &state.map_data {
+            for (key, value) in entries.borrow().iter().flatten() {
+                key.trace(tracer);
+                value.trace(tracer);
+            }
+        }
+        if let Some(entries) = &state.set_data {
+            for value in entries.borrow().iter().flatten() {
+                value.trace(tracer);
+            }
+        }
+        if let Some(entries) = &state.weak_map_data {
+            for (key, value) in entries.borrow().iter() {
+                if let (Some(key), StoredValue::Object(StoredObject(value))) =
+                    (key.0.handle(), value)
+                {
+                    tracer.ephemeron(key, *value);
+                }
+            }
+        }
+        for entry in &state.properties {
+            entry.descriptor.trace(tracer);
+        }
+        if let Some(elements) = &state.elements {
+            elements.for_each(|descriptor| descriptor.trace(tracer));
+        }
+    }
+}
+
 #[cfg(test)]
 mod own_data_hint_tests {
     use super::*;
 
     #[test]
     fn descriptor_lookup_hint_rechecks_keys_and_reads_current_descriptors() {
-        let object = Object::new();
+        let context = crate::runtime::AllocationContext::new();
+        let object = Object::new_in(&context);
         for (key, value) in [("a", 1.0), ("b", 2.0), ("c", 3.0)] {
             object
                 .create_data_property(key.into(), Value::Number(value))
@@ -1319,7 +2326,7 @@ mod own_data_hint_tests {
             .unwrap();
         assert!(matches!(object.get(&"c".into()).unwrap(), Value::Undefined));
 
-        let getter = Object::native_function(|_, _| Ok(Value::Number(9.0)));
+        let getter = Object::native_function_in(&context, |_, _| Ok(Value::Number(9.0)));
         object.get(&"b".into()).unwrap();
         object
             .define_own_property(
@@ -1353,7 +2360,10 @@ mod own_data_hint_tests {
 
     #[test]
     fn direct_array_push_preserves_complete_element_descriptors_and_guard_fallback() {
-        let array = crate::runtime::ArrayObject::new(3).unwrap().object();
+        let context = crate::runtime::AllocationContext::new();
+        let array = crate::runtime::ArrayObject::new(&context, 3)
+            .unwrap()
+            .object();
         assert_eq!(
             array.try_push_array_values(3, &[Value::Number(42.0)]),
             Some(4)
@@ -1365,7 +2375,7 @@ mod own_data_hint_tests {
         assert!(descriptor.value.unwrap().same_value(&Value::Number(42.0)));
         assert_eq!(array.array_length(), 4);
         assert_eq!(array.try_push_array_values(3, &[Value::Number(99.0)]), None);
-        let prototype = Object::new();
+        let prototype = Object::new_in(&context);
         prototype
             .create_data_property("4".into(), Value::Number(1.0))
             .unwrap();
@@ -1377,7 +2387,10 @@ mod own_data_hint_tests {
 
     #[test]
     fn array_named_data_hints_observe_length_and_skip_indexed_storage() {
-        let array = crate::runtime::ArrayObject::new(3).unwrap().object();
+        let context = crate::runtime::AllocationContext::new();
+        let array = crate::runtime::ArrayObject::new(&context, 3)
+            .unwrap()
+            .object();
         let key: PropertyKey = "length".into();
         let (value, index) = array.own_data_value_with_hint(&key, None).unwrap();
         assert!(value.same_value(&Value::Number(3.0)));
@@ -1402,7 +2415,8 @@ mod own_data_hint_tests {
 
     #[test]
     fn own_data_hint_rechecks_keys_descriptors_and_exotic_objects() {
-        let object = Object::new();
+        let context = crate::runtime::AllocationContext::new();
+        let object = Object::new_in(&context);
         let prefix: PropertyKey = "prefix".into();
         let key: PropertyKey = "x".into();
         object
@@ -1423,7 +2437,7 @@ mod own_data_hint_tests {
                 .0
                 .same_value(&Value::Number(41.0))
         );
-        let getter = Object::native_function(|_, _| Ok(Value::Number(42.0)));
+        let getter = Object::native_function_in(&context, |_, _| Ok(Value::Number(42.0)));
         assert!(
             object
                 .define_own_property(
@@ -1435,10 +2449,11 @@ mod own_data_hint_tests {
         assert!(object.own_data_value_with_hint(&key, Some(hint)).is_none());
         assert!(object.get(&key).unwrap().same_value(&Value::Number(42.0)));
 
-        let proxy = crate::runtime::ProxyObject::new(object.clone(), Object::new()).object();
+        let proxy =
+            crate::runtime::ProxyObject::new(object.clone(), Object::new_in(&context)).object();
         assert!(proxy.own_data_value_with_hint(&key, None).is_none());
         assert!(proxy.get(&key).unwrap().same_value(&Value::Number(42.0)));
-        let string = crate::runtime::StringObject::new("abc".into()).object();
+        let string = crate::runtime::StringObject::new(&context, "abc".into()).object();
         assert!(
             string
                 .own_data_value_with_hint(&"length".into(), None)

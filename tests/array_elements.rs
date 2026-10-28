@@ -33,7 +33,8 @@ fn dense_holey_sparse_roundtrip_preserves_values_and_absence() {
 
 #[test]
 fn sparse_length_shrink_preserves_nonindex_keys_and_enumeration_order() {
-    let array = ArrayObject::new(u32::MAX).unwrap().object();
+    let context = temiya::runtime::AllocationContext::new();
+    let array = ArrayObject::new(&context, u32::MAX).unwrap().object();
     let symbol = Symbol::new(None);
     for name in ["4294967295", "01", "-0", "named", "4294967294", "7", "0"] {
         assert!(
@@ -63,6 +64,7 @@ fn sparse_length_shrink_preserves_nonindex_keys_and_enumeration_order() {
     .collect();
     assert_eq!(array.own_property_keys(), keys);
     assert!(array.set(&"length".into(), Value::Number(0.0)).unwrap());
+    context.collect_garbage().unwrap();
     assert_eq!(array.own_property_keys(), keys[3..]);
     assert!(
         array
@@ -130,14 +132,15 @@ fn proxy_traps_still_control_index_access_and_deletion() {
 
 #[test]
 fn removed_elements_release_owned_values() {
+    let context = temiya::runtime::AllocationContext::new();
     for index in ["0", "40", "4294967294"] {
         let marker = Rc::new(());
         let captured = Rc::clone(&marker);
-        let object = Object::native_function(move |_, _| {
+        let object = Object::native_function_in(&context, move |_, _| {
             let _ = &captured;
             Ok(Value::Undefined)
         });
-        let array = ArrayObject::new(0).unwrap().object();
+        let array = ArrayObject::new(&context, 0).unwrap().object();
         assert!(
             array
                 .create_data_property(index.into(), Value::Object(object))
@@ -145,13 +148,15 @@ fn removed_elements_release_owned_values() {
         );
         assert_eq!(Rc::strong_count(&marker), 2);
         assert!(array.set(&"length".into(), Value::Number(0.0)).unwrap());
+        context.collect_garbage().unwrap();
         assert_eq!(Rc::strong_count(&marker), 1);
     }
 }
 
 #[test]
 fn mixed_index_operations_match_an_independent_ordered_model() {
-    let array = ArrayObject::new(0).unwrap();
+    let context = temiya::runtime::AllocationContext::new();
+    let array = ArrayObject::new(&context, 0).unwrap();
     let object = array.object();
     let mut model = BTreeMap::<u32, f64>::new();
     let mut length = 0;

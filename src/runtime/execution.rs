@@ -1,8 +1,18 @@
 //! Realm ownership and execution-context stack management.
 
+use super::{
+    Runtime,
+    environment::StoredEnvironment,
+    stored::{StoredObject, StoredOwner, StoredValue},
+};
+use crate::gc::{Handle, Root, Trace, Tracer};
 use std::fmt;
-use std::rc::Rc;
+use std::rc::{Rc, Weak};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::{
+    cell::{OnceCell, RefCell},
+    ops::Deref,
+};
 
 use crate::ast::Program;
 
@@ -13,19 +23,100 @@ use super::{
 
 /// An ECMAScript Realm with its global object and Global Environment Record.
 #[derive(Clone)]
-pub struct Realm(Rc<RealmData>);
+pub struct Realm(pub(super) RealmReference);
 
-struct RealmData {
+#[derive(Clone)]
+pub(super) struct RealmReference(pub(super) Rc<RealmRoot>);
+impl Deref for RealmReference {
+    type Target = RealmData;
+    fn deref(&self) -> &Self::Target {
+        &self.0.data
+    }
+}
+pub(super) struct RealmRoot {
+    pub(super) root: Root<ManagedRealm>,
+    pub(super) data: Rc<RealmData>,
+    pub(super) runtime: Runtime,
+}
+pub(super) type ManagedRealm = RealmData;
+
+#[derive(Clone)]
+pub(super) struct StoredRealm(pub(super) Handle<ManagedRealm>);
+impl StoredRealm {
+    pub(super) fn initial(runtime: Option<&Runtime>, value: &Realm) -> RuntimeResult<Self> {
+        match (runtime, value.runtime()) {
+            (Some(left), Some(right)) if left.same_heap(right) => {
+                Ok(Self(value.handle().expect("managed realm")))
+            }
+            _ => Err(RuntimeError::type_error(
+                "Realm allocation context mismatch",
+            )),
+        }
+    }
+    pub(super) fn record_owner(&self, owner: &Object) -> RuntimeResult<()> {
+        owner
+            .allocation_context()
+            .record_object_edge(owner.0.handle().expect("managed owner"), self.0)
+    }
+    pub(super) fn store(owner: &impl StoredOwner, value: &Realm) -> RuntimeResult<Self> {
+        let stored = Self::initial(owner.runtime(), value)?;
+        owner
+            .runtime()
+            .expect("validated allocation context")
+            .record_object_edge(owner.handle().expect("managed owner"), stored.0)?;
+        Ok(stored)
+    }
+    pub(super) fn load(&self, owner: &impl StoredOwner) -> RuntimeResult<Realm> {
+        owner
+            .runtime()
+            .ok_or_else(|| RuntimeError::internal_error("Realm allocation context mismatch"))?
+            .root_realm(self.0)
+            .ok_or_else(|| RuntimeError::internal_error("stale realm edge"))
+    }
+    pub(super) fn trace(&self, tracer: &mut Tracer<'_>) {
+        tracer.mark(self.0);
+    }
+}
+impl StoredOwner for Realm {
+    type Allocation = ManagedRealm;
+    fn runtime(&self) -> Option<&Runtime> {
+        Some(&self.0.0.runtime)
+    }
+    fn handle(&self) -> Option<Handle<ManagedRealm>> {
+        Some(self.0.0.root.handle())
+    }
+}
+
+pub(super) struct RealmData {
+    pub(super) facade: RefCell<Weak<RealmRoot>>,
     id: u64,
-    global_object: Object,
-    global_environment: Environment,
-    job_queue: JobQueue,
-    intrinsics: IntrinsicRegistry,
+    global_object: StoredObject,
+    global_environment: StoredEnvironment,
+    // The Global Environment's chosen this value is immutable. Keep the same
+    // traced value here so sloppy calls need not revive an Environment facade.
+    global_this_value: StoredValue,
+    job_queue: super::job_queue::StoredJobQueue,
+    intrinsics: OnceCell<super::intrinsics::StoredIntrinsicRegistry>,
     well_known_symbols: WellKnownSymbols,
     host_hooks: HostHooks,
 }
 
+impl Trace for RealmData {
+    fn trace(&self, tracer: &mut Tracer<'_>) {
+        self.global_object.trace(tracer);
+        self.global_environment.trace(tracer);
+        self.global_this_value.trace(tracer);
+        self.job_queue.trace(tracer);
+        if let Some(intrinsics) = self.intrinsics.get() {
+            intrinsics.trace(tracer);
+        }
+    }
+}
+
 impl Realm {
+    pub(crate) fn enter_object_root_region(&self) -> Option<super::managed::ObjectRootRegion> {
+        self.runtime()?.enter_object_root_region()
+    }
     /// Materializes a catchable exception without invoking a potentially
     /// replaced global constructor. Internal failures remain Rust errors.
     pub(crate) fn exception_value(&self, error: &RuntimeError) -> RuntimeResult<Value> {
@@ -41,7 +132,7 @@ impl Realm {
             RuntimeErrorKind::RangeError => IntrinsicId::RangeErrorPrototype,
             RuntimeErrorKind::InternalError => return Err(error.clone()),
         };
-        let object = Object::new();
+        let object = Object::new_for(&self.global_object());
         object.set_prototype(Some(self.intrinsic(prototype)));
         object.define_own_property(
             "message".into(),
@@ -80,27 +171,62 @@ impl Realm {
         global_this_value: Value,
         host_hooks: HostHooks,
     ) -> RuntimeResult<Self> {
+        if let Value::Object(value) = &global_this_value {
+            StoredObject::check_context(&global_object, value)?;
+        }
         static NEXT_ID: AtomicU64 = AtomicU64::new(1);
         let well_known_symbols = WellKnownSymbols::initialize();
-        let intrinsics =
-            IntrinsicRegistry::initialize(&global_object, host_hooks.clone(), &well_known_symbols)?;
+        let runtime = global_object.allocation_context().clone();
+        let stored_global_this = StoredValue::initial(Some(&runtime), &global_this_value)?;
         let global_environment = Environment::global(global_object.clone(), global_this_value);
-        Ok(Self(Rc::new(RealmData {
+        let queue = JobQueue::new(&runtime);
+        let data = RealmData {
+            facade: RefCell::new(Weak::new()),
             id: next_id(&NEXT_ID, "Realm"),
-            global_object,
-            global_environment,
-            job_queue: JobQueue::new(),
-            intrinsics,
+            global_object: StoredObject::initial(Some(&runtime), &global_object)?,
+            global_environment: StoredEnvironment::initial(Some(&runtime), &global_environment)?,
+            global_this_value: stored_global_this,
+            job_queue: super::job_queue::StoredJobQueue::initial(Some(&runtime), &queue)?,
+            intrinsics: OnceCell::new(),
             well_known_symbols,
             host_hooks,
-        })))
+        };
+        let realm = runtime.allocate_realm(data);
+        let intrinsics = IntrinsicRegistry::initialize(
+            &global_object,
+            realm.0.host_hooks.clone(),
+            &realm.0.well_known_symbols,
+            &realm,
+        )?;
+        // Publish a complete table before a host global Proxy can reenter from
+        // DefineProperty traps while the global names are installed.
+        realm
+            .0
+            .intrinsics
+            .set(super::intrinsics::StoredIntrinsicRegistry::store(
+                &realm,
+                &intrinsics,
+            )?)
+            .map_err(|_| RuntimeError::internal_error("Realm intrinsics already initialized"))?;
+        intrinsics.install_globals(&global_object)?;
+        Ok(realm)
     }
 
-    /// Creates a Realm whose global-this value is its fresh global object.
+    /// Creates a standalone Realm with its own context and a fresh global object.
     #[must_use]
     pub fn ordinary() -> Self {
-        let global_object = Object::new();
+        Self::ordinary_in(&super::AllocationContext::new())
+    }
+
+    /// Creates a Realm in an explicit shared allocation context.
+    pub fn ordinary_in(runtime: &super::AllocationContext) -> Self {
+        let global_object = Object::new_in(runtime);
         Self::new(global_object.clone(), Value::Object(global_object))
+    }
+
+    /// Borrows this Realm's shared allocation context.
+    pub fn allocation_context(&self) -> &super::AllocationContext {
+        self.runtime().expect("Realm allocation context")
     }
 
     /// Returns an engine-local identity for this Realm.
@@ -112,29 +238,44 @@ impl Realm {
     /// Returns the Realm's global object.
     #[must_use]
     pub fn global_object(&self) -> Object {
-        self.0.global_object.clone()
+        self.0
+            .global_object
+            .load(self)
+            .expect("live Realm global object")
     }
 
     /// Returns the Realm's Global Environment Record.
     #[must_use]
     pub fn global_environment(&self) -> Environment {
-        self.0.global_environment.clone()
+        self.0
+            .global_environment
+            .load(self)
+            .expect("live Realm global environment")
+    }
+
+    pub(crate) fn global_this_value(&self) -> RuntimeResult<Value> {
+        self.0.global_this_value.load(self)
     }
 
     /// Returns the Realm's Promise Job Queue.
     #[must_use]
     pub fn job_queue(&self) -> JobQueue {
-        self.0.job_queue.clone()
+        self.0.job_queue.load(self).expect("live Realm Job Queue")
     }
 
-    /// Returns this Realm's intrinsic registry.
+    /// Returns an owning snapshot of this Realm's intrinsic registry.
+    /// The snapshot and its clones may outlive this Realm.
     #[must_use]
-    pub fn intrinsics(&self) -> &IntrinsicRegistry {
-        &self.0.intrinsics
+    pub fn intrinsics(&self) -> IntrinsicRegistry {
+        self.0
+            .intrinsics
+            .get()
+            .expect("initialized Realm")
+            .load(self)
     }
 
     /// Creates a non-constructable native function with this Realm's Function.prototype.
-    /// The callback is stored directly; this method does not capture the Realm.
+    /// The function retains its source Realm through a traced internal edge.
     /// Low-level Object::native_function remains Realm-independent.
     pub fn create_native_function(
         &self,
@@ -153,7 +294,11 @@ impl Realm {
     /// Returns one intrinsic object owned by this Realm.
     #[must_use]
     pub fn intrinsic(&self, id: IntrinsicId) -> Object {
-        self.0.intrinsics.get(id)
+        self.0
+            .intrinsics
+            .get()
+            .expect("initialized Realm")
+            .get(self, id)
     }
 
     /// Returns one of this Realm's well-known symbols.
@@ -171,7 +316,7 @@ impl Realm {
 
 impl PartialEq for Realm {
     fn eq(&self, other: &Self) -> bool {
-        Rc::ptr_eq(&self.0, &other.0)
+        std::ptr::eq(&*self.0, &*other.0)
     }
 }
 

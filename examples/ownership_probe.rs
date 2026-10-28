@@ -16,7 +16,7 @@ fn main() -> Result<std::process::ExitCode, Box<dyn std::error::Error>> {
         "{}",
         serde_json::to_string_pretty(&serde_json::json!({
             "scope": "public Engine; globals removed, scripts/Realm/Engine and both value handles dropped",
-            "collection_hook": "runtime teardown only; no Engine force-collection API exists yet",
+            "collection_hook": "runtime teardown only; this probe does not request explicit collection",
             "reclamation_ready": ready,
             "cases": cases.iter().map(|case| serde_json::json!({
                 "name": case.name,

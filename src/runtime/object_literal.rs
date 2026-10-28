@@ -5,12 +5,13 @@ use super::{
 };
 
 pub(crate) fn create(realm: &Realm) -> Object {
-    let object = Object::new();
-    object.initialize_prototype(Some(realm.intrinsic(IntrinsicId::ObjectPrototype)));
-    object
+    Object::new_with_prototype(realm.intrinsic(IntrinsicId::ObjectPrototype))
 }
 
 pub(crate) fn property_key(realm: &Realm, value: Value) -> RuntimeResult<PropertyKey> {
+    if !matches!(value, Value::Object(_)) {
+        return value.to_property_key();
+    }
     super::coercion::primitive_with_hint(
         &value,
         &realm.well_known_symbol(WellKnownSymbol::ToPrimitive).into(),

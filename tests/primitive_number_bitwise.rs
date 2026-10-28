@@ -39,7 +39,8 @@ fn expected(value: f64) -> u32 {
 
 #[test]
 fn primitive_number_bitwise_operations_match_exact_bits_in_ast_and_vm() {
-    let realm = Realm::ordinary();
+    let allocation_context = temiya::runtime::AllocationContext::new();
+    let realm = Realm::ordinary_in(&allocation_context);
     let environment = realm.global_environment();
     let name = temiya::runtime::JsString::from("input");
     environment

@@ -2,6 +2,7 @@
 
 use std::collections::BTreeMap;
 
+use super::stored::{StoredObject, StoredOwner};
 use super::{
     HostHooks, JsString, Object, PropertyDescriptor, RuntimeError, RuntimeResult, Symbol, Value,
 };
@@ -209,20 +210,56 @@ impl IntrinsicId {
 #[derive(Clone, Debug)]
 pub struct IntrinsicRegistry(BTreeMap<IntrinsicId, Object>);
 
+pub(super) struct StoredIntrinsicRegistry(BTreeMap<IntrinsicId, StoredObject>);
+impl StoredIntrinsicRegistry {
+    pub(super) fn store(
+        owner: &impl StoredOwner,
+        registry: &IntrinsicRegistry,
+    ) -> RuntimeResult<Self> {
+        registry
+            .0
+            .iter()
+            .map(|(id, object)| Ok((*id, StoredObject::store(owner, object)?)))
+            .collect::<RuntimeResult<BTreeMap<_, _>>>()
+            .map(Self)
+    }
+    pub(super) fn get(&self, owner: &impl StoredOwner, id: IntrinsicId) -> Object {
+        self.0
+            .get(&id)
+            .expect("complete stored intrinsic registry")
+            .load(owner)
+            .expect("live intrinsic object")
+    }
+    pub(super) fn load(&self, owner: &impl StoredOwner) -> IntrinsicRegistry {
+        IntrinsicRegistry(
+            self.0
+                .iter()
+                .map(|(id, object)| (*id, object.load(owner).expect("live intrinsic object")))
+                .collect(),
+        )
+    }
+    pub(super) fn trace(&self, tracer: &mut crate::gc::Tracer<'_>) {
+        for object in self.0.values() {
+            object.trace(tracer);
+        }
+    }
+}
+
 impl IntrinsicRegistry {
     pub(crate) fn initialize(
         global: &Object,
         host_hooks: HostHooks,
         symbols: &WellKnownSymbols,
+        realm: &super::Realm,
     ) -> RuntimeResult<Self> {
         let mut objects: BTreeMap<IntrinsicId, Object> = BTreeMap::new();
         for id in IntrinsicId::ALL {
             let object = if id == IntrinsicId::FunctionPrototype {
-                Object::native_function(|_, _| Ok(Value::Undefined))
+                Object::native_function_for(global, |_, _| Ok(Value::Undefined))
             } else if id == IntrinsicId::ArrayPrototype {
-                super::ArrayObject::new(0)?.object()
+                super::ArrayObject::new_for(global, 0)?.object()
             } else if id == IntrinsicId::StringPrototype {
-                super::StringObject::new(super::JsString::default()).object()
+                super::StringObject::new_for(global, super::JsString::default()).object()
             } else if id == IntrinsicId::Object {
                 let prototypes = [
                     IntrinsicId::ObjectPrototype,
@@ -238,39 +275,39 @@ impl IntrinsicRegistry {
                         .expect("primitive prototype allocated")
                         .clone()
                 });
-                let construct_prototypes = prototypes.clone();
-                Object::native_callable_constructor(
-                    move |_, arguments| {
-                        object_from_value(
-                            arguments.first().unwrap_or(&Value::Undefined),
-                            &prototypes,
-                        )
-                        .map(Value::Object)
-                    },
-                    move |arguments, _| {
-                        object_from_value(
-                            arguments.first().unwrap_or(&Value::Undefined),
-                            &construct_prototypes,
-                        )
-                    },
-                )
+                let constructor = Object::new_for(global);
+                constructor.set_managed_callable(super::object::ManagedCallable::ObjectFactory(
+                    ObjectFactory::new(&constructor, &prototypes)?,
+                ));
+                constructor
+            } else if id == IntrinsicId::BigInt {
+                // BigInt is call-only; numeric installation replaces this
+                // capture-free body without a constructor payload to hide it.
+                Object::native_function_for(global, |_, _| Ok(Value::Undefined))
             } else if let Some((prototype_id, _)) = id.pair() {
                 let prototype = objects.get(&prototype_id).cloned().ok_or_else(|| {
                     RuntimeError::internal_error("intrinsic prototype was not allocated")
                 })?;
-                Object::native_callable_constructor(
-                    |_, _| Ok(Value::Undefined),
-                    move |_, _| {
-                        let instance = Object::new();
-                        instance.set_prototype(Some(prototype.clone()));
+                let constructor = Object::new_for(global);
+                constructor.set_captured_factory(
+                    &prototype,
+                    None,
+                    Some((false, |_, _, _, _| Ok(Value::Undefined))),
+                    Some(|prototype, _, _, _| {
+                        let instance = Object::new_for(prototype);
+                        instance.initialize_prototype(Some(prototype.clone()));
                         Ok(instance)
-                    },
-                )
+                    }),
+                )?;
+                constructor
             } else if id == IntrinsicId::Proxy {
-                Object::native_constructor(|_, _| Ok(Object::new()))
+                Object::native_constructor_for(global, |_, new_target| {
+                    Ok(Object::new_for(&new_target))
+                })
             } else {
-                Object::new()
+                Object::new_for(global)
             };
+            object.initialize_native_realm(realm)?;
             objects.insert(id, object);
         }
         let registry = Self(objects);
@@ -294,7 +331,6 @@ impl IntrinsicRegistry {
         super::array_methods::install(&registry, symbols)?;
         super::string_methods::install(&registry, symbols)?;
         super::iterator::install(&registry, symbols)?;
-        registry.install_globals(global)?;
         Ok(registry)
     }
 
@@ -357,7 +393,7 @@ impl IntrinsicRegistry {
         Ok(())
     }
 
-    fn install_globals(&self, global: &Object) -> RuntimeResult<()> {
+    pub(super) fn install_globals(&self, global: &Object) -> RuntimeResult<()> {
         for id in IntrinsicId::ALL {
             let Some((_, name)) = id.pair() else { continue };
             define(global, name, Value::Object(self.get(id)), true, true)?;
@@ -444,26 +480,57 @@ fn define(
 
 // ToObject for the intrinsic Object function. Captures prototype identities, not
 // an entire Realm/registry or the Object constructor itself.
-fn object_from_value(value: &Value, prototypes: &[Object; 6]) -> RuntimeResult<Object> {
-    let (object, index) = match value {
-        Value::Object(object) => return Ok(object.clone()),
-        Value::Undefined | Value::Null => (Object::new(), 0),
-        Value::Number(value) => (super::NumberObject::new(*value).object(), 1),
-        Value::String(value) => (super::StringObject::new(value.clone()).object(), 2),
-        Value::Boolean(_) | Value::Symbol(_) => {
-            let object = Object::new();
-            object.0.state.borrow_mut().primitive_data = Some(value.clone());
-            (
-                object,
-                if matches!(value, Value::Boolean(_)) {
-                    3
-                } else {
-                    4
-                },
-            )
+pub(super) struct ObjectFactory {
+    prototypes: [StoredObject; 6],
+}
+impl ObjectFactory {
+    pub(super) fn new(owner: &Object, prototypes: &[Object; 6]) -> RuntimeResult<Self> {
+        let [a, b, c, d, e, f] = prototypes;
+        Ok(Self {
+            prototypes: [
+                StoredObject::store(owner, a)?,
+                StoredObject::store(owner, b)?,
+                StoredObject::store(owner, c)?,
+                StoredObject::store(owner, d)?,
+                StoredObject::store(owner, e)?,
+                StoredObject::store(owner, f)?,
+            ],
+        })
+    }
+    pub(super) fn trace(&self, tracer: &mut crate::gc::Tracer<'_>) {
+        for prototype in &self.prototypes {
+            prototype.trace(tracer);
         }
-        Value::BigInt(value) => (super::BigIntObject::new(value.clone()).object(), 5),
+    }
+    pub(super) fn create(&self, owner: &Object, arguments: &[Value]) -> RuntimeResult<Object> {
+        let value = arguments.first().unwrap_or(&Value::Undefined);
+        let index = match value {
+            Value::Object(object) => return Ok(object.clone()),
+            Value::Undefined | Value::Null => 0,
+            Value::Number(_) => 1,
+            Value::String(_) => 2,
+            Value::Boolean(_) => 3,
+            Value::Symbol(_) => 4,
+            Value::BigInt(_) => 5,
+        };
+        let prototype = self.prototypes[index].load(owner)?;
+        Ok(boxed_value(&prototype, value.clone()))
+    }
+}
+
+pub(super) fn boxed_value(prototype: &Object, value: Value) -> Object {
+    let object = match value {
+        Value::Number(value) => super::NumberObject::new_for(prototype, value).object(),
+        Value::String(value) => super::StringObject::new_for(prototype, value).object(),
+        Value::BigInt(value) => super::BigIntObject::new_for(prototype, value).object(),
+        value @ Value::Boolean(_) | value @ Value::Symbol(_) => {
+            let object = Object::new_for(prototype);
+            object.0.state.borrow_mut().primitive_data = Some(value);
+            object
+        }
+        Value::Object(object) => return object,
+        _ => Object::new_for(prototype),
     };
-    object.set_prototype(Some(prototypes[index].clone()));
-    Ok(object)
+    object.initialize_prototype(Some(prototype.clone()));
+    object
 }

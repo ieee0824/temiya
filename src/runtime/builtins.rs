@@ -1,7 +1,5 @@
 //! Fundamental Object, Function, and Reflect built-ins.
 
-use std::{cell::RefCell, rc::Rc};
-
 use super::{
     ArrayBuffer, ArrayObject, DataView, DateObject, HostHooks, IntrinsicId, IntrinsicRegistry,
     JsString, Json, MapObject, Math, NumberObject, Object, PropertyDescriptor, PropertyKey,
@@ -31,56 +29,23 @@ fn install_proxy(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {
     constructor.set_native_construct(|arguments, _| {
         let target = object_arg(arguments.first(), "Proxy target")?;
         let handler = object_arg(arguments.get(1), "Proxy handler")?;
-        Ok(ProxyObject::new(target, handler).object())
+        Ok(ProxyObject::try_new(target, handler)?.object())
     });
-    let prototype = intrinsics.get(IntrinsicId::FunctionPrototype);
-    method(
-        intrinsics,
-        &constructor,
-        "revocable",
-        2,
-        move |_, arguments| {
-            let target = object_arg(arguments.first(), "Proxy target")?;
-            let handler = object_arg(arguments.get(1), "Proxy handler")?;
-            let proxy = ProxyObject::new(target, handler);
-            let revocable = Object::new();
-            revocable.create_data_property("proxy".into(), Value::Object(proxy.object()))?;
-            revocable.create_data_property(
-                "revoke".into(),
-                Value::Object(super::native_function::create(
-                    &prototype,
-                    "",
-                    0,
-                    move |_, _| {
-                        proxy.revoke();
-                        Ok(Value::Undefined)
-                    },
-                )?),
-            )?;
-            Ok(Value::Object(revocable))
-        },
-    )
+    let revocable = super::proxy::ProxyRevocable::create(
+        &intrinsics.get(IntrinsicId::FunctionPrototype),
+        &intrinsics.get(IntrinsicId::ObjectPrototype),
+    )?;
+    constructor.define_own_property(
+        "revocable".into(),
+        PropertyDescriptor::data(Value::Object(revocable), true, false, true),
+    )?;
+    Ok(())
 }
 
 fn install_date_json(intrinsics: &IntrinsicRegistry, host: HostHooks) -> RuntimeResult<()> {
     let date = intrinsics.get(IntrinsicId::Date);
     let date_prototype = intrinsics.get(IntrinsicId::DatePrototype);
-    let call_host = host.clone();
-    date.set_native_call(move |_, _| {
-        DateObject::now(&call_host)
-            .to_iso_string()
-            .map(Value::String)
-    });
-    let construct_host = host.clone();
-    date.set_native_construct(move |arguments, _| {
-        let value = match arguments.first() {
-            Some(value) => value.to_number()?,
-            None => construct_host.now(),
-        };
-        let object = DateObject::new(value).object();
-        object.set_prototype(Some(date_prototype.clone()));
-        Ok(object)
-    });
+    super::host_data::DateFactory::install(&date, &date_prototype, host.clone())?;
     method(intrinsics, &date, "now", 0, move |_, _| {
         Ok(Value::Number(host.now()))
     })?;
@@ -93,21 +58,11 @@ fn install_date_json(intrinsics: &IntrinsicRegistry, host: HostHooks) -> Runtime
     })?;
 
     let json = intrinsics.get(IntrinsicId::Json);
-    method(intrinsics, &json, "parse", 2, |_, arguments| {
-        let source = value_arg(arguments.first()).to_js_string()?;
-        let reviver = callable_arg(arguments.get(1)).ok();
-        let mut callback = |key: &str, value: Value| match &reviver {
-            Some(reviver) => reviver.call(
-                Value::Undefined,
-                &[Value::String(JsString::from(key)), value],
-            ),
-            None => Ok(value),
-        };
-        let callback = reviver
-            .as_ref()
-            .map(|_| &mut callback as &mut dyn FnMut(&str, Value) -> RuntimeResult<Value>);
-        Json::parse(&source, callback)
-    })?;
+    let parse = super::host_data::JsonParseBuiltin::create(intrinsics)?;
+    json.define_own_property(
+        "parse".into(),
+        PropertyDescriptor::data(Value::Object(parse), true, false, true),
+    )?;
     method(intrinsics, &json, "stringify", 3, |_, arguments| {
         let replacer = callable_arg(arguments.get(1)).ok();
         let mut callback = |key: &str, value: Value| match &replacer {
@@ -134,16 +89,20 @@ fn date_receiver(value: Value) -> RuntimeResult<DateObject> {
 fn install_collections(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {
     let map = intrinsics.get(IntrinsicId::Map);
     let map_prototype = intrinsics.get(IntrinsicId::MapPrototype);
-    map.clear_native_call();
-    map.set_native_construct(move |_, _| {
-        let object = MapObject::new().object();
-        object.set_prototype(Some(map_prototype.clone()));
-        Ok(object)
-    });
+    map.set_captured_factory(
+        &map_prototype,
+        None,
+        None,
+        Some(|prototype, _, _, _| {
+            let object = MapObject::new_for(prototype).object();
+            object.initialize_prototype(Some(prototype.clone()));
+            Ok(object)
+        }),
+    )?;
     let map_prototype = intrinsics.get(IntrinsicId::MapPrototype);
     method(intrinsics, &map_prototype, "set", 2, |this, arguments| {
         let map = map_receiver(this)?;
-        map.set(value_arg(arguments.first()), value_arg(arguments.get(1)));
+        map.try_set(value_arg(arguments.first()), value_arg(arguments.get(1)))?;
         Ok(Value::Object(map.object()))
     })?;
     method(intrinsics, &map_prototype, "get", 1, |this, arguments| {
@@ -168,16 +127,20 @@ fn install_collections(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {
 
     let set = intrinsics.get(IntrinsicId::Set);
     let set_prototype = intrinsics.get(IntrinsicId::SetPrototype);
-    set.clear_native_call();
-    set.set_native_construct(move |_, _| {
-        let object = SetObject::new().object();
-        object.set_prototype(Some(set_prototype.clone()));
-        Ok(object)
-    });
+    set.set_captured_factory(
+        &set_prototype,
+        None,
+        None,
+        Some(|prototype, _, _, _| {
+            let object = SetObject::new_for(prototype).object();
+            object.initialize_prototype(Some(prototype.clone()));
+            Ok(object)
+        }),
+    )?;
     let set_prototype = intrinsics.get(IntrinsicId::SetPrototype);
     method(intrinsics, &set_prototype, "add", 1, |this, arguments| {
         let set = set_receiver(this)?;
-        set.add(value_arg(arguments.first()));
+        set.try_add(value_arg(arguments.first()))?;
         Ok(Value::Object(set.object()))
     })?;
     method(intrinsics, &set_prototype, "has", 1, |this, arguments| {
@@ -199,12 +162,16 @@ fn install_collections(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {
 
     let weak_map = intrinsics.get(IntrinsicId::WeakMap);
     let weak_map_prototype = intrinsics.get(IntrinsicId::WeakMapPrototype);
-    weak_map.clear_native_call();
-    weak_map.set_native_construct(move |_, _| {
-        let object = WeakMapObject::new().object();
-        object.set_prototype(Some(weak_map_prototype.clone()));
-        Ok(object)
-    });
+    weak_map.set_captured_factory(
+        &weak_map_prototype,
+        None,
+        None,
+        Some(|prototype, _, _, _| {
+            let object = WeakMapObject::new_for(prototype).object();
+            object.initialize_prototype(Some(prototype.clone()));
+            Ok(object)
+        }),
+    )?;
     let weak_map_prototype = intrinsics.get(IntrinsicId::WeakMapPrototype);
     method(
         intrinsics,
@@ -233,12 +200,16 @@ fn install_collections(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {
 
     let weak_set = intrinsics.get(IntrinsicId::WeakSet);
     let weak_set_prototype = intrinsics.get(IntrinsicId::WeakSetPrototype);
-    weak_set.clear_native_call();
-    weak_set.set_native_construct(move |_, _| {
-        let object = WeakSetObject::new().object();
-        object.set_prototype(Some(weak_set_prototype.clone()));
-        Ok(object)
-    });
+    weak_set.set_captured_factory(
+        &weak_set_prototype,
+        None,
+        None,
+        Some(|prototype, _, _, _| {
+            let object = WeakSetObject::new_for(prototype).object();
+            object.initialize_prototype(Some(prototype.clone()));
+            Ok(object)
+        }),
+    )?;
     let weak_set_prototype = intrinsics.get(IntrinsicId::WeakSetPrototype);
     method(
         intrinsics,
@@ -249,6 +220,19 @@ fn install_collections(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {
             let set = weak_set_receiver(this)?;
             set.add(&value_arg(arguments.first()))?;
             Ok(Value::Object(set.object()))
+        },
+    )?;
+    method(
+        intrinsics,
+        &weak_set_prototype,
+        "has",
+        1,
+        |this, arguments| {
+            let set = weak_set_receiver(this)?;
+            Ok(Value::Boolean(match arguments.first() {
+                Some(Value::Object(value)) => set.has(value),
+                _ => false,
+            }))
         },
     )
 }
@@ -279,16 +263,20 @@ fn install_numeric(
     let number = intrinsics.get(IntrinsicId::Number);
     let number_prototype = intrinsics.get(IntrinsicId::NumberPrototype);
     let number_key: PropertyKey = symbols.get(super::WellKnownSymbol::ToPrimitive).into();
-    let construct_number_key = number_key.clone();
-    number.set_native_call(move |_, arguments| {
-        number_argument(arguments.first(), &number_key).map(Value::Number)
-    });
-    number.set_native_construct(move |arguments, _| {
-        let value = number_argument(arguments.first(), &construct_number_key)?;
-        let object = NumberObject::new(value).object();
-        object.set_prototype(Some(number_prototype.clone()));
-        Ok(object)
-    });
+    number.set_captured_factory(
+        &number_prototype,
+        Some(number_key),
+        Some((false, |_, key, _, arguments| {
+            number_argument(arguments.first(), key.expect("Number primitive key"))
+                .map(Value::Number)
+        })),
+        Some(|prototype, key, arguments, _| {
+            let value = number_argument(arguments.first(), key.expect("Number primitive key"))?;
+            let object = NumberObject::new_for(prototype, value).object();
+            object.initialize_prototype(Some(prototype.clone()));
+            Ok(object)
+        }),
+    )?;
     for (name, value) in [
         ("NaN", f64::NAN),
         ("POSITIVE_INFINITY", f64::INFINITY),
@@ -483,35 +471,41 @@ fn bit_count(value: Option<&Value>) -> RuntimeResult<u64> {
     Ok(value as u64)
 }
 
+fn create_regexp(arguments: &[Value], prototype: &Object) -> RuntimeResult<Object> {
+    let pattern = match arguments.first() {
+        Some(Value::Object(object)) => RegExp::from_object(object.clone()).map_or_else(
+            || value_arg(arguments.first()).to_js_string(),
+            |value| Ok(value.source()),
+        )?,
+        value => value_arg(value).to_js_string()?,
+    };
+    let flags = match arguments.get(1) {
+        None | Some(Value::Undefined) => String::new(),
+        Some(value) => value.to_js_string()?.to_string_lossy(),
+    };
+    let object = RegExp::new_for(prototype, pattern, &flags)?.object();
+    object.initialize_prototype(Some(prototype.clone()));
+    Ok(object)
+}
+
 fn install_regexp(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {
     let regexp = intrinsics.get(IntrinsicId::RegExp);
     let regexp_prototype = intrinsics.get(IntrinsicId::RegExpPrototype);
-    let create = move |arguments: &[Value]| {
-        let pattern = match arguments.first() {
-            Some(Value::Object(object)) => RegExp::from_object(object.clone()).map_or_else(
-                || value_arg(arguments.first()).to_js_string(),
-                |value| Ok(value.source()),
-            )?,
-            value => value_arg(value).to_js_string()?,
-        };
-        let flags = match arguments.get(1) {
-            None | Some(Value::Undefined) => String::new(),
-            Some(value) => value.to_js_string()?.to_string_lossy(),
-        };
-        let object = RegExp::new(pattern, &flags)?.object();
-        object.set_prototype(Some(regexp_prototype.clone()));
-        Ok(object)
-    };
-    let create = std::rc::Rc::new(create);
-    let call_create = create.clone();
-    regexp.set_native_call(move |_, arguments| call_create(arguments).map(Value::Object));
-    regexp.set_native_construct(move |arguments, _| create(arguments));
-    method(
-        intrinsics,
-        &intrinsics.get(IntrinsicId::RegExpPrototype),
+    regexp.set_captured_factory(
+        &regexp_prototype,
+        None,
+        Some((true, |prototype, _, _, arguments| {
+            create_regexp(arguments, prototype.expect("RegExp prototype")).map(Value::Object)
+        })),
+        Some(|prototype, _, arguments, _| create_regexp(arguments, prototype)),
+    )?;
+    let exec = Object::native_function_with_lazy_object_capture(
+        &intrinsics.get(IntrinsicId::FunctionPrototype),
         "exec",
         1,
-        |this, arguments| {
+        &intrinsics.get(IntrinsicId::ArrayPrototype),
+        None,
+        |owner, prototype, _, this, arguments| {
             let object = object_value(&this, "RegExp receiver")?;
             let regexp = RegExp::from_object(object)
                 .ok_or_else(|| RuntimeError::type_error("receiver is not a RegExp"))?;
@@ -519,22 +513,27 @@ fn install_regexp(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {
             let Some(values) = regexp.exec_values(&input)? else {
                 return Ok(Value::Null);
             };
-            array_value(values)
+            array_value_for(&prototype.load(owner)?, values)
         },
-    )
+    )?;
+    regexp_prototype.define_own_property(
+        "exec".into(),
+        PropertyDescriptor::data(Value::Object(exec), true, false, true),
+    )?;
+    Ok(())
 }
 
 fn install_indexed(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {
     let array = intrinsics.get(IntrinsicId::Array);
     let array_prototype = intrinsics.get(IntrinsicId::ArrayPrototype);
-    let prototype_for_call = array_prototype.clone();
-    array.set_native_call(move |_, arguments| {
-        create_array(arguments, &prototype_for_call).map(Value::Object)
-    });
-    let prototype_for_construct = array_prototype;
-    array.set_native_construct(move |arguments, _| {
-        create_array(arguments, &prototype_for_construct)
-    });
+    array.set_captured_factory(
+        &array_prototype,
+        None,
+        Some((true, |prototype, _, _, arguments| {
+            create_array(arguments, prototype.expect("Array prototype")).map(Value::Object)
+        })),
+        Some(|prototype, _, arguments, _| create_array(arguments, prototype)),
+    )?;
     method(intrinsics, &array, "isArray", 1, |_, arguments| {
         Ok(Value::Boolean(
             matches!(arguments.first(), Some(Value::Object(object)) if ArrayObject::from_object(object.clone()).is_some()),
@@ -543,14 +542,19 @@ fn install_indexed(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {
 
     let array_buffer = intrinsics.get(IntrinsicId::ArrayBuffer);
     let buffer_prototype = intrinsics.get(IntrinsicId::ArrayBufferPrototype);
-    array_buffer.set_native_construct(move |arguments, _| {
-        let length = length_argument(arguments.first())?;
-        let buffer = ArrayBuffer::new(length)?;
-        buffer
-            .object()
-            .set_prototype(Some(buffer_prototype.clone()));
-        Ok(buffer.object())
-    });
+    array_buffer.set_captured_factory(
+        &buffer_prototype,
+        None,
+        Some((false, |_, _, _, _| Ok(Value::Undefined))),
+        Some(|prototype, _, arguments, _| {
+            let length = length_argument(arguments.first())?;
+            let buffer = ArrayBuffer::new_for(prototype, length)?;
+            buffer
+                .object()
+                .initialize_prototype(Some(prototype.clone()));
+            Ok(buffer.object())
+        }),
+    )?;
     method(intrinsics, &array_buffer, "isView", 1, |_, arguments| {
         Ok(Value::Boolean(
             matches!(arguments.first(), Some(Value::Object(object)) if TypedArray::from_object(object.clone()).is_some()),
@@ -559,50 +563,59 @@ fn install_indexed(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {
 
     let typed_array = intrinsics.get(IntrinsicId::TypedArray);
     let typed_prototype = intrinsics.get(IntrinsicId::TypedArrayPrototype);
-    typed_array.set_native_construct(move |arguments, _| {
-        let view = match arguments.first() {
-            Some(Value::Object(object)) => {
-                let buffer = ArrayBuffer::from_object(object.clone()).ok_or_else(|| {
-                    RuntimeError::type_error("TypedArray requires an ArrayBuffer or length")
-                })?;
-                let offset = length_argument(arguments.get(1))?;
-                let length = match arguments.get(2) {
-                    Some(value) => length_argument(Some(value))?,
-                    None => buffer
-                        .byte_length()
-                        .checked_sub(offset)
-                        .ok_or_else(|| RuntimeError::range_error("view offset is out of bounds"))?,
-                };
-                TypedArray::new(&buffer, offset, length)?
-            }
-            value => {
-                let buffer = ArrayBuffer::new(length_argument(value)?)?;
-                TypedArray::new(&buffer, 0, buffer.byte_length())?
-            }
-        };
-        view.object().set_prototype(Some(typed_prototype.clone()));
-        Ok(view.object())
-    });
+    typed_array.set_captured_factory(
+        &typed_prototype,
+        None,
+        Some((false, |_, _, _, _| Ok(Value::Undefined))),
+        Some(|prototype, _, arguments, _| {
+            let view = match arguments.first() {
+                Some(Value::Object(object)) => {
+                    let buffer = ArrayBuffer::from_object(object.clone()).ok_or_else(|| {
+                        RuntimeError::type_error("TypedArray requires an ArrayBuffer or length")
+                    })?;
+                    let offset = length_argument(arguments.get(1))?;
+                    let length = match arguments.get(2) {
+                        Some(value) => length_argument(Some(value))?,
+                        None => buffer.byte_length().checked_sub(offset).ok_or_else(|| {
+                            RuntimeError::range_error("view offset is out of bounds")
+                        })?,
+                    };
+                    TypedArray::new(&buffer, offset, length)?
+                }
+                value => {
+                    let buffer = ArrayBuffer::new_for(prototype, length_argument(value)?)?;
+                    TypedArray::new(&buffer, 0, buffer.byte_length())?
+                }
+            };
+            view.object().initialize_prototype(Some(prototype.clone()));
+            Ok(view.object())
+        }),
+    )?;
 
     let data_view = intrinsics.get(IntrinsicId::DataView);
     let data_prototype = intrinsics.get(IntrinsicId::DataViewPrototype);
-    data_view.set_native_construct(move |arguments, _| {
-        let buffer = object_arg(arguments.first(), "DataView buffer")?;
-        let buffer = ArrayBuffer::from_object(buffer)
-            .ok_or_else(|| RuntimeError::type_error("DataView requires an ArrayBuffer"))?;
-        let offset = length_argument(arguments.get(1))?;
-        let length = match arguments.get(2) {
-            Some(value) => length_argument(Some(value))?,
-            None => buffer
-                .byte_length()
-                .checked_sub(offset)
-                .ok_or_else(|| RuntimeError::range_error("view offset is out of bounds"))?,
-        };
-        let view = DataView::new(&buffer, offset, length)?;
-        let object = view.object();
-        object.set_prototype(Some(data_prototype.clone()));
-        Ok(object)
-    });
+    data_view.set_captured_factory(
+        &data_prototype,
+        None,
+        Some((false, |_, _, _, _| Ok(Value::Undefined))),
+        Some(|prototype, _, arguments, _| {
+            let buffer = object_arg(arguments.first(), "DataView buffer")?;
+            let buffer = ArrayBuffer::from_object(buffer)
+                .ok_or_else(|| RuntimeError::type_error("DataView requires an ArrayBuffer"))?;
+            let offset = length_argument(arguments.get(1))?;
+            let length = match arguments.get(2) {
+                Some(value) => length_argument(Some(value))?,
+                None => buffer
+                    .byte_length()
+                    .checked_sub(offset)
+                    .ok_or_else(|| RuntimeError::range_error("view offset is out of bounds"))?,
+            };
+            let view = DataView::new(&buffer, offset, length)?;
+            let object = view.object();
+            object.initialize_prototype(Some(prototype.clone()));
+            Ok(object)
+        }),
+    )?;
     Ok(())
 }
 
@@ -615,9 +628,9 @@ fn create_array(arguments: &[Value], prototype: &Object) -> RuntimeResult<Object
         {
             return Err(RuntimeError::range_error("invalid array length"));
         }
-        ArrayObject::new(*length as u32)?
+        ArrayObject::new_for(prototype, *length as u32)?
     } else {
-        let array = ArrayObject::new(arguments.len() as u32)?;
+        let array = ArrayObject::new_for(prototype, arguments.len() as u32)?;
         for (index, value) in arguments.iter().cloned().enumerate() {
             array
                 .object()
@@ -648,36 +661,23 @@ fn install_object(
         ("getOwnPropertySymbols", true),
     ] {
         let prototype = intrinsics.get(IntrinsicId::ArrayPrototype);
-        method(intrinsics, &constructor, name, 1, move |_, arguments| {
-            let source = property_source(value_arg(arguments.first()))?;
-            let keys: Vec<Value> = source
-                .try_own_property_keys()?
-                .into_iter()
-                .filter_map(|key| match key {
-                    PropertyKey::String(name) if !symbols => Some(Value::String(name)),
-                    PropertyKey::Symbol(symbol) if symbols => Some(Value::Symbol(symbol)),
-                    _ => None,
-                })
-                .collect();
-            let length = u32::try_from(keys.len())
-                .map_err(|_| RuntimeError::range_error("too many own property keys"))?;
-            let array = ArrayObject::new(length)?.object();
-            array.initialize_prototype(Some(prototype.clone()));
-            for (index, key) in keys.into_iter().enumerate() {
-                array.create_data_property(JsString::from(index.to_string()).into(), key)?;
-            }
-            Ok(Value::Object(array))
-        })?;
+        let callback: super::object::CapturedObjectCallback = if symbols {
+            |prototype, _, _, arguments| own_keys_array(prototype, arguments, Some(true))
+        } else {
+            |prototype, _, _, arguments| own_keys_array(prototype, arguments, Some(false))
+        };
+        captured_method(intrinsics, &constructor, name, 1, &prototype, callback)?;
     }
-    method(
+    captured_method(
         intrinsics,
         &constructor,
         "create",
         2,
-        move |_, arguments| {
+        &object_prototype,
+        |context, _, _, arguments| {
             let prototype = nullable_object(arguments.first())?;
-            let object = Object::new();
-            object.set_prototype(prototype);
+            let object = Object::new_for(context);
+            object.initialize_prototype(prototype);
             match arguments.get(1) {
                 None | Some(Value::Undefined) => {}
                 Some(Value::Object(descriptors)) => define_properties(&object, descriptors)?,
@@ -703,18 +703,19 @@ fn install_object(
             Ok(Value::Object(object))
         },
     )?;
-    method(
+    captured_method(
         intrinsics,
         &constructor,
         "getOwnPropertyDescriptor",
         2,
-        |_, arguments| {
+        &intrinsics.get(IntrinsicId::ObjectPrototype),
+        |prototype, _, _, arguments| {
             let object = object_arg(arguments.first(), "Object.getOwnPropertyDescriptor target")?;
             let key = value_arg(arguments.get(1)).to_property_key()?;
             object
                 .try_get_own_property(&key)?
                 .map_or(Ok(Value::Undefined), |descriptor| {
-                    descriptor.to_object().map(Value::Object)
+                    descriptor.to_object_for(prototype).map(Value::Object)
                 })
         },
     )?;
@@ -777,11 +778,9 @@ fn install_object(
                 let key =
                     super::coercion::primitive(&value_arg(arguments.first()), &to_primitive, true)?
                         .to_property_key()?;
-                let object = property_source(this)?;
-                let descriptor = object.try_get_own_property(&key)?;
-                Ok(Value::Boolean(descriptor.is_some_and(|descriptor| {
-                    !enumerable || descriptor.enumerable == Some(true)
-                })))
+                Ok(Value::Boolean(
+                    own_property_enumerable(this, &key)?.is_some_and(|flag| !enumerable || flag),
+                ))
             },
         )?;
     }
@@ -835,18 +834,19 @@ fn install_reflect(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {
             .define_own_property(key, descriptor)
             .map(Value::Boolean)
     })?;
-    method(
+    captured_method(
         intrinsics,
         &reflect,
         "getOwnPropertyDescriptor",
         2,
-        |_, arguments| {
+        &intrinsics.get(IntrinsicId::ObjectPrototype),
+        |prototype, _, _, arguments| {
             let object = object_arg(arguments.first(), "Reflect.getOwnPropertyDescriptor target")?;
             let key = value_arg(arguments.get(1)).to_property_key()?;
             object
                 .try_get_own_property(&key)?
                 .map_or(Ok(Value::Undefined), |descriptor| {
-                    descriptor.to_object().map(Value::Object)
+                    descriptor.to_object_for(prototype).map(Value::Object)
                 })
         },
     )?;
@@ -881,18 +881,14 @@ fn install_reflect(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {
         let key = value_arg(arguments.get(1)).to_property_key()?;
         Ok(Value::Boolean(object.try_delete(&key)?))
     })?;
-    method(intrinsics, &reflect, "ownKeys", 1, |_, arguments| {
-        let object = object_arg(arguments.first(), "Reflect.ownKeys target")?;
-        let values = object
-            .try_own_property_keys()?
-            .into_iter()
-            .map(|key| match key {
-                PropertyKey::String(value) => Value::String(value),
-                PropertyKey::Symbol(value) => Value::Symbol(value),
-            })
-            .collect::<Vec<_>>();
-        array_value(values)
-    })?;
+    captured_method(
+        intrinsics,
+        &reflect,
+        "ownKeys",
+        1,
+        &intrinsics.get(IntrinsicId::ArrayPrototype),
+        |prototype, _, _, arguments| own_keys_array(prototype, arguments, None),
+    )?;
     method(intrinsics, &reflect, "getPrototypeOf", 1, |_, arguments| {
         let object = object_arg(arguments.first(), "Reflect.getPrototypeOf target")?;
         Ok(object.try_prototype()?.map_or(Value::Null, Value::Object))
@@ -919,6 +915,50 @@ fn install_reflect(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {
     )
 }
 
+fn captured_method(
+    intrinsics: &IntrinsicRegistry,
+    holder: &Object,
+    name: &str,
+    length: u32,
+    capture: &Object,
+    callback: super::object::CapturedObjectCallback,
+) -> RuntimeResult<()> {
+    let function = Object::native_function_with_object_capture(
+        &intrinsics.get(IntrinsicId::FunctionPrototype),
+        name,
+        length,
+        capture,
+        None,
+        callback,
+    )?;
+    holder.define_own_property(
+        name.into(),
+        PropertyDescriptor::data(Value::Object(function), true, false, true),
+    )?;
+    Ok(())
+}
+
+fn own_keys_array(
+    prototype: &Object,
+    arguments: &[Value],
+    symbols: Option<bool>,
+) -> RuntimeResult<Value> {
+    let keys = if symbols.is_some() {
+        own_keys(value_arg(arguments.first()))?
+    } else {
+        object_arg(arguments.first(), "Reflect.ownKeys target")?.try_own_property_keys()?
+    };
+    let values = keys
+        .into_iter()
+        .filter_map(|key| match key {
+            PropertyKey::String(value) if symbols != Some(true) => Some(Value::String(value)),
+            PropertyKey::Symbol(value) if symbols != Some(false) => Some(Value::Symbol(value)),
+            _ => None,
+        })
+        .collect();
+    array_value_for(prototype, values)
+}
+
 fn method(
     intrinsics: &IntrinsicRegistry,
     holder: &Object,
@@ -937,52 +977,32 @@ fn method(
 
 fn bound_function(target: Object, bound_this: Value, prefix: Vec<Value>) -> RuntimeResult<Object> {
     let prototype = target.try_prototype()?;
-    let call_target = target.clone();
-    let call_prefix = prefix.clone();
-    let call = move |_: Value, suffix: &[Value]| {
-        let mut arguments = call_prefix.clone();
-        arguments.extend_from_slice(suffix);
-        call_target.call(bound_this.clone(), &arguments)
-    };
-    let function = if target.is_constructor() {
-        let slot = Rc::new(RefCell::new(None::<super::WeakObject>));
-        let construct_slot = slot.clone();
-        let construct_target = target.clone();
-        let construct_prefix = prefix;
-        let function = Object::native_callable_constructor(call, move |suffix, new_target| {
-            let mut arguments = construct_prefix.clone();
-            arguments.extend_from_slice(suffix);
-            let actual_new_target = if construct_slot
-                .borrow()
-                .as_ref()
-                .and_then(super::WeakObject::upgrade)
-                .as_ref()
-                == Some(&new_target)
-            {
-                construct_target.clone()
-            } else {
-                new_target
-            };
-            construct_target.construct(&arguments, actual_new_target)
-        });
-        *slot.borrow_mut() = Some(function.downgrade());
-        function
-    } else {
-        Object::native_function(call)
-    };
+    let function = Object::new_bound(&target, &bound_this, &prefix)?;
     function.initialize_prototype(prototype);
-    function.0.state.borrow_mut().bound_target = Some(target);
     Ok(function)
 }
 
 fn define_properties(target: &Object, descriptors: &Object) -> RuntimeResult<()> {
-    for key in descriptors.own_property_keys() {
+    // Conversion can invoke getters and Proxy traps. Keep every converted
+    // descriptor rooted until conversion of the entire list has succeeded.
+    let keys = descriptors.try_own_property_keys()?;
+    let mut pending = Vec::with_capacity(keys.len());
+    for key in keys {
+        let Some(own) = descriptors.try_get_own_property(&key)? else {
+            continue;
+        };
+        if own.enumerable != Some(true) {
+            continue;
+        }
         let Value::Object(descriptor) = descriptors.get(&key)? else {
             return Err(RuntimeError::type_error(
                 "property descriptor must be an object",
             ));
         };
-        require_define(target, key, PropertyDescriptor::from_object(&descriptor)?)?;
+        pending.push((key, PropertyDescriptor::from_object(&descriptor)?));
+    }
+    for (key, descriptor) in pending {
+        require_define(target, key, descriptor)?;
     }
     Ok(())
 }
@@ -1069,16 +1089,14 @@ fn argument_list(value: Option<&Value>) -> RuntimeResult<Vec<Value>> {
     }
 }
 
-fn array_value(values: Vec<Value>) -> RuntimeResult<Value> {
-    let array = Object::new();
-    let length = values.len();
+fn array_value_for(prototype: &Object, values: Vec<Value>) -> RuntimeResult<Value> {
+    let length = u32::try_from(values.len())
+        .map_err(|_| RuntimeError::range_error("too many array values"))?;
+    let array = ArrayObject::new_for(prototype, length)?.object();
+    array.initialize_prototype(Some(prototype.clone()));
     for (index, value) in values.into_iter().enumerate() {
         array.create_data_property(JsString::from(index.to_string()).into(), value)?;
     }
-    array.define_own_property(
-        "length".into(),
-        PropertyDescriptor::data(Value::Number(length as f64), true, false, false),
-    )?;
     Ok(Value::Object(array))
 }
 
@@ -1106,14 +1124,39 @@ fn number_argument(value: Option<&Value>, key: &PropertyKey) -> RuntimeResult<f6
 
 // Primitive wrapper identity/prototype cannot be observed by an own-descriptor
 // query; only string wrappers contribute own properties.
-fn property_source(value: Value) -> RuntimeResult<Object> {
+fn own_keys(value: Value) -> RuntimeResult<Vec<PropertyKey>> {
     match value {
-        Value::Object(object) => Ok(object),
-        Value::String(value) => Ok(super::StringObject::new(value).object()),
+        Value::Object(object) => object.try_own_property_keys(),
+        Value::String(value) => Ok((0..value.len())
+            .map(|index| JsString::from(index.to_string()).into())
+            .chain(std::iter::once("length".into()))
+            .collect()),
         Value::Null | Value::Undefined => {
             Err(RuntimeError::type_error("cannot inspect null or undefined"))
         }
-        _ => Ok(Object::new()),
+        _ => Ok(Vec::new()),
+    }
+}
+
+fn own_property_enumerable(value: Value, key: &PropertyKey) -> RuntimeResult<Option<bool>> {
+    match value {
+        Value::Object(object) => Ok(object
+            .try_get_own_property(key)?
+            .map(|descriptor| descriptor.enumerable == Some(true))),
+        Value::String(value) => {
+            if matches!(key, PropertyKey::String(name) if name.code_units() == [108, 101, 110, 103, 116, 104])
+            {
+                return Ok(Some(false));
+            }
+            Ok(key
+                .array_index()
+                .filter(|index| (*index as usize) < value.len())
+                .map(|_| true))
+        }
+        Value::Null | Value::Undefined => {
+            Err(RuntimeError::type_error("cannot inspect null or undefined"))
+        }
+        _ => Ok(None),
     }
 }
 
@@ -1124,7 +1167,7 @@ pub(super) fn install_has_instance(
     let prototype = intrinsics.get(IntrinsicId::FunctionPrototype);
     let key: PropertyKey = symbols.get(super::WellKnownSymbol::HasInstance).into();
     let call_key = key.clone();
-    let method = Object::native_function(move |this, arguments| {
+    let method = Object::native_function_for(&prototype, move |this, arguments| {
         super::operators::ordinary_has_instance(this, value_arg(arguments.first()), &call_key)
             .map(Value::Boolean)
     });
@@ -1147,4 +1190,79 @@ pub(super) fn install_has_instance(
         PropertyDescriptor::data(Value::Object(method), false, false, false),
     )?;
     Ok(())
+}
+
+#[cfg(test)]
+mod descriptor_list_tests {
+    use super::*;
+
+    #[test]
+    fn conversion_failure_does_not_publish_earlier_descriptors() {
+        let context = crate::runtime::AllocationContext::new();
+        let target = Object::new_in(&context);
+        let descriptors = Object::new_in(&context);
+        let first = Object::new_in(&context);
+        first
+            .create_data_property("value".into(), Value::Number(42.0))
+            .unwrap();
+        descriptors
+            .create_data_property("first".into(), Value::Object(first))
+            .unwrap();
+        descriptors
+            .create_data_property("invalid".into(), Value::Number(1.0))
+            .unwrap();
+        assert!(define_properties(&target, &descriptors).is_err());
+        assert!(target.own_property_keys().is_empty());
+    }
+}
+
+#[cfg(test)]
+mod primitive_query_tests {
+    use super::*;
+    use crate::runtime::Runtime;
+
+    #[test]
+    fn primitive_own_property_checks_allocate_no_wrapper_objects() {
+        let runtime = Runtime::new();
+        let realm = super::super::Realm::ordinary_in(&runtime);
+        let prototype = realm.intrinsic(IntrinsicId::ObjectPrototype);
+        let Value::Object(has) = prototype.get(&"hasOwnProperty".into()).unwrap() else {
+            panic!("method")
+        };
+        let Value::Object(enumerable) = prototype.get(&"propertyIsEnumerable".into()).unwrap()
+        else {
+            panic!("method")
+        };
+        let length = [Value::String("length".into())];
+        let index = [Value::String("1".into())];
+        let before = runtime.diagnostics();
+        for _ in 0..100 {
+            assert!(
+                has.call(Value::String("𝄞".into()), &length)
+                    .unwrap()
+                    .same_value(&Value::Boolean(true))
+            );
+            assert!(
+                enumerable
+                    .call(Value::String("𝄞".into()), &length)
+                    .unwrap()
+                    .same_value(&Value::Boolean(false))
+            );
+            assert!(
+                enumerable
+                    .call(Value::String("𝄞".into()), &index)
+                    .unwrap()
+                    .same_value(&Value::Boolean(true))
+            );
+            assert!(
+                has.call(Value::Number(42.0), &index)
+                    .unwrap()
+                    .same_value(&Value::Boolean(false))
+            );
+        }
+        assert_eq!(runtime.diagnostics().live, before.live);
+        assert_eq!(runtime.diagnostics().rooted, before.rooted);
+        drop((has, enumerable, prototype, realm));
+        assert_eq!(runtime.collect_migration_graph().unwrap().retained, 0);
+    }
 }

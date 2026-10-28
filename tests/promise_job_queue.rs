@@ -6,7 +6,8 @@ use temiya::runtime::{
 
 #[test]
 fn settlement_is_one_shot_and_self_resolution_rejects() {
-    let queue = JobQueue::new();
+    let context = temiya::runtime::AllocationContext::new();
+    let queue = JobQueue::new(&context);
     let promise = Promise::pending_on(queue.clone()).unwrap();
     assert!(promise.resolve(Value::Number(1.0)).unwrap());
     assert!(!promise.resolve(Value::Number(2.0)).unwrap());
@@ -29,16 +30,17 @@ fn settlement_is_one_shot_and_self_resolution_rejects() {
 
 #[test]
 fn reactions_are_fifo_jobs_and_chaining_adopts_callback_results() {
-    let queue = JobQueue::new();
+    let context = temiya::runtime::AllocationContext::new();
+    let queue = JobQueue::new(&context);
     let promise = Promise::fulfilled_on(queue.clone(), Value::Number(3.0)).unwrap();
     let order = Rc::new(RefCell::new(Vec::new()));
     let first_order = order.clone();
-    let first = Object::native_function(move |_, arguments| {
+    let first = Object::native_function_in(&context, move |_, arguments| {
         first_order.borrow_mut().push(1);
         Ok(Value::Number(arguments[0].to_number()? + 1.0))
     });
     let second_order = order.clone();
-    let second = Object::native_function(move |_, _| {
+    let second = Object::native_function_in(&context, move |_, _| {
         second_order.borrow_mut().push(2);
         Ok(Value::Undefined)
     });
@@ -59,12 +61,13 @@ fn reactions_are_fifo_jobs_and_chaining_adopts_callback_results() {
 
 #[test]
 fn thenables_are_assimilated_once_by_a_queued_job() {
-    let queue = JobQueue::new();
-    let thenable = Object::new();
+    let context = temiya::runtime::AllocationContext::new();
+    let queue = JobQueue::new(&context);
+    let thenable = Object::new_in(&context);
     thenable
         .create_data_property(
             "then".into(),
-            Value::Object(Object::native_function(|_, arguments| {
+            Value::Object(Object::native_function_in(&context, |_, arguments| {
                 let Value::Object(resolve) = &arguments[0] else {
                     panic!("resolve callback")
                 };
@@ -93,13 +96,14 @@ fn thenables_are_assimilated_once_by_a_queued_job() {
 
 #[test]
 fn throwing_then_getter_rejects_the_promise() {
-    let queue = JobQueue::new();
-    let thenable = Object::new();
+    let context = temiya::runtime::AllocationContext::new();
+    let queue = JobQueue::new(&context);
+    let thenable = Object::new_in(&context);
     thenable
         .define_own_property(
             "then".into(),
             PropertyDescriptor::accessor(
-                Some(Object::native_function(|_, _| {
+                Some(Object::native_function_in(&context, |_, _| {
                     Err(RuntimeError::type_error("getter failed"))
                 })),
                 None,
@@ -120,7 +124,8 @@ fn throwing_then_getter_rejects_the_promise() {
 
 #[test]
 fn unhandled_hook_runs_at_checkpoint_and_is_suppressed_by_then() {
-    let queue = JobQueue::new();
+    let context = temiya::runtime::AllocationContext::new();
+    let queue = JobQueue::new(&context);
     let reported = Rc::new(RefCell::new(Vec::new()));
     let observed = reported.clone();
     queue.set_unhandled_rejection_hook(move |error| {
@@ -130,7 +135,9 @@ fn unhandled_hook_runs_at_checkpoint_and_is_suppressed_by_then() {
     handled
         .then(
             None,
-            Some(Object::native_function(|_, _| Ok(Value::Undefined))),
+            Some(Object::native_function_in(&context, |_, _| {
+                Ok(Value::Undefined)
+            })),
         )
         .unwrap();
     Promise::rejected_on(queue.clone(), RuntimeError::type_error("unhandled")).unwrap();

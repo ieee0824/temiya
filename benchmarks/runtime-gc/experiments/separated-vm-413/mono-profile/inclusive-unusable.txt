@@ -1,0 +1,131 @@
+--------------------------------------------------------------------------------
+Profile data file '/tmp/temiya-separated-vm-mono-callgrind.out' (creator: callgrind-3.24.0)
+--------------------------------------------------------------------------------
+I1 cache: 
+D1 cache: 
+LL cache: 
+Timerange: Basic block 0 - 2166656579
+Trigger: Program termination
+Profiled target:  /tmp/temiya-separated-vm-frozen-worker /tmp/temiya-omoikane-workloads-v2/prop-mono.json 1 (PID 1578757, part 1)
+Events recorded:  Ir
+Events shown:     Ir
+Event sort order: Ir
+Thresholds:       80
+Include dirs:     
+User annotated:   
+Auto-annotation:  on
+
+--------------------------------------------------------------------------------
+Ir                      
+--------------------------------------------------------------------------------
+12,854,849,462 (100.0%)  PROGRAM TOTALS
+
+--------------------------------------------------------------------------------
+Ir                                file:function
+--------------------------------------------------------------------------------
+244,188,482,156,233,397 (1899582588.5%)  ???:<temiya::bytecode::vm::VirtualMachine>::run::<false>'2 [/tmp/temiya-separated-vm-frozen-worker]
+51,408,026,590,005,622 (399911541.1%)  ???:<temiya::runtime::environment::Environment>::get_function_binding_at'2 [/tmp/temiya-separated-vm-frozen-worker]
+25,703,996,272,012,285 (199955638.1%)  ???:temiya::bytecode::vm::binary'2 [/tmp/temiya-separated-vm-frozen-worker]
+19,277,991,522,001,350 (149966684.4%)  ???:<temiya::runtime::Object>::own_data_value_with_hint'2 [/tmp/temiya-separated-vm-frozen-worker]
+12,851,989,822,009,668 (99977754.4%)  ???:<temiya::runtime::Value as core::clone::Clone>::clone'2 [/tmp/temiya-separated-vm-frozen-worker]
+6,426,022,854,007,144 (49989094.6%)  ???:<temiya::runtime::environment::Environment>::set_function_binding_at'2 [/tmp/temiya-separated-vm-frozen-worker]
+6,425,994,156,073,858 (49988871.3%)  ???:<temiya::runtime::interpreter::Reference>::property_in_realm'2 [/tmp/temiya-separated-vm-frozen-worker]
+6,425,991,682,001,974 (49988852.1%)  ???:<temiya::runtime::interpreter::Reference>::put_value'2 [/tmp/temiya-separated-vm-frozen-worker]
+6,425,988,370,069,385 (49988826.3%)  ???:core::ptr::drop_glue::<temiya::runtime::interpreter::Reference>'2 [/tmp/temiya-separated-vm-frozen-worker]
+6,425,983,762,009,838 (49988790.5%)  ???:<temiya::runtime::environment::Environment>::update_number_binding'2 [/tmp/temiya-separated-vm-frozen-worker]
+         64,260,031,528 (499.9%)  ???:temiya::bytecode::vm::constant'2 [/tmp/temiya-separated-vm-frozen-worker]
+         38,556,035,832 (299.9%)  ???:<temiya::runtime::environment::Environment>::function_binding_index'2 [/tmp/temiya-separated-vm-frozen-worker]
+         25,709,158,162 (200.0%)  ???:measure_workload::main'2 [/tmp/temiya-separated-vm-frozen-worker]
+         25,709,154,084 (200.0%)  ???:(below main) [/tmp/temiya-separated-vm-frozen-worker]
+         25,709,153,505 (200.0%)  ???:(below main)'2 [/usr/lib/aarch64-linux-gnu/libc.so.6]
+         25,708,913,360 (200.0%)  ???:<str as serde_json::value::index::Index>::index_into'2 [/tmp/temiya-separated-vm-frozen-worker]
+         25,705,946,730 (200.0%)  ???:<std::sys::pal::unix::time::Timespec>::now'2 [/tmp/temiya-separated-vm-frozen-worker]
+         25,705,946,396 (200.0%)  ???:<std::time::Instant>::now'2 [/tmp/temiya-separated-vm-frozen-worker]
+         25,704,011,340 (200.0%)  ???:temiya::runtime::object_literal::define_data'2 [/tmp/temiya-separated-vm-frozen-worker]
+         12,854,849,462 (100.0%)  ???:0x000000000001b2c0 [/usr/lib/aarch64-linux-gnu/ld-linux-aarch64.so.1]
+         12,854,849,457 (100.0%)  ???:0x0000000000016d90 [/usr/lib/aarch64-linux-gnu/ld-linux-aarch64.so.1]
+         12,854,579,665 (100.0%)  ???:0x0000000000004b08 [/usr/lib/aarch64-linux-gnu/ld-linux-aarch64.so.1]
+         12,854,577,017 (100.0%)  ???:__cxa_atexit [/usr/lib/aarch64-linux-gnu/libc.so.6]
+         12,854,577,013 (100.0%)  ???:0x0000000000038b20 [/usr/lib/aarch64-linux-gnu/libc.so.6]
+         12,854,576,881 (100.0%)  ???:init_have_lse_atomics [/tmp/temiya-separated-vm-frozen-worker]
+         12,854,576,853 (100.0%)  ???:__init_cpu_features [/tmp/temiya-separated-vm-frozen-worker]
+         12,854,576,595 (100.0%)  ???:0x00000000000221e0 [/usr/lib/aarch64-linux-gnu/libc.so.6]
+         12,854,576,516 (100.0%)  ???:main [/tmp/temiya-separated-vm-frozen-worker]
+         12,854,572,782 (100.0%)  ???:std::rt::lang_start_internal [/tmp/temiya-separated-vm-frozen-worker]
+         12,854,572,689 (100.0%)  ???:std::rt::lang_start_internal'2 [/tmp/temiya-separated-vm-frozen-worker]
+         12,854,572,616 (100.0%)  ???:signal [/usr/lib/aarch64-linux-gnu/libc.so.6]
+         12,854,572,465 (100.0%)  ???:sysconf [/usr/lib/aarch64-linux-gnu/libc.so.6]
+         12,854,572,382 (100.0%)  ???:pthread_getattr_np [/usr/lib/aarch64-linux-gnu/libc.so.6]
+         12,854,489,590 (100.0%)  ???:pthread_attr_destroy [/usr/lib/aarch64-linux-gnu/libc.so.6]
+         12,854,489,289 (100.0%)  ???:std::sys::pal::unix::stack_overflow::imp::make_handler [/tmp/temiya-separated-vm-frozen-worker]
+         12,854,489,078 (100.0%)  ???:std::sys::pal::unix::stack_overflow::thread_info::set_current_info [/tmp/temiya-separated-vm-frozen-worker]
+         12,854,488,207 (100.0%)  ???:std::rt::lang_start::<core::result::Result<(), alloc::boxed::Box<dyn core::error::Error>>>::{closure#0} [/tmp/temiya-separated-vm-frozen-worker]
+         12,854,487,871 (100.0%)  ???:std::sys::backtrace::__rust_begin_short_backtrace::<fn() -> core::result::Result<(), alloc::boxed::Box<dyn core::error::Error>>, core::result::Result<(), alloc::boxed::Box<dyn core::error::Error>>> [/tmp/temiya-separated-vm-frozen-worker]
+         12,854,487,863 (100.0%)  ???:measure_workload::main [/tmp/temiya-separated-vm-frozen-worker]
+         12,854,487,851 (100.0%)  ???:std::env::args [/tmp/temiya-separated-vm-frozen-worker]
+         12,854,487,850 (100.0%)  ???:std::env::args_os [/tmp/temiya-separated-vm-frozen-worker]
+         12,854,486,810 (100.0%)  ???:<alloc::vec::Vec<alloc::string::String> as alloc::vec::spec_from_iter_nested::SpecFromIterNested<alloc::string::String, core::iter::adapters::skip::Skip<std::env::Args>>>::from_iter [/tmp/temiya-separated-vm-frozen-worker]
+         12,854,485,987 (100.0%)  ???:std::fs::read_to_string::inner [/tmp/temiya-separated-vm-frozen-worker]
+         12,854,482,998 (100.0%)  ???:serde_json::de::from_trait::<serde_json::read::StrRead, serde_json::value::Value> [/tmp/temiya-separated-vm-frozen-worker]
+         12,854,459,475 (100.0%)  ???:free [/usr/lib/aarch64-linux-gnu/libc.so.6]
+         12,854,457,775 (100.0%)  ???:__rustc::__rust_dealloc [/tmp/temiya-separated-vm-frozen-worker]
+         12,854,457,770 (100.0%)  ???:__rustc::__rdl_dealloc [/tmp/temiya-separated-vm-frozen-worker]
+         12,854,457,110 (100.0%)  ???:<str as serde_json::value::index::Index>::index_into [/tmp/temiya-separated-vm-frozen-worker]
+         12,854,456,469 (100.0%)  ???:<std::time::Instant>::now [/tmp/temiya-separated-vm-frozen-worker]
+         12,854,456,467 (100.0%)  ???:<std::sys::pal::unix::time::Timespec>::now [/tmp/temiya-separated-vm-frozen-worker]
+         12,854,456,430 (100.0%)  ???:<temiya::embedding::Engine as core::default::Default>::default [/tmp/temiya-separated-vm-frozen-worker]
+         12,854,455,490 (100.0%)  ???:<temiya::embedding::Engine>::create_realm [/tmp/temiya-separated-vm-frozen-worker]
+         12,853,811,936 (99.99%)  ???:<std::time::Instant>::elapsed [/tmp/temiya-separated-vm-frozen-worker]
+         12,853,811,793 (99.99%)  ???:<temiya::embedding::Engine>::compile [/tmp/temiya-separated-vm-frozen-worker]
+         12,852,456,924 (99.98%)  ???:<temiya::embedding::Engine>::evaluate [/tmp/temiya-separated-vm-frozen-worker]
+         12,852,387,541 (99.98%)  ???:core::ptr::drop_glue::<temiya::embedding::CompiledScript> [/tmp/temiya-separated-vm-frozen-worker]
+         12,852,356,768 (99.98%)  ???:<std::time::Instant>::elapsed'2 [/tmp/temiya-separated-vm-frozen-worker]
+         12,852,356,280 (99.98%)  ???:measure_workload::main::{closure#1} [/tmp/temiya-separated-vm-frozen-worker]
+         12,852,134,534 (99.98%)  ???:<temiya::embedding::Engine>::compile'2 [/tmp/temiya-separated-vm-frozen-worker]
+         12,852,127,772 (99.98%)  ???:temiya::bytecode::vm::enter_scope'2 [/tmp/temiya-separated-vm-frozen-worker]
+         12,852,105,095 (99.98%)  ???:<temiya::bytecode::vm::VirtualMachine>::run::<false> [/tmp/temiya-separated-vm-frozen-worker]
+         12,852,103,704 (99.98%)  ???:<temiya::runtime::Value as alloc::vec::spec_from_elem::SpecFromElem>::from_elem::<alloc::alloc::Global> [/tmp/temiya-separated-vm-frozen-worker]
+         12,852,103,098 (99.98%)  ???:temiya::bytecode::vm::enter_scope [/tmp/temiya-separated-vm-frozen-worker]
+         12,852,095,141 (99.98%)  ???:<temiya::runtime::environment::Environment>::resolve_binding [/tmp/temiya-separated-vm-frozen-worker]
+         12,852,086,688 (99.98%)  ???:<temiya::runtime::managed::Runtime>::enter_object_root_region [/tmp/temiya-separated-vm-frozen-worker]
+         12,852,081,267 (99.98%)  ???:<temiya::bytecode::vm::Invocation>::invoke [/tmp/temiya-separated-vm-frozen-worker]
+         12,852,072,403 (99.98%)  ???:<temiya::runtime::bytecode_function::Closure>::call_fallback'2 [/tmp/temiya-separated-vm-frozen-worker]
+         12,852,071,242 (99.98%)  ???:<temiya::runtime::stored::StoredValue>::load::<temiya::runtime::Object> [/tmp/temiya-separated-vm-frozen-worker]
+         12,852,070,757 (99.98%)  ???:<temiya::runtime::Object>::call [/tmp/temiya-separated-vm-frozen-worker]
+         12,852,070,290 (99.98%)  ???:<temiya::runtime::object::ManagedCallable>::call [/tmp/temiya-separated-vm-frozen-worker]
+         12,852,070,060 (99.98%)  ???:<temiya::runtime::bytecode_function::StoredClosure>::call [/tmp/temiya-separated-vm-frozen-worker]
+         12,852,068,550 (99.98%)  ???:<temiya::runtime::bytecode_function::Closure>::call_fallback [/tmp/temiya-separated-vm-frozen-worker]
+         12,852,067,156 (99.98%)  ???:<temiya::runtime::environment::Environment>::function_with_parameters [/tmp/temiya-separated-vm-frozen-worker]
+         12,852,064,691 (99.98%)  ???:<temiya::runtime::interpreter::Reference>::get_value [/tmp/temiya-separated-vm-frozen-worker]
+         12,852,064,136 (99.98%)  ???:<temiya::bytecode::vm::VirtualMachine>::execute_with_private_frame [/tmp/temiya-separated-vm-frozen-worker]
+         12,852,038,957 (99.98%)  ???:<temiya::embedding::Engine>::evaluate'2 [/tmp/temiya-separated-vm-frozen-worker]
+         12,852,036,023 (99.98%)  ???:<temiya::runtime::interpreter::Reference>::property_in_realm [/tmp/temiya-separated-vm-frozen-worker]
+         12,852,032,255 (99.98%)  ???:<temiya::runtime::interpreter::Reference>::put_value [/tmp/temiya-separated-vm-frozen-worker]
+         12,852,031,429 (99.98%)  ???:temiya::bytecode::vm::constant [/tmp/temiya-separated-vm-frozen-worker]
+         12,852,027,322 (99.98%)  ???:<temiya::runtime::intrinsics::StoredIntrinsicRegistry>::get::<temiya::runtime::execution::Realm> [/tmp/temiya-separated-vm-frozen-worker]
+         12,852,025,873 (99.98%)  ???:core::ptr::drop_glue::<temiya::runtime::interpreter::Reference> [/tmp/temiya-separated-vm-frozen-worker]
+         12,852,025,724 (99.98%)  ???:<temiya::runtime::Object>::call'2 [/tmp/temiya-separated-vm-frozen-worker]
+         12,852,024,421 (99.98%)  ???:<temiya::runtime::Object>::new_with_prototype [/tmp/temiya-separated-vm-frozen-worker]
+         12,852,023,283 (99.98%)  ???:<temiya::runtime::managed::Runtime>::root_environment [/tmp/temiya-separated-vm-frozen-worker]
+         12,852,022,824 (99.98%)  ???:<temiya::runtime::Value as core::clone::Clone>::clone [/tmp/temiya-separated-vm-frozen-worker]
+         12,852,013,133 (99.98%)  ???:temiya::bytecode::vm::binary [/tmp/temiya-separated-vm-frozen-worker]
+         12,852,012,128 (99.98%)  ???:<temiya::runtime::environment::Environment>::function_binding_index [/tmp/temiya-separated-vm-frozen-worker]
+         12,852,007,609 (99.98%)  ???:temiya::runtime::object_literal::define_data [/tmp/temiya-separated-vm-frozen-worker]
+         12,852,004,614 (99.98%)  ???:<temiya::runtime::environment::Environment>::set_function_binding_at [/tmp/temiya-separated-vm-frozen-worker]
+         12,852,002,840 (99.98%)  ???:<temiya::runtime::environment::Environment>::get_function_binding_at [/tmp/temiya-separated-vm-frozen-worker]
+         12,851,999,568 (99.98%)  ???:<temiya::runtime::Object>::own_data_value_with_hint [/tmp/temiya-separated-vm-frozen-worker]
+         12,851,990,162 (99.98%)  ???:<temiya::runtime::environment::Environment>::update_number_binding [/tmp/temiya-separated-vm-frozen-worker]
+          6,427,401,241 (50.00%)  ???:__rustc::__rust_alloc [/tmp/temiya-separated-vm-frozen-worker]
+          6,427,400,711 (50.00%)  ???:__rustc::__rdl_alloc [/tmp/temiya-separated-vm-frozen-worker]
+          6,427,399,246 (50.00%)  ???:malloc [/usr/lib/aarch64-linux-gnu/libc.so.6]
+          6,426,288,454 (49.99%)  ???:core::iter::adapters::try_process::<core::iter::adapters::map::Map<core::ops::range::Range<usize>, measure_workload::main::{closure#2}>, u64, core::result::Result<core::convert::Infallible, alloc::boxed::Box<dyn core::error::Error>>, <core::result::Result<alloc::vec::Vec<u64>, alloc::boxed::Box<dyn core::error::Error>> as core::iter::traits::collect::FromIterator<core::result::Result<u64, alloc::boxed::Box<dyn core::error::Error>>>>::from_iter<core::iter::adapters::map::Map<core::ops::range::Range<usize>, measure_workload::main::{closure#2}>>::{closure#0}, alloc::vec::Vec<u64>> [/tmp/temiya-separated-vm-frozen-worker]
+          6,426,066,907 (49.99%)  ???:<alloc::vec::Vec<u64> as alloc::vec::spec_from_iter::SpecFromIter<u64, core::iter::adapters::GenericShunt<core::iter::adapters::map::Map<core::ops::range::Range<usize>, measure_workload::main::{closure#2}>, core::result::Result<core::convert::Infallible, alloc::boxed::Box<dyn core::error::Error>>>>>::from_iter [/tmp/temiya-separated-vm-frozen-worker]
+          6,426,066,889 (49.99%)  ???:<core::iter::adapters::GenericShunt<core::iter::adapters::map::Map<core::ops::range::Range<usize>, measure_workload::main::{closure#2}>, core::result::Result<core::convert::Infallible, alloc::boxed::Box<dyn core::error::Error>>> as core::iter::traits::iterator::Iterator>::next [/tmp/temiya-separated-vm-frozen-worker]
+          3,264,008,482 (25.39%)  ???:<temiya::runtime::interpreter::ReferenceName>::property_key [/tmp/temiya-separated-vm-frozen-worker]
+          3,230,008,512 (25.13%)  ???:<temiya::runtime::interpreter::ReferencedName>::property_key [/tmp/temiya-separated-vm-frozen-worker]
+          3,046,015,248 (23.70%)  ???:<temiya::runtime::Object>::try_get_own_property'2 [/tmp/temiya-separated-vm-frozen-worker]
+          3,020,005,415 (23.49%)  ???:<temiya::runtime::Object>::set_with_receiver [/tmp/temiya-separated-vm-frozen-worker]
+          2,924,025,576 (22.75%)  ???:<temiya::runtime::Object>::try_get_own_property [/tmp/temiya-separated-vm-frozen-worker]
+          2,694,109,018 (20.96%)  ???:<temiya::runtime::Object>::define_ordinary_property'2 [/tmp/temiya-separated-vm-frozen-worker]
+          1,978,324,117 (15.39%)  ???:<temiya::runtime::Object>::define_own_property [/tmp/temiya-separated-vm-frozen-worker]
+

@@ -1,6 +1,23 @@
 # Portable bytecode
 
-Engine now defaults to whole-Script Auto selection: supported Scripts use verified bytecode and unsupported Scripts use AST before any observable execution. Explicit Ast and Bytecode selections remain available. Earlier sections describe historical implementation stages, including the former AST default. No AST-function loop tier is enabled by this integration. The measured default API passes all 33 original-eleven Boa comparisons on both recorded x64 and ARM64 machines; see [integration scope and evidence](auto-backend-integration.md).
+Engine defaults to whole-Script Auto selection: supported Scripts use verified bytecode and unsupported Scripts use AST before any observable execution. Explicit Ast and Bytecode selections remain available. Earlier sections describe historical implementation stages, including the former AST default. No AST-function loop tier is enabled by this integration. The pre-GC default API passed all 33 original-eleven Boa comparisons on both recorded x64 and ARM64 machines; see [integration scope and evidence](auto-backend-integration.md). The shared-heap migration and numeric-return path require fresh performance qualification.
+
+## Guarded numeric returns
+
+Verification derives a private execution plan for straight-line function bodies
+that read parameters or captured numbers, perform numeric operations, and return
+a primitive result. Each call checks the current values; non-number parameters,
+uninitialized bindings, observable lookups, arguments objects, and unsupported
+instructions use the normal VM. Capture guards inspect only declarative/function
+binding cells and never call getters or coercion hooks. Arithmetic uses the
+existing Number operators, retaining NaN, signed zero and evaluation order.
+
+The plan is immutable code metadata with no runtime handles or context owners.
+It uses a bounded operand stack; larger bodies retain normal VM execution.
+Eligible calls need no managed function frame. Function objects, descriptors,
+prototype identity, captured bindings and call-depth checks keep their existing
+behavior. Tests compare AST/Bytecode results and observable fallback effects,
+and verify that cached code does not retain an otherwise unreachable heap graph.
 
 
 `temiya::bytecode::Bytecode` is a pointer-free stack IR. Constants contain only

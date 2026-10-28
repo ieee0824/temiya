@@ -77,6 +77,8 @@ jobs:
         run: cargo +${{ matrix.toolchain }} build --locked --all-features
       - name: Verify documented execution paths
         run: cargo +${{ matrix.toolchain }} run --locked --example backend_scope --all-features
+      - name: Require public handle safety and runtime cycle reclamation
+        run: cargo +${{ matrix.toolchain }} run --locked --release --example ownership_probe -- --require-reclamation
       - name: Verify benchmark worker result validation
         run: |
           cargo +${{ matrix.toolchain }} build --locked --release --example measure_workload

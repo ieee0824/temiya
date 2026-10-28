@@ -1,0 +1,192 @@
+{
+  "audited_at": "2026-10-28T20:54:45.870Z",
+  "runtime_revision": "8727ebcc4d809a126aadd9a59c2f993ca7a0c6dd",
+  "equivalent_snapshot": "69200109f16388776e2835ea982ab8a992c36c8a",
+  "implementation_findings": [
+    {
+      "issue": 257,
+      "criteria": [
+        {
+          "criterion": "Engine-owned heap allocation and property/prototype tracing",
+          "evidence": [
+            "src/runtime/managed.rs Runtime::allocate_object + allocation_safepoint",
+            "src/runtime/object.rs ObjectData::trace_object_edges",
+            "src/runtime/stored.rs StoredValue/StoredObject owner checks and tracing",
+            "embedding::managed_allocation_tests::public_engine_evaluation_uses_the_owned_heap_in_the_migration_context"
+          ],
+          "finding": "Public Engine object evaluation increases that Engine runtime live cells and preserves self identity; typed properties/prototypes/pending function prototype/call captures are traced."
+        },
+        {
+          "criterion": "JS self/mutual cycles reclaim after roots released",
+          "evidence": [
+            "seven strict ownership fixtures",
+            "embedding::managed_allocation_tests::original_ownership_fixtures_release_after_last_handle_in_a_live_engine",
+            "embedding::managed_allocation_tests::public_handle_clones_preserve_a_js_cycle_then_allow_reclamation_at_a_test_safepoint"
+          ],
+          "finding": "Live Engine collection and every-allocation stress independently preserve retained handles and release last-root cycles; ARM64/x64 defaultEngine teardown probes also reclaim."
+        },
+        {
+          "criterion": "Public JS/Engine/host or CLI integration",
+          "evidence": [
+            "src/embedding.rs managed_allocation_tests use actual default Engine compile/evaluate/collect_garbage and AST+VM backends",
+            "tests/runtime_ownership.rs + examples/support/ownership.rs seven public fixtures",
+            "tests/c_abi.rs actual exported C functions"
+          ],
+          "finding": "Native658 run plus source692 CI passed. Components on ARM64/x64 independently validate actual defaultEngine strict ownership; all seven fixtures release with handles/clones usable."
+        },
+        {
+          "criterion": "Normal/boundary/error regressions and applicable pinned suites, no skipped pass",
+          "evidence": [
+            "experiments/own-read-872/all-features.log",
+            "experiments/own-read-872/test262.log",
+            "experiments/own-read-872/miri-data.log",
+            "experiments/own-read-872/miri-string.log"
+          ],
+          "finding": "658 native passes/21 explicitly ignored; selected pinned object/prototype/string suites pass with zero skips. Three public integration Miri tests pass. Full source692 library Miri is independently pending, not inferred from this subset."
+        },
+        {
+          "criterion": "Public docs, quality, stable/MSRV, build and applicable targets",
+          "evidence": [
+            "docs/embedding.md",
+            "docs/runtime-ownership.md",
+            "include/temiya.h",
+            "CI40763376827 all4jobs success",
+            "components40764795309 ARM64/x64 actual native runs"
+          ],
+          "finding": "Rust0.2 explicit/inherited allocation-context migration documented; C ABI layout/version kept. fmt/Clippy,stable/MSRV,C ABI jobs success at692. No blanket portability or full ECMAScript claim."
+        }
+      ]
+    },
+    {
+      "issue": 313,
+      "criteria": [
+        {
+          "criterion": "Lexical parents, captured values and intrinsic/global edges enumerated",
+          "evidence": [
+            "src/runtime/environment.rs EnvironmentData::trace",
+            "src/runtime/function.rs StoredFunctionClosure::trace",
+            "src/runtime/bytecode_function.rs StoredClosure::trace",
+            "src/runtime/execution.rs RealmData::trace"
+          ],
+          "finding": "Trace implementations visit outer environments, binding values, object/global records, function this/new_target, module imports, AST/VM source Realm/environment/lexical this, and Realm globals/intrinsic registry/job queue."
+        },
+        {
+          "criterion": "Closure-cycle reclamation and live closure behavior executed",
+          "evidence": [
+            "embedding::managed_allocation_tests::managed_function_captures_preserve_then_release_environment_cycles",
+            "runtime::environment::slot_hint_tests::managed_outer_environment_is_traced_without_an_internal_root",
+            "runtime::managed::tests::managed_realm_clones_share_a_root_and_trace_the_global_records"
+          ],
+          "finding": "Actual AST+VM functions/arrows/escaped constructor prototypes return42 with a surviving clone after collection; dropping the last handle releases the captured host token/environment cycle."
+        },
+        {
+          "criterion": "Public JS/Engine/host or CLI integration",
+          "evidence": [
+            "src/embedding.rs managed_allocation_tests use actual default Engine compile/evaluate/collect_garbage and AST+VM backends",
+            "tests/runtime_ownership.rs + examples/support/ownership.rs seven public fixtures",
+            "tests/c_abi.rs actual exported C functions"
+          ],
+          "finding": "Native658 run plus source692 CI passed. Components on ARM64/x64 independently validate actual defaultEngine strict ownership; all seven fixtures release with handles/clones usable."
+        },
+        {
+          "criterion": "Normal/boundary/error regressions and applicable pinned suites, no skipped pass",
+          "evidence": [
+            "experiments/own-read-872/all-features.log",
+            "experiments/own-read-872/test262.log",
+            "experiments/own-read-872/miri-data.log",
+            "experiments/own-read-872/miri-string.log"
+          ],
+          "finding": "658 native passes/21 explicitly ignored; selected pinned object/prototype/string suites pass with zero skips. Three public integration Miri tests pass. Full source692 library Miri is independently pending, not inferred from this subset."
+        },
+        {
+          "criterion": "Public docs, quality, stable/MSRV, build and applicable targets",
+          "evidence": [
+            "docs/embedding.md",
+            "docs/runtime-ownership.md",
+            "include/temiya.h",
+            "CI40763376827 all4jobs success",
+            "components40764795309 ARM64/x64 actual native runs"
+          ],
+          "finding": "Rust0.2 explicit/inherited allocation-context migration documented; C ABI layout/version kept. fmt/Clippy,stable/MSRV,C ABI jobs success at692. No blanket portability or full ECMAScript claim."
+        }
+      ]
+    },
+    {
+      "issue": 340,
+      "criteria": [
+        {
+          "criterion": "Returned host values explicitly root and unroot on free/drop",
+          "evidence": [
+            "src/embedding.rs Engine::value + ValueHandle",
+            "src/runtime/managed.rs ObjectRoot/RealmRoot facade ownership",
+            "src/ffi.rs value handle storage/free",
+            "tests/c_abi.rs returned_values_survive_allocation_collection_and_engine_teardown"
+          ],
+          "finding": "Externally owning facades retain Runtime and typed Heap roots, while internal graph edges are handles. C returned self-cycle survives5000 cyclic allocations and Engine teardown; numeric accessor/free remain valid. C API does not expose arbitrary object property reads, so no such post-teardown operation is claimed."
+        },
+        {
+          "criterion": "GC-spanning use, cross-engine rejection and host reentry",
+          "evidence": [
+            "embedding::managed_allocation_tests::managed_host_boundaries_reject_foreign_objects_without_repeating_effects",
+            "embedding::managed_allocation_tests::retiring_a_native_capture_releases_the_heap_borrow_before_host_drop_reentry",
+            "tests/embedding_api.rs cross_engine_handles_are_rejected",
+            "tests/c_abi.rs c_callback_can_reenter_compile_and_evaluate"
+          ],
+          "finding": "Foreign inputs reject before callbacks; foreign results fail after one effect without retry. Host callbacks reenter actual evaluation, retirement drops payloads after releasing heap borrow, and retained values/clones remain usable."
+        },
+        {
+          "criterion": "Public JS/Engine/host or CLI integration",
+          "evidence": [
+            "src/embedding.rs managed_allocation_tests use actual default Engine compile/evaluate/collect_garbage and AST+VM backends",
+            "tests/runtime_ownership.rs + examples/support/ownership.rs seven public fixtures",
+            "tests/c_abi.rs actual exported C functions"
+          ],
+          "finding": "Native658 run plus source692 CI passed. Components on ARM64/x64 independently validate actual defaultEngine strict ownership; all seven fixtures release with handles/clones usable."
+        },
+        {
+          "criterion": "Normal/boundary/error regressions and applicable pinned suites, no skipped pass",
+          "evidence": [
+            "experiments/own-read-872/all-features.log",
+            "experiments/own-read-872/test262.log",
+            "experiments/own-read-872/miri-data.log",
+            "experiments/own-read-872/miri-string.log"
+          ],
+          "finding": "658 native passes/21 explicitly ignored; selected pinned object/prototype/string suites pass with zero skips. Three public integration Miri tests pass. Full source692 library Miri is independently pending, not inferred from this subset."
+        },
+        {
+          "criterion": "Public docs, quality, stable/MSRV, build and applicable targets",
+          "evidence": [
+            "docs/embedding.md",
+            "docs/runtime-ownership.md",
+            "include/temiya.h",
+            "CI40763376827 all4jobs success",
+            "components40764795309 ARM64/x64 actual native runs"
+          ],
+          "finding": "Rust0.2 explicit/inherited allocation-context migration documented; C ABI layout/version kept. fmt/Clippy,stable/MSRV,C ABI jobs success at692. No blanket portability or full ECMAScript claim."
+        }
+      ]
+    }
+  ],
+  "executed_native_tests": [
+    "embedding::managed_allocation_tests::public_engine_evaluation_uses_the_owned_heap_in_the_migration_context",
+    "embedding::managed_allocation_tests::original_ownership_fixtures_release_after_last_handle_in_a_live_engine",
+    "embedding::managed_allocation_tests::managed_function_captures_preserve_then_release_environment_cycles",
+    "embedding::managed_allocation_tests::public_handle_clones_preserve_a_js_cycle_then_allow_reclamation_at_a_test_safepoint",
+    "embedding::managed_allocation_tests::managed_host_boundaries_reject_foreign_objects_without_repeating_effects",
+    "embedding::managed_allocation_tests::retiring_a_native_capture_releases_the_heap_borrow_before_host_drop_reentry",
+    "runtime::managed::stored_graph_tests::prototype_and_data_edges_keep_an_entire_graph_until_the_last_root",
+    "runtime::environment::slot_hint_tests::managed_outer_environment_is_traced_without_an_internal_root",
+    "runtime::managed::tests::managed_realm_clones_share_a_root_and_trace_the_global_records",
+    "c_callback_can_reenter_compile_and_evaluate",
+    "returned_values_survive_allocation_collection_and_engine_teardown",
+    "cross_engine_handles_are_rejected"
+  ],
+  "native_log_sha256": "b87be7476885eb3e9a525f1ddca0b3692932c61db2d9216af47f925f209c2567",
+  "release_completion": false,
+  "pending": [
+    "Source692 full119 library Miri exact-result audit",
+    "Latest hosted original11 speed qualification including all retained misses/unavailable hardware",
+    "Final current-source/data-equivalence audit, issue checklist updates and actual merge"
+  ],
+  "scope": "Implementation/native evidence map, not an issue-close or merge claim. Historical sourceefd119 Miri cannot be relabeled as latest-source success. Broader phase/async/RegExp/SpiderMonkey/application requirements remain separately scoped."
+}

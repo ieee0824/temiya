@@ -99,6 +99,7 @@ pub struct Engine {
     options: EngineOptions,
     host_state: Option<Box<dyn Any>>,
     backend: ScriptBackend,
+    runtime: crate::runtime::Runtime,
     thread_confined: PhantomData<Rc<()>>,
 }
 
@@ -126,6 +127,7 @@ impl Engine {
             options,
             host_state,
             backend,
+            runtime: crate::runtime::Runtime::new(),
             thread_confined: PhantomData,
         }
     }
@@ -134,6 +136,11 @@ impl Engine {
     #[must_use]
     pub fn options(&self) -> &EngineOptions {
         &self.options
+    }
+
+    /// Borrows the shared context used by this engine and all its Realms.
+    pub fn allocation_context(&self) -> &crate::runtime::AllocationContext {
+        &self.runtime
     }
 
     /// Borrows host state when its concrete type matches `T`.
@@ -145,7 +152,7 @@ impl Engine {
     /// Creates a fresh Realm owned by this engine.
     #[must_use]
     pub fn create_realm(&self) -> RealmHandle {
-        let realm = Realm::ordinary();
+        let realm = Realm::ordinary_in(&self.runtime);
         RealmHandle {
             engine_id: self.id,
             realm_id: realm.identity(),
@@ -153,9 +160,36 @@ impl Engine {
         }
     }
 
+    /// Creates a Realm in this engine's heap with injected host services.
+    /// Opaque Rust captures in the hooks follow the host-state ownership contract.
+    #[must_use]
+    pub fn create_realm_with_host(&self, host: crate::runtime::HostHooks) -> RealmHandle {
+        let global = Object::new_in(&self.runtime);
+        let realm = Realm::try_new_with_host(global.clone(), Value::Object(global), host)
+            .expect("fresh Engine global has the engine allocation context");
+        RealmHandle {
+            engine_id: self.id,
+            realm_id: realm.identity(),
+            realm,
+        }
+    }
+
+    /// Collects unreachable runtime objects across all Realms of this engine.
+    /// Owned value, object, script and module handles remain valid.
+    pub fn collect_garbage(&self) -> Result<crate::gc::CollectionStats, EmbedError> {
+        self.runtime.collect_garbage().map_err(EmbedError::Host)
+    }
+
     /// Roots a runtime value in an owned handle for a Realm.
     pub fn value(&self, realm: &RealmHandle, value: Value) -> Result<ValueHandle, EmbedError> {
         self.require_realm(realm)?;
+        if let Value::Object(object) = &value {
+            realm
+                .realm
+                .global_object()
+                .check_allocation_context(object)
+                .map_err(EmbedError::Host)?;
+        }
         Ok(ValueHandle::new(self.id, realm.realm_id, value))
     }
 
@@ -220,7 +254,7 @@ impl Engine {
         K: Into<JsString>,
     {
         self.require_realm(realm)?;
-        let object = Object::new();
+        let object = Object::new_for(&realm.realm.global_object());
         for (name, value) in properties {
             self.require_value(realm, &value)?;
             object
@@ -407,12 +441,13 @@ impl Engine {
                 "compiled script belongs to another engine",
             ));
         }
-        match match &script.bytecode {
+        let completion = catch_unwind(AssertUnwindSafe(|| match &script.bytecode {
             Some(bytecode) => VirtualMachine::execute_in_realm(bytecode, &script.script.realm()),
             None => script.script.evaluate(),
-        }
-        .map_err(|error| Exception::runtime(error, self.id, script.realm_id))?
-        {
+        }))
+        .map_err(|_| Exception::engine("Rust panic during Script evaluation"))?
+        .map_err(|error| Exception::runtime(error, self.id, script.realm_id))?;
+        match completion {
             Completion::Normal(value) => Ok(ValueHandle {
                 engine_id: self.id,
                 realm_id: script.realm_id,
@@ -447,6 +482,13 @@ impl Engine {
 
     fn require_value(&self, realm: &RealmHandle, value: &ValueHandle) -> Result<(), EmbedError> {
         if value.engine_id == self.id && value.realm_id == realm.realm_id {
+            if let Value::Object(object) = &value.value {
+                realm
+                    .realm
+                    .global_object()
+                    .check_allocation_context(object)
+                    .map_err(EmbedError::Host)?;
+            }
             Ok(())
         } else {
             Err(EmbedError::EngineMismatch)
@@ -707,3 +749,1414 @@ impl fmt::Display for Exception {
 }
 
 impl std::error::Error for Exception {}
+
+#[cfg(test)]
+mod managed_allocation_tests {
+    use super::*;
+    #[test]
+    fn public_engine_evaluation_uses_the_owned_heap_in_the_migration_context() {
+        let engine = Engine::default();
+        let realm = engine.create_realm();
+        let baseline = engine.runtime.diagnostics().live;
+        assert!(
+            baseline > 0,
+            "managed Realm intrinsics must be allocated in its Runtime"
+        );
+        let script = engine
+            .compile(&realm, "var value={answer:42};value.self=value;value;")
+            .unwrap();
+        let value = engine.evaluate(&script).unwrap();
+        assert!(engine.runtime.diagnostics().live > baseline);
+        let Value::Object(object) = value.value() else {
+            panic!("object result")
+        };
+        assert!(
+            object
+                .get(&"answer".into())
+                .unwrap()
+                .same_value(&Value::Number(42.0))
+        );
+        assert!(
+            object
+                .get(&"self".into())
+                .unwrap()
+                .same_value(value.value())
+        );
+    }
+    #[test]
+    fn managed_host_boundaries_reject_foreign_objects_without_repeating_effects() {
+        use std::cell::Cell;
+        let first = Engine::default();
+        let second = Engine::default();
+        let realm = first.create_realm();
+        let other_realm = second.create_realm();
+        let foreign = second
+            .create_object(&other_realm, std::iter::empty::<(&str, ValueHandle)>())
+            .unwrap();
+        assert!(first.value(&realm, foreign.value().clone()).is_err());
+        let calls = Rc::new(Cell::new(0));
+        let called = calls.clone();
+        let raw = foreign.value().clone();
+        first
+            .register_global_function(&realm, "bad", move |context, _, _| {
+                called.set(called.get() + 1);
+                Ok(context.value(raw.clone()))
+            })
+            .unwrap();
+        let callback = realm.realm.global_object().get(&"bad".into()).unwrap();
+        let Value::Object(callback) = callback else {
+            panic!("callable")
+        };
+        assert!(
+            callback
+                .call(Value::Undefined, &[foreign.value().clone()])
+                .is_err()
+        );
+        assert_eq!(
+            calls.get(),
+            0,
+            "foreign arguments must be rejected before the callback"
+        );
+        let script = first.compile(&realm, "bad();").unwrap();
+        assert_eq!(
+            first.evaluate(&script).unwrap_err().kind(),
+            ExceptionKind::TypeError
+        );
+        assert_eq!(
+            calls.get(),
+            1,
+            "a failing native result must not cause a retry"
+        );
+        let caught = first
+            .compile(&realm, "try {bad();} catch(error){error.name;}")
+            .unwrap();
+        assert!(
+            first
+                .evaluate(&caught)
+                .unwrap()
+                .value()
+                .same_value(&Value::String("TypeError".into()))
+        );
+        assert_eq!(calls.get(), 2);
+    }
+
+    #[test]
+    fn retiring_a_native_capture_releases_the_heap_borrow_before_host_drop_reentry() {
+        use std::cell::Cell;
+        struct Reenter {
+            engine: Rc<Engine>,
+            realm: RealmHandle,
+            observed: Rc<Cell<bool>>,
+        }
+        impl Reenter {
+            fn keep_alive(&self) {}
+        }
+        impl Drop for Reenter {
+            fn drop(&mut self) {
+                assert!(
+                    self.engine.collect_garbage().is_err(),
+                    "retirement must reject recursive collection without holding the Heap borrow"
+                );
+                let script = self
+                    .engine
+                    .compile(&self.realm, "({answer:42}).answer;")
+                    .unwrap();
+                assert!(
+                    self.engine
+                        .evaluate(&script)
+                        .unwrap()
+                        .value()
+                        .same_value(&Value::Number(42.0))
+                );
+                self.observed.set(true);
+            }
+        }
+        let base = Engine::default();
+        let engine = Rc::new(base);
+        let realm = engine.create_realm();
+        let observed = Rc::new(Cell::new(false));
+        let state = Reenter {
+            engine: engine.clone(),
+            realm: realm.clone(),
+            observed: observed.clone(),
+        };
+        engine
+            .register_global_function(&realm, "retire", move |context, _, _| {
+                state.keep_alive();
+                Ok(context.value(Value::Undefined))
+            })
+            .unwrap();
+        let Value::Object(function) = realm.realm.global_object().get(&"retire".into()).unwrap()
+        else {
+            panic!("function")
+        };
+        let weak = function.downgrade();
+        drop(function);
+        let clear = engine.compile(&realm, "delete retire;").unwrap();
+        engine.evaluate(&clear).unwrap();
+        drop(clear);
+        engine.collect_garbage().unwrap();
+        assert!(
+            observed.get(),
+            "host Drop must run after retirement without a Heap borrow"
+        );
+        assert!(
+            weak.upgrade().is_none(),
+            "a reused slot must not resurrect its old function handle"
+        );
+    }
+
+    #[test]
+    fn a_partial_array_literal_keeps_its_first_object_alive_during_host_reentry_and_collection() {
+        for backend in [ScriptBackend::Ast, ScriptBackend::Bytecode] {
+            let base = Engine::builder().script_backend(backend).build();
+            let engine = Rc::new(base);
+            let realm = engine.create_realm();
+            let token = Rc::new(());
+            let weak = Rc::downgrade(&token);
+            engine
+                .register_global_function(&realm, "marker", move |context, _, _| {
+                    let _ = Rc::strong_count(&token);
+                    Ok(context.value(Value::Number(42.0)))
+                })
+                .unwrap();
+            let reentrant = engine.clone();
+            let callback_realm = realm.clone();
+            engine
+                .register_global_function(&realm, "trigger", move |context, _, _| {
+                    let nested = reentrant
+                        .compile(&callback_realm, "delete marker;40+2;")
+                        .unwrap();
+                    assert!(
+                        reentrant
+                            .evaluate(&nested)
+                            .unwrap()
+                            .value()
+                            .same_value(&Value::Number(42.0))
+                    );
+                    drop(nested);
+                    reentrant.runtime.collect_migration_graph().unwrap();
+                    Ok(context.value(Value::Number(0.0)))
+                })
+                .unwrap();
+            let script = engine
+                .compile(&realm, "var result=[{probe:marker},trigger()][0];result;")
+                .unwrap();
+            assert_eq!(script.backend(), backend);
+            let value = engine.evaluate(&script).unwrap();
+            drop(script);
+            let Value::Object(object) = value.value() else {
+                panic!("object")
+            };
+            let Value::Object(callback) = object.get(&"probe".into()).unwrap() else {
+                panic!("marker retained by partial literal")
+            };
+            assert!(
+                callback
+                    .call(Value::Undefined, &[])
+                    .unwrap()
+                    .same_value(&Value::Number(42.0))
+            );
+            drop(callback);
+            assert!(weak.upgrade().is_some());
+            let clear = engine
+                .compile(&realm, "result=undefined;delete trigger;")
+                .unwrap();
+            engine.evaluate(&clear).unwrap();
+            drop(clear);
+            drop(value);
+            engine.collect_garbage().unwrap();
+            assert!(
+                weak.upgrade().is_none(),
+                "partial-literal roots must end with evaluation/returned-handle lifetime"
+            );
+        }
+    }
+
+    #[test]
+    fn migrated_function_allocations_execute_through_the_public_ast_and_vm_apis() {
+        for backend in [ScriptBackend::Ast, ScriptBackend::Bytecode] {
+            let engine = Engine::builder().script_backend(backend).build();
+            engine.runtime.set_allocation_collection_interval(0);
+            let realm = engine.create_realm_with_host(crate::runtime::HostHooks::new(|| 42.0));
+            for source in [
+                "function sum(a,b){return a+b;}sum(20,22);",
+                "var constructedArray=new Array({answer:42});constructedArray[0].answer;",
+                "Object.prototype.valueOf.call(42).valueOf();",
+                "Object(42).valueOf();",
+                "(function(){return this.valueOf();}).call(42);",
+                "if(!(function(){return Object.prototype.hasOwnProperty.call(this,'[[PrimitiveValue]]');}).call(42)){42;}else{0;}",
+                "if((function(){return this.length;}).call('𝄞')===2&&Object.getPrototypeOf((function(){return this;}).call(42n))===BigInt.prototype&&Object.getPrototypeOf((function(){return this;}).call(true))===Boolean.prototype){42;}else{0;}",
+                "var primitiveNames=Object.getOwnPropertyNames('𝄞');if(primitiveNames.length===3&&primitiveNames[0]==='0'&&primitiveNames[1]==='1'&&primitiveNames[2]==='length'&&Object.getOwnPropertySymbols('𝄞').length===0&&Object.getOwnPropertyNames(42).length===0&&Object.prototype.hasOwnProperty.call('𝄞','length')&&Object.prototype.propertyIsEnumerable.call('𝄞','1')&&!Object.prototype.propertyIsEnumerable.call('𝄞','length')&&!Object.prototype.hasOwnProperty.call('𝄞','01')&&!Object.prototype.hasOwnProperty.call(42,'valueOf')){42;}else{0;}",
+                "if(BigInt(42)===42n&&Object.getPrototypeOf(new Boolean())===Boolean.prototype&&Object.getPrototypeOf(new Error())===Error.prototype){42;}else{0;}",
+                "var revocableMetadata=Proxy.revocable({},{});if(Object.getPrototypeOf(revocableMetadata)===Object.prototype&&Object.getPrototypeOf(revocableMetadata.revoke)===Function.prototype&&Proxy.revocable.name==='revocable'&&Proxy.revocable.length===2&&revocableMetadata.revoke.length===0){42;}else{0;}",
+                "var managedWeakKey={};var managedWeakMap=new WeakMap();managedWeakMap.set(managedWeakKey,{answer:42});var managedWeakSet=new WeakSet();managedWeakSet.add(managedWeakKey);if(managedWeakSet.has(managedWeakKey)&&Object.getPrototypeOf(managedWeakMap)===WeakMap.prototype&&Object.getPrototypeOf(managedWeakSet)===WeakSet.prototype){managedWeakMap.get(managedWeakKey).answer;}else{0;}",
+                "var managedMap=new Map();var managedKey={answer:20};managedMap.set(managedKey,{answer:42});var managedSet=new Set();managedSet.add(managedKey);if(managedMap.has(managedKey)&&managedSet.has(managedKey)&&Object.getPrototypeOf(managedMap)===Map.prototype&&Object.getPrototypeOf(managedSet)===Set.prototype){managedMap.get(managedKey).answer;}else{0;}",
+                "var keySource={answer:42};keySource[Symbol.iterator]=1;var names=Object.getOwnPropertyNames(keySource);var symbols=Object.getOwnPropertySymbols(keySource);var keys=Reflect.ownKeys(keySource);if(Array.isArray(names)&&Array.isArray(symbols)&&Array.isArray(keys)&&Object.getPrototypeOf(names)===Array.prototype&&names[0]==='answer'&&symbols[0]===Symbol.iterator&&keys.length===2){42;}else{0;}",
+                "var nullObject=Object.create(null);nullObject.answer=42;var derivedObject=Object.create(nullObject,{extra:{value:1}});if(Object.getPrototypeOf(nullObject)===null&&Object.getPrototypeOf(derivedObject)===nullObject&&derivedObject.extra===1){derivedObject.answer;}else{0;}",
+                "var descriptorSource={answer:{value:42}};var objectDescriptor=Object.getOwnPropertyDescriptor(descriptorSource,'answer');var reflectDescriptor=Reflect.getOwnPropertyDescriptor(descriptorSource,'answer');if(Object.getPrototypeOf(objectDescriptor)===Object.prototype&&Object.getPrototypeOf(reflectDescriptor)===Object.prototype&&objectDescriptor.value===reflectDescriptor.value){reflectDescriptor.value.value;}else{0;}",
+                "(new Object(42)).valueOf();",
+                "var originalObject={answer:42};if(Object(originalObject)===originalObject&&new Object(originalObject)===originalObject&&Object.getPrototypeOf(Object())===Object.prototype&&Object.getPrototypeOf(Object(null))===Object.prototype){42;}else{0;}",
+                "if(Object('abc').valueOf()==='abc'&&Object.getPrototypeOf(Object(true))===Boolean.prototype&&Object.getPrototypeOf(Object(Symbol.iterator))===Symbol.prototype&&Object(42n).valueOf()===42n){42;}else{0;}",
+                "(new Number(42)).valueOf();",
+                "(new Date(42)).valueOf();",
+                "if((new Date(0)).toISOString()==='1970-01-01T00:00:00.000Z'&&typeof Date()==='string'&&Date.now()===42){42;}else{0;}",
+                "if((new String('💡')).valueOf()==='💡' && String(Symbol.iterator).slice(0,7)==='Symbol('){42;}else{0;}",
+                "var buffer=new ArrayBuffer(8);var byteView=new TypedArray(buffer,1,4);var dataView=new DataView(buffer,2,2);if(ArrayBuffer.isView(byteView)&&ArrayBuffer.isView(dataView)&&Object.getPrototypeOf(byteView)===TypedArray.prototype&&Object.getPrototypeOf(dataView)===DataView.prototype){42;}else{0;}",
+                "if(ArrayBuffer.isView(new TypedArray(8))){42;}else{0;}",
+                "Number(42);",
+                r#"var jsonValue=JSON.parse('{"items":[{"answer":42}]}');if(Object.getPrototypeOf(jsonValue)===Object.prototype&&Array.isArray(jsonValue.items)&&Object.getPrototypeOf(jsonValue.items)===Array.prototype){jsonValue.items[0].answer;}else{0;}"#,
+                "JSON.parse('42');",
+                r#"var revived=JSON.parse('{"answer":20,"drop":1}',function(key,value){if(key==='answer'){return value+22;}if(key==='drop'){return undefined;}return value;});if(!('drop' in revived)){revived.answer;}else{0;}"#,
+                "var regexp=new RegExp('(a)?(b)');var match=regexp.exec('b');if(Array.isArray(match)&&Object.getPrototypeOf(match)===Array.prototype&&match.length===3&&match[1]===undefined&&match[2]==='b'){42;}else{0;}",
+                "var regexpCalled=RegExp('a+','g');if(regexpCalled.exec('aa')[0]==='aa'&&regexpCalled.exec('aa')===null){42;}else{0;}",
+                "var numberValues=Array.prototype.values.call(42);if(numberValues.next().done){42;}else{0;}",
+                "var textValues=Array.prototype.values.call('💡');if(textValues.next().value==='\\uD83D' && textValues.next().value==='\\uDCA1' && textValues.next().done){42;}else{0;}",
+                "var stack=[];stack.push(20,22);stack.shift()+stack.pop();",
+                "if(Object.prototype.toString.call(null)==='[object Null]' && Array.prototype.push.call(42,0)===1){42;}else{0;}",
+                "if(Object.prototype.valueOf.call(42n).valueOf()===42n){42;}else{0;}",
+                "var calledArray=Array({answer:42});calledArray[0].answer;",
+                "var arrayIter=[{answer:42}].values();arrayIter.next().value.answer;",
+                "var proxyValue=new Proxy({answer:42},{});proxyValue.answer;",
+                "var revocable=Proxy.revocable({answer:42},{});var beforeRevoke=revocable.proxy.answer;revocable.revoke();revocable.revoke();beforeRevoke;",
+                "var proxyCall=new Proxy(function(x){return x+2;},{});proxyCall(40);",
+                "function ProxyBox(x){this.answer=x;}var proxyCtor=new Proxy(ProxyBox,{});(new proxyCtor(42)).answer;",
+                "var proxyTrap=new Proxy(function(){return 0;},{apply:function(target,receiver,args){return args[0]+2;}});proxyTrap(40);",
+                "var stringIter='x'[Symbol.iterator]();if(stringIter.next().value==='x' && stringIter.next().done){42;}else{0;}",
+                "var names=Object.getOwnPropertyNames({answer:42});if(names[0]==='answer'){42;}else{0;}",
+                "var twice=(x)=>x*2;twice(21);",
+                "function Box(x){this.value=x;}var box=new Box(42);box.value;",
+                "function outer(x){return function(y){return x+y;};}var add=outer(20);add(22);",
+                "function boundSum(a,b){return this.base+a+b;}var sumBound=boundSum.bind({base:10},20);sumBound(12);",
+                "function BoundBox(x){this.value=x;}var Bound=BoundBox.bind(null,42);var boundBox=new Bound();if(boundBox instanceof Bound && boundBox instanceof BoundBox){boundBox.value;}else{0;}",
+            ] {
+                let script = engine.compile(&realm, source).unwrap();
+                assert_eq!(script.backend(), backend);
+                assert!(
+                    engine
+                        .evaluate(&script)
+                        .unwrap()
+                        .value()
+                        .same_value(&Value::Number(42.0)),
+                    "{backend:?} {source}"
+                );
+            }
+            let revoked_access = engine.compile(&realm, "revocable.proxy.answer;").unwrap();
+            assert_eq!(
+                engine.evaluate(&revoked_access).unwrap_err().kind(),
+                ExceptionKind::TypeError
+            );
+            let construct_revoke = engine.compile(&realm, "new revocable.revoke();").unwrap();
+            assert_eq!(
+                engine.evaluate(&construct_revoke).unwrap_err().kind(),
+                ExceptionKind::TypeError
+            );
+            let construct_bigint = engine.compile(&realm, "new BigInt(42);").unwrap();
+            assert_eq!(
+                engine.evaluate(&construct_bigint).unwrap_err().kind(),
+                ExceptionKind::TypeError
+            );
+            let symbol_string = engine
+                .compile(&realm, "new String(Symbol.iterator);")
+                .unwrap();
+            assert_eq!(
+                engine.evaluate(&symbol_string).unwrap_err().kind(),
+                ExceptionKind::TypeError
+            );
+            let invalid_regexp = engine.compile(&realm, "new RegExp('a','gg');").unwrap();
+            assert_eq!(
+                engine.evaluate(&invalid_regexp).unwrap_err().kind(),
+                ExceptionKind::SyntaxError
+            );
+            let invalid_json = engine.compile(&realm, "JSON.parse('{');").unwrap();
+            assert_eq!(
+                engine.evaluate(&invalid_json).unwrap_err().kind(),
+                ExceptionKind::SyntaxError
+            );
+            if backend == ScriptBackend::Ast {
+                let literal = engine
+                    .compile(&realm, "var literal=/(a)?(b)/;literal.exec('b')[2];")
+                    .unwrap();
+                assert!(
+                    engine
+                        .evaluate(&literal)
+                        .unwrap()
+                        .value()
+                        .same_value(&Value::String("b".into()))
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn managed_allocation_stress_passes_the_original_seven_teardown_fixtures() {
+        for case in crate::ownership_probe::CASES {
+            let engine = Engine::builder().build();
+            engine.runtime.set_allocation_collection_interval(0);
+            let observation = crate::ownership_probe::observe_with_engine(case, engine).unwrap();
+            assert!(
+                observation.alive_with_handle && observation.alive_with_clone,
+                "{observation:?}"
+            );
+            assert!(!observation.alive_after_drop, "{observation:?}");
+        }
+    }
+
+    #[test]
+    fn original_ownership_fixtures_release_after_last_handle_in_a_live_engine() {
+        for case in crate::ownership_probe::CASES {
+            let engine = Engine::builder().build();
+            engine.runtime.set_allocation_collection_interval(0);
+            let realm = engine.create_realm();
+            let token = Rc::new(());
+            let weak = Rc::downgrade(&token);
+            engine
+                .register_global_function(&realm, "marker", move |context, _, _| {
+                    let _keep_capture = &token;
+                    Ok(context.value(Value::Number(42.0)))
+                })
+                .unwrap();
+            let script = engine.compile(&realm, case.source).unwrap();
+            let root = engine.evaluate(&script).unwrap();
+            let clone = root.clone();
+            let cleanup = engine
+                .compile(&realm, "value=null;var escaped=null;")
+                .unwrap();
+            engine.evaluate(&cleanup).unwrap();
+            drop((script, cleanup));
+            engine.collect_garbage().unwrap();
+            assert!(weak.upgrade().is_some(), "{}", case.name);
+            let Value::Object(object) = root.value() else {
+                panic!("object")
+            };
+            let target = if case.constructor_root {
+                object.get(&"constructor".into()).unwrap()
+            } else {
+                Value::Object(object.clone())
+            };
+            let Value::Object(target) = target else {
+                panic!("constructor")
+            };
+            if case.callable_root {
+                assert!(
+                    target
+                        .call(Value::Undefined, &[])
+                        .unwrap()
+                        .same_value(&Value::Number(42.0))
+                );
+            }
+            let Value::Object(marker) = target.get(&"probe".into()).unwrap() else {
+                panic!("marker")
+            };
+            assert!(
+                marker
+                    .call(Value::Undefined, &[])
+                    .unwrap()
+                    .same_value(&Value::Number(42.0))
+            );
+            drop((marker, target, root));
+            engine.collect_garbage().unwrap();
+            assert!(weak.upgrade().is_some(), "clone: {}", case.name);
+            drop(clone);
+            engine.collect_garbage().unwrap();
+            assert!(weak.upgrade().is_none(), "last handle: {}", case.name);
+            let runtime = engine.runtime.clone();
+            drop((realm, engine));
+            assert_eq!(runtime.collect_migration_graph().unwrap().retained, 0);
+        }
+    }
+
+    #[test]
+    fn every_allocation_collection_preserves_ast_and_vm_execution() {
+        for backend in [ScriptBackend::Ast, ScriptBackend::Bytecode] {
+            let engine = Engine::builder().script_backend(backend).build();
+            engine.runtime.set_allocation_collection_interval(0);
+            let realm = engine.create_realm();
+            for source in [
+                "var partial={first:{answer:20},second:{answer:22}};partial.first.answer+partial.second.answer;",
+                "function outer(x){return function(y){return x+y;};}var add=outer(20);add(22);",
+                "function Box(x){this.answer=x;}var made=new Box(42);made.answer;",
+                "var array=[{answer:20},{answer:22}];array[0].answer+array[1].answer;",
+                "var map=new Map();var key={};map.set(key,{answer:42});map.get(key).answer;",
+                "var weak=new WeakMap();var weakKey={};weak.set(weakKey,{answer:42});weak.get(weakKey).answer;",
+                r#"JSON.parse('{"answer":42}').answer;"#,
+                "var wrapped=new Proxy({answer:42},{});wrapped.answer;",
+                "(function(){return this.valueOf();}).call(42);",
+                "var names=Object.getOwnPropertyNames({answer:42});if(names[0]==='answer'){42;}else{0;}",
+            ] {
+                let script = engine.compile(&realm, source).unwrap();
+                assert_eq!(script.backend(), backend);
+                assert!(
+                    engine
+                        .evaluate(&script)
+                        .unwrap()
+                        .value()
+                        .same_value(&Value::Number(42.0)),
+                    "{backend:?}: {source}"
+                );
+                engine.runtime.verify_migration_barriers().unwrap();
+            }
+            assert!(engine.runtime.diagnostics().collections > 100);
+            let runtime = engine.runtime.clone();
+            drop((realm, engine));
+            assert_eq!(runtime.collect_migration_graph().unwrap().retained, 0);
+        }
+    }
+
+    #[test]
+    fn managed_with_boxes_primitives_in_the_current_realm() {
+        let engine = Engine::builder().script_backend(ScriptBackend::Ast).build();
+        engine.runtime.set_allocation_collection_interval(0);
+        let realm = engine.create_realm();
+        for source in [
+            "var withAnswer=0;with('𝄞'){withAnswer=length+40;}withAnswer;",
+            "var withAnswer=0;with(42){withAnswer=valueOf();}withAnswer;",
+            "var withAnswer=0;with(42n){if(valueOf()===42n){withAnswer=42;}}withAnswer;",
+            "var withAnswer=0;with(true){if(Object.getPrototypeOf(valueOf())===Boolean.prototype){withAnswer=42;}}withAnswer;",
+        ] {
+            let script = engine.compile(&realm, source).unwrap();
+            assert!(
+                engine
+                    .evaluate(&script)
+                    .unwrap()
+                    .value()
+                    .same_value(&Value::Number(42.0)),
+                "{source}"
+            );
+            engine.runtime.verify_migration_barriers().unwrap();
+            engine.collect_garbage().unwrap();
+        }
+        for source in ["with(null){}", "with(undefined){}"] {
+            let script = engine.compile(&realm, source).unwrap();
+            assert_eq!(
+                engine.evaluate(&script).unwrap_err().kind(),
+                ExceptionKind::TypeError
+            );
+        }
+    }
+
+    #[test]
+    fn managed_module_handles_keep_dependency_cycles_after_engine_drop() {
+        let engine = Engine::builder().build();
+        engine.runtime.set_allocation_collection_interval(0);
+        let realm = engine.create_realm();
+        let runtime = engine.runtime.clone();
+        let module = engine.load_module(&realm, "a", |name| {
+            Ok(match name {
+                "a" => "import {getB} from 'b';export function getA(){return 20;}export function answer(){return getB();}",
+                "b" => "import {getA} from 'a';export function getB(){return getA()+22;}",
+                _ => return Err(HostError::type_error("unknown module")),
+            }.to_owned())
+        }).unwrap();
+        engine.evaluate_module(&module).unwrap();
+        let clone = module.clone();
+        drop((module, realm, engine));
+        runtime.verify_migration_barriers().unwrap();
+        runtime.collect_migration_graph().unwrap();
+        let Value::Object(answer) = clone.module.get_export(&"answer".into()).unwrap() else {
+            panic!("function")
+        };
+        assert!(
+            answer
+                .call(Value::Undefined, &[])
+                .unwrap()
+                .same_value(&Value::Number(42.0))
+        );
+        drop((answer, clone));
+        assert_eq!(runtime.collect_migration_graph().unwrap().retained, 0);
+    }
+
+    #[test]
+    fn managed_generator_frames_survive_gc_and_reject_execution_reentry() {
+        use crate::runtime::{Generator, GeneratorState};
+        let engine = Engine::builder().script_backend(ScriptBackend::Ast).build();
+        engine.runtime.set_allocation_collection_interval(0);
+        let realm = engine.create_realm();
+        let runtime = engine.runtime.clone();
+        let callback_runtime = runtime.clone();
+        engine
+            .register_global_function(&realm, "collectGenerator", move |context, _, _| {
+                callback_runtime.verify_migration_barriers().unwrap();
+                callback_runtime.collect_migration_graph().unwrap();
+                Ok(context.value(Value::Undefined))
+            })
+            .unwrap();
+        let script = engine.compile(&realm, r#"
+            var activeGenerator;
+            function* values(marker) {
+                collectGenerator();
+                var rejected=false;
+                try { activeGenerator.next(); } catch(error) { rejected=error instanceof TypeError; }
+                let input=yield marker;
+                collectGenerator();
+                if(!rejected){throw 0;}
+                return input.answer;
+            }
+            var generatorMarker={answer:20};
+            activeGenerator=values(generatorMarker);
+            generatorMarker.gen=activeGenerator;
+            generatorMarker=undefined;
+            activeGenerator;
+        "#).unwrap();
+        let handle = engine.evaluate(&script).unwrap();
+        drop(script);
+        let Value::Object(object) = handle.value() else {
+            panic!("generator")
+        };
+        let generator = Generator::from_object(object.clone()).unwrap();
+        let first = generator.next(Value::Undefined).unwrap();
+        let Value::Object(marker) = first.value else {
+            panic!("marker")
+        };
+        let weak = marker.downgrade();
+        drop(marker);
+        assert_eq!(generator.state(), GeneratorState::SuspendedYield);
+        realm
+            .realm
+            .global_object()
+            .set(&"activeGenerator".into(), Value::Undefined)
+            .unwrap();
+        runtime.collect_migration_graph().unwrap();
+        assert!(weak.upgrade().is_some());
+        let input = Object::new_for(object);
+        input
+            .create_data_property("answer".into(), Value::Number(42.0))
+            .unwrap();
+        let result = generator.next(Value::Object(input)).unwrap();
+        assert!(result.done && result.value.same_value(&Value::Number(42.0)));
+        assert_eq!(generator.state(), GeneratorState::Completed);
+        runtime.collect_migration_graph().unwrap();
+        assert!(
+            weak.upgrade().is_none(),
+            "completed generators release local bindings"
+        );
+        let Value::Object(next) = object.get(&"next".into()).unwrap() else {
+            panic!("next")
+        };
+        realm
+            .realm
+            .global_object()
+            .try_delete(&"collectGenerator".into())
+            .unwrap();
+        drop((generator, handle, realm, engine));
+        runtime.collect_migration_graph().unwrap();
+        let Value::Object(result) = next.call(Value::Undefined, &[]).unwrap() else {
+            panic!("result")
+        };
+        assert!(
+            result
+                .get(&"done".into())
+                .unwrap()
+                .same_value(&Value::Boolean(true))
+        );
+        assert!(result.prototype().is_some());
+        drop((result, next));
+        assert_eq!(runtime.collect_migration_graph().unwrap().retained, 0);
+    }
+
+    #[test]
+    fn managed_generator_references_keep_uncoerced_keys_and_aliases_across_suspension() {
+        use crate::runtime::Generator;
+        let engine = Engine::builder().script_backend(ScriptBackend::Ast).build();
+        engine.runtime.set_allocation_collection_interval(0);
+        let realm = engine.create_realm();
+        let runtime = engine.runtime.clone();
+        let callback_runtime = runtime.clone();
+        engine
+            .register_global_function(&realm, "collectGenerator", move |context, _, _| {
+                callback_runtime.verify_migration_barriers().unwrap();
+                callback_runtime.collect_migration_graph().unwrap();
+                Ok(context.value(Value::Undefined))
+            })
+            .unwrap();
+        let script = engine
+            .compile(
+                &realm,
+                r#"
+            var abandon; var resume; var keyCalls=0; var nestedOK=false;
+            function* assign(base,key){
+                arguments=undefined;
+                abandon=function(){base=undefined;key=undefined;};
+                base[key]=yield 20;
+                return 42;
+            }
+            var referenceBase={};var referenceKey={};
+            referenceKey[Symbol.toPrimitive]=function(){
+                keyCalls++;
+                try { resume(); } catch(error) { nestedOK=error instanceof TypeError; }
+                collectGenerator();
+                return 'answer';
+            };
+            var referenceGenerator=assign(referenceBase,referenceKey);
+            resume=referenceGenerator.next;
+            referenceGenerator;
+        "#,
+            )
+            .unwrap();
+        let handle = engine.evaluate(&script).unwrap();
+        drop(script);
+        let global = realm.realm.global_object();
+        let Value::Object(base) = global.get(&"referenceBase".into()).unwrap() else {
+            panic!("base")
+        };
+        let Value::Object(key) = global.get(&"referenceKey".into()).unwrap() else {
+            panic!("key")
+        };
+        let weak = [base.downgrade(), key.downgrade()];
+        drop((base, key));
+        let Value::Object(object) = handle.value() else {
+            panic!("generator")
+        };
+        let generator = Generator::from_object(object.clone()).unwrap();
+        assert!(
+            generator
+                .next(Value::Undefined)
+                .unwrap()
+                .value
+                .same_value(&Value::Number(20.0))
+        );
+        assert!(
+            global
+                .get(&"keyCalls".into())
+                .unwrap()
+                .same_value(&Value::Number(0.0))
+        );
+        let clear = engine.compile(&realm, "abandon();abandon=undefined;referenceBase=undefined;referenceKey=undefined;referenceGenerator=undefined;").unwrap();
+        engine.evaluate(&clear).unwrap();
+        drop(clear);
+        runtime.collect_migration_graph().unwrap();
+        assert!(weak.iter().all(|value| value.upgrade().is_some()));
+        assert!(generator.next(Value::Number(42.0)).unwrap().done);
+        assert!(
+            weak[0]
+                .upgrade()
+                .unwrap()
+                .get(&"answer".into())
+                .unwrap()
+                .same_value(&Value::Number(42.0))
+        );
+        assert!(
+            global
+                .get(&"keyCalls".into())
+                .unwrap()
+                .same_value(&Value::Number(1.0))
+        );
+        assert!(
+            global
+                .get(&"nestedOK".into())
+                .unwrap()
+                .same_value(&Value::Boolean(true))
+        );
+        global.set(&"resume".into(), Value::Undefined).unwrap();
+        global.try_delete(&"collectGenerator".into()).unwrap();
+        runtime.collect_migration_graph().unwrap();
+        assert!(weak.iter().all(|value| value.upgrade().is_none()));
+        drop((generator, handle, global, realm, engine));
+        assert_eq!(runtime.collect_migration_graph().unwrap().retained, 0);
+    }
+
+    #[test]
+    fn managed_generator_delegation_traces_only_remaining_values() {
+        use crate::runtime::Generator;
+        let engine = Engine::builder().script_backend(ScriptBackend::Ast).build();
+        engine.runtime.set_allocation_collection_interval(0);
+        let realm = engine.create_realm();
+        let script = engine.compile(&realm, "var abandon;function* values(items){arguments=undefined;abandon=function(){items=undefined;};yield* items;return 42;}var delegatedItems=[{answer:20},{answer:22}];var delegatedGenerator=values(delegatedItems);delegatedGenerator;").unwrap();
+        let handle = engine.evaluate(&script).unwrap();
+        drop(script);
+        let global = realm.realm.global_object();
+        let Value::Object(items) = global.get(&"delegatedItems".into()).unwrap() else {
+            panic!("items")
+        };
+        let weak: Vec<_> = ["0", "1"]
+            .into_iter()
+            .map(|index| {
+                let Value::Object(value) = items.get(&index.into()).unwrap() else {
+                    panic!("value")
+                };
+                value.downgrade()
+            })
+            .collect();
+        drop(items);
+        let Value::Object(object) = handle.value() else {
+            panic!("generator")
+        };
+        let generator = Generator::from_object(object.clone()).unwrap();
+        drop(generator.next(Value::Undefined).unwrap());
+        let clear = engine.compile(&realm, "abandon();abandon=undefined;delegatedItems=undefined;delegatedGenerator=undefined;").unwrap();
+        engine.evaluate(&clear).unwrap();
+        drop(clear);
+        engine.collect_garbage().unwrap();
+        assert!(weak[0].upgrade().is_none());
+        assert!(weak[1].upgrade().is_some());
+        let next = generator.next(Value::Undefined).unwrap();
+        let Value::Object(value) = next.value else {
+            panic!("value")
+        };
+        assert!(
+            value
+                .get(&"answer".into())
+                .unwrap()
+                .same_value(&Value::Number(22.0))
+        );
+        drop(value);
+        engine.collect_garbage().unwrap();
+        assert!(weak[1].upgrade().is_none());
+        assert!(
+            generator
+                .next(Value::Undefined)
+                .unwrap()
+                .value
+                .same_value(&Value::Number(42.0))
+        );
+        let runtime = engine.runtime.clone();
+        drop((generator, handle, global, realm, engine));
+        assert_eq!(runtime.collect_migration_graph().unwrap().retained, 0);
+    }
+
+    #[test]
+    fn managed_generator_abrupt_completion_releases_frames_and_keeps_escaped_errors() {
+        use crate::runtime::{Generator, GeneratorState};
+        for mode in 0..3 {
+            let engine = Engine::builder().script_backend(ScriptBackend::Ast).build();
+            engine.runtime.set_allocation_collection_interval(0);
+            let realm = engine.create_realm();
+            let runtime = engine.runtime.clone();
+            let script = engine.compile(&realm, "function* abrupt(marker){yield marker;throw marker;}var abruptMarker={answer:42};var abruptGenerator=abrupt(abruptMarker);abruptMarker=undefined;abruptGenerator;").unwrap();
+            let handle = engine.evaluate(&script).unwrap();
+            drop(script);
+            let Value::Object(object) = handle.value() else {
+                panic!("generator")
+            };
+            let generator = Generator::from_object(object.clone()).unwrap();
+            let first = generator.next(Value::Undefined).unwrap();
+            let Value::Object(marker) = first.value else {
+                panic!("marker")
+            };
+            let weak = marker.downgrade();
+            drop(marker);
+            runtime.collect_migration_graph().unwrap();
+            let foreign_runtime = crate::runtime::Runtime::new();
+            let foreign = Object::new_in(&foreign_runtime);
+            assert!(generator.next(Value::Object(foreign)).is_err());
+            assert_eq!(generator.state(), GeneratorState::SuspendedYield);
+            match mode {
+                0 => assert!(generator.return_(Value::Number(7.0)).unwrap().done),
+                1 => {
+                    let error = generator.throw(Value::Number(9.0)).unwrap_err();
+                    assert!(
+                        error
+                            .thrown_value()
+                            .unwrap()
+                            .same_value(&Value::Number(9.0))
+                    );
+                }
+                _ => {
+                    let error = generator.next(Value::Undefined).unwrap_err();
+                    runtime.collect_migration_graph().unwrap();
+                    assert!(
+                        matches!(error.thrown_value(), Some(Value::Object(value)) if Some(value.clone()) == weak.upgrade())
+                    );
+                    drop(error);
+                }
+            }
+            assert_eq!(generator.state(), GeneratorState::Completed);
+            runtime.collect_migration_graph().unwrap();
+            assert!(weak.upgrade().is_none());
+            drop((generator, handle, realm, engine));
+            assert_eq!(runtime.collect_migration_graph().unwrap().retained, 0);
+        }
+    }
+
+    #[test]
+    fn managed_promise_reactions_execute_ast_and_vm_callbacks_across_collection() {
+        use crate::runtime::Promise;
+        for backend in [ScriptBackend::Ast, ScriptBackend::Bytecode] {
+            let engine = Engine::builder().script_backend(backend).build();
+            engine.runtime.set_allocation_collection_interval(0);
+            let realm = engine.create_realm();
+            let runtime = engine.runtime.clone();
+            let callback_runtime = runtime.clone();
+            engine
+                .register_global_function(&realm, "collectPromise", move |context, _, _| {
+                    callback_runtime.verify_migration_barriers().unwrap();
+                    callback_runtime.collect_migration_graph().unwrap();
+                    Ok(context.value(Value::Undefined))
+                })
+                .unwrap();
+            let source = Promise::pending_on(realm.realm.job_queue()).unwrap();
+            realm
+                .realm
+                .global_object()
+                .create_data_property("sourcePromise".into(), Value::Object(source.object()))
+                .unwrap();
+            let script = engine.compile(&realm, "sourcePromise.then(function(value){collectPromise();return {answer:value.answer+22};});").unwrap();
+            assert_eq!(script.backend(), backend);
+            let handle = engine.evaluate(&script).unwrap();
+            let value = Object::new_for(&realm.realm.global_object());
+            value
+                .create_data_property("answer".into(), Value::Number(20.0))
+                .unwrap();
+            source.resolve(Value::Object(value)).unwrap();
+            realm
+                .realm
+                .global_object()
+                .set(&"sourcePromise".into(), Value::Undefined)
+                .unwrap();
+            drop((source, script));
+            runtime.collect_migration_graph().unwrap();
+            assert_eq!(engine.drain_jobs(&realm).unwrap(), 1);
+            let Value::Object(object) = handle.value() else {
+                panic!("derived Promise")
+            };
+            let promise = Promise::from_object(object.clone()).unwrap();
+            let Value::Object(result) = promise.await_result().unwrap() else {
+                panic!("result")
+            };
+            assert!(
+                result
+                    .get(&"answer".into())
+                    .unwrap()
+                    .same_value(&Value::Number(42.0))
+            );
+            let weak = object.downgrade();
+            realm
+                .realm
+                .global_object()
+                .try_delete(&"collectPromise".into())
+                .unwrap();
+            drop((result, promise, realm, engine));
+            runtime.collect_migration_graph().unwrap();
+            assert!(weak.upgrade().is_some());
+            drop(handle);
+            assert_eq!(runtime.collect_migration_graph().unwrap().retained, 0);
+            assert!(weak.upgrade().is_none());
+        }
+    }
+
+    #[test]
+    fn managed_async_results_keep_values_and_rejections_in_promise_slots() {
+        use crate::runtime::Promise;
+        let engine = Engine::builder().script_backend(ScriptBackend::Ast).build();
+        engine.runtime.set_allocation_collection_interval(0);
+        let realm = engine.create_realm();
+        for source in [
+            "(async function(){return {answer:42};})();",
+            "(async function(){throw {answer:42};})();",
+        ] {
+            let script = engine.compile(&realm, source).unwrap();
+            let handle = engine.evaluate(&script).unwrap();
+            engine.runtime.verify_migration_barriers().unwrap();
+            engine.collect_garbage().unwrap();
+            let Value::Object(object) = handle.value() else {
+                panic!("async Promise")
+            };
+            let promise = Promise::from_object(object.clone()).unwrap();
+            let outcome = promise.await_result();
+            let value = match &outcome {
+                Ok(value) => value,
+                Err(error) => error.thrown_value().unwrap(),
+            };
+            let Value::Object(value) = value else {
+                panic!("payload")
+            };
+            assert!(
+                value
+                    .get(&"answer".into())
+                    .unwrap()
+                    .same_value(&Value::Number(42.0))
+            );
+            engine.drain_jobs(&realm).unwrap();
+        }
+    }
+
+    #[test]
+    fn managed_object_statics_survive_proxy_and_descriptor_collection_reentry() {
+        for backend in [ScriptBackend::Ast, ScriptBackend::Bytecode] {
+            let engine = Engine::builder().script_backend(backend).build();
+            let realm = engine.create_realm();
+            let runtime = engine.runtime.clone();
+            engine
+                .register_global_function(&realm, "forceCollection", move |context, _, _| {
+                    runtime.verify_migration_barriers().unwrap();
+                    runtime.collect_migration_graph().unwrap();
+                    Ok(context.value(Value::Undefined))
+                })
+                .unwrap();
+            let script = engine.compile(&realm, r#"
+                var staticsTarget={answer:42};
+                var staticsProxy=new Proxy(staticsTarget,{
+                    ownKeys:function(target){forceCollection();return ['answer'];},
+                    getOwnPropertyDescriptor:function(target,key){forceCollection();return {value:target[key],writable:true,enumerable:true,configurable:true};}
+                });
+                var staticsNames=Object.getOwnPropertyNames(staticsProxy);
+                var staticsKeys=Reflect.ownKeys(staticsProxy);
+                var staticsDescriptor=Object.getOwnPropertyDescriptor(staticsProxy,'answer');
+                var staticsFieldDescriptor={};
+                Object.defineProperty(staticsFieldDescriptor,'value',{
+                    get:function(){forceCollection();return 42;}
+                });
+                var staticsCreated=Object.create(null,{answer:staticsFieldDescriptor});
+                var createDescriptors={};
+                Object.defineProperty(createDescriptors,'hidden',{get:function(){throw staticsTarget;}});
+                Object.defineProperty(createDescriptors,'first',{
+                    enumerable:true,get:function(){return {value:{answer:42}};}
+                });
+                Object.defineProperty(createDescriptors,'second',{
+                    enumerable:true,get:function(){forceCollection();return {value:42};}
+                });
+                createDescriptors[Symbol.iterator]={value:42};
+                var collectedCreated=Object.create(null,createDescriptors);
+                forceCollection();
+                if(staticsNames[0]==='answer'&&staticsKeys[0]==='answer'&&staticsDescriptor.value===42&&staticsCreated.answer===42&&collectedCreated.first.answer===42&&collectedCreated.second===42&&collectedCreated[Symbol.iterator]===42&&!('hidden' in collectedCreated)){42;}else{0;}
+            "#).unwrap();
+            assert!(
+                engine
+                    .evaluate(&script)
+                    .unwrap()
+                    .value()
+                    .same_value(&Value::Number(42.0)),
+                "{backend:?}"
+            );
+            let throwing = engine.compile(&realm, "Object.create(null,new Proxy({},{ownKeys:function(){forceCollection();throw staticsTarget;}}));").unwrap();
+            let error = engine.evaluate(&throwing).unwrap_err();
+            let target = realm
+                .realm
+                .global_object()
+                .get(&"staticsTarget".into())
+                .unwrap();
+            assert!(error.thrown().unwrap().value().same_value(&target));
+            realm
+                .realm
+                .global_object()
+                .try_delete(&"forceCollection".into())
+                .unwrap();
+            engine.runtime.verify_migration_barriers().unwrap();
+            engine.collect_garbage().unwrap();
+        }
+    }
+
+    #[test]
+    fn managed_json_revivers_keep_partial_graphs_alive_during_gc_and_evaluation_reentry() {
+        for backend in [ScriptBackend::Ast, ScriptBackend::Bytecode] {
+            let base = Engine::builder().script_backend(backend).build();
+            let engine = Rc::new(base);
+            let realm = engine.create_realm();
+            let calls = Rc::new(std::cell::RefCell::new(Vec::new()));
+            let callback_calls = calls.clone();
+            let callback_engine = engine.clone();
+            let callback_realm = realm.clone();
+            engine
+                .register_global_function(&realm, "revive", move |context, _, arguments| {
+                    callback_engine.runtime.verify_migration_barriers().unwrap();
+                    callback_engine.collect_garbage().unwrap();
+                    let nested = callback_engine.compile(&callback_realm, "40+2;").unwrap();
+                    assert!(
+                        callback_engine
+                            .evaluate(&nested)
+                            .unwrap()
+                            .value()
+                            .same_value(&Value::Number(42.0))
+                    );
+                    let Value::String(key) = arguments[0].value() else {
+                        panic!("reviver key");
+                    };
+                    let key = key.to_string_lossy();
+                    callback_calls.borrow_mut().push(key.clone());
+                    let value = match key.as_str() {
+                        "answer" => Value::Number(42.0),
+                        "drop" => Value::Undefined,
+                        "other" => {
+                            let prototype = callback_realm
+                                .realm
+                                .intrinsic(crate::runtime::IntrinsicId::ObjectPrototype);
+                            let object = Object::new_for(&prototype);
+                            assert!(object.set_prototype(Some(prototype)));
+                            object
+                                .create_data_property("answer".into(), Value::Number(42.0))
+                                .unwrap();
+                            Value::Object(object)
+                        }
+                        _ => arguments[1].value().clone(),
+                    };
+                    Ok(context.value(value))
+                })
+                .unwrap();
+            let script = engine.compile(&realm, r#"var result=JSON.parse('{"items":[{"answer":20,"drop":1}],"other":{"answer":20}}',revive);result;"#).unwrap();
+            assert_eq!(script.backend(), backend);
+            let value = engine.evaluate(&script).unwrap();
+            engine.runtime.verify_migration_barriers().unwrap();
+            assert_eq!(
+                *calls.borrow(),
+                ["answer", "drop", "0", "items", "answer", "other", ""]
+            );
+            let Value::Object(result) = value.value() else {
+                panic!("JSON root");
+            };
+            let weak = result.downgrade();
+            let Value::Object(items) = result.get(&"items".into()).unwrap() else {
+                panic!("JSON array");
+            };
+            let Value::Object(item) = items.get(&"0".into()).unwrap() else {
+                panic!("JSON item");
+            };
+            assert!(
+                item.get(&"answer".into())
+                    .unwrap()
+                    .same_value(&Value::Number(42.0))
+            );
+            assert!(item.get_own_property(&"drop".into()).is_none());
+            drop(item);
+            drop(items);
+            drop(script);
+            let clear = engine
+                .compile(&realm, "result=undefined;delete revive;")
+                .unwrap();
+            engine.evaluate(&clear).unwrap();
+            drop(clear);
+            engine.collect_garbage().unwrap();
+            assert!(weak.upgrade().is_some());
+            drop(value);
+            engine.collect_garbage().unwrap();
+            assert!(weak.upgrade().is_none());
+        }
+    }
+
+    #[test]
+    fn managed_function_captures_preserve_then_release_environment_cycles() {
+        for backend in [ScriptBackend::Ast, ScriptBackend::Bytecode] {
+            for source in [
+                "var escaped=(function make(){var payload={probe:marker};function read(){return payload.probe();}payload.back=read;return read;})();delete marker;escaped;",
+                "var escaped=(()=>{let payload={probe:marker};let read=()=>payload.probe();payload.back=read;return read;})();delete marker;escaped;",
+                "var escaped=(function make(){var probe=marker;function Box(){return probe();}return Box.prototype;})();delete marker;escaped;",
+            ] {
+                let engine = Engine::builder().script_backend(backend).build();
+                let realm = engine.create_realm();
+                let token = Rc::new(());
+                let weak = Rc::downgrade(&token);
+                engine
+                    .register_global_function(&realm, "marker", move |context, _, _| {
+                        let _ = Rc::strong_count(&token);
+                        Ok(context.value(Value::Number(42.0)))
+                    })
+                    .unwrap();
+                let script = engine.compile(&realm, source).unwrap();
+                assert_eq!(script.backend(), backend);
+                let value = engine.evaluate(&script).unwrap();
+                let clone = value.clone();
+                drop(script);
+                let clear = engine.compile(&realm, "escaped=undefined;").unwrap();
+                engine.evaluate(&clear).unwrap();
+                drop(clear);
+                drop(value);
+                engine.collect_garbage().unwrap();
+                assert!(weak.upgrade().is_some());
+                {
+                    let Value::Object(function) = clone.value() else {
+                        panic!("escaped function");
+                    };
+                    let function = if function.is_callable() {
+                        function.clone()
+                    } else {
+                        let Value::Object(constructor) =
+                            function.get(&"constructor".into()).unwrap()
+                        else {
+                            panic!("escaped prototype constructor");
+                        };
+                        constructor
+                    };
+                    assert!(
+                        function
+                            .call(Value::Undefined, &[])
+                            .unwrap()
+                            .same_value(&Value::Number(42.0))
+                    );
+                }
+                drop(clone);
+                engine.collect_garbage().unwrap();
+                assert!(
+                    weak.upgrade().is_none(),
+                    "unrooted closure/environment cycle: {backend:?} {source}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn public_handle_clones_preserve_a_js_cycle_then_allow_reclamation_at_a_test_safepoint() {
+        for backend in [ScriptBackend::Ast, ScriptBackend::Bytecode] {
+            for source in [
+                "var value={probe:marker};value.self=value;delete marker;value;",
+                "var value={probe:marker};value.other={owner:value};delete marker;value;",
+                "var value=[marker];value.probe=marker;value[1]=value;delete marker;value;",
+                "var value=[marker,,null];value.probe=marker;value[3]=value;delete marker;value;",
+                "var value=[];value.probe=marker;value[1000000]=value;delete marker;value;",
+            ] {
+                let engine = Engine::builder().script_backend(backend).build();
+                let realm = engine.create_realm();
+                let token = Rc::new(());
+                let weak = Rc::downgrade(&token);
+                engine
+                    .register_global_function(&realm, "marker", move |context, _, _| {
+                        let _ = Rc::strong_count(&token);
+                        Ok(context.value(Value::Number(42.0)))
+                    })
+                    .unwrap();
+                let script = engine.compile(&realm, source).unwrap();
+                assert_eq!(script.backend(), backend);
+                let value = engine.evaluate(&script).unwrap();
+                let cloned = value.clone();
+                drop(script);
+                let clear = engine.compile(&realm, "value=undefined;").unwrap();
+                engine.evaluate(&clear).unwrap();
+                drop(clear);
+                engine.collect_garbage().unwrap();
+                assert!(weak.upgrade().is_some(), "{backend:?} {source}");
+                drop(value);
+                engine.collect_garbage().unwrap();
+                assert!(weak.upgrade().is_some());
+                let Value::Object(object) = cloned.value() else {
+                    panic!("object result")
+                };
+                let Value::Object(callback) = object.get(&"probe".into()).unwrap() else {
+                    panic!("callback")
+                };
+                assert!(
+                    callback
+                        .call(Value::Undefined, &[])
+                        .unwrap()
+                        .same_value(&Value::Number(42.0))
+                );
+                drop(callback);
+                drop(cloned);
+                engine.collect_garbage().unwrap();
+                assert!(
+                    weak.upgrade().is_none(),
+                    "unrooted JS graph should release its marker: {backend:?} {source}"
+                );
+            }
+        }
+    }
+}
+
+// Diagnostic counters and pause timers are absent from production and Miri.
+// These observations complement the separate uninstrumented speed comparison.
+#[cfg(all(test, not(miri)))]
+mod runtime_workload_profile {
+    use super::*;
+    use std::{fs, io::Write, path::PathBuf, time::Instant};
+
+    fn snapshot(runtime: &crate::runtime::AllocationContext) -> serde_json::Value {
+        let (heap, roots, collection_ns) = runtime.profile_snapshot();
+        serde_json::json!({
+            "live": heap.live, "slots": heap.slots, "rooted": heap.rooted,
+            "collections": heap.collections, "reclaimed_total": heap.reclaimed_total,
+            "peak_live": heap.peak_live, "allocations_total": heap.live + heap.reclaimed_total,
+            "root_registration_calls": roots[0], "root_unregistration_calls": roots[1],
+            "peak_distinct_roots": roots[2], "collection_pause_ns": collection_ns,
+        })
+    }
+
+    #[test]
+    #[ignore = "requires the pinned original workload directory and an output path"]
+    fn original_eleven_runtime_allocation_root_and_collection_profile() {
+        let directory = PathBuf::from(
+            std::env::var("TEMIYA_PROFILE_WORKLOADS").expect("set TEMIYA_PROFILE_WORKLOADS"),
+        );
+        let output = std::env::var("TEMIYA_PROFILE_OUTPUT").expect("set TEMIYA_PROFILE_OUTPUT");
+        let manifest: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(directory.join("manifest.json")).unwrap())
+                .unwrap();
+        assert_eq!(
+            manifest["revision"],
+            "007556adccb8fb4329236932ca8175f8e8d119d2"
+        );
+        assert_eq!(
+            manifest["fixture_sha256"],
+            "177eb80ae73d1081eb620f747b4703e2a9f2731e0255bb60131b73b7dcac6464"
+        );
+        let definitions = manifest["workloads"].as_array().unwrap();
+        assert_eq!(definitions.len(), 11);
+        let mut cases = Vec::new();
+        for definition in definitions {
+            let name = definition["name"].as_str().unwrap();
+            let workload: serde_json::Value = serde_json::from_str(
+                &fs::read_to_string(directory.join(format!("{name}.json"))).unwrap(),
+            )
+            .unwrap();
+            for key in [
+                "name",
+                "iterations",
+                "expected",
+                "body_sha256",
+                "setup_sha256",
+                "invocation_sha256",
+            ] {
+                assert_eq!(workload[key], definition[key], "{name}: {key}");
+            }
+            let engine = Engine::default();
+            let realm = engine.create_realm();
+            let runtime = engine.runtime.clone();
+            let startup = snapshot(&runtime);
+            let setup = engine
+                .compile(&realm, workload["setup"].as_str().unwrap())
+                .unwrap();
+            engine.evaluate(&setup).unwrap();
+            drop(setup);
+            engine.collect_garbage().unwrap();
+            let before = snapshot(&runtime);
+            let start = Instant::now();
+            let script = engine
+                .compile(&realm, workload["invocation"].as_str().unwrap())
+                .unwrap();
+            let backend = script.backend();
+            let result = engine.evaluate(&script).unwrap();
+            drop(script);
+            let wall_ns = start.elapsed().as_nanos();
+            assert!(
+                result
+                    .value()
+                    .same_value(&Value::Number(workload["expected"].as_f64().unwrap())),
+                "{name}"
+            );
+            drop(result);
+            let after = snapshot(&runtime);
+            let pause_ns = after["collection_pause_ns"].as_u64().unwrap()
+                - before["collection_pause_ns"].as_u64().unwrap();
+            let allocation_count = after["allocations_total"].as_u64().unwrap()
+                - before["allocations_total"].as_u64().unwrap();
+            let registration_calls = after["root_registration_calls"].as_u64().unwrap()
+                - before["root_registration_calls"].as_u64().unwrap();
+            let unregistration_calls = after["root_unregistration_calls"].as_u64().unwrap()
+                - before["root_unregistration_calls"].as_u64().unwrap();
+            assert!(u128::from(pause_ns) <= wall_ns);
+            engine.collect_garbage().unwrap();
+            let after_explicit_collection = snapshot(&runtime);
+            drop((realm, engine));
+            runtime.collect_garbage().unwrap();
+            let released = snapshot(&runtime);
+            assert_eq!(released["live"], 0, "{name}");
+            assert_eq!(
+                released["root_registration_calls"], released["root_unregistration_calls"],
+                "{name}"
+            );
+            cases.push(serde_json::json!({
+                "name": name, "iterations": workload["iterations"], "expected": workload["expected"],
+                "validated": true, "backend": format!("{backend:?}"), "startup": startup,
+                "before": before, "after": after, "after_explicit_collection": after_explicit_collection,
+                "after_releasing_engine_and_handles": released, "managed_allocations": allocation_count,
+                "root_registration_calls": registration_calls, "root_unregistration_calls": unregistration_calls,
+                "wall_ns_including_automatic_collection": wall_ns, "automatic_collection_pause_ns": pause_ns,
+                "mutator_ns_excluding_collection_pauses": wall_ns - u128::from(pause_ns),
+            }));
+        }
+        let report = serde_json::json!({
+            "scope": "one validated original invocation after setup and explicit precollection; no warmup; test-only counters/timers",
+            "timing_instrumentation": true, "performance_acceptance": false,
+            "root_count_scope": "Heap Root registrations, not public facade clones sharing an existing registration",
+            "pause_scope": "Runtime collection including facade-cache clearing, sweep and retired host destruction; also measured on unwind",
+            "allocation_count_scope": "managed cells derived from cumulative reclaimed plus live, excluding ordinary Rust backing allocations",
+            "profile": if cfg!(debug_assertions) { "debug" } else { "release" }, "manifest": manifest, "cases": cases,
+        });
+        let mut file = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(output)
+            .unwrap();
+        writeln!(file, "{}", serde_json::to_string_pretty(&report).unwrap()).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod injected_engine_host_tests {
+    use super::*;
+
+    #[test]
+    fn injected_clock_runs_without_a_wall_clock_and_keeps_date_handles_after_engine_drop() {
+        let engine = Engine::default();
+        let realm = engine.create_realm_with_host(crate::runtime::HostHooks::new(|| 42.0));
+        let check = engine
+            .compile(&realm, "Date.now()===42 && typeof Date()==='string';")
+            .unwrap();
+        assert_eq!(check.backend(), ScriptBackend::Bytecode);
+        assert!(
+            engine
+                .evaluate(&check)
+                .unwrap()
+                .value()
+                .same_value(&Value::Boolean(true))
+        );
+        let make = engine.compile(&realm, "new Date();").unwrap();
+        let date = engine.evaluate(&make).unwrap();
+        drop((check, make));
+        engine.collect_garbage().unwrap();
+        let Value::Object(object) = date.value() else {
+            panic!("Date object")
+        };
+        let Value::Object(value_of) = object.get(&"valueOf".into()).unwrap() else {
+            panic!("Date method")
+        };
+        drop((realm, engine));
+        assert!(
+            value_of
+                .call(Value::Object(object.clone()), &[])
+                .unwrap()
+                .same_value(&Value::Number(42.0))
+        );
+    }
+}
+
+#[cfg(test)]
+mod collection_panic_boundary_tests {
+    use super::*;
+    use std::cell::Cell;
+
+    struct PanickingCapture(Rc<Cell<usize>>);
+    impl Drop for PanickingCapture {
+        fn drop(&mut self) {
+            self.0.set(self.0.get() + 1);
+            panic!("host capture destructor panic");
+        }
+    }
+
+    #[test]
+    fn collector_host_drop_panics_return_errors_and_leave_engine_reusable() {
+        for automatic in [false, true] {
+            let engine = Engine::default();
+            let realm = engine.create_realm();
+            let drops = Rc::new(Cell::new(0));
+            let capture = PanickingCapture(drops.clone());
+            let object = Object::native_function_in(engine.allocation_context(), move |_, _| {
+                let _retain = &capture;
+                Ok(Value::Undefined)
+            });
+            object
+                .create_data_property("self".into(), Value::Object(object.clone()))
+                .unwrap();
+            drop(object);
+            if automatic {
+                let script = engine.compile(&realm, "({answer:42});").unwrap();
+                engine.runtime.set_allocation_collection_interval(0);
+                assert_eq!(
+                    engine.evaluate(&script).unwrap_err().kind(),
+                    ExceptionKind::Engine
+                );
+            } else {
+                let EmbedError::Host(error) = engine.collect_garbage().unwrap_err() else {
+                    panic!("host error")
+                };
+                assert_eq!(error.kind(), RuntimeErrorKind::InternalError);
+            }
+            assert_eq!(drops.get(), 1);
+            engine.collect_garbage().unwrap();
+            let script = engine.compile(&realm, "40+2;").unwrap();
+            assert!(
+                engine
+                    .evaluate(&script)
+                    .unwrap()
+                    .value()
+                    .same_value(&Value::Number(42.0))
+            );
+        }
+    }
+}

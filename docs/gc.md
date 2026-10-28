@@ -9,6 +9,10 @@ or cross-heap handles fail safely.
 `Root<T>` registers reachability with RAII. Cloning a root adds a registration;
 dropping it removes one. Runtime state may store handles, but a handle that must
 survive a collection point needs a live root or a traced path from one.
+Root counts use slot-indexed entries with complete heap/slot/generation identity
+checks. A dense list tracks distinct active roots, so registration and final
+release avoid hashing, while collection visits active roots without scanning
+the heap's historical slot count. Root clones retain separate registrations.
 
 Types stored in the heap implement `Trace` and report every strong outgoing
 handle through `Tracer::mark`. They do not trace weak edges and must not retain
@@ -46,7 +50,16 @@ and reusable slots, reporting stale-generation and cross-heap edges immediately.
 `Heap::diagnostics` exposes live/root/free counts plus cumulative collections,
 reclamation, and peak live allocations for tests and leak investigations.
 
-The current Engine's ownership graph, selected migration representation,
-rooting protocol, public retention probe and implementation gates are documented
-in [runtime ownership migration](runtime-ownership.md). The strict probe currently
-fails on three cyclic cases after the function-allocation update; these collector contracts do not imply runtime reclamation.
+Engine Realms share a tracing heap. Public Object, Environment, Realm, JobQueue
+and Module facades register roots; stored graph edges contain typed handles.
+Normal allocation safepoints collect every 4096 managed allocations, and
+`Engine::collect_garbage` permits explicit collection. The runtime uses full
+collection; standalone minor-collector support does not enable generational
+collection in Engine.
+
+The ownership graph, rooting protocol, public retention probe and delivery gates
+are documented in [runtime ownership migration](runtime-ownership.md). The strict
+public probe now releases all seven fixtures after the final handle is dropped,
+while preserving values retained across Engine teardown. Separate live-Engine
+tests cover allocation safepoints, jobs, suspended generators, module cycles,
+weak collections, host reentry and cross-heap rejection.

@@ -1,0 +1,44 @@
+--------------------------------------------------------------------------------
+Profile data file '/tmp/temiya-separated-vm-mono-callgrind.out' (creator: callgrind-3.24.0)
+--------------------------------------------------------------------------------
+I1 cache: 
+D1 cache: 
+LL cache: 
+Timerange: Basic block 0 - 2166656579
+Trigger: Program termination
+Profiled target:  /tmp/temiya-separated-vm-frozen-worker /tmp/temiya-omoikane-workloads-v2/prop-mono.json 1 (PID 1578757, part 1)
+Events recorded:  Ir
+Events shown:     Ir
+Event sort order: Ir
+Thresholds:       80
+Include dirs:     
+User annotated:   
+Auto-annotation:  on
+
+--------------------------------------------------------------------------------
+Ir                      
+--------------------------------------------------------------------------------
+12,854,849,462 (100.0%)  PROGRAM TOTALS
+
+--------------------------------------------------------------------------------
+Ir                      file:function
+--------------------------------------------------------------------------------
+2,954,006,802 (22.98%)  ???:<temiya::bytecode::vm::VirtualMachine>::run::<false>'2 [/tmp/temiya-separated-vm-frozen-worker]
+1,056,000,332 ( 8.21%)  ???:<temiya::runtime::environment::Environment>::get_function_binding_at'2 [/tmp/temiya-separated-vm-frozen-worker]
+  782,013,419 ( 6.08%)  ???:core::ptr::drop_glue::<temiya::runtime::Value> [/tmp/temiya-separated-vm-frozen-worker]
+  768,000,934 ( 5.97%)  ???:<temiya::runtime::stored::StoredValue>::load::<temiya::runtime::Object>'2 [/tmp/temiya-separated-vm-frozen-worker]
+  602,000,302 ( 4.68%)  ???:temiya::bytecode::vm::binary'2 [/tmp/temiya-separated-vm-frozen-worker]
+  569,999,764 ( 4.43%)  ???:<temiya::runtime::Object>::own_data_value_with_hint'2 [/tmp/temiya-separated-vm-frozen-worker]
+  516,000,355 ( 4.01%)  ???:<temiya::runtime::Value as core::clone::Clone>::clone'2 [/tmp/temiya-separated-vm-frozen-worker]
+  512,005,888 ( 3.98%)  ???:<temiya::gc::Heap>::shared::<temiya::runtime::ObjectData> [/tmp/temiya-separated-vm-frozen-worker]
+  416,004,656 ( 3.24%)  ???:<temiya::runtime::managed::Runtime>::root_object [/tmp/temiya-separated-vm-frozen-worker]
+  376,009,783 ( 2.93%)  ???:<temiya::runtime::managed::Runtime>::remember_active_object [/tmp/temiya-separated-vm-frozen-worker]
+  352,000,174 ( 2.74%)  ???:<temiya::runtime::stored::StoredValue>::load::<temiya::runtime::environment::Environment> [/tmp/temiya-separated-vm-frozen-worker]
+  284,002,649 ( 2.21%)  ???:<temiya::runtime::Object>::try_get_own_property'2 [/tmp/temiya-separated-vm-frozen-worker]
+  243,999,782 ( 1.90%)  ???:<temiya::runtime::environment::Environment>::update_number_binding'2 [/tmp/temiya-separated-vm-frozen-worker]
+  224,018,714 ( 1.74%)  ???:<temiya::runtime::Object>::define_ordinary_property'2 [/tmp/temiya-separated-vm-frozen-worker]
+  198,002,178 ( 1.54%)  ???:<temiya::runtime::Object>::try_get_own_property [/tmp/temiya-separated-vm-frozen-worker]
+  196,000,275 ( 1.52%)  ???:<temiya::runtime::interpreter::Reference>::property_in_realm'2 [/tmp/temiya-separated-vm-frozen-worker]
+  188,000,630 ( 1.46%)  ???:<temiya::runtime::stored::StoredDescriptor>::load [/tmp/temiya-separated-vm-frozen-worker]
+  164,000,833 ( 1.28%)  ???:<temiya::runtime::stored::StoredValue>::store_owned::<temiya::runtime::environment::Environment> [/tmp/temiya-separated-vm-frozen-worker]
+

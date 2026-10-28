@@ -38,7 +38,8 @@ fn property_keys_distinguish_strings_symbols_and_array_indices() {
 
 #[test]
 fn descriptor_conversion_round_trips_present_fields() {
-    let getter = Object::native_function(|_, _| Ok(Value::Number(3.0)));
+    let context = temiya::runtime::AllocationContext::new();
+    let getter = Object::native_function_in(&context, |_, _| Ok(Value::Number(3.0)));
     let descriptor = PropertyDescriptor {
         get: Some(Some(getter.clone())),
         set: Some(None),
@@ -46,7 +47,7 @@ fn descriptor_conversion_round_trips_present_fields() {
         configurable: Some(false),
         ..PropertyDescriptor::default()
     };
-    let object = descriptor.to_object().unwrap();
+    let object = descriptor.to_object(&context).unwrap();
     let converted = PropertyDescriptor::from_object(&object).unwrap();
     assert_eq!(converted.get.flatten(), Some(getter));
     assert_eq!(converted.set, Some(None));
@@ -55,7 +56,7 @@ fn descriptor_conversion_round_trips_present_fields() {
     assert!(converted.value.is_none());
     assert!(converted.writable.is_none());
 
-    let invalid = Object::new();
+    let invalid = Object::new_in(&context);
     invalid
         .create_data_property("get".into(), Value::Number(1.0))
         .unwrap();
@@ -69,13 +70,14 @@ fn descriptor_conversion_round_trips_present_fields() {
 
 #[test]
 fn descriptor_conversion_observes_inherited_fields_and_getters() {
-    let prototype = Object::new();
+    let allocation_context = temiya::runtime::AllocationContext::new();
+    let prototype = Object::new_in(&allocation_context);
     prototype
         .create_data_property("enumerable".into(), Value::Boolean(true))
         .unwrap();
     let calls = Rc::new(RefCell::new(0));
     let observed = Rc::clone(&calls);
-    let getter = Object::native_function(move |this, _| {
+    let getter = Object::native_function_in(&allocation_context, move |this, _| {
         *observed.borrow_mut() += 1;
         assert!(matches!(this, Value::Object(_)));
         Ok(Value::Boolean(true))
@@ -86,7 +88,7 @@ fn descriptor_conversion_observes_inherited_fields_and_getters() {
             PropertyDescriptor::accessor(Some(getter), None, false, true),
         )
         .unwrap();
-    let object = Object::new();
+    let object = Object::new_in(&allocation_context);
     assert!(object.set_prototype(Some(prototype)));
 
     let descriptor = PropertyDescriptor::from_object(&object).unwrap();
@@ -97,7 +99,8 @@ fn descriptor_conversion_observes_inherited_fields_and_getters() {
 
 #[test]
 fn descriptor_invariants_and_partial_attribute_updates_are_enforced() {
-    let object = Object::new();
+    let allocation_context = temiya::runtime::AllocationContext::new();
+    let object = Object::new_in(&allocation_context);
     assert!(
         object
             .define_own_property(
@@ -191,14 +194,15 @@ fn descriptor_invariants_and_partial_attribute_updates_are_enforced() {
 
 #[test]
 fn descriptor_kind_changes_require_configurability() {
-    let object = Object::new();
+    let allocation_context = temiya::runtime::AllocationContext::new();
+    let object = Object::new_in(&allocation_context);
     object
         .define_own_property(
             key("open"),
             PropertyDescriptor::data(Value::Number(1.0), true, true, true),
         )
         .unwrap();
-    let getter = Object::native_function(|_, _| Ok(Value::Number(2.0)));
+    let getter = Object::native_function_in(&allocation_context, |_, _| Ok(Value::Number(2.0)));
     assert!(
         object
             .define_own_property(
@@ -230,8 +234,9 @@ fn descriptor_kind_changes_require_configurability() {
 
 #[test]
 fn ordinary_get_and_set_preserve_the_receiver_across_prototypes() {
-    let prototype = Object::new();
-    let getter = Object::native_function(|this, _| {
+    let allocation_context = temiya::runtime::AllocationContext::new();
+    let prototype = Object::new_in(&allocation_context);
+    let getter = Object::native_function_in(&allocation_context, |this, _| {
         let Value::Object(receiver) = this else {
             panic!("receiver was not an object");
         };
@@ -239,7 +244,7 @@ fn ordinary_get_and_set_preserve_the_receiver_across_prototypes() {
     });
     let assigned = Rc::new(RefCell::new(None));
     let assigned_by_setter = Rc::clone(&assigned);
-    let setter = Object::native_function(move |this, arguments| {
+    let setter = Object::native_function_in(&allocation_context, move |this, arguments| {
         let Value::Object(receiver) = this else {
             panic!("receiver was not an object");
         };
@@ -259,7 +264,7 @@ fn ordinary_get_and_set_preserve_the_receiver_across_prototypes() {
         )
         .unwrap();
 
-    let object = Object::new();
+    let object = Object::new_in(&allocation_context);
     object
         .create_data_property(key("marker"), Value::String(JsString::from("child")))
         .unwrap();
@@ -283,7 +288,8 @@ fn ordinary_get_and_set_preserve_the_receiver_across_prototypes() {
 
 #[test]
 fn ordinary_objects_reject_forbidden_writes_and_deletes() {
-    let object = Object::new();
+    let allocation_context = temiya::runtime::AllocationContext::new();
+    let object = Object::new_in(&allocation_context);
     object
         .define_own_property(
             key("locked"),
@@ -305,8 +311,85 @@ fn ordinary_objects_reject_forbidden_writes_and_deletes() {
 }
 
 #[test]
+fn existing_data_writes_preserve_flags_heap_ownership_and_traced_edges() {
+    let context = temiya::runtime::AllocationContext::new();
+    let object = Object::new_in(&context);
+    let old = Object::new_in(&context);
+    object
+        .define_own_property(
+            key("slot"),
+            PropertyDescriptor::data(Value::Object(old), true, false, false),
+        )
+        .unwrap();
+    object.prevent_extensions();
+    let child = Object::new_in(&context);
+    child
+        .create_data_property(key("answer"), Value::Number(42.0))
+        .unwrap();
+    assert!(object.set(&key("slot"), Value::Object(child)).unwrap());
+    let collected = context.collect_garbage().unwrap();
+    assert_eq!(collected.retained, 2);
+    assert_eq!(collected.reclaimed, 1);
+    let descriptor = object.get_own_property(&key("slot")).unwrap();
+    assert_eq!(descriptor.writable, Some(true));
+    assert_eq!(descriptor.enumerable, Some(false));
+    assert_eq!(descriptor.configurable, Some(false));
+    let Value::Object(child) = descriptor.value.unwrap() else {
+        panic!("stored child lost");
+    };
+    assert_same(child.get(&key("answer")).unwrap(), Value::Number(42.0));
+    let foreign_context = temiya::runtime::AllocationContext::new();
+    let foreign = Object::new_in(&foreign_context);
+    assert!(object.set(&key("slot"), Value::Object(foreign)).is_err());
+    assert_same(object.get(&key("slot")).unwrap(), Value::Object(child));
+    assert!(object.set(&key("slot"), Value::Number(-0.0)).unwrap());
+    assert_same(object.get(&key("slot")).unwrap(), Value::Number(-0.0));
+    let collected = context.collect_garbage().unwrap();
+    assert_eq!(collected.retained, 1);
+    assert_eq!(collected.reclaimed, 1);
+}
+
+#[test]
+fn existing_data_writes_to_another_receiver_leave_the_base_unchanged() {
+    let context = temiya::runtime::AllocationContext::new();
+    let base = Object::new_in(&context);
+    let receiver = Object::new_in(&context);
+    base.create_data_property(key("slot"), Value::Number(1.0))
+        .unwrap();
+    receiver
+        .define_own_property(
+            key("slot"),
+            PropertyDescriptor::data(Value::Number(2.0), false, true, true),
+        )
+        .unwrap();
+    assert!(
+        !base
+            .set_with_receiver(
+                &key("slot"),
+                Value::Number(3.0),
+                Value::Object(receiver.clone())
+            )
+            .unwrap()
+    );
+    assert_same(base.get(&key("slot")).unwrap(), Value::Number(1.0));
+    assert_same(receiver.get(&key("slot")).unwrap(), Value::Number(2.0));
+    assert!(receiver.delete(&key("slot")));
+    assert!(
+        base.set_with_receiver(
+            &key("slot"),
+            Value::Number(3.0),
+            Value::Object(receiver.clone())
+        )
+        .unwrap()
+    );
+    assert_same(base.get(&key("slot")).unwrap(), Value::Number(1.0));
+    assert_same(receiver.get(&key("slot")).unwrap(), Value::Number(3.0));
+}
+
+#[test]
 fn own_property_keys_follow_ecmascript_order() {
-    let object = Object::new();
+    let allocation_context = temiya::runtime::AllocationContext::new();
+    let object = Object::new_in(&allocation_context);
     let first_symbol = Symbol::new(Some(JsString::from("first")));
     let second_symbol = Symbol::new(Some(JsString::from("second")));
     for property in [
@@ -336,9 +419,10 @@ fn own_property_keys_follow_ecmascript_order() {
 
 #[test]
 fn prototype_changes_reject_cycles_and_non_extensible_objects() {
-    let first = Object::new();
-    let second = Object::new();
-    let third = Object::new();
+    let allocation_context = temiya::runtime::AllocationContext::new();
+    let first = Object::new_in(&allocation_context);
+    let second = Object::new_in(&allocation_context);
+    let third = Object::new_in(&allocation_context);
     assert!(first.set_prototype(Some(second.clone())));
     assert!(second.set_prototype(Some(third.clone())));
     assert!(!third.set_prototype(Some(first)));
@@ -347,4 +431,88 @@ fn prototype_changes_reject_cycles_and_non_extensible_objects() {
     assert!(second.set_prototype(Some(third.clone())));
     assert!(!second.set_prototype(None));
     assert_eq!(second.prototype(), Some(third));
+}
+
+#[test]
+fn create_data_property_replaces_configurable_accessors_without_calling_them() {
+    let context = temiya::runtime::AllocationContext::new();
+    let object = Object::new_in(&context);
+    let getter = Object::native_function_in(&context, |_, _| {
+        panic!("replacing a descriptor must not invoke its getter")
+    });
+    object
+        .define_own_property(
+            key("x"),
+            PropertyDescriptor::accessor(Some(getter), None, false, true),
+        )
+        .unwrap();
+    object
+        .create_data_property(key("last"), Value::Undefined)
+        .unwrap();
+    object.prevent_extensions();
+    let child = Object::new_in(&context);
+    child
+        .create_data_property(key("self"), Value::Object(child.clone()))
+        .unwrap();
+    assert!(
+        object
+            .create_data_property(key("x"), Value::Object(child.clone()))
+            .unwrap()
+    );
+    drop(child);
+    context.collect_garbage().unwrap();
+    let descriptor = object.get_own_property(&key("x")).unwrap();
+    assert!(descriptor.is_data_descriptor());
+    assert_eq!(descriptor.writable, Some(true));
+    assert_eq!(descriptor.enumerable, Some(true));
+    assert_eq!(descriptor.configurable, Some(true));
+    let Some(Value::Object(child)) = descriptor.value else {
+        panic!("object value")
+    };
+    assert!(
+        child
+            .get(&key("self"))
+            .unwrap()
+            .same_value(&Value::Object(child.clone()))
+    );
+    assert_eq!(object.own_property_keys(), vec![key("x"), key("last")]);
+    assert!(
+        !object
+            .create_data_property(key("new"), Value::Undefined)
+            .unwrap()
+    );
+}
+
+#[test]
+fn create_data_property_rejects_foreign_edges_atomically_even_when_nonextensible() {
+    let context = temiya::runtime::AllocationContext::new();
+    let foreign_context = temiya::runtime::AllocationContext::new();
+    let object = Object::new_in(&context);
+    object
+        .create_data_property(key("x"), Value::Number(42.0))
+        .unwrap();
+    object
+        .define_own_property(
+            key("locked"),
+            PropertyDescriptor::data(Value::Number(1.0), true, true, false),
+        )
+        .unwrap();
+    object.prevent_extensions();
+    let foreign = Object::new_in(&foreign_context);
+    for name in ["x", "locked", "new"] {
+        assert!(
+            object
+                .create_data_property(key(name), Value::Object(foreign.clone()))
+                .is_err()
+        );
+    }
+    assert_same(object.get(&key("x")).unwrap(), Value::Number(42.0));
+    assert_same(object.get(&key("locked")).unwrap(), Value::Number(1.0));
+    assert!(
+        !object
+            .create_data_property(key("locked"), Value::Number(2.0))
+            .unwrap()
+    );
+    assert_eq!(object.own_property_keys(), vec![key("x"), key("locked")]);
+    context.collect_garbage().unwrap();
 }

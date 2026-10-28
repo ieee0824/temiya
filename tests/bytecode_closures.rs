@@ -14,6 +14,7 @@ fn value(realm: &Realm, source: &str) -> Value {
 
 #[test]
 fn function_and_arrow_bodies_execute_verified_bytecode_with_parameters() {
+    let allocation_context = temiya::runtime::AllocationContext::new();
     for source in [
         "(function(a,b){return a+b;})(20,22);",
         "((a,b)=>a+b)(20,22);",
@@ -23,7 +24,8 @@ fn function_and_arrow_bodies_execute_verified_bytecode_with_parameters() {
         "(function(){return arguments[0]+arguments[1];})(20,22);",
     ] {
         assert!(
-            value(&Realm::ordinary(), source).same_value(&Value::Number(42.0)),
+            value(&Realm::ordinary_in(&allocation_context), source)
+                .same_value(&Value::Number(42.0)),
             "{source}"
         );
     }
@@ -31,6 +33,7 @@ fn function_and_arrow_bodies_execute_verified_bytecode_with_parameters() {
 
 #[test]
 fn prepared_parameter_frames_preserve_duplicates_missing_arguments_and_captures() {
+    let allocation_context = temiya::runtime::AllocationContext::new();
     for source in [
         "(function(a,a){return a;})(1,42);",
         "(function(a,a){return typeof a==='undefined'?42:0;})(1);",
@@ -43,7 +46,8 @@ fn prepared_parameter_frames_preserve_duplicates_missing_arguments_and_captures(
         "(function(a){return arguments.length===2 && a===20?42:0;})(20,22);",
     ] {
         assert!(
-            value(&Realm::ordinary(), source).same_value(&Value::Number(42.0)),
+            value(&Realm::ordinary_in(&allocation_context), source)
+                .same_value(&Value::Number(42.0)),
             "{source}"
         );
     }
@@ -51,6 +55,7 @@ fn prepared_parameter_frames_preserve_duplicates_missing_arguments_and_captures(
 
 #[test]
 fn arguments_remain_visible_to_escaped_arrows_and_independent_calls() {
+    let allocation_context = temiya::runtime::AllocationContext::new();
     for source in [
         "var f=(function(a){return ()=>arguments[0];})(42);f();",
         "var f=(function(a){return ()=>()=>arguments[0];})(42);f()();",
@@ -68,7 +73,8 @@ fn arguments_remain_visible_to_escaped_arrows_and_independent_calls() {
         "(function(){function arguments(){return 42;}return arguments();})();",
     ] {
         assert!(
-            value(&Realm::ordinary(), source).same_value(&Value::Number(42.0)),
+            value(&Realm::ordinary_in(&allocation_context), source)
+                .same_value(&Value::Number(42.0)),
             "{source}"
         );
     }
@@ -76,8 +82,9 @@ fn arguments_remain_visible_to_escaped_arrows_and_independent_calls() {
 
 #[test]
 fn escaped_captures_share_mutations_and_outlive_code_and_realm_handles() {
+    let allocation_context = temiya::runtime::AllocationContext::new();
     let closure = {
-        let realm = Realm::ordinary();
+        let realm = Realm::ordinary_in(&allocation_context);
         value(
             &realm,
             "(function(start){let value=start;return function(step){value=value+step;return value;};})(20);",
@@ -102,6 +109,7 @@ fn escaped_captures_share_mutations_and_outlive_code_and_realm_handles() {
 
 #[test]
 fn arrows_capture_lexical_this_arguments_and_new_target() {
+    let allocation_context = temiya::runtime::AllocationContext::new();
     for (source, expected) in [
         (
             "this.answer=42;var maker=function(){return ()=>this.answer;};var get=maker.call(this);get();",
@@ -125,12 +133,12 @@ fn arrows_capture_lexical_this_arguments_and_new_target() {
         ),
     ] {
         assert!(
-            value(&Realm::ordinary(), source).same_value(&expected),
+            value(&Realm::ordinary_in(&allocation_context), source).same_value(&expected),
             "{source}"
         );
     }
-    let global = Object::new();
-    let this = Object::new();
+    let global = Object::new_in(&allocation_context);
+    let this = Object::new_in(&allocation_context);
     this.create_data_property("answer".into(), Value::Number(42.0))
         .unwrap();
     let realm = Realm::new(global, Value::Object(this));
@@ -140,18 +148,21 @@ fn arrows_capture_lexical_this_arguments_and_new_target() {
 
 #[test]
 fn named_recursion_and_per_iteration_block_captures_are_real_environments() {
+    let allocation_context = temiya::runtime::AllocationContext::new();
     assert!(
         value(
-            &Realm::ordinary(),
+            &Realm::ordinary_in(&allocation_context),
             "(function self(n){if(n===0){return 42;}return self(n-1);})(10);"
         )
         .same_value(&Value::Number(42.0))
     );
     let source = "let i=0;let run=true;let first;let second;while(run){let snapshot=i;if(i===0){first=()=>snapshot;}else{second=()=>snapshot;run=false;}i=i+1;}first()*100+second();";
-    assert!(value(&Realm::ordinary(), source).same_value(&Value::Number(1.0)));
+    assert!(
+        value(&Realm::ordinary_in(&allocation_context), source).same_value(&Value::Number(1.0))
+    );
     assert!(
         value(
-            &Realm::ordinary(),
+            &Realm::ordinary_in(&allocation_context),
             "(function self(){self=0;return self.name;})();"
         )
         .same_value(&Value::String("self".into()))
@@ -160,6 +171,7 @@ fn named_recursion_and_per_iteration_block_captures_are_real_environments() {
 
 #[test]
 fn captured_tdz_const_throw_and_recursion_failure_preserve_values() {
+    let allocation_context = temiya::runtime::AllocationContext::new();
     for (source, kind) in [
         (
             "var get=()=>later;get();let later=42;",
@@ -175,7 +187,7 @@ fn captured_tdz_const_throw_and_recursion_failure_preserve_values() {
             RuntimeErrorKind::RangeError,
         ),
     ] {
-        let realm = Realm::ordinary();
+        let realm = Realm::ordinary_in(&allocation_context);
         let code = BytecodeCompiler::compile(source).unwrap();
         assert_eq!(
             VirtualMachine::execute_in_realm(&code, &realm)
@@ -186,7 +198,7 @@ fn captured_tdz_const_throw_and_recursion_failure_preserve_values() {
         );
         assert!(value(&realm, "(()=>42)();").same_value(&Value::Number(42.0)));
     }
-    let realm = Realm::ordinary();
+    let realm = Realm::ordinary_in(&allocation_context);
     let code = BytecodeCompiler::compile("(()=>{throw 17;})();").unwrap();
     let error = VirtualMachine::execute_in_realm(&code, &realm).unwrap_err();
     assert!(
@@ -213,6 +225,7 @@ fn unfinished_function_forms_fail_compilation_instead_of_ast_fallback() {
 
 #[test]
 fn sloppy_primitive_this_uses_actual_wrapper_slots_and_prototypes() {
+    let allocation_context = temiya::runtime::AllocationContext::new();
     for (source, expected) in [
         (
             "(function(){return this.valueOf();}).call(42);",
@@ -224,11 +237,11 @@ fn sloppy_primitive_this_uses_actual_wrapper_slots_and_prototypes() {
         ),
     ] {
         assert!(
-            value(&Realm::ordinary(), source).same_value(&expected),
+            value(&Realm::ordinary_in(&allocation_context), source).same_value(&expected),
             "{source}"
         );
     }
-    let realm = Realm::ordinary();
+    let realm = Realm::ordinary_in(&allocation_context);
     let Value::Object(boxed) = value(&realm, "(function(){return this;}).call(42n);") else {
         panic!("BigInt this was not boxed")
     };
@@ -240,6 +253,7 @@ fn sloppy_primitive_this_uses_actual_wrapper_slots_and_prototypes() {
 
 #[test]
 fn declarations_are_hoisted_and_last_duplicates_win_without_private_self_binding() {
+    let allocation_context = temiya::runtime::AllocationContext::new();
     for source in [
         "f(21); function f(x){return x*2;}",
         "f(); function f(){return 1;} function f(){return 42;}",
@@ -253,7 +267,8 @@ fn declarations_are_hoisted_and_last_duplicates_win_without_private_self_binding
         "'use strict';let answer;{answer=f();function f(){return 42;}}answer;",
     ] {
         assert!(
-            value(&Realm::ordinary(), source).same_value(&Value::Number(42.0)),
+            value(&Realm::ordinary_in(&allocation_context), source)
+                .same_value(&Value::Number(42.0)),
             "{source}"
         );
     }
@@ -277,9 +292,10 @@ fn declarations_are_hoisted_and_last_duplicates_win_without_private_self_binding
 
 #[test]
 fn global_function_preflight_is_atomic_before_lexical_var_or_function_creation() {
+    let allocation_context = temiya::runtime::AllocationContext::new();
     use temiya::runtime::PropertyDescriptor;
     for mode in 0..3 {
-        let realm = Realm::ordinary();
+        let realm = Realm::ordinary_in(&allocation_context);
         let global = realm.global_object();
         if mode == 0 {
             global
@@ -333,6 +349,7 @@ fn global_function_preflight_is_atomic_before_lexical_var_or_function_creation()
 
 #[test]
 fn global_functions_precede_vars_in_selected_source_order_and_replace_accessors() {
+    let allocation_context = temiya::runtime::AllocationContext::new();
     use std::{cell::Cell, rc::Rc};
     use temiya::{
         parser::parse_script,
@@ -340,7 +357,7 @@ fn global_functions_precede_vars_in_selected_source_order_and_replace_accessors(
     };
     let source = "var before;function a(){return 1;}function b(){return 2;}function a(){return 42;}var after;a();";
     for vm_backend in [false, true] {
-        let realm = Realm::ordinary();
+        let realm = Realm::ordinary_in(&allocation_context);
         if vm_backend {
             assert!(value(&realm, source).same_value(&Value::Number(42.0)));
         } else {
@@ -361,10 +378,10 @@ fn global_functions_precede_vars_in_selected_source_order_and_replace_accessors(
             .collect::<Vec<_>>();
         assert_eq!(keys, ["b", "a", "before", "after"].map(PropertyKey::from));
     }
-    let realm = Realm::ordinary();
+    let realm = Realm::ordinary_in(&allocation_context);
     let calls = Rc::new(Cell::new(0));
     let captured = calls.clone();
-    let getter = Object::native_function(move |_, _| {
+    let getter = Object::native_function_in(&allocation_context, move |_, _| {
         captured.set(captured.get() + 1);
         Ok(Value::Undefined)
     });
@@ -395,6 +412,7 @@ fn global_functions_precede_vars_in_selected_source_order_and_replace_accessors(
 #[test]
 #[ignore = "requires pinned Test262 corpus; records unfinished closure integration gates"]
 fn pinned_test262_closure_audit() {
+    let allocation_context = temiya::runtime::AllocationContext::new();
     use std::{collections::BTreeMap, process::Command};
     use temiya::{
         runtime::ScriptRecord,
@@ -467,7 +485,7 @@ fn pinned_test262_closure_audit() {
                     None
                 };
                 let run = || -> Result<(), String> {
-                    let realm = Realm::ordinary();
+                    let realm = Realm::ordinary_in(&allocation_context);
                     for harness in ["sta.js", "assert.js"]
                         .into_iter()
                         .chain(case.metadata.includes.iter().map(String::as_str))

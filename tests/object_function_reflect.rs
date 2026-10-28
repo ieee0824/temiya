@@ -9,8 +9,8 @@ fn method(holder: &Object, name: &str) -> Object {
     }
 }
 
-fn array(values: &[Value]) -> Object {
-    let object = Object::new();
+fn array(allocation_context: &temiya::runtime::AllocationContext, values: &[Value]) -> Object {
+    let object = Object::new_in(allocation_context);
     for (index, value) in values.iter().cloned().enumerate() {
         object
             .create_data_property(index.to_string().as_str().into(), value)
@@ -24,10 +24,11 @@ fn array(values: &[Value]) -> Object {
 
 #[test]
 fn object_methods_convert_and_apply_property_descriptors() {
-    let realm = Realm::ordinary();
+    let allocation_context = temiya::runtime::AllocationContext::new();
+    let realm = Realm::ordinary_in(&allocation_context);
     let constructor = realm.intrinsic(IntrinsicId::Object);
-    let target = Object::new();
-    let descriptor = Object::new();
+    let target = Object::new_in(&allocation_context);
+    let descriptor = Object::new_in(&allocation_context);
     descriptor
         .create_data_property("value".into(), Value::Number(42.0))
         .unwrap();
@@ -68,11 +69,12 @@ fn object_methods_convert_and_apply_property_descriptors() {
 
 #[test]
 fn call_apply_and_bind_preserve_receiver_and_argument_order() {
-    let realm = Realm::ordinary();
+    let allocation_context = temiya::runtime::AllocationContext::new();
+    let realm = Realm::ordinary_in(&allocation_context);
     let prototype = realm.intrinsic(IntrinsicId::FunctionPrototype);
     let observed = Rc::new(RefCell::new(Vec::new()));
     let calls = observed.clone();
-    let function = Object::native_function(move |this, arguments| {
+    let function = Object::native_function_in(&allocation_context, move |this, arguments| {
         calls.borrow_mut().push((this, arguments.to_vec()));
         Ok(arguments.last().cloned().unwrap_or(Value::Undefined))
     });
@@ -89,7 +91,7 @@ fn call_apply_and_bind_preserve_receiver_and_argument_order() {
             Value::Object(function.clone()),
             &[
                 Value::Number(3.0),
-                Value::Object(array(&[Value::Number(4.0)])),
+                Value::Object(array(&allocation_context, &[Value::Number(4.0)])),
             ],
         )
         .unwrap();
@@ -113,11 +115,12 @@ fn call_apply_and_bind_preserve_receiver_and_argument_order() {
 
 #[test]
 fn reflect_operations_return_booleans_and_include_symbol_keys() {
-    let realm = Realm::ordinary();
+    let context = temiya::runtime::AllocationContext::new();
+    let realm = Realm::ordinary_in(&context);
     let reflect = realm.intrinsic(IntrinsicId::Reflect);
-    let target = Object::new();
+    let target = Object::new_in(&context);
     let descriptor = PropertyDescriptor::data(Value::Number(1.0), true, true, true)
-        .to_object()
+        .to_object(&context)
         .unwrap();
     let defined = method(&reflect, "defineProperty")
         .call(
@@ -157,15 +160,16 @@ fn reflect_operations_return_booleans_and_include_symbol_keys() {
 
 #[test]
 fn reflection_rejects_invalid_targets_and_argument_lists() {
-    let realm = Realm::ordinary();
+    let allocation_context = temiya::runtime::AllocationContext::new();
+    let realm = Realm::ordinary_in(&allocation_context);
     let reflect = realm.intrinsic(IntrinsicId::Reflect);
     let error = method(&reflect, "getPrototypeOf")
         .call(Value::Undefined, &[Value::Null])
         .unwrap_err();
     assert_eq!(error.kind(), RuntimeErrorKind::TypeError);
 
-    let function = Object::native_function(|_, _| Ok(Value::Undefined));
-    let invalid = Object::new();
+    let function = Object::native_function_in(&allocation_context, |_, _| Ok(Value::Undefined));
+    let invalid = Object::new_in(&allocation_context);
     invalid
         .create_data_property("length".into(), Value::Number(f64::INFINITY))
         .unwrap();
@@ -184,13 +188,15 @@ fn reflection_rejects_invalid_targets_and_argument_lists() {
 
 #[test]
 fn reflect_construct_and_bound_construction_forward_arguments() {
-    let realm = Realm::ordinary();
+    let allocation_context = temiya::runtime::AllocationContext::new();
+    let realm = Realm::ordinary_in(&allocation_context);
     let reflect = realm.intrinsic(IntrinsicId::Reflect);
     let function_prototype = realm.intrinsic(IntrinsicId::FunctionPrototype);
     let constructor = Object::native_callable_constructor(
+        &allocation_context,
         |_, _| Ok(Value::Undefined),
-        |arguments, _| {
-            let instance = Object::new();
+        |arguments, target| {
+            let instance = Object::new_in(target.allocation_context());
             instance.create_data_property(
                 "value".into(),
                 arguments.first().cloned().unwrap_or(Value::Undefined),
@@ -205,7 +211,10 @@ fn reflect_construct_and_bound_construction_forward_arguments() {
         )
         .unwrap();
     let result = method(&reflect, "construct")
-        .call(Value::Undefined, &[bound, Value::Object(array(&[]))])
+        .call(
+            Value::Undefined,
+            &[bound, Value::Object(array(&allocation_context, &[]))],
+        )
         .unwrap();
     let Value::Object(result) = result else {
         panic!()

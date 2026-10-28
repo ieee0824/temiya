@@ -1,0 +1,11 @@
+{
+  "name": "promise-chain",
+  "group": "async",
+  "iterations": 2048,
+  "expected": 2048,
+  "before_drain_expected": -1,
+  "setup": "async function seed(value){return value;}\nvar completed=-1;\nfunction step(value){return value+1;}\nfunction record(value){completed=value;}\nfunction launch(count){completed=-1;var result=seed(0);for(var i=0;i<count;i++)result=result.then(step);result.then(record);return completed;}",
+  "invocation": "launch(2048);",
+  "completion": "completed;",
+  "oracle": "2048 chained increments from zero; completion remains -1 before the checkpoint"
+}

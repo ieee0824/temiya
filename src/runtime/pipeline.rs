@@ -3,7 +3,8 @@
 use std::{
     cell::RefCell,
     collections::HashSet,
-    rc::Rc,
+    ops::Deref,
+    rc::{Rc, Weak},
     sync::atomic::{AtomicU64, Ordering},
 };
 
@@ -20,6 +21,13 @@ use super::{
     Completion, Environment, JsString, Object, Promise, PropertyDescriptor, PropertyKey, Realm,
     RuntimeError, RuntimeResult, ScriptRecord, StatementEvaluator, Value,
 };
+use super::{
+    Runtime,
+    environment::StoredEnvironment,
+    execution::StoredRealm,
+    stored::{StoredObject, StoredOwner, StoredRuntimeError},
+};
+use crate::gc::{Handle, Root, Trace, Tracer};
 
 impl ScriptRecord {
     /// Parses Script source and associates it with a Realm.
@@ -58,25 +66,103 @@ pub enum ModuleStatus {
 #[derive(Clone)]
 struct Dependency {
     request: ModuleRequest,
-    module: SourceTextModule,
+    module: StoredModule,
 }
 
-struct ModuleData {
+pub(super) struct ModuleData {
+    pub(super) facade: RefCell<Weak<ModuleRoot>>,
     id: u64,
     specifier: JsString,
-    realm: Realm,
+    realm: StoredRealm,
     program: Program,
-    environment: Environment,
+    environment: StoredEnvironment,
     dependencies: RefCell<Vec<Dependency>>,
     status: RefCell<ModuleStatus>,
-    error: RefCell<Option<RuntimeError>>,
-    evaluation: RefCell<Option<Promise>>,
+    error: RefCell<Option<StoredRuntimeError>>,
+    evaluation: RefCell<Option<StoredObject>>,
+    namespace: RefCell<Option<StoredObject>>,
 }
 
 /// A parsed Source Text Module Record with cached link/evaluation state.
 #[derive(Clone)]
-pub struct SourceTextModule(Rc<ModuleData>);
+pub struct SourceTextModule(pub(super) ModuleReference);
 
+#[derive(Clone)]
+pub(super) struct ModuleReference(pub(super) Rc<ModuleRoot>);
+impl Deref for ModuleReference {
+    type Target = ModuleData;
+    fn deref(&self) -> &Self::Target {
+        &self.0.data
+    }
+}
+pub(super) struct ModuleRoot {
+    pub(super) root: Root<ManagedModule>,
+    pub(super) data: Rc<ModuleData>,
+    pub(super) runtime: Runtime,
+}
+pub(super) type ManagedModule = ModuleData;
+impl Trace for ModuleData {
+    fn trace(&self, tracer: &mut Tracer<'_>) {
+        let data = self;
+        data.realm.trace(tracer);
+        data.environment.trace(tracer);
+        for dependency in data.dependencies.borrow().iter() {
+            dependency.module.trace(tracer);
+        }
+        if let Some(error) = &*data.error.borrow() {
+            error.trace(tracer);
+        }
+        for object in [&data.evaluation, &data.namespace] {
+            if let Some(object) = &*object.borrow() {
+                object.trace(tracer);
+            }
+        }
+    }
+}
+impl StoredOwner for SourceTextModule {
+    type Allocation = ManagedModule;
+    fn runtime(&self) -> Option<&Runtime> {
+        Some(&self.0.0.runtime)
+    }
+    fn handle(&self) -> Option<Handle<ManagedModule>> {
+        Some(self.0.0.root.handle())
+    }
+}
+#[derive(Clone)]
+pub(super) struct StoredModule(pub(super) Handle<ManagedModule>);
+impl StoredModule {
+    pub(super) fn initial(
+        runtime: Option<&Runtime>,
+        value: &SourceTextModule,
+    ) -> RuntimeResult<Self> {
+        match (runtime, value.runtime()) {
+            (Some(left), Some(right)) if left.same_heap(right) => {
+                Ok(Self(value.handle().expect("managed module")))
+            }
+            _ => Err(RuntimeError::type_error(
+                "Module allocation context mismatch",
+            )),
+        }
+    }
+    pub(super) fn store(owner: &impl StoredOwner, value: &SourceTextModule) -> RuntimeResult<Self> {
+        let stored = Self::initial(owner.runtime(), value)?;
+        owner
+            .runtime()
+            .expect("validated allocation context")
+            .record_object_edge(owner.handle().expect("managed owner"), stored.0)?;
+        Ok(stored)
+    }
+    pub(super) fn load(&self, owner: &impl StoredOwner) -> RuntimeResult<SourceTextModule> {
+        owner
+            .runtime()
+            .ok_or_else(|| RuntimeError::internal_error("Module allocation context mismatch"))?
+            .root_module(self.0)
+            .ok_or_else(|| RuntimeError::internal_error("stale module edge"))
+    }
+    pub(super) fn trace(&self, tracer: &mut Tracer<'_>) {
+        tracer.mark(self.0);
+    }
+}
 impl std::fmt::Debug for SourceTextModule {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter
@@ -88,19 +174,23 @@ impl std::fmt::Debug for SourceTextModule {
 }
 
 impl SourceTextModule {
-    fn new(specifier: JsString, realm: Realm, program: Program) -> Self {
+    fn new(specifier: JsString, realm: Realm, program: Program) -> RuntimeResult<Self> {
         static NEXT_ID: AtomicU64 = AtomicU64::new(1);
-        Self(Rc::new(ModuleData {
+        let environment = Environment::module(realm.global_environment());
+        let data = ModuleData {
+            facade: RefCell::new(Weak::new()),
             id: NEXT_ID.fetch_add(1, Ordering::Relaxed),
             specifier,
-            environment: Environment::module(Some(realm.global_environment())),
-            realm,
+            environment: StoredEnvironment::initial(realm.runtime(), &environment)?,
+            realm: StoredRealm::initial(realm.runtime(), &realm)?,
             program,
             dependencies: RefCell::new(Vec::new()),
             status: RefCell::new(ModuleStatus::Unlinked),
             error: RefCell::new(None),
             evaluation: RefCell::new(None),
-        }))
+            namespace: RefCell::new(None),
+        };
+        Ok(realm.allocation_context().allocate_module(data))
     }
 
     /// Returns the host-facing module specifier.
@@ -118,7 +208,14 @@ impl SourceTextModule {
     /// Returns the Module Environment Record.
     #[must_use]
     pub fn environment(&self) -> Environment {
-        self.0.environment.clone()
+        self.0
+            .environment
+            .load(self)
+            .expect("live module environment")
+    }
+
+    fn realm(&self) -> Realm {
+        self.0.realm.load(self).expect("live module Realm")
     }
 
     /// Links this module and every transitively requested module.
@@ -136,7 +233,7 @@ impl SourceTextModule {
         let result: RuntimeResult<()> = (|| {
             self.instantiate_local_bindings()?;
             for dependency in self.0.dependencies.borrow().iter() {
-                dependency.module.link()?;
+                dependency.module.load(self)?.link()?;
             }
             self.instantiate_namespace_exports()?;
             self.instantiate_imports()?;
@@ -148,7 +245,7 @@ impl SourceTextModule {
                 Ok(())
             }
             Err(error) => {
-                self.cache_error(error.clone());
+                self.cache_error(error.clone())?;
                 Err(error)
             }
         }
@@ -158,12 +255,23 @@ impl SourceTextModule {
     pub fn evaluate(&self) -> RuntimeResult<Promise> {
         match self.status() {
             ModuleStatus::Evaluated | ModuleStatus::EvaluatingAsync => {
-                return self.0.evaluation.borrow().clone().ok_or_else(|| {
-                    RuntimeError::internal_error("evaluated module has no evaluation Promise")
-                });
+                return self
+                    .0
+                    .evaluation
+                    .borrow()
+                    .as_ref()
+                    .map(|stored| {
+                        Promise::from_object(stored.load(self)?).ok_or_else(|| {
+                            RuntimeError::internal_error("module evaluation slot is not a Promise")
+                        })
+                    })
+                    .transpose()?
+                    .ok_or_else(|| {
+                        RuntimeError::internal_error("evaluated module has no evaluation Promise")
+                    });
             }
             ModuleStatus::Evaluating => {
-                return Promise::fulfilled_on(self.0.realm.job_queue(), Value::Undefined);
+                return Promise::settled_in(&self.realm(), Ok(Value::Undefined));
             }
             ModuleStatus::Errored => return Err(self.cached_error()),
             ModuleStatus::Unlinked | ModuleStatus::Linking => self.link()?,
@@ -172,13 +280,13 @@ impl SourceTextModule {
         *self.0.status.borrow_mut() = ModuleStatus::Evaluating;
         let result = (|| {
             for dependency in self.0.dependencies.borrow().iter() {
-                dependency.module.evaluate()?;
+                dependency.module.load(self)?.evaluate()?;
             }
             let body = self.executable_body()?;
             let evaluator = StatementEvaluator::with_environments(
-                self.0.realm.clone(),
-                self.0.environment.clone(),
-                self.0.environment.clone(),
+                self.realm(),
+                self.environment(),
+                self.environment(),
                 Value::Undefined,
                 true,
             );
@@ -196,13 +304,14 @@ impl SourceTextModule {
                 if asynchronous {
                     *self.0.status.borrow_mut() = ModuleStatus::EvaluatingAsync;
                 }
-                let promise = Promise::fulfilled_on(self.0.realm.job_queue(), value)?;
-                *self.0.evaluation.borrow_mut() = Some(promise.clone());
+                let promise = Promise::settled_in(&self.realm(), Ok(value))?;
+                *self.0.evaluation.borrow_mut() =
+                    Some(StoredObject::store(self, &promise.object())?);
                 *self.0.status.borrow_mut() = ModuleStatus::Evaluated;
                 Ok(promise)
             }
             Err(error) => {
-                self.cache_error(error.clone());
+                self.cache_error(error.clone())?;
                 Err(error)
             }
         }
@@ -211,26 +320,24 @@ impl SourceTextModule {
     /// Reads an exported live binding after resolving re-exports.
     pub fn get_export(&self, name: &JsString) -> RuntimeResult<Value> {
         let (module, binding) = self.resolve_export(name, &mut Vec::new())?;
-        module.0.environment.get_binding_value(&binding, true)
+        module.environment().get_binding_value(&binding, true)
     }
 
     fn instantiate_local_bindings(&self) -> RuntimeResult<()> {
         let imported = imported_local_names(&self.0.program);
         for name in lexically_declared_names(&self.0.program.body, DeclarationScope::Module) {
             let name = JsString::from(name.name);
-            if imported.contains(&name) || self.0.environment.has_binding(&name)? {
+            if imported.contains(&name) || self.environment().has_binding(&name)? {
                 continue;
             }
-            self.0.environment.create_mutable_binding(name, false)?;
+            self.environment().create_mutable_binding(name, false)?;
         }
         for name in var_declared_names(&self.0.program.body, DeclarationScope::Module) {
             let name = JsString::from(name.name);
-            if !self.0.environment.has_binding(&name)? {
-                self.0
-                    .environment
+            if !self.environment().has_binding(&name)? {
+                self.environment()
                     .create_mutable_binding(name.clone(), false)?;
-                self.0
-                    .environment
+                self.environment()
                     .initialize_binding(&name, Value::Undefined)?;
             }
         }
@@ -250,17 +357,16 @@ impl SourceTextModule {
                         let imported = JsString::from_code_units(imported.clone());
                         let (target, binding) =
                             dependency.resolve_export(&imported, &mut Vec::new())?;
-                        self.0.environment.create_import_binding(
+                        self.environment().create_import_binding(
                             local,
-                            target.0.environment.clone(),
+                            target.environment(),
                             binding,
                         )?;
                     }
                     ImportName::Namespace => {
-                        self.0
-                            .environment
+                        self.environment()
                             .create_immutable_binding(local.clone(), true)?;
-                        self.0.environment.initialize_binding(
+                        self.environment().initialize_binding(
                             &local,
                             Value::Object(dependency.namespace_object()?),
                         )?;
@@ -284,13 +390,11 @@ impl SourceTextModule {
                 continue;
             };
             let name = namespace_binding_name(request);
-            if !self.0.environment.has_binding(&name)? {
-                self.0
-                    .environment
+            if !self.environment().has_binding(&name)? {
+                self.environment()
                     .create_immutable_binding(name.clone(), true)?;
                 let namespace = self.dependency(request)?.namespace_object()?;
-                self.0
-                    .environment
+                self.environment()
                     .initialize_binding(&name, Value::Object(namespace))?;
             }
         }
@@ -388,23 +492,31 @@ impl SourceTextModule {
     }
 
     fn namespace_object(&self) -> RuntimeResult<Object> {
-        let object = Object::new();
+        if let Some(namespace) = &*self.0.namespace.borrow() {
+            return namespace.load(self);
+        }
+        let realm = self.realm();
+        let object = Object::new_for(&realm.global_object());
+        object.0.state.borrow_mut().module_namespace =
+            Some(Box::new(StoredModule::store(&object, self)?));
         for name in self.exported_names(&mut HashSet::new())? {
             let (target, binding) = self.resolve_export(&name, &mut Vec::new())?;
-            let getter = Object::native_function(move |_, _| {
-                target.0.environment.get_binding_value(&binding, true)
-            });
-            getter.initialize_prototype(Some(
-                self.0
-                    .realm
-                    .intrinsic(super::IntrinsicId::FunctionPrototype),
-            ));
+            let getter = Object::managed_function_with_metadata(
+                &realm.intrinsic(super::IntrinsicId::FunctionPrototype),
+                "get",
+                0,
+                super::object::ManagedCallable::ModuleBinding(ModuleBinding {
+                    module: StoredModule::initial(self.runtime(), &target)?,
+                    binding,
+                }),
+            );
             object.define_own_property(
                 PropertyKey::String(name),
                 PropertyDescriptor::accessor(Some(getter), None, true, false),
             )?;
         }
         object.prevent_extensions();
+        *self.0.namespace.borrow_mut() = Some(StoredObject::store(self, &object)?);
         Ok(object)
     }
 
@@ -491,18 +603,41 @@ impl SourceTextModule {
             .borrow()
             .iter()
             .find(|dependency| same_request(&dependency.request, request))
-            .map(|dependency| dependency.module.clone())
+            .map(|dependency| dependency.module.load(self))
+            .transpose()?
             .ok_or_else(|| RuntimeError::internal_error("resolved module dependency is missing"))
     }
 
     fn cached_error(&self) -> RuntimeError {
-        self.0.error.borrow().clone().unwrap_or_else(|| {
-            RuntimeError::internal_error("module is in errored state without an error")
-        })
+        self.0
+            .error
+            .borrow()
+            .as_ref()
+            .map(|error| error.load(self).unwrap_or_else(|failure| failure))
+            .unwrap_or_else(|| {
+                RuntimeError::internal_error("module is in errored state without an error")
+            })
     }
-    fn cache_error(&self, error: RuntimeError) {
-        *self.0.error.borrow_mut() = Some(error);
+    fn cache_error(&self, error: RuntimeError) -> RuntimeResult<()> {
+        *self.0.error.borrow_mut() = Some(StoredRuntimeError::store(self, error)?);
         *self.0.status.borrow_mut() = ModuleStatus::Errored;
+        Ok(())
+    }
+}
+
+pub(super) struct ModuleBinding {
+    module: StoredModule,
+    binding: JsString,
+}
+impl ModuleBinding {
+    pub(super) fn trace(&self, tracer: &mut Tracer<'_>) {
+        self.module.trace(tracer);
+    }
+    pub(super) fn call(&self, owner: &Object) -> RuntimeResult<Value> {
+        self.module
+            .load(owner)?
+            .environment()
+            .get_binding_value(&self.binding, true)
     }
 }
 
@@ -603,12 +738,16 @@ impl ModuleGraph {
             };
             RuntimeError::syntax_error(message)
         })?;
-        let module = SourceTextModule::new(specifier.clone(), self.realm.clone(), program.clone());
+        let requests = program.module_requests();
+        let module = SourceTextModule::new(specifier.clone(), self.realm.clone(), program)?;
         self.modules.borrow_mut().push((key, module.clone()));
         let mut dependencies = Vec::new();
-        for request in program.module_requests() {
+        for request in requests {
             dependencies.push(Dependency {
-                module: self.load_request(&request, Some(&specifier))?,
+                module: StoredModule::store(
+                    &module,
+                    &self.load_request(&request, Some(&specifier))?,
+                )?,
                 request,
             });
         }
@@ -728,4 +867,225 @@ fn program_has_top_level_await(program: &Program) -> bool {
         },
         _ => false,
     })
+}
+
+#[cfg(test)]
+mod managed_tests {
+    use super::*;
+    fn graph(runtime: &Runtime, sources: &[(&str, &str)]) -> (Realm, ModuleGraph) {
+        runtime.set_allocation_collection_interval(0);
+        let realm = Realm::ordinary_in(runtime);
+        let callback_runtime = runtime.clone();
+        let callback = realm
+            .create_native_function("collectModule", 0, move |_, _| {
+                callback_runtime.verify_migration_barriers().unwrap();
+                callback_runtime.collect_migration_graph().unwrap();
+                Ok(Value::Undefined)
+            })
+            .unwrap();
+        realm
+            .global_object()
+            .create_data_property("collectModule".into(), Value::Object(callback))
+            .unwrap();
+        let sources: Vec<_> = sources
+            .iter()
+            .map(|(name, source)| (name.to_string(), source.to_string()))
+            .collect();
+        let resolver_runtime = runtime.clone();
+        let graph = ModuleGraph::new(realm.clone(), move |request| {
+            resolver_runtime.verify_migration_barriers().unwrap();
+            resolver_runtime.collect_migration_graph().unwrap();
+            let name = String::from_utf16_lossy(&request.specifier);
+            sources
+                .iter()
+                .find(|(candidate, _)| candidate == &name)
+                .map(|(_, source)| source.clone())
+                .ok_or_else(|| RuntimeError::reference_error("missing module"))
+        });
+        (realm, graph)
+    }
+    fn weak_data(module: &SourceTextModule) -> Weak<ModuleData> {
+        Rc::downgrade(&module.0.0.data)
+    }
+
+    #[test]
+    fn cyclic_module_records_share_facade_roots_and_reclaim_without_the_graph() {
+        let runtime = Runtime::new();
+        let (realm, graph) = graph(
+            &runtime,
+            &[
+                (
+                    "a",
+                    "import {getB} from 'b';export function getA(){return 20;}export function answer(){collectModule();return getB();}",
+                ),
+                (
+                    "b",
+                    "import {getA} from 'a';export function getB(){return getA()+22;}",
+                ),
+            ],
+        );
+        let module = graph.load("a").unwrap();
+        let clone = graph.load("a").unwrap();
+        module.link().unwrap();
+        module.evaluate().unwrap();
+        runtime.verify_migration_barriers().unwrap();
+        let weak = weak_data(&module);
+        drop((realm, graph, module));
+        assert_eq!(runtime.diagnostics().rooted, 1);
+        runtime.collect_migration_graph().unwrap();
+        let Value::Object(answer) = clone.get_export(&"answer".into()).unwrap() else {
+            panic!("function")
+        };
+        assert!(
+            answer
+                .call(Value::Undefined, &[])
+                .unwrap()
+                .same_value(&Value::Number(42.0))
+        );
+        drop((answer, clone));
+        assert_eq!(runtime.collect_migration_graph().unwrap().retained, 0);
+        assert!(weak.upgrade().is_none());
+    }
+
+    #[test]
+    fn escaped_namespace_keeps_cyclic_records_and_live_bindings() {
+        let runtime = Runtime::new();
+        let (realm, graph) = graph(
+            &runtime,
+            &[
+                (
+                    "a",
+                    "import * as dep from 'b';export {dep};export let value=20;collectModule();",
+                ),
+                (
+                    "b",
+                    "import {value} from 'a';export function read(){collectModule();return value+22;}",
+                ),
+            ],
+        );
+        let module = graph.load("a").unwrap();
+        module.link().unwrap();
+        module.evaluate().unwrap();
+        let namespace = module.namespace_object().unwrap();
+        assert_eq!(namespace, module.namespace_object().unwrap());
+        assert!(namespace.prototype().is_none());
+        assert!(!namespace.is_extensible());
+        let weak = weak_data(&module);
+        runtime.verify_migration_barriers().unwrap();
+        drop((module, graph, realm));
+        assert_eq!(runtime.diagnostics().rooted, 1);
+        runtime.collect_migration_graph().unwrap();
+        let read = || {
+            let Value::Object(dep) = namespace.get(&"dep".into()).unwrap() else {
+                panic!("namespace")
+            };
+            let Value::Object(read) = dep.get(&"read".into()).unwrap() else {
+                panic!("read")
+            };
+            read.call(Value::Undefined, &[]).unwrap()
+        };
+        assert!(read().same_value(&Value::Number(42.0)));
+        let owner = namespace
+            .0
+            .state
+            .borrow()
+            .module_namespace
+            .as_ref()
+            .unwrap()
+            .load(&namespace)
+            .unwrap();
+        owner
+            .environment()
+            .set_mutable_binding(&"value".into(), Value::Number(21.0), true)
+            .unwrap();
+        assert!(read().same_value(&Value::Number(43.0)));
+        drop(owner);
+        assert!(weak.upgrade().is_some());
+        drop(namespace);
+        assert_eq!(runtime.collect_migration_graph().unwrap().retained, 0);
+        assert!(weak.upgrade().is_none());
+    }
+
+    #[test]
+    fn empty_namespaces_retain_their_owner_without_getter_edges() {
+        let runtime = Runtime::new();
+        let (realm, graph) = graph(&runtime, &[("empty", "")]);
+        let module = graph.load("empty").unwrap();
+        module.link().unwrap();
+        let weak = weak_data(&module);
+        let namespace = module.namespace_object().unwrap();
+        assert!(namespace.own_property_keys().is_empty());
+        drop((module, graph, realm));
+        runtime.collect_migration_graph().unwrap();
+        assert!(weak.upgrade().is_some());
+        drop(namespace);
+        assert_eq!(runtime.collect_migration_graph().unwrap().retained, 0);
+        assert!(weak.upgrade().is_none());
+    }
+
+    #[test]
+    fn cached_evaluation_promises_preserve_identity_and_escape_module_lifetime() {
+        let runtime = Runtime::new();
+        let (realm, graph) = graph(&runtime, &[("value", "collectModule();({answer:42});")]);
+        let module = graph.load("value").unwrap();
+        module.link().unwrap();
+        let promise = module.evaluate().unwrap();
+        let weak = promise.object().downgrade();
+        drop(promise);
+        runtime.verify_migration_barriers().unwrap();
+        runtime.collect_migration_graph().unwrap();
+        let promise = module.evaluate().unwrap();
+        assert_eq!(Some(promise.object()), weak.upgrade());
+        let module_weak = weak_data(&module);
+        drop((module, graph, realm));
+        runtime.collect_migration_graph().unwrap();
+        assert!(module_weak.upgrade().is_none());
+        let Value::Object(value) = promise.await_result().unwrap() else {
+            panic!("result")
+        };
+        assert!(
+            value
+                .get(&"answer".into())
+                .unwrap()
+                .same_value(&Value::Number(42.0))
+        );
+        drop((value, promise));
+        assert_eq!(runtime.collect_migration_graph().unwrap().retained, 0);
+    }
+
+    #[test]
+    fn cached_module_errors_keep_payload_identity_without_owning_roots() {
+        let runtime = Runtime::new();
+        let (realm, graph) = graph(&runtime, &[("error", "collectModule();throw {answer:42};")]);
+        let module = graph.load("error").unwrap();
+        module.link().unwrap();
+        let error = module.evaluate().unwrap_err();
+        let Some(Value::Object(value)) = error.thrown_value() else {
+            panic!("payload")
+        };
+        let weak = value.downgrade();
+        drop(error);
+        runtime.verify_migration_barriers().unwrap();
+        runtime.collect_migration_graph().unwrap();
+        let error = module.evaluate().unwrap_err();
+        assert!(
+            matches!(error.thrown_value(), Some(Value::Object(value)) if Some(value.clone()) == weak.upgrade())
+        );
+        let module_weak = weak_data(&module);
+        drop((module, graph, realm));
+        runtime.collect_migration_graph().unwrap();
+        assert!(module_weak.upgrade().is_none());
+        let Some(Value::Object(value)) = error.thrown_value() else {
+            panic!("payload")
+        };
+        assert!(
+            value
+                .get(&"answer".into())
+                .unwrap()
+                .same_value(&Value::Number(42.0))
+        );
+        drop(error);
+        assert_eq!(runtime.collect_migration_graph().unwrap().retained, 0);
+        assert!(weak.upgrade().is_none());
+    }
 }

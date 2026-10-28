@@ -185,13 +185,13 @@ fn embedding_hooks_still_receive_the_default_hint_once() {
     use temiya::runtime::{Object, PrimitiveHint};
     let calls = Rc::new(Cell::new(0));
     let captured = calls.clone();
-    let object = Object::new();
+    let engine = Engine::default();
+    let object = Object::new_in(engine.allocation_context());
     object.set_to_primitive_hook(move |hint| {
         assert_eq!(hint, PrimitiveHint::Default);
         captured.set(captured.get() + 1);
         Ok(Value::String("host".into()))
     });
-    let engine = Engine::default();
     let realm = engine.create_realm();
     let handle = engine.value(&realm, Value::Object(object)).unwrap();
     engine.set_global(&realm, "host", handle).unwrap();

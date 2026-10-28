@@ -4,7 +4,8 @@ use temiya::runtime::{
 
 #[test]
 fn realm_installs_intrinsics_with_standard_descriptors() {
-    let realm = Realm::ordinary();
+    let allocation_context = temiya::runtime::AllocationContext::new();
+    let realm = Realm::ordinary_in(&allocation_context);
     let global = realm.global_object();
     let descriptor = global
         .get_own_property(&PropertyKey::from("Object"))
@@ -26,7 +27,8 @@ fn realm_installs_intrinsics_with_standard_descriptors() {
 
 #[test]
 fn initialization_wires_circular_constructor_and_prototype_links() {
-    let realm = Realm::ordinary();
+    let allocation_context = temiya::runtime::AllocationContext::new();
+    let realm = Realm::ordinary_in(&allocation_context);
     let object = realm.intrinsic(IntrinsicId::Object);
     let object_prototype = realm.intrinsic(IntrinsicId::ObjectPrototype);
     let function_prototype = realm.intrinsic(IntrinsicId::FunctionPrototype);
@@ -47,8 +49,9 @@ fn initialization_wires_circular_constructor_and_prototype_links() {
 
 #[test]
 fn registry_is_complete_deterministic_and_realm_local() {
-    let first = Realm::ordinary();
-    let second = Realm::ordinary();
+    let allocation_context = temiya::runtime::AllocationContext::new();
+    let first = Realm::ordinary_in(&allocation_context);
+    let second = Realm::ordinary_in(&allocation_context);
     let ids = first
         .intrinsics()
         .iter()
@@ -66,7 +69,8 @@ fn registry_is_complete_deterministic_and_realm_local() {
 
 #[test]
 fn host_global_that_rejects_properties_returns_an_error() {
-    let global = Object::new();
+    let allocation_context = temiya::runtime::AllocationContext::new();
+    let global = Object::new_in(&allocation_context);
     global.prevent_extensions();
     let error = Realm::try_new(global.clone(), Value::Object(global)).unwrap_err();
     assert_eq!(error.kind(), RuntimeErrorKind::TypeError);

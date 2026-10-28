@@ -5,7 +5,7 @@ use super::{
 };
 
 pub(crate) fn create(realm: &Realm) -> RuntimeResult<Object> {
-    let object = ArrayObject::new(0)?.object();
+    let object = ArrayObject::new_for(&realm.global_object(), 0)?.object();
     object.initialize_prototype(Some(realm.intrinsic(IntrinsicId::ArrayPrototype)));
     Ok(object)
 }

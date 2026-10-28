@@ -16,7 +16,8 @@ fn assert_number(value: Value, expected: f64) {
 
 #[test]
 fn declarative_bindings_enforce_tdz_mutability_and_deletion() {
-    let environment = Environment::declarative(None);
+    let context = temiya::runtime::AllocationContext::new();
+    let environment = Environment::declarative_in(&context);
     assert_eq!(environment.kind(), EnvironmentKind::Declarative);
     environment
         .create_mutable_binding(name("letValue"), true)
@@ -93,12 +94,13 @@ fn declarative_bindings_enforce_tdz_mutability_and_deletion() {
 
 #[test]
 fn environment_chains_resolve_nearest_binding() {
-    let outer = Environment::declarative(None);
+    let context = temiya::runtime::AllocationContext::new();
+    let outer = Environment::declarative_in(&context);
     outer.create_mutable_binding(name("x"), false).unwrap();
     outer
         .initialize_binding(&name("x"), Value::Number(1.0))
         .unwrap();
-    let inner = Environment::declarative(Some(outer.clone()));
+    let inner = Environment::declarative(outer.clone());
     inner.create_mutable_binding(name("x"), false).unwrap();
     inner
         .initialize_binding(&name("x"), Value::Number(2.0))
@@ -121,7 +123,8 @@ fn environment_chains_resolve_nearest_binding() {
 
 #[test]
 fn object_environment_maps_bindings_to_properties() {
-    let object = Object::new();
+    let allocation_context = temiya::runtime::AllocationContext::new();
+    let object = Object::new_in(&allocation_context);
     let environment =
         Environment::object(object.clone(), None, ObjectEnvironmentOptions::default());
     environment
@@ -160,15 +163,16 @@ fn object_environment_maps_bindings_to_properties() {
 
 #[test]
 fn with_environment_honors_unscopables() {
+    let allocation_context = temiya::runtime::AllocationContext::new();
     let unscopables_symbol = Symbol::new(Some(name("Symbol.unscopables")));
-    let object = Object::new();
+    let object = Object::new_in(&allocation_context);
     object
         .create_data_property("visible".into(), Value::Number(1.0))
         .unwrap();
     object
         .create_data_property("hidden".into(), Value::Number(2.0))
         .unwrap();
-    let unscopables = Object::new();
+    let unscopables = Object::new_in(&allocation_context);
     unscopables
         .create_data_property("hidden".into(), Value::Boolean(true))
         .unwrap();
@@ -192,8 +196,9 @@ fn with_environment_honors_unscopables() {
 
 #[test]
 fn with_unscopables_getters_can_reenter_environment_lookup() {
+    let allocation_context = temiya::runtime::AllocationContext::new();
     let unscopables_symbol = Symbol::new(None);
-    let object = Object::new();
+    let object = Object::new_in(&allocation_context);
     object
         .create_data_property("visible".into(), Value::Number(1.0))
         .unwrap();
@@ -202,7 +207,7 @@ fn with_unscopables_getters_can_reenter_environment_lookup() {
         .unwrap();
     let holder = Rc::new(RefCell::new(None::<Environment>));
     let observed = Rc::clone(&holder);
-    let getter = Object::native_function(move |_, _| {
+    let getter = Object::native_function_in(&allocation_context, move |_, _| {
         assert!(
             !observed
                 .borrow()
@@ -233,7 +238,8 @@ fn with_unscopables_getters_can_reenter_environment_lookup() {
 
 #[test]
 fn global_environment_detects_lexical_and_var_conflicts() {
-    let global_object = Object::new();
+    let allocation_context = temiya::runtime::AllocationContext::new();
+    let global_object = Object::new_in(&allocation_context);
     global_object
         .define_own_property(
             "restricted".into(),
@@ -297,7 +303,8 @@ fn global_environment_detects_lexical_and_var_conflicts() {
 
 #[test]
 fn non_extensible_globals_reject_new_var_and_function_declarations() {
-    let object = Object::new();
+    let allocation_context = temiya::runtime::AllocationContext::new();
+    let object = Object::new_in(&allocation_context);
     let environment = Environment::global(object.clone(), Value::Object(object.clone()));
     object.prevent_extensions();
     assert!(!environment.can_declare_global_var(&name("newVar")).unwrap());
@@ -315,7 +322,8 @@ fn non_extensible_globals_reject_new_var_and_function_declarations() {
 
 #[test]
 fn existing_property_on_non_extensible_global_is_not_recorded_as_var() {
-    let object = Object::new();
+    let allocation_context = temiya::runtime::AllocationContext::new();
+    let object = Object::new_in(&allocation_context);
     object
         .create_data_property("existing".into(), Value::Number(1.0))
         .unwrap();
@@ -334,8 +342,9 @@ fn existing_property_on_non_extensible_global_is_not_recorded_as_var() {
 
 #[test]
 fn function_environment_tracks_this_function_and_new_target() {
-    let function = Object::native_function(|_, _| Ok(Value::Undefined));
-    let new_target = Object::new();
+    let allocation_context = temiya::runtime::AllocationContext::new();
+    let function = Object::native_function_in(&allocation_context, |_, _| Ok(Value::Undefined));
+    let new_target = Object::new_in(&allocation_context);
     let environment = Environment::function(
         None,
         function.clone(),
@@ -348,7 +357,7 @@ fn function_environment_tracks_this_function_and_new_target() {
         environment.get_this_binding().unwrap_err().kind(),
         RuntimeErrorKind::ReferenceError
     );
-    let this_value = Value::Object(Object::new());
+    let this_value = Value::Object(Object::new_in(&allocation_context));
     assert!(
         environment
             .bind_this_value(this_value.clone())
@@ -369,21 +378,27 @@ fn function_environment_tracks_this_function_and_new_target() {
     assert_eq!(environment.function_object().unwrap(), function);
     assert_eq!(environment.new_target().unwrap(), Some(new_target));
 
-    let lexical = Environment::function(None, Object::new(), None, ThisBindingStatus::Lexical);
+    let lexical = Environment::function(
+        None,
+        Object::new_in(&allocation_context),
+        None,
+        ThisBindingStatus::Lexical,
+    );
     assert!(!lexical.has_this_binding().unwrap());
     assert!(lexical.bind_this_value(Value::Undefined).is_err());
 }
 
 #[test]
 fn module_import_bindings_are_live_and_immutable() {
-    let exporting = Environment::module(None);
+    let context = temiya::runtime::AllocationContext::new();
+    let exporting = Environment::module_in(&context);
     exporting
         .create_mutable_binding(name("exported"), false)
         .unwrap();
     exporting
         .initialize_binding(&name("exported"), Value::Number(1.0))
         .unwrap();
-    let importing = Environment::module(None);
+    let importing = Environment::module_in(&context);
     importing
         .create_import_binding(name("local"), exporting.clone(), name("exported"))
         .unwrap();
@@ -415,7 +430,8 @@ fn module_import_bindings_are_live_and_immutable() {
 
 #[test]
 fn record_specific_operations_reject_wrong_environment_kinds() {
-    let declarative = Environment::declarative(None);
+    let context = temiya::runtime::AllocationContext::new();
+    let declarative = Environment::declarative_in(&context);
     assert_eq!(
         declarative.global_this_value().unwrap_err().kind(),
         RuntimeErrorKind::TypeError

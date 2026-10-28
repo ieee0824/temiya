@@ -41,7 +41,7 @@ enum Continuation {
     Return,
 }
 
-struct GeneratorData {
+struct GeneratorFrame {
     state: GeneratorState,
     evaluator: ExpressionEvaluator,
     statements: StatementEvaluator,
@@ -55,8 +55,133 @@ struct GeneratorData {
 
 /// A resumable ECMAScript generator instance.
 #[derive(Clone)]
-pub struct Generator(Rc<RefCell<GeneratorData>>);
+pub struct Generator {
+    object: Object,
+    data: Rc<RefCell<GeneratorSlot>>,
+}
 
+pub(super) struct GeneratorSlot {
+    state: GeneratorState,
+    frame: Option<StoredGeneratorFrame>,
+    result_prototype: super::stored::StoredObject,
+}
+impl GeneratorSlot {
+    pub(super) fn trace(&self, tracer: &mut crate::gc::Tracer<'_>) {
+        self.result_prototype.trace(tracer);
+        if let Some(frame) = &self.frame {
+            frame.trace(tracer);
+        }
+    }
+}
+struct StoredGeneratorFrame {
+    evaluator: super::interpreter::StoredExpressionEvaluator,
+    statements: super::statement::StoredStatementEvaluator,
+    body: Vec<Stmt>,
+    pc: usize,
+    continuation: Option<StoredContinuation>,
+    delegated: VecDeque<super::stored::StoredValue>,
+    delegating: bool,
+    returned: Option<super::stored::StoredValue>,
+}
+enum StoredContinuation {
+    Ignore,
+    Bind { name: JsString, initialize: bool },
+    Assign(Expr),
+    AssignReference(super::interpreter::StoredReference),
+    Return,
+}
+impl StoredGeneratorFrame {
+    // This conversion publishes no managed allocations or user callbacks. Move
+    // immutable code and leaf payloads instead of cloning the body on resumption.
+    fn store(owner: &Object, frame: GeneratorFrame) -> RuntimeResult<Self> {
+        use super::stored::StoredValue;
+        Ok(Self {
+            evaluator: super::interpreter::StoredExpressionEvaluator::store(
+                owner,
+                frame.evaluator,
+            )?,
+            statements: super::statement::StoredStatementEvaluator::store(owner, frame.statements)?,
+            body: frame.body,
+            pc: frame.pc,
+            continuation: frame
+                .continuation
+                .map(|continuation| {
+                    Ok(match continuation {
+                        Continuation::Ignore => StoredContinuation::Ignore,
+                        Continuation::Bind { name, initialize } => {
+                            StoredContinuation::Bind { name, initialize }
+                        }
+                        Continuation::Assign(expr) => StoredContinuation::Assign(expr),
+                        Continuation::AssignReference(reference) => {
+                            StoredContinuation::AssignReference(
+                                super::interpreter::StoredReference::store(owner, reference)?,
+                            )
+                        }
+                        Continuation::Return => StoredContinuation::Return,
+                    })
+                })
+                .transpose()?,
+            delegated: frame
+                .delegated
+                .into_iter()
+                .map(|value| StoredValue::store_owned(owner, value))
+                .collect::<RuntimeResult<_>>()?,
+            delegating: frame.delegating,
+            returned: frame
+                .returned
+                .map(|value| StoredValue::store_owned(owner, value))
+                .transpose()?,
+        })
+    }
+    fn load(self, owner: &Object, state: GeneratorState) -> RuntimeResult<GeneratorFrame> {
+        Ok(GeneratorFrame {
+            state,
+            evaluator: self.evaluator.load(owner)?,
+            statements: self.statements.load(owner)?,
+            body: self.body,
+            pc: self.pc,
+            continuation: self
+                .continuation
+                .map(|continuation| {
+                    Ok(match continuation {
+                        StoredContinuation::Ignore => Continuation::Ignore,
+                        StoredContinuation::Bind { name, initialize } => {
+                            Continuation::Bind { name, initialize }
+                        }
+                        StoredContinuation::Assign(expr) => Continuation::Assign(expr),
+                        StoredContinuation::AssignReference(reference) => {
+                            Continuation::AssignReference(reference.load(owner)?)
+                        }
+                        StoredContinuation::Return => Continuation::Return,
+                    })
+                })
+                .transpose()?,
+            delegated: self
+                .delegated
+                .into_iter()
+                .map(|value| value.into_value(owner))
+                .collect::<RuntimeResult<_>>()?,
+            delegating: self.delegating,
+            returned: self
+                .returned
+                .map(|value| value.into_value(owner))
+                .transpose()?,
+        })
+    }
+    fn trace(&self, tracer: &mut crate::gc::Tracer<'_>) {
+        self.evaluator.trace(tracer);
+        self.statements.trace(tracer);
+        if let Some(StoredContinuation::AssignReference(reference)) = &self.continuation {
+            reference.trace(tracer);
+        }
+        for value in &self.delegated {
+            value.trace(tracer);
+        }
+        if let Some(value) = &self.returned {
+            value.trace(tracer);
+        }
+    }
+}
 impl std::fmt::Debug for Generator {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter
@@ -65,84 +190,142 @@ impl std::fmt::Debug for Generator {
             .finish_non_exhaustive()
     }
 }
-
+struct Executing<'a> {
+    generator: &'a Generator,
+    armed: bool,
+}
+impl Drop for Executing<'_> {
+    fn drop(&mut self) {
+        if self.armed {
+            let retired = {
+                let mut slot = self.generator.data.borrow_mut();
+                slot.state = GeneratorState::Completed;
+                slot.frame.take()
+            };
+            drop(retired);
+        }
+    }
+}
 impl Generator {
+    /// Wraps an object with generator internal slots.
+    #[must_use]
+    pub fn from_object(object: Object) -> Option<Self> {
+        let data = object.0.state.borrow().generator_data.clone()?;
+        Some(Self { object, data })
+    }
     /// Returns the current lifecycle state.
     #[must_use]
     pub fn state(&self) -> GeneratorState {
-        self.0.borrow().state
+        self.data.borrow().state
     }
-
-    /// Resumes normally, supplying the result of the suspended `yield`.
+    /// Resumes normally, supplying the result of the suspended yield.
     pub fn next(&self, value: Value) -> RuntimeResult<IteratorResult> {
         self.resume(Resume::Next(value))
     }
-
     /// Abruptly resumes by throwing a value at the suspension point.
     pub fn throw(&self, value: Value) -> RuntimeResult<IteratorResult> {
         self.resume(Resume::Throw(value))
     }
-
     /// Abruptly resumes with a return completion.
     pub fn return_(&self, value: Value) -> RuntimeResult<IteratorResult> {
         self.resume(Resume::Return(value))
     }
-
     fn resume(&self, resume: Resume) -> RuntimeResult<IteratorResult> {
-        let mut data = self.0.borrow_mut();
-        match data.state {
-            GeneratorState::Executing => {
-                return Err(RuntimeError::type_error("generator is already executing"));
-            }
-            GeneratorState::Completed => {
-                return match resume {
-                    Resume::Throw(value) => Err(RuntimeError::thrown(value)),
-                    Resume::Next(_) => Ok(IteratorResult {
-                        value: Value::Undefined,
-                        done: true,
-                    }),
-                    Resume::Return(value) => Ok(IteratorResult { value, done: true }),
-                };
-            }
-            GeneratorState::SuspendedStart | GeneratorState::SuspendedYield => {}
+        let value = match &resume {
+            Resume::Next(v) | Resume::Throw(v) | Resume::Return(v) => v,
+        };
+        if let Value::Object(value) = value {
+            super::stored::StoredObject::check_context(&self.object, value)?;
         }
-        if matches!(resume, Resume::Throw(_)) {
-            data.state = GeneratorState::Completed;
-            let Resume::Throw(value) = resume else {
-                unreachable!()
+        let (state, frame) = {
+            let mut slot = self.data.borrow_mut();
+            match slot.state {
+                GeneratorState::Executing => {
+                    return Err(RuntimeError::type_error("generator is already executing"));
+                }
+                GeneratorState::Completed => {
+                    return match resume {
+                        Resume::Throw(value) => Err(RuntimeError::thrown(value)),
+                        Resume::Next(_) => Ok(IteratorResult {
+                            value: Value::Undefined,
+                            done: true,
+                        }),
+                        Resume::Return(value) => Ok(IteratorResult { value, done: true }),
+                    };
+                }
+                _ => {}
+            }
+            // Delegation yields one stored value per resume, without loading or
+            // rewriting the remaining vector and without copying function code.
+            if matches!(resume, Resume::Next(_)) && slot.state == GeneratorState::SuspendedYield {
+                let frame = slot.frame.as_mut().expect("suspended frame");
+                if frame.delegating {
+                    if let Some(value) = frame.delegated.pop_front() {
+                        drop(slot);
+                        return Ok(IteratorResult {
+                            value: value.into_value(&self.object)?,
+                            done: false,
+                        });
+                    }
+                }
+            }
+            let state = slot.state;
+            slot.state = GeneratorState::Executing;
+            (state, slot.frame.take().expect("suspended frame"))
+        };
+        let mut executing = Executing {
+            generator: self,
+            armed: true,
+        };
+        if matches!(resume, Resume::Throw(_) | Resume::Return(_)) {
+            drop(frame);
+            return match resume {
+                Resume::Throw(value) => Err(RuntimeError::thrown(value)),
+                Resume::Return(value) => Ok(IteratorResult { value, done: true }),
+                _ => unreachable!(),
             };
-            return Err(RuntimeError::thrown(value));
         }
-        if let Resume::Return(value) = resume {
-            data.state = GeneratorState::Completed;
-            return Ok(IteratorResult { value, done: true });
-        }
+        let mut frame = frame.load(&self.object, state)?;
         let Resume::Next(input) = resume else {
             unreachable!()
         };
-        if data.state == GeneratorState::SuspendedYield && !data.delegating {
-            apply_continuation(&mut data, input)?;
-            if let Some(value) = data.returned.take() {
-                return Ok(IteratorResult { value, done: true });
+        let result = if state == GeneratorState::SuspendedYield && !frame.delegating {
+            apply_continuation(&mut frame, input)?;
+            match frame.returned.take() {
+                Some(value) => IteratorResult { value, done: true },
+                None => {
+                    frame.state = GeneratorState::Executing;
+                    execute(&mut frame)?
+                }
             }
+        } else {
+            frame.state = GeneratorState::Executing;
+            execute(&mut frame)?
+        };
+        let state = if result.done {
+            GeneratorState::Completed
+        } else {
+            GeneratorState::SuspendedYield
+        };
+        let stored = if result.done {
+            None
+        } else {
+            Some(StoredGeneratorFrame::store(&self.object, frame)?)
+        };
+        {
+            let mut slot = self.data.borrow_mut();
+            slot.frame = stored;
+            slot.state = state;
         }
-        data.state = GeneratorState::Executing;
-        match execute(&mut data) {
-            Ok(result) => Ok(result),
-            Err(error) => {
-                data.state = GeneratorState::Completed;
-                Err(error)
-            }
-        }
+        executing.armed = false;
+        Ok(result)
     }
 }
-
 enum Resume {
     Next(Value),
     Throw(Value),
     Return(Value),
 }
-
 pub(super) fn create_generator_object(
     closure: &FunctionClosure,
     function: Object,
@@ -169,7 +352,7 @@ pub(super) fn create_generator_object(
     );
     if !lexical {
         environment.bind_this_value(this_value.clone())?;
-        bind_arguments(&environment, arguments)?;
+        bind_arguments(&closure.realm, &environment, arguments)?;
     }
     let evaluator = ExpressionEvaluator::with_environment(
         closure.realm.clone(),
@@ -201,7 +384,7 @@ pub(super) fn create_generator_object(
         this_value,
         closure.code.strict,
     );
-    let generator = Generator(Rc::new(RefCell::new(GeneratorData {
+    let frame = GeneratorFrame {
         state: GeneratorState::SuspendedStart,
         evaluator,
         statements,
@@ -211,58 +394,76 @@ pub(super) fn create_generator_object(
         delegated: VecDeque::new(),
         delegating: false,
         returned: None,
-    })));
-    generator_object(generator, &closure.realm)
+    };
+    generator_object(frame, &closure.realm)
 }
 
-fn generator_object(generator: Generator, realm: &super::Realm) -> RuntimeResult<Object> {
-    let object = Object::new();
-    let next = generator.clone();
-    object.create_data_property(
-        "next".into(),
-        Value::Object(
-            realm.create_native_function("next", 1, move |_, arguments| {
-                iterator_result_object(
-                    next.next(arguments.first().cloned().unwrap_or(Value::Undefined))?,
-                )
-                .map(Value::Object)
-            })?,
-        ),
-    )?;
-    let throw = generator.clone();
-    object.create_data_property(
-        "throw".into(),
-        Value::Object(
-            realm.create_native_function("throw", 1, move |_, arguments| {
-                iterator_result_object(
-                    throw.throw(arguments.first().cloned().unwrap_or(Value::Undefined))?,
-                )
-                .map(Value::Object)
-            })?,
-        ),
-    )?;
-    object.create_data_property(
-        "return".into(),
-        Value::Object(
-            realm.create_native_function("return", 1, move |_, arguments| {
-                iterator_result_object(
-                    generator.return_(arguments.first().cloned().unwrap_or(Value::Undefined))?,
-                )
-                .map(Value::Object)
-            })?,
-        ),
-    )?;
+fn generator_object(frame: GeneratorFrame, realm: &super::Realm) -> RuntimeResult<Object> {
+    use super::{IntrinsicId, stored::StoredObject};
+    let object = Object::new_for(&realm.global_object());
+    let slot = GeneratorSlot {
+        state: GeneratorState::SuspendedStart,
+        frame: Some(StoredGeneratorFrame::store(&object, frame)?),
+        result_prototype: StoredObject::store(
+            &object,
+            &realm.intrinsic(IntrinsicId::ObjectPrototype),
+        )?,
+    };
+    object.0.state.borrow_mut().generator_data = Some(Rc::new(RefCell::new(slot)));
+    for (name, operation) in [
+        ("next", Operation::Next),
+        ("throw", Operation::Throw),
+        ("return", Operation::Return),
+    ] {
+        let action = GeneratorAction {
+            target: StoredObject::initial(object.0.runtime(), &object)?,
+            operation,
+        };
+        let function = Object::managed_function_with_metadata(
+            &realm.intrinsic(IntrinsicId::FunctionPrototype),
+            name,
+            1,
+            super::object::ManagedCallable::Generator(action),
+        );
+        object.create_data_property(name.into(), Value::Object(function))?;
+    }
     Ok(object)
 }
-
-fn iterator_result_object(result: IteratorResult) -> RuntimeResult<Object> {
-    let object = Object::new();
+#[derive(Clone, Copy)]
+enum Operation {
+    Next,
+    Throw,
+    Return,
+}
+pub(super) struct GeneratorAction {
+    target: super::stored::StoredObject,
+    operation: Operation,
+}
+impl GeneratorAction {
+    pub(super) fn trace(&self, tracer: &mut crate::gc::Tracer<'_>) {
+        self.target.trace(tracer);
+    }
+    pub(super) fn call(&self, owner: &Object, arguments: &[Value]) -> RuntimeResult<Value> {
+        let generator = Generator::from_object(self.target.load(owner)?)
+            .ok_or_else(|| RuntimeError::internal_error("generator slot missing"))?;
+        let prototype = generator.data.borrow().result_prototype.load(owner)?;
+        let value = arguments.first().cloned().unwrap_or(Value::Undefined);
+        let result = match self.operation {
+            Operation::Next => generator.next(value),
+            Operation::Throw => generator.throw(value),
+            Operation::Return => generator.return_(value),
+        }?;
+        iterator_result_object(result, &prototype).map(Value::Object)
+    }
+}
+fn iterator_result_object(result: IteratorResult, prototype: &Object) -> RuntimeResult<Object> {
+    let object = Object::new_for(prototype);
+    object.initialize_prototype(Some(prototype.clone()));
     object.create_data_property("value".into(), result.value)?;
     object.create_data_property("done".into(), Value::Boolean(result.done))?;
     Ok(object)
 }
-
-fn execute(data: &mut GeneratorData) -> RuntimeResult<IteratorResult> {
+fn execute(data: &mut GeneratorFrame) -> RuntimeResult<IteratorResult> {
     if data.delegating {
         if let Some(value) = data.delegated.pop_front() {
             data.state = GeneratorState::SuspendedYield;
@@ -333,7 +534,7 @@ fn execute(data: &mut GeneratorData) -> RuntimeResult<IteratorResult> {
     })
 }
 
-fn expand_control_flow(data: &mut GeneratorData, statement: &Stmt) -> RuntimeResult<bool> {
+fn expand_control_flow(data: &mut GeneratorFrame, statement: &Stmt) -> RuntimeResult<bool> {
     if !contains_yield(statement) {
         return Ok(false);
     }
@@ -532,7 +733,7 @@ fn yield_statement(statement: &Stmt) -> Option<(Option<Expr>, bool, Continuation
     }
 }
 
-fn apply_continuation(data: &mut GeneratorData, value: Value) -> RuntimeResult<()> {
+fn apply_continuation(data: &mut GeneratorFrame, value: Value) -> RuntimeResult<()> {
     let Some(continuation) = data.continuation.take() else {
         return Ok(());
     };

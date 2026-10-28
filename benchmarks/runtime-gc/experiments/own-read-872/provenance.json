@@ -1,0 +1,78 @@
+{
+  "source_revision": "8727ebcc4d809a126aadd9a59c2f993ca7a0c6dd",
+  "files": {
+    "worker-info.json": "0ad8c4c122c1f4ce2a8695dee29766135e957337a33fc621729392f96d2b7c20",
+    "beforeafter.json": "2dcbabb89b4ca6b2a8334b21b34567222063d569545a1a6cc5f29405b4cc4721",
+    "beforeafter.progress": "aada9972eb3a27b592ce699801f3805186430ed71a4ad68bc982faf67c6e1ddd",
+    "boa.json": "69903704dac10ba15f10772a975c37fd2136bd67f7be6945a9a37a80d2a1ec02",
+    "boa.progress": "cf0e392c8a917809632597bc5c4e076bafb73413bca410bd6c969fad2410fbe8",
+    "ownership-probe.json": "e1015cc117fa13d5e9986fa02482a7682c4232c3e782879ec444b8639e8d684a",
+    "runtime-profile.json": "35cd2c35c784c715c8a103461e3f5724ce3c30cc627c8ff2c3e753f734846a85",
+    "runtime-profile.log": "61d709b810d74e873bf34ca34fc7d65af75427cfaeab0afef0037b69757ab182",
+    "agent-affinity.log": "5893e5289cb90d4fc85386e76c0f1c35cf42fa7942a062acc462cb2278c1466f",
+    "agent-affinity-restored.log": "ab9d7ef6bc9f6aa315a33380976b99158135cb270182bc56b89afebccacd3c3b",
+    "invalid-revision.partial.stdout": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "invalid-revision.progress": "ae3a759233b4bf303dcf5e727f7b69eef26d6a17c82436dd30017bdd88133ff1",
+    "invalid-revision-reason.json": "ab0624f9b2340bf80e2169babf9f8005bf2264fc544f64c5bf0f4795c5288634",
+    "all-features.log": "b87be7476885eb3e9a525f1ddca0b3692932c61db2d9216af47f925f209c2567",
+    "clippy.log": "3c4e80e6025a70cd1682cb7b23030cb7eeb2bf0d891e4fdcf04880864bb6d29c",
+    "miri-data.log": "747bcca0453e98884e1bc957e9f90d9c802d21801c0660a43e6f7413668c1897",
+    "miri-string.log": "b4783a4ccd0d17f97dcf11da6fc20ef43e42ccb7c69a470a5a3ab87b0e72bc62",
+    "test262.log": "09ab743a162da4d5593403280f2970288dba7dba4b006fe6ac2181ba34828ce0",
+    "release.log": "f494948654c0c0804c536677a43d90a5ad62bfdf9870d71ddd3f78db14c1f0d5",
+    "worker-checks.log": "4159114e98b912b297ec93978ac30d21cbe9fc58218f2dba671642b6ef468367"
+  },
+  "native": {
+    "passed": 658,
+    "ignored": 21,
+    "suites": 86
+  },
+  "targeted_miri": {
+    "passed": 3,
+    "ignored": 0,
+    "flags": [
+      "-Zmiri-strict-provenance",
+      "-Zmiri-symbolic-alignment-check"
+    ],
+    "scope": "External public Object writes/GC and AST+VM string descriptor/receiver/index integration tests, not full library Miri"
+  },
+  "beforeafter_statistics": {
+    "verified_at": "2026-10-28T20:06:43.481Z",
+    "reports": [
+      {
+        "file": "/tmp/temiya-own-read-beforeafter.json",
+        "sha256": "2dcbabb89b4ca6b2a8334b21b34567222063d569545a1a6cc5f29405b4cc4721",
+        "runs": 66,
+        "checked_values": 1056,
+        "comparisons": 33,
+        "outcomes": {
+          "within noise threshold": 33
+        }
+      }
+    ]
+  },
+  "boa_statistics": {
+    "verified_at": "2026-10-28T20:12:17.397Z",
+    "reports": [
+      {
+        "file": "/tmp/temiya-own-read-boa.json",
+        "sha256": "69903704dac10ba15f10772a975c37fd2136bd67f7be6945a9a37a80d2a1ec02",
+        "runs": 66,
+        "checked_values": 1056,
+        "comparisons": 33,
+        "outcomes": {
+          "Temiya faster beyond threshold": 33
+        }
+      }
+    ]
+  },
+  "profile_validation": {
+    "cases": 11,
+    "oracles_and_counts_match": true,
+    "all_final_live_rooted_zero": true,
+    "root_registration_removal_balanced": true,
+    "pause_accounting": true,
+    "scope": "Separate cfg(test,not(miri)) instrumented single pass, not speed acceptance or all Rust allocations"
+  },
+  "qualification": "Original11 actual modifiedBoa:all66 workers/1056values correct,all33 faster beyond unchanged gate, localARM64 guestCPU0. Ratios.356–.739. Beforeafterall33 within noise versusefd, no qualified improvement/regression; string-method nominal.917–.984 not counted as a speed improvement. Full latest-source CI/Miri/hosted checks pending. Invalid predecessor wrong revision string cancelled before qualification; raw partial observation and reason retained."
+}

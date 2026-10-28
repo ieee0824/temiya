@@ -1,6 +1,11 @@
 //! ECMAScript function objects, calls, constructors, and parameter binding.
 
-use std::{cell::RefCell, rc::Rc};
+use super::{
+    environment::StoredEnvironment,
+    execution::StoredRealm,
+    stored::{StoredObject, StoredValue},
+};
+use std::rc::Rc;
 
 use crate::ast::{Expr, ExprKind, Function, FunctionBody, MethodKind};
 
@@ -23,13 +28,88 @@ pub enum FunctionKind {
 
 #[derive(Clone)]
 pub(super) struct FunctionClosure {
-    pub(super) code: Function,
+    pub(super) code: Rc<Function>,
     pub(super) kind: FunctionKind,
     pub(super) realm: Realm,
     pub(super) environment: Environment,
     pub(super) lexical_this: Value,
     #[allow(dead_code)]
     home_object: Option<Object>,
+}
+
+pub(super) struct StoredFunctionClosure {
+    code: Rc<Function>,
+    kind: FunctionKind,
+    realm: StoredRealm,
+    environment: StoredEnvironment,
+    lexical_this: StoredValue,
+    home_object: Option<StoredObject>,
+}
+impl StoredFunctionClosure {
+    pub(super) fn source_realm(&self) -> &StoredRealm {
+        &self.realm
+    }
+    fn load(&self, owner: &Object) -> RuntimeResult<FunctionClosure> {
+        Ok(FunctionClosure {
+            code: self.code.clone(),
+            kind: self.kind,
+            realm: self.realm.load(owner)?,
+            environment: self.environment.load(owner)?,
+            lexical_this: self.lexical_this.load(owner)?,
+            home_object: self
+                .home_object
+                .as_ref()
+                .map(|object| object.load(owner))
+                .transpose()?,
+        })
+    }
+    pub(super) fn is_constructor(&self) -> bool {
+        !self.code.generator
+            && !self.code.asynchronous
+            && matches!(
+                self.kind,
+                FunctionKind::Normal | FunctionKind::Method(MethodKind::Constructor)
+            )
+    }
+    pub(super) fn call(
+        &self,
+        owner: &Object,
+        this: Value,
+        arguments: &[Value],
+    ) -> RuntimeResult<Value> {
+        let closure = self.load(owner)?;
+        if closure.code.generator {
+            create_generator_object(&closure, owner.clone(), this, arguments).map(Value::Object)
+        } else if closure.code.asynchronous {
+            settled_promise_object(
+                &closure.realm,
+                call_function(&closure, owner.clone(), this, arguments, None)
+                    .map_err(|error| closure.realm.bind_exception(error)),
+            )
+            .map(Value::Object)
+        } else {
+            call_function(&closure, owner.clone(), this, arguments, None)
+                .map_err(|error| closure.realm.bind_exception(error))
+        }
+    }
+    pub(super) fn construct(
+        &self,
+        owner: &Object,
+        arguments: &[Value],
+        new_target: Object,
+    ) -> RuntimeResult<Object> {
+        let closure = self.load(owner)?;
+        construct_function(&closure, owner.clone(), arguments, new_target)
+            .map_err(|error| closure.realm.bind_exception(error))
+    }
+    pub(super) fn trace(&self, tracer: &mut crate::gc::Tracer<'_>) {
+        self.realm.trace(tracer);
+        self.environment.trace(tracer);
+        self.lexical_this.trace(tracer);
+        if let Some(object) = &self.home_object {
+            object.trace(tracer);
+        }
+    }
 }
 
 pub(super) fn create_function(
@@ -45,74 +125,33 @@ pub(super) fn create_function(
     }
     let name_environment =
         if let Some(ExprKind::Identifier(name)) = code.name.as_ref().map(|name| &name.kind) {
-            let environment = Environment::declarative(Some(evaluator.environment.clone()));
+            let environment = Environment::declarative(evaluator.environment.clone());
             environment.create_immutable_binding(JsString::from(name.as_str()), false)?;
             Some(environment)
         } else {
             None
         };
-    let closure = Rc::new(FunctionClosure {
-        code: code.clone(),
-        kind,
-        realm: evaluator.realm.clone(),
-        environment: name_environment
-            .clone()
-            .unwrap_or_else(|| evaluator.environment.clone()),
-        lexical_this: evaluator.this_value.clone(),
-        home_object,
-    });
-    let slot = Rc::new(RefCell::new(None::<super::WeakObject>));
-    let call_closure = closure.clone();
-    let call_slot = slot.clone();
-    let call = move |this: Value, arguments: &[Value]| {
-        let function = call_slot
-            .borrow()
-            .as_ref()
-            .and_then(super::WeakObject::upgrade)
-            .ok_or_else(|| RuntimeError::internal_error("function object is not initialized"))?;
-        if call_closure.code.generator {
-            create_generator_object(&call_closure, function, this, arguments).map(Value::Object)
-        } else if call_closure.code.asynchronous {
-            settled_promise_object(
-                &call_closure.realm,
-                call_function(&call_closure, function, this, arguments, None)
-                    .map_err(|error| call_closure.realm.bind_exception(error)),
-            )
-            .map(Value::Object)
-        } else {
-            call_function(&call_closure, function, this, arguments, None)
-                .map_err(|error| call_closure.realm.bind_exception(error))
-        }
-    };
-    let constructable = !code.generator
-        && !code.asynchronous
-        && matches!(
-            kind,
-            FunctionKind::Normal | FunctionKind::Method(MethodKind::Constructor)
-        );
-    let function = if constructable {
-        let construct_closure = closure.clone();
-        let construct_slot = slot.clone();
-        Object::native_callable_constructor(call, move |arguments, new_target| {
-            let function = construct_slot
-                .borrow()
-                .as_ref()
-                .and_then(super::WeakObject::upgrade)
-                .ok_or_else(|| {
-                    RuntimeError::internal_error("function object is not initialized")
-                })?;
-            construct_function(&construct_closure, function, arguments, new_target)
-                .map_err(|error| construct_closure.realm.bind_exception(error))
-        })
-    } else {
-        Object::native_function(call)
-    };
-    *slot.borrow_mut() = Some(function.downgrade());
-    function.initialize_prototype(Some(
+    let function = Object::new_with_prototype(
         evaluator
             .realm
             .intrinsic(super::IntrinsicId::FunctionPrototype),
-    ));
+    );
+    let closure = StoredFunctionClosure {
+        code: Rc::new(code.clone()),
+        kind,
+        realm: StoredRealm::store(&function, &evaluator.realm)?,
+        environment: StoredEnvironment::store(
+            &function,
+            name_environment.as_ref().unwrap_or(&evaluator.environment),
+        )?,
+        lexical_this: StoredValue::store(&function, &evaluator.this_value)?,
+        home_object: home_object
+            .as_ref()
+            .map(|object| StoredObject::store(&function, object))
+            .transpose()?,
+    };
+    let constructable = closure.is_constructor();
+    function.set_managed_callable(super::object::ManagedCallable::Ast(closure));
     if let (Some(environment), Some(ExprKind::Identifier(name))) =
         (name_environment, code.name.as_ref().map(|name| &name.kind))
     {
@@ -179,7 +218,7 @@ fn call_function(
         environment.bind_this_value(this_value.clone())?;
     }
     if !lexical {
-        bind_arguments(&environment, arguments)?;
+        bind_arguments(&closure.realm, &environment, arguments)?;
     }
     let evaluator = ExpressionEvaluator::with_environment(
         closure.realm.clone(),
@@ -227,7 +266,7 @@ fn construct_function(
         Value::Object(prototype) => Some(prototype),
         _ => Some(closure.realm.intrinsic(super::IntrinsicId::ObjectPrototype)),
     };
-    let instance = Object::new();
+    let instance = Object::new_for(&new_target);
     if let Some(prototype) = prototype {
         instance.initialize_prototype(Some(prototype));
     }
@@ -246,18 +285,34 @@ fn construct_function(
 
 pub(super) fn ordinary_this(realm: &Realm, value: Value) -> RuntimeResult<Value> {
     match value {
-        Value::Undefined | Value::Null => Ok(Value::Object(realm.global_object())),
+        Value::Undefined | Value::Null => realm.global_this_value(),
         Value::Object(_) => Ok(value),
-        primitive => {
-            let object = Object::new();
-            object.create_data_property("[[PrimitiveValue]]".into(), primitive)?;
-            Ok(Value::Object(object))
-        }
+        primitive => box_primitive(realm, primitive).map(Value::Object),
     }
 }
 
-pub(super) fn bind_arguments(environment: &Environment, arguments: &[Value]) -> RuntimeResult<()> {
-    let object = Object::new();
+pub(super) fn box_primitive(realm: &Realm, value: Value) -> RuntimeResult<Object> {
+    use super::IntrinsicId;
+    let id = match &value {
+        Value::Object(object) => return Ok(object.clone()),
+        Value::Undefined | Value::Null => {
+            return Err(RuntimeError::type_error("cannot box null or undefined"));
+        }
+        Value::Number(_) => IntrinsicId::NumberPrototype,
+        Value::String(_) => IntrinsicId::StringPrototype,
+        Value::Boolean(_) => IntrinsicId::BooleanPrototype,
+        Value::Symbol(_) => IntrinsicId::SymbolPrototype,
+        Value::BigInt(_) => IntrinsicId::BigIntPrototype,
+    };
+    Ok(super::intrinsics::boxed_value(&realm.intrinsic(id), value))
+}
+
+pub(super) fn bind_arguments(
+    realm: &Realm,
+    environment: &Environment,
+    arguments: &[Value],
+) -> RuntimeResult<()> {
+    let object = Object::new_for(&realm.global_object());
     for (index, value) in arguments.iter().enumerate() {
         object.create_data_property(
             PropertyKey::String(JsString::from(index.to_string())),
@@ -280,7 +335,7 @@ pub(super) fn bind_parameters(
     for parameter in parameters {
         match &parameter.kind {
             ExprKind::Spread(binding) => {
-                let rest = Object::new();
+                let rest = Object::new_for(&evaluator.realm.global_object());
                 for (rest_index, value) in arguments[index..].iter().enumerate() {
                     rest.create_data_property(
                         PropertyKey::String(JsString::from(rest_index.to_string())),
@@ -329,5 +384,48 @@ fn bind_parameter(environment: &Environment, binding: &Expr, value: Value) -> Ru
     } else {
         environment.create_mutable_binding(name.clone(), false)?;
         environment.initialize_binding(&name, value)
+    }
+}
+
+#[cfg(test)]
+mod primitive_this_tests {
+    use super::*;
+    use crate::{
+        bytecode::{BytecodeCompiler, VirtualMachine},
+        runtime::{Runtime, ScriptRecord},
+    };
+
+    #[test]
+    fn ast_and_vm_use_the_realms_custom_global_this_value() {
+        for bytecode in [false, true] {
+            let runtime = Runtime::new();
+            runtime.set_allocation_collection_interval(1);
+            let global = Object::new_in(&runtime);
+            let receiver = Object::new_in(&runtime);
+            receiver
+                .create_data_property("answer".into(), Value::Number(42.0))
+                .unwrap();
+            let realm = Realm::try_new(global.clone(), Value::Object(receiver.clone())).unwrap();
+            drop(receiver);
+            runtime.collect_garbage().unwrap();
+            let source = "function read(){return this.answer;}read();";
+            let completion = if bytecode {
+                VirtualMachine::execute_in_realm(
+                    &BytecodeCompiler::compile(source).unwrap(),
+                    &realm,
+                )
+                .unwrap()
+            } else {
+                ScriptRecord::parse(realm.clone(), source)
+                    .unwrap()
+                    .evaluate()
+                    .unwrap()
+            };
+            assert!(
+                matches!(completion, Completion::Normal(Some(Value::Number(value))) if value == 42.0)
+            );
+            drop((global, realm));
+            assert_eq!(runtime.collect_migration_graph().unwrap().retained, 0);
+        }
     }
 }

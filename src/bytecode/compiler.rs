@@ -408,15 +408,6 @@ impl Compiler {
                     ) {
                         return Err(self.unsupported("object method", property.span));
                     }
-                    if property.computed
-                        || matches!(property.key.kind, ExprKind::Literal(Literal::Number { .. }))
-                    {
-                        self.expression(&property.key)?;
-                    } else {
-                        self.property_key(&property.key, false)?;
-                    }
-                    self.code.push(Instruction::CoercePropertyKey);
-                    self.expression(property.value.as_ref().unwrap_or(&property.key))?;
                     let proto_name = match &property.key.kind {
                         ExprKind::Identifier(name) => name == "__proto__",
                         ExprKind::Literal(Literal::String { value, .. }) => {
@@ -425,9 +416,28 @@ impl Compiler {
                         }
                         _ => false,
                     };
-                    self.code.push(Instruction::DefineObjectProperty {
-                        prototype_setter: !property.computed && !property.shorthand && proto_name,
-                    });
+                    let prototype_setter = !property.computed && !property.shorthand && proto_name;
+                    if !property.computed
+                        && matches!(
+                            property.key.kind,
+                            ExprKind::Identifier(_) | ExprKind::Literal(Literal::String { .. })
+                        )
+                    {
+                        // This syntax already names a String. No observable
+                        // key conversion or temporary Value is required.
+                        let name = self.named_property_constant(&property.key)?;
+                        self.expression(property.value.as_ref().unwrap_or(&property.key))?;
+                        self.code.push(Instruction::DefineNamedObjectProperty {
+                            name,
+                            prototype_setter,
+                        });
+                    } else {
+                        self.expression(&property.key)?;
+                        self.code.push(Instruction::CoercePropertyKey);
+                        self.expression(property.value.as_ref().unwrap_or(&property.key))?;
+                        self.code
+                            .push(Instruction::DefineObjectProperty { prototype_setter });
+                    }
                 }
                 Ok(())
             }
@@ -958,15 +968,6 @@ impl Compiler {
                 self.code.push(Instruction::AppendArgument);
             }
         }
-        Ok(())
-    }
-
-    fn property_key(&mut self, property: &Expr, computed: bool) -> Result<(), CompileError> {
-        if computed {
-            return self.expression(property);
-        }
-        let name = self.named_property_constant(property)?;
-        self.code.push(Instruction::LoadConstant(name));
         Ok(())
     }
 

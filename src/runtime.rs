@@ -28,6 +28,7 @@ mod interpreter;
 mod intrinsics;
 pub(crate) mod iterator;
 mod job_queue;
+mod managed;
 mod native_function;
 mod numeric;
 mod object;
@@ -38,6 +39,7 @@ mod promise;
 mod proxy;
 mod regexp;
 mod statement;
+mod stored;
 mod string;
 mod string_methods;
 
@@ -53,11 +55,14 @@ pub use indexed::{ArrayBuffer, ArrayObject, DataView, TypedArray};
 pub(crate) use interpreter::unary_numeric_value;
 pub use interpreter::{ExpressionEvaluator, Reference, ReferencedName};
 pub(crate) use interpreter::{
-    binary_number, binary_values, binary_values_in_realm, parse_numeric_literal, type_of,
-    update_reference_in_realm,
+    PropertyReferenceContext, binary_number, binary_values, binary_values_in_realm,
+    parse_numeric_literal, type_of, update_reference_in_realm,
 };
 pub use intrinsics::{IntrinsicId, IntrinsicRegistry, WellKnownSymbol, WellKnownSymbols};
 pub use job_queue::JobQueue;
+pub(crate) use managed::Runtime;
+/// Explicit owner for a traced runtime heap and its host-created objects.
+pub use managed::Runtime as AllocationContext;
 pub use numeric::{BigIntObject, Math, NumberObject, parse_float, parse_int};
 pub use object::{PropertyDescriptor, PropertyKey, is_compatible_property_descriptor};
 pub use pipeline::{ModuleGraph, ModuleStatus, SourceTextModule};
@@ -277,33 +282,64 @@ struct ObjectConversion {
 
 struct ObjectData {
     id: u64,
+    // Non-owning facade metadata; never makes the allocation a GC root.
+    facade: RefCell<Weak<managed::ObjectRoot>>,
     conversion: RefCell<ObjectConversion>,
     state: RefCell<object::ObjectState>,
+}
+
+impl ObjectData {
+    fn ordinary() -> Self {
+        static NEXT_ID: AtomicU64 = AtomicU64::new(1);
+        Self {
+            id: next_identity(&NEXT_ID, "JavaScript object"),
+            facade: RefCell::new(Weak::new()),
+            conversion: RefCell::new(ObjectConversion::default()),
+            state: RefCell::new(object::ordinary_state()),
+        }
+    }
 }
 
 /// An identity-bearing ordinary object with configurable primitive-conversion hooks.
 ///
 /// Properties and prototype internal methods are added by the object-model layer.
 #[derive(Clone)]
-pub struct Object(Rc<ObjectData>);
+pub struct Object(managed::ObjectReference);
 
 #[derive(Clone)]
-pub(super) struct WeakObject(Weak<ObjectData>);
+pub(super) struct WeakObject(managed::WeakObjectRoot);
 
 impl Object {
     pub(super) fn downgrade(&self) -> WeakObject {
-        WeakObject(Rc::downgrade(&self.0))
+        WeakObject(managed::WeakObjectRoot::new(self))
     }
-    /// Allocates an ordinary object with the standard fallback conversion behavior.
-    #[must_use]
-    pub fn new() -> Self {
-        static NEXT_ID: AtomicU64 = AtomicU64::new(1);
-        let id = next_identity(&NEXT_ID, "JavaScript object");
-        Self(Rc::new(ObjectData {
-            id,
-            conversion: RefCell::new(ObjectConversion::default()),
-            state: RefCell::new(object::ordinary_state()),
-        }))
+    /// Allocates an ordinary object in an explicit shared context.
+    pub fn new_in(runtime: &AllocationContext) -> Self {
+        runtime.allocate_object(ObjectData::ordinary())
+    }
+
+    /// Borrows the shared context that owns this object.
+    pub fn allocation_context(&self) -> &AllocationContext {
+        self.0
+            .runtime()
+            .expect("objects have an allocation context")
+    }
+
+    pub(crate) fn new_for(context: &Object) -> Self {
+        Self::new_in(context.allocation_context())
+    }
+
+    pub(crate) fn check_allocation_context(&self, value: &Object) -> RuntimeResult<()> {
+        stored::StoredObject::check_context(self, value)
+    }
+
+    fn check_abrupt_context(&self, error: &RuntimeError) -> RuntimeResult<()> {
+        if self.0.runtime().is_some() {
+            if let Some(Value::Object(value)) = error.thrown_value() {
+                self.check_allocation_context(value)?;
+            }
+        }
+        Ok(())
     }
 
     /// Returns an engine-local identity useful for diagnostics and keyed storage.
@@ -332,14 +368,9 @@ impl Object {
 }
 
 impl WeakObject {
+    #[cfg(test)]
     pub(super) fn upgrade(&self) -> Option<Object> {
-        self.0.upgrade().map(Object)
-    }
-}
-
-impl Default for Object {
-    fn default() -> Self {
-        Self::new()
+        self.0.upgrade()
     }
 }
 
@@ -354,7 +385,7 @@ impl fmt::Debug for Object {
 
 impl PartialEq for Object {
     fn eq(&self, other: &Self) -> bool {
-        Rc::ptr_eq(&self.0, &other.0)
+        self.0.same_object(&other.0)
     }
 }
 
@@ -443,7 +474,11 @@ impl Value {
 
         let exotic = object.0.conversion.borrow().exotic.clone();
         if let Some(hook) = exotic {
-            let result = hook(hint)?;
+            let result = hook(hint);
+            if let Err(error) = &result {
+                object.check_abrupt_context(error)?;
+            }
+            let result = result?;
             if matches!(result, Self::Object(_)) {
                 return Err(RuntimeError::type_error("@@toPrimitive returned an object"));
             }
@@ -466,7 +501,11 @@ impl Value {
         };
         for (hook, string_fallback) in methods {
             let result = if let Some(hook) = hook {
-                hook()?
+                let result = hook();
+                if let Err(error) = &result {
+                    object.check_abrupt_context(error)?;
+                }
+                result?
             } else if string_fallback {
                 Self::String(JsString::from("[object Object]"))
             } else {

@@ -7,6 +7,55 @@ use temiya::{
 };
 
 #[test]
+fn explicit_allocation_context_preserves_identity_and_rejects_foreign_heaps() {
+    use temiya::runtime::{AllocationContext, Object};
+
+    let engine = Engine::default();
+    let realm = engine.create_realm();
+    let object = Object::new_in(engine.allocation_context());
+    object
+        .create_data_property("self".into(), Value::Object(object.clone()))
+        .unwrap();
+    let handle = engine.value(&realm, Value::Object(object.clone())).unwrap();
+    engine.collect_garbage().unwrap();
+    assert!(handle.value().same_value(&Value::Object(object.clone())));
+    assert!(
+        object
+            .get(&"self".into())
+            .unwrap()
+            .same_value(handle.value())
+    );
+
+    let other = AllocationContext::new();
+    let foreign = Object::new_in(&other);
+    assert!(
+        engine
+            .value(&realm, Value::Object(foreign.clone()))
+            .is_err()
+    );
+    assert!(
+        object
+            .create_data_property("foreign".into(), Value::Object(foreign))
+            .is_err()
+    );
+    assert!(object.get_own_property(&"foreign".into()).is_none());
+
+    let context = engine.allocation_context().clone();
+    drop(realm);
+    drop(engine);
+    context.collect_garbage().unwrap();
+    assert!(
+        object
+            .get(&"self".into())
+            .unwrap()
+            .same_value(handle.value())
+    );
+    drop(handle);
+    drop(object);
+    assert_eq!(context.collect_garbage().unwrap().retained, 0);
+}
+
+#[test]
 fn builder_owns_host_state_and_configuration() {
     let dropped = Rc::new(Cell::new(false));
     struct HostState(Rc<Cell<bool>>);

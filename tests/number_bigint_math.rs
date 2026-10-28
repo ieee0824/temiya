@@ -13,7 +13,8 @@ fn method(holder: &temiya::runtime::Object, name: &str) -> temiya::runtime::Obje
 
 #[test]
 fn number_constructor_predicates_and_wrapper_preserve_edges() {
-    let realm = Realm::ordinary();
+    let context = temiya::runtime::AllocationContext::new();
+    let realm = Realm::ordinary_in(&context);
     let number = realm.intrinsic(IntrinsicId::Number);
     assert!(matches!(
         number.call(Value::Undefined, &[]).unwrap(),
@@ -22,7 +23,7 @@ fn number_constructor_predicates_and_wrapper_preserve_edges() {
     let boxed = number
         .construct(&[Value::Number(-0.0)], number.clone())
         .unwrap();
-    let wrapper = NumberObject::new(-0.0);
+    let wrapper = NumberObject::new(&context, -0.0);
     assert!(wrapper.value().is_sign_negative());
     let value = method(&realm.intrinsic(IntrinsicId::NumberPrototype), "valueOf")
         .call(Value::Object(boxed), &[])
@@ -64,6 +65,7 @@ fn math_handles_nan_signed_zero_infinity_and_rounding() {
 
 #[test]
 fn bigint_width_operations_and_mixed_numeric_errors() {
+    let allocation_context = temiya::runtime::AllocationContext::new();
     assert_eq!(
         Math::bigint_as_uint_n(8, &BigInt::from(-1)).unwrap(),
         BigInt::from(255)
@@ -72,7 +74,7 @@ fn bigint_width_operations_and_mixed_numeric_errors() {
         Math::bigint_as_int_n(8, &BigInt::from(255)).unwrap(),
         BigInt::from(-1)
     );
-    let realm = Realm::ordinary();
+    let realm = Realm::ordinary_in(&allocation_context);
     let bigint = realm.intrinsic(IntrinsicId::BigInt);
     assert!(!bigint.is_constructor());
     assert!(matches!(
@@ -89,7 +91,8 @@ fn bigint_width_operations_and_mixed_numeric_errors() {
 
 #[test]
 fn math_intrinsic_converts_arguments_and_rejects_bigint() {
-    let realm = Realm::ordinary();
+    let allocation_context = temiya::runtime::AllocationContext::new();
+    let realm = Realm::ordinary_in(&allocation_context);
     let math = realm.intrinsic(IntrinsicId::Math);
     assert!(matches!(
         method(&math, "round")

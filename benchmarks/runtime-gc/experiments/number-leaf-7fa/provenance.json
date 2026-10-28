@@ -1,0 +1,68 @@
+{
+  "measured_revision": "7fa1e218c9a6a5a5b601efce8b4476b0cd64e73a",
+  "worker": {
+    "name": "Temiya",
+    "engine": "Temiya",
+    "mode": "Auto Script",
+    "revision": "7fa1e218c9a6a5a5b601efce8b4476b0cd64e73a",
+    "executable": "/tmp/temiya-number-leaf-frozen-worker",
+    "executable_sha256": "2550c82ed92a08bfc3f1f1edf3847dd10172637cb1bea5501336528726e09d81",
+    "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)\nbinary: rustc\ncommit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67\ncommit-date: 2026-10-13\nhost: aarch64-unknown-linux-gnu\nrelease: 1.99.1\nLLVM version: 23.1.1",
+    "features": [],
+    "profile": "release",
+    "mode_probe": {
+      "architecture": "aarch64",
+      "engine": "Temiya",
+      "expected": 42,
+      "invocation_backend": "Bytecode",
+      "mode": "Auto Script",
+      "profile": "release",
+      "samples_ns": [
+        2583
+      ],
+      "sandbox": null,
+      "scope": "parse+evaluate invocation; function setup excluded",
+      "setup_backend": "Bytecode",
+      "setup_ns": 10792,
+      "startup_ns": 262707,
+      "validated_passes": 2,
+      "warmup_ns": 41958
+    }
+  },
+  "files": {
+    "beforeafter.json": "a5cfaf41684be9ad35eac343463b49f2de087ce44bd2e4a8bfbd3f44e6b037f3"
+  },
+  "independent_statistics": {
+    "verified_at": "2026-10-28T17:10:31.928Z",
+    "reports": [
+      {
+        "file": "/tmp/temiya-number-leaf-beforeafter-cpu0.json",
+        "sha256": "a5cfaf41684be9ad35eac343463b49f2de087ce44bd2e4a8bfbd3f44e6b037f3",
+        "runs": 66,
+        "checked_values": 1056,
+        "comparisons": 33,
+        "outcomes": {
+          "within noise threshold": 30,
+          "after slower beyond threshold": 2,
+          "after faster beyond threshold": 1
+        }
+      }
+    ]
+  },
+  "validation": {
+    "native_passed": 652,
+    "native_ignored": 21,
+    "clippy_warnings": 0,
+    "strict_ownership_cases_released": 7,
+    "targeted_public_numeric_bits_miri": {
+      "passed": 1,
+      "ignored": 0,
+      "flags": [
+        "-Zmiri-strict-provenance",
+        "-Zmiri-symbolic-alignment-check"
+      ]
+    },
+    "full_miri": false
+  },
+  "decision": "Reject storage fast path and inlining attributes: no arithmetic pair exceeded the existing gate; two slower comparisons elsewhere. Do not select favorable results. Retain strengthened semantic test."
+}

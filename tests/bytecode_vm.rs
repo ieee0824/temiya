@@ -5,8 +5,9 @@ use temiya::{
 };
 
 fn evaluate_both(source: &str) -> (Completion, Completion) {
+    let allocation_context = temiya::runtime::AllocationContext::new();
     let program = parse_script(source).unwrap();
-    let interpreted = StatementEvaluator::new(Realm::ordinary())
+    let interpreted = StatementEvaluator::new(Realm::ordinary_in(&allocation_context))
         .evaluate_program(&program)
         .unwrap();
     let bytecode = BytecodeCompiler::compile_program(&program).unwrap();
@@ -96,14 +97,15 @@ fn vm_value(realm: &Realm, source: &str) -> Value {
 
 #[test]
 fn call_frames_capture_method_before_nested_arguments_and_preserve_receiver() {
+    let allocation_context = temiya::runtime::AllocationContext::new();
     use std::{cell::RefCell, rc::Rc};
     use temiya::runtime::{Object, PropertyDescriptor};
-    let realm = Realm::ordinary();
+    let realm = Realm::ordinary_in(&allocation_context);
     let events = Rc::new(RefCell::new(vec![]));
-    let receiver = Object::new();
+    let receiver = Object::new_in(&allocation_context);
     let expected = receiver.clone();
     let log = events.clone();
-    let method = Object::native_function(move |this, args| {
+    let method = Object::native_function_in(&allocation_context, move |this, args| {
         assert!(this.same_value(&Value::Object(expected.clone())));
         assert!(args[0].same_value(&Value::Number(21.0)));
         assert!(args[1].same_value(&Value::Number(21.0)));
@@ -111,7 +113,7 @@ fn call_frames_capture_method_before_nested_arguments_and_preserve_receiver() {
         Ok(Value::Number(42.0))
     });
     let log = events.clone();
-    let getter = Object::native_function(move |_, _| {
+    let getter = Object::native_function_in(&allocation_context, move |_, _| {
         log.borrow_mut().push("get");
         Ok(Value::Object(method.clone()))
     });
@@ -122,7 +124,7 @@ fn call_frames_capture_method_before_nested_arguments_and_preserve_receiver() {
         )
         .unwrap();
     let log = events.clone();
-    let argument = Object::native_function(move |this, _| {
+    let argument = Object::native_function_in(&allocation_context, move |this, _| {
         assert!(this.same_value(&Value::Undefined));
         log.borrow_mut().push("arg");
         Ok(Value::Number(21.0))
@@ -151,15 +153,16 @@ fn call_frames_capture_method_before_nested_arguments_and_preserve_receiver() {
 
 #[test]
 fn construct_frame_passes_arguments_and_original_new_target() {
+    let allocation_context = temiya::runtime::AllocationContext::new();
     use std::{cell::RefCell, rc::Rc};
     use temiya::runtime::Object;
-    let realm = Realm::ordinary();
+    let realm = Realm::ordinary_in(&allocation_context);
     let recorded = Rc::new(RefCell::new(None));
     let captured = recorded.clone();
-    let constructor = Object::native_constructor(move |args, target| {
+    let constructor = Object::native_constructor_in(&allocation_context, move |args, target| {
         assert!(args[0].same_value(&Value::Number(42.0)));
+        let result = Object::new_in(target.allocation_context());
         *captured.borrow_mut() = Some(target);
-        let result = Object::new();
         result.create_data_property("answer".into(), args[0].clone())?;
         Ok(result)
     });
@@ -176,13 +179,18 @@ fn construct_frame_passes_arguments_and_original_new_target() {
 
 #[test]
 fn call_frame_argument_failure_and_reentry_leave_vm_reusable() {
+    let allocation_context = temiya::runtime::AllocationContext::new();
     use temiya::runtime::{Object, RuntimeErrorKind};
-    let realm = Realm::ordinary();
+    let realm = Realm::ordinary_in(&allocation_context);
     let inner = BytecodeCompiler::compile("40 + 2;").unwrap();
-    let callback = Object::native_function(move |_, _| match VirtualMachine::execute(&inner)? {
-        Completion::Normal(Some(value)) => Ok(value),
-        _ => panic!("unexpected nested result"),
-    });
+    let callback =
+        Object::native_function_in(
+            &allocation_context,
+            move |_, _| match VirtualMachine::execute(&inner)? {
+                Completion::Normal(Some(value)) => Ok(value),
+                _ => panic!("unexpected nested result"),
+            },
+        );
     realm
         .global_object()
         .create_data_property("callback".into(), Value::Object(callback))
@@ -208,7 +216,8 @@ fn call_frame_argument_failure_and_reentry_leave_vm_reusable() {
 
 #[test]
 fn vm_calls_existing_javascript_functions_through_real_object_call() {
-    let realm = Realm::ordinary();
+    let allocation_context = temiya::runtime::AllocationContext::new();
+    let realm = Realm::ordinary_in(&allocation_context);
     StatementEvaluator::new(realm.clone())
         .evaluate_program(&parse_script("function twice(x) { return x * 2; }").unwrap())
         .unwrap();
@@ -231,8 +240,9 @@ fn vm_calls_existing_javascript_functions_through_real_object_call() {
 
 #[test]
 fn recursive_javascript_call_overflow_restores_call_budget() {
+    let allocation_context = temiya::runtime::AllocationContext::new();
     use temiya::runtime::RuntimeErrorKind;
-    let realm = Realm::ordinary();
+    let realm = Realm::ordinary_in(&allocation_context);
     StatementEvaluator::new(realm.clone())
         .evaluate_program(
             &parse_script("function recur() { return recur(); } function answer() { return 42; }")
@@ -253,13 +263,14 @@ fn recursive_javascript_call_overflow_restores_call_budget() {
 
 #[test]
 fn pending_callee_roots_drop_after_argument_throw_and_normal_return() {
+    let allocation_context = temiya::runtime::AllocationContext::new();
     use std::rc::Rc;
     use temiya::runtime::Object;
     for source in ["f(f = 0, missing);", "f(f = 0);"] {
-        let realm = Realm::ordinary();
+        let realm = Realm::ordinary_in(&allocation_context);
         let marker = Rc::new(());
         let weak = Rc::downgrade(&marker);
-        let function = Object::native_function(move |_, _| {
+        let function = Object::native_function_in(&allocation_context, move |_, _| {
             let _keep_alive = &marker;
             Ok(Value::Number(42.0))
         });
@@ -270,12 +281,14 @@ fn pending_callee_roots_drop_after_argument_throw_and_normal_return() {
         let code = BytecodeCompiler::compile(source).unwrap();
         let result = VirtualMachine::execute_in_realm(&code, &realm);
         assert_eq!(result.is_err(), source.contains("missing"));
+        allocation_context.collect_garbage().unwrap();
         assert!(weak.upgrade().is_none(), "callee retained after {source}");
     }
 }
 
 #[test]
 fn optional_calls_propagate_short_circuits_and_preserve_grouped_receivers() {
+    let allocation_context = temiya::runtime::AllocationContext::new();
     let bootstrap = parse_script("var nil=null; var count=0; var receiver={answer:42,method:function(x){count=count+1;return this.answer+x;},absent:null}; function factory(){count=count+1;return receiver;} function nothing(){count=count+1;return null;} function identity(x){return x;}").unwrap();
     for source in [
         "nil?.method(count=count+1).answer;",
@@ -302,8 +315,8 @@ fn optional_calls_propagate_short_circuits_and_preserve_grouped_receivers() {
         "false?.(count=count+1);",
         "identity((nil?.method)?.(count=count+1));",
     ] {
-        let ast_realm = Realm::ordinary();
-        let vm_realm = Realm::ordinary();
+        let ast_realm = Realm::ordinary_in(&allocation_context);
+        let vm_realm = Realm::ordinary_in(&allocation_context);
         for realm in [&ast_realm, &vm_realm] {
             StatementEvaluator::new(realm.clone())
                 .evaluate_program(&bootstrap)

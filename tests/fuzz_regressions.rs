@@ -46,9 +46,10 @@ impl Trace for StateNode {
 
 #[test]
 fn gc_interpreter_regression_seed_preserves_invariants() {
+    let allocation_context = temiya::runtime::AllocationContext::new();
     let data = include_bytes!("../fuzz/regressions/gc_interpreter/root-mutation-seed");
     let mut heap = Heap::stress();
-    let realm = Realm::ordinary();
+    let realm = Realm::ordinary_in(&allocation_context);
     let queue = realm.job_queue();
     let mut handles = Vec::new();
     let mut roots: Vec<Option<Root<StateNode>>> = Vec::new();

@@ -1,0 +1,70 @@
+{
+  "source_revision": "41327b9d532e6062d4edd1c5435858554f422005",
+  "files": {
+    "beforeafter.json": "b97e3413f2f1299b6e5c991b1dbbdc36bf5d7e0e0f825a3168fdda43725ed5de",
+    "beforeafter.progress": "a2db01c0f132de923fe5dd4a6defde1d4b7c8115959df0c5fa178ec8159297bf",
+    "worker-info.json": "9a6563bada9d2761d7384d087fa5981a85b7cfa83b46ac2ddd7fba80a5341ae4",
+    "ownership-probe.json": "e1015cc117fa13d5e9986fa02482a7682c4232c3e782879ec444b8639e8d684a",
+    "all-features.log": "e07893fede5e9ffb2520ff0af24bfc569139515dfcd6498228c2ce784afa45a1",
+    "clippy.log": "6ddcea8efab5aae6fe21f75be5a708f2578ccb4bae4b65c59e4f9b51cbfe5a7b",
+    "test262.log": "8297e38644a767a542d996fa6d53416dc733363c66931723e23abb1de599ea3c",
+    "worker-checks.log": "4159114e98b912b297ec93978ac30d21cbe9fc58218f2dba671642b6ef468367",
+    "miri-bits.log": "e8d64d69c839354417a5a41c43d16c13e7b9c3c4419b76b877fe753d51814605",
+    "miri-loops.log": "f95eb5c2d9325b0e243fb295c9d49cecce295e987a1eda8c8ceb1b5ad9ee6c3e",
+    "miri-prepared.log": "03a2d458dab88fb14b2f2e074337f025c05732eb72bf3871a1163da11dc427a1",
+    "miri-cycles.log": "8409c4228ccdf5566db3c99db6c6552b2c3bbf9a9d5e1ddcb59aaf7842c55db0",
+    "boa.json": "7dce03284a6efb9bbddf9250db0cb13bfd0617cac67d8b940bfbd1e9c53b7cf3",
+    "boa.progress": "f775068ac0112284a4de4ee1e4ad4b0bea83891eb93fac2e0b371ba548e760ed",
+    "ci-status.json": "7e79fed186cb1c3a5a41586a8e3deaabd1cfd7d4d91f2c4cdc9cc5f9f9eb5eae",
+    "runtime-profile.json": "1aaf28637df3546d9c45a84923c9c0d70bfdd157e5506fbc87d39944358beef0",
+    "runtime-profile.log": "67ecada3f9b31d7b7ed6cba46797e3e6b9ee2a8b0094a72b5f6e01a42a91d2e3",
+    "agent-affinity-restored.log": "8d43d3530eb32e039534a05f810a87b9fc984e71c9e1b40e2d7cce4046465519"
+  },
+  "native_totals": {
+    "suites": 86,
+    "passed": 655,
+    "failed": 0,
+    "ignored": 21
+  },
+  "statistics": {
+    "verified_at": "2026-10-28T19:00:00.574Z",
+    "reports": [
+      {
+        "file": "/tmp/temiya-separated-vm-beforeafter.json",
+        "sha256": "b97e3413f2f1299b6e5c991b1dbbdc36bf5d7e0e0f825a3168fdda43725ed5de",
+        "runs": 66,
+        "checked_values": 1056,
+        "comparisons": 33,
+        "outcomes": {
+          "within noise threshold": 28,
+          "after slower beyond threshold": 2,
+          "after faster beyond threshold": 3
+        }
+      }
+    ]
+  },
+  "qualification": "Original11 actual pinned modified-Boa comparison: all66 workers/1056 values correct, all33 comparisons faster beyond unchanged10%/MAD gate. Guest ARM64 CPU0; agents CPUs1-3, samecompiler/release. Time ratios0.396–0.803. Scope limited to this local condition; hosted and all119 latest-source Miri remain pending. Beforeafter retains3 faster/28 noise/2 slower, not regression-free. Four local exact Miri successes do not substitute for full library Miri.",
+  "boa_statistics": {
+    "verified_at": "2026-10-28T19:02:31.275Z",
+    "reports": [
+      {
+        "file": "/tmp/temiya-separated-vm-boa.json",
+        "sha256": "7dce03284a6efb9bbddf9250db0cb13bfd0617cac67d8b940bfbd1e9c53b7cf3",
+        "runs": 66,
+        "checked_values": 1056,
+        "comparisons": 33,
+        "outcomes": {
+          "Temiya faster beyond threshold": 33
+        }
+      }
+    ]
+  },
+  "profile_validation": {
+    "cases": 11,
+    "oracles_and_counts": "match pinned manifest in order",
+    "all_released_live_and_rooted": 0,
+    "root_registration_removal_balanced": true,
+    "mutator_and_pause_accounting": true,
+    "scope": "Instrumented cfg(test,not(miri)) one-pass diagnostic; never substituted for uninstrumented speed comparison."
+  }
+}

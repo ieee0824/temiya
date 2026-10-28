@@ -5,8 +5,8 @@
 
 use std::{
     any::Any,
-    cell::RefCell,
-    collections::{HashMap, HashSet, VecDeque},
+    cell::{Cell, RefCell},
+    collections::{HashSet, VecDeque},
     fmt,
     hash::{Hash, Hasher},
     marker::PhantomData,
@@ -101,12 +101,21 @@ impl<T: Trace> fmt::Debug for Handle<T> {
 /// A visitor used by [`Trace`] implementations to report outgoing heap edges.
 pub struct Tracer<'a> {
     visit: &'a mut dyn FnMut(RawHandle),
+    conditional: &'a mut dyn FnMut(RawHandle, RawHandle),
 }
 
 impl Tracer<'_> {
     /// Reports a typed heap edge to the collector.
     pub fn mark<T: Trace>(&mut self, handle: Handle<T>) {
         (self.visit)(handle.erase());
+    }
+
+    /// Reports an ephemeron owned by the allocation currently being traced.
+    /// The value is retained only if both that owner and the key are reachable.
+    /// This edge does not mark the key or visit the value until the key is
+    /// reachable through another path.
+    pub fn ephemeron<K: Trace, V: Trace>(&mut self, key: Handle<K>, value: Handle<V>) {
+        (self.conditional)(key.erase(), value.erase());
     }
 }
 
@@ -122,6 +131,17 @@ pub trait Trace: Any {
 trait Allocation: Trace {
     fn as_any(&self) -> &dyn Any;
     fn as_any_mut(&mut self) -> &mut dyn Any;
+    fn into_any_rc(self: Rc<Self>) -> Rc<dyn Any>;
+}
+
+// Runtime retirement releases the outer RefCell borrow before dropping host
+// payloads. Standalone collection keeps its immediate-drop behavior.
+pub(crate) struct RetiredAllocations(Vec<AllocationPayload>);
+
+impl Drop for RetiredAllocations {
+    fn drop(&mut self) {
+        self.0.clear();
+    }
 }
 
 impl<T: Trace> Allocation for T {
@@ -132,15 +152,122 @@ impl<T: Trace> Allocation for T {
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
     }
+
+    fn into_any_rc(self: Rc<Self>) -> Rc<dyn Any> {
+        self
+    }
+}
+
+// Runtime facades and their heap slot share the same record allocation. Rc is
+// only storage here: liveness is decided exclusively by tracing registered
+// roots and handles, never by inspecting Rust reference counts.
+enum AllocationPayload {
+    Owned(Box<dyn Allocation>),
+    Shared(Rc<dyn Allocation>),
+}
+impl Trace for AllocationPayload {
+    fn trace(&self, tracer: &mut Tracer<'_>) {
+        self.allocation().trace(tracer);
+    }
+}
+impl AllocationPayload {
+    fn allocation(&self) -> &dyn Allocation {
+        match self {
+            Self::Owned(value) => value.as_ref(),
+            Self::Shared(value) => value.as_ref(),
+        }
+    }
+    fn as_any(&self) -> &dyn Any {
+        self.allocation().as_any()
+    }
+    fn as_any_mut(&mut self) -> Option<&mut dyn Any> {
+        match self {
+            Self::Owned(value) => Some(value.as_any_mut()),
+            // Shared records mutate only their explicit interior-mutable fields.
+            Self::Shared(_) => None,
+        }
+    }
 }
 
 struct Slot {
     generation: u64,
-    value: Option<Box<dyn Allocation>>,
+    value: Option<AllocationPayload>,
     old: bool,
 }
 
-type RootCounts = Rc<RefCell<HashMap<RawHandle, usize>>>;
+// Handles already carry a dense slot index. Root registration must not hash
+// three identity words on every allocation, facade revival and final drop.
+// The active list also keeps collection proportional to live roots rather
+// than the heap's historical slot count.
+#[derive(Default)]
+struct RootTable {
+    slots: Vec<Option<RootEntry>>,
+    active: Vec<RawHandle>,
+    #[cfg(all(test, not(miri)))]
+    activity: [usize; 3], // registration calls, removal calls, peak distinct roots
+}
+struct RootEntry {
+    identity: RawHandle,
+    count: usize,
+    position: usize,
+}
+impl RootTable {
+    fn register(&mut self, identity: RawHandle) {
+        #[cfg(all(test, not(miri)))]
+        {
+            self.activity[0] += 1;
+        }
+        if self.slots.len() <= identity.slot {
+            self.slots.resize_with(identity.slot + 1, || None);
+        }
+        if let Some(entry) = &mut self.slots[identity.slot] {
+            if entry.count != 0 {
+                assert_eq!(entry.identity, identity, "live root identity changed");
+                entry.count += 1;
+                return;
+            }
+        }
+        self.slots[identity.slot] = Some(RootEntry {
+            identity,
+            count: 1,
+            position: self.active.len(),
+        });
+        self.active.push(identity);
+        #[cfg(all(test, not(miri)))]
+        {
+            self.activity[2] = self.activity[2].max(self.active.len());
+        }
+    }
+    fn unregister(&mut self, identity: RawHandle) {
+        #[cfg(all(test, not(miri)))]
+        {
+            self.activity[1] += 1;
+        }
+        let entry = self.slots[identity.slot].as_mut().expect("registered root");
+        assert_eq!(entry.identity, identity, "root identity changed");
+        assert_ne!(entry.count, 0, "root already unregistered");
+        entry.count -= 1;
+        if entry.count != 0 {
+            return;
+        }
+        let position = entry.position;
+        self.active.swap_remove(position);
+        if let Some(moved) = self.active.get(position) {
+            self.slots[moved.slot]
+                .as_mut()
+                .expect("active root")
+                .position = position;
+        }
+    }
+    fn count(&self, identity: RawHandle) -> usize {
+        self.slots
+            .get(identity.slot)
+            .and_then(Option::as_ref)
+            .filter(|entry| entry.identity == identity)
+            .map_or(0, |entry| entry.count)
+    }
+}
+type RootCounts = Rc<RefCell<RootTable>>;
 
 /// An owning registration that keeps a handle reachable across collection points.
 pub struct Root<T: Trace> {
@@ -168,12 +295,7 @@ impl<T: Trace> Clone for Root<T> {
 
 impl<T: Trace> Drop for Root<T> {
     fn drop(&mut self) {
-        let mut roots = self.roots.borrow_mut();
-        let count = roots.get_mut(&self.handle.raw).expect("registered root");
-        *count -= 1;
-        if *count == 0 {
-            roots.remove(&self.handle.raw);
-        }
+        self.roots.borrow_mut().unregister(self.handle.raw);
     }
 }
 
@@ -380,7 +502,7 @@ impl Heap {
             id: NEXT_HEAP.fetch_add(1, Ordering::Relaxed),
             slots: Vec::new(),
             free: Vec::new(),
-            roots: Rc::new(RefCell::new(HashMap::new())),
+            roots: Rc::new(RefCell::new(RootTable::default())),
             options,
             allocations_since_collection: 0,
             remembered: HashSet::new(),
@@ -409,15 +531,27 @@ impl Heap {
 
     /// Allocates and roots a value, collecting first when configured limits require it.
     pub fn try_allocate<T: Trace>(&mut self, value: T) -> Result<Root<T>, OutOfMemory> {
+        self.try_allocate_payload(AllocationPayload::Owned(Box::new(value)))
+    }
+
+    pub(crate) fn allocate_shared<T: Trace>(&mut self, value: Rc<T>) -> Root<T> {
+        self.try_allocate_payload(AllocationPayload::Shared(value))
+            .expect("garbage-collected heap allocation failed")
+    }
+
+    fn try_allocate_payload<T: Trace>(
+        &mut self,
+        value: AllocationPayload,
+    ) -> Result<Root<T>, OutOfMemory> {
         if self.allocations_since_collection >= self.options.allocation_threshold {
-            self.collect();
+            self.collect_with_retire(drop, Some(&value));
         }
         if self
             .options
             .max_allocations
             .is_some_and(|limit| self.live_allocations() >= limit)
         {
-            self.collect();
+            self.collect_with_retire(drop, Some(&value));
             if self
                 .options
                 .max_allocations
@@ -446,7 +580,7 @@ impl Heap {
             },
             marker: PhantomData,
         };
-        self.slots[slot_index].value = Some(Box::new(value));
+        self.slots[slot_index].value = Some(value);
         self.slots[slot_index].old = false;
         self.allocations_since_collection += 1;
         self.peak_live = self.peak_live.max(self.live_allocations());
@@ -478,6 +612,13 @@ impl Heap {
             .map(use_value)
     }
 
+    pub(crate) fn shared<T: Trace>(&self, handle: Handle<T>) -> Option<Rc<T>> {
+        match self.slot(handle)?.value.as_ref()? {
+            AllocationPayload::Shared(value) => value.clone().into_any_rc().downcast().ok(),
+            AllocationPayload::Owned(_) => None,
+        }
+    }
+
     /// Provides scoped mutable access if the handle is live and has the expected type.
     pub fn with_mut<T: Trace, R>(
         &mut self,
@@ -485,7 +626,7 @@ impl Heap {
         use_value: impl FnOnce(&mut T) -> R,
     ) -> Option<R> {
         self.slot_mut(handle)
-            .and_then(|slot| slot.value.as_mut()?.as_any_mut().downcast_mut::<T>())
+            .and_then(|slot| slot.value.as_mut()?.as_any_mut()?.downcast_mut::<T>())
             .map(use_value)
     }
 
@@ -508,6 +649,38 @@ impl Heap {
         Ok(())
     }
 
+    /// Validates a payload's edges before publishing it and remembers its owner.
+    pub(crate) fn record_traced_edges<T: Trace, U: Trace + ?Sized>(
+        &mut self,
+        owner: Handle<T>,
+        edges: &U,
+    ) -> Result<(), WriteBarrierError> {
+        let old = self
+            .raw_slot(owner.raw)
+            .ok_or(WriteBarrierError::InvalidOwner)?
+            .old;
+        let invalid = Cell::new(false);
+        let young = Cell::new(false);
+        let check = |edge| match self.raw_slot(edge) {
+            Some(slot) => young.set(young.get() || !slot.old),
+            None => invalid.set(true),
+        };
+        edges.trace(&mut Tracer {
+            visit: &mut |edge| check(edge),
+            conditional: &mut |key, value| {
+                check(key);
+                check(value);
+            },
+        });
+        if invalid.get() {
+            return Err(WriteBarrierError::InvalidTarget);
+        }
+        if old && young.get() {
+            self.remembered.insert(owner.raw);
+        }
+        Ok(())
+    }
+
     /// Verifies that every observed old-to-young edge has a remembered owner.
     pub fn verify_write_barriers(&self) -> Result<(), WriteBarrierError> {
         for (index, slot) in self.slots.iter().enumerate() {
@@ -520,11 +693,15 @@ impl Heap {
                 slot: index,
                 generation: slot.generation,
             };
-            let mut has_young_edge = false;
+            let has_young_edge = Cell::new(false);
             value.trace(&mut Tracer {
-                visit: &mut |edge| has_young_edge |= self.is_young(edge),
+                visit: &mut |edge| has_young_edge.set(has_young_edge.get() || self.is_young(edge)),
+                conditional: &mut |key, value| {
+                    has_young_edge
+                        .set(has_young_edge.get() || self.is_young(key) || self.is_young(value))
+                },
             });
-            if has_young_edge && !self.remembered.contains(&owner) {
+            if has_young_edge.get() && !self.remembered.contains(&owner) {
                 return Err(WriteBarrierError::MissingBarrier(owner));
             }
         }
@@ -560,17 +737,20 @@ impl Heap {
     /// Returns the number of explicit root registrations for a handle.
     #[must_use]
     pub fn root_count<T: Trace>(&self, handle: Handle<T>) -> usize {
-        self.roots.borrow().get(&handle.raw).copied().unwrap_or(0)
+        self.roots.borrow().count(handle.raw)
     }
 
     /// Traces each currently rooted allocation into a collector callback.
     pub fn trace_roots(&self, visit: &mut dyn FnMut(RawHandle)) {
-        let roots = self.roots.borrow().keys().copied().collect::<Vec<_>>();
+        let roots = self.roots.borrow().active.clone();
         for raw in roots {
             visit(raw);
             if let Some(slot) = self.raw_slot(raw) {
                 if let Some(value) = &slot.value {
-                    value.trace(&mut Tracer { visit });
+                    value.trace(&mut Tracer {
+                        visit,
+                        conditional: &mut |_, _| {},
+                    });
                 }
             }
         }
@@ -578,8 +758,38 @@ impl Heap {
 
     /// Performs a complete stop-the-world mark-and-sweep collection.
     pub fn collect(&mut self) -> CollectionStats {
+        self.collect_with_retire(drop, None)
+    }
+
+    pub(crate) fn collect_retiring(&mut self) -> (CollectionStats, RetiredAllocations) {
+        let mut retired = RetiredAllocations(Vec::new());
+        let stats = self.collect_with_retire(|value| retired.0.push(value), None);
+        (stats, retired)
+    }
+
+    pub(crate) fn collect_retiring_with(
+        &mut self,
+        incoming: &impl Trace,
+    ) -> (CollectionStats, RetiredAllocations) {
+        let mut retired = RetiredAllocations(Vec::new());
+        let stats = self.collect_with_retire(|value| retired.0.push(value), Some(incoming));
+        (stats, retired)
+    }
+
+    fn collect_with_retire(
+        &mut self,
+        mut retire: impl FnMut(AllocationPayload),
+        incoming: Option<&dyn Trace>,
+    ) -> CollectionStats {
         let mut marked = HashSet::new();
-        let mut queue = self.roots.borrow().keys().copied().collect::<VecDeque<_>>();
+        let mut traced_ephemerons = Vec::new();
+        let mut queue = VecDeque::from(self.roots.borrow().active.clone());
+        if let Some(incoming) = incoming {
+            incoming.trace(&mut Tracer {
+                visit: &mut |edge| queue.push_back(edge),
+                conditional: &mut |key, value| traced_ephemerons.push((key, value)),
+            });
+        }
         while let Some(raw) = queue.pop_front() {
             if !marked.insert(raw) {
                 continue;
@@ -590,11 +800,12 @@ impl Heap {
             let Some(value) = &slot.value else { continue };
             value.trace(&mut Tracer {
                 visit: &mut |edge| queue.push_back(edge),
+                conditional: &mut |key, value| traced_ephemerons.push((key, value)),
             });
         }
         loop {
             let mut added = false;
-            for &(key, value) in &self.ephemerons {
+            for &(key, value) in self.ephemerons.iter().chain(&traced_ephemerons) {
                 if marked.contains(&key) && !marked.contains(&value) {
                     queue.push_back(value);
                     added = true;
@@ -609,6 +820,7 @@ impl Heap {
                 };
                 value.trace(&mut Tracer {
                     visit: &mut |edge| queue.push_back(edge),
+                    conditional: &mut |key, value| traced_ephemerons.push((key, value)),
                 });
             }
             if !added {
@@ -630,7 +842,8 @@ impl Heap {
                 generation: slot.generation,
             };
             if slot.value.is_some() && !marked.contains(&raw) {
-                slot.value = None;
+                let value = slot.value.take().expect("occupied dead slot");
+                retire(value);
                 self.free.push(index);
                 reclaimed += 1;
             } else if slot.value.is_some() {
@@ -652,8 +865,9 @@ impl Heap {
     /// Collects unreachable young allocations while leaving the old generation intact.
     pub fn collect_minor(&mut self) -> CollectionStats {
         let mut marked = HashSet::new();
+        let mut traced_ephemerons = Vec::new();
         let mut queue = VecDeque::new();
-        let roots = self.roots.borrow().keys().copied().collect::<Vec<_>>();
+        let roots = self.roots.borrow().active.clone();
         let seeds = roots
             .iter()
             .copied()
@@ -664,6 +878,7 @@ impl Heap {
                 queue.push_back(raw);
             } else if let Some(value) = self.raw_slot(raw).and_then(|slot| slot.value.as_ref()) {
                 value.trace(&mut Tracer {
+                    conditional: &mut |key, value| traced_ephemerons.push((key, value)),
                     visit: &mut |edge| {
                         if self.is_young(edge) {
                             queue.push_back(edge);
@@ -680,6 +895,7 @@ impl Heap {
                 continue;
             };
             value.trace(&mut Tracer {
+                conditional: &mut |key, value| traced_ephemerons.push((key, value)),
                 visit: &mut |edge| {
                     if self.is_young(edge) {
                         queue.push_back(edge);
@@ -689,7 +905,7 @@ impl Heap {
         }
         loop {
             let mut added = false;
-            for &(key, value) in &self.ephemerons {
+            for &(key, value) in self.ephemerons.iter().chain(&traced_ephemerons) {
                 let key_reachable = self
                     .raw_slot(key)
                     .is_some_and(|slot| slot.old || marked.contains(&key));
@@ -706,6 +922,7 @@ impl Heap {
                     continue;
                 };
                 value.trace(&mut Tracer {
+                    conditional: &mut |key, value| traced_ephemerons.push((key, value)),
                     visit: &mut |edge| {
                         if self.is_young(edge) {
                             queue.push_back(edge);
@@ -749,10 +966,10 @@ impl Heap {
     /// Returns the number of allocations currently present in the heap.
     #[must_use]
     pub fn live_allocations(&self) -> usize {
-        self.slots
-            .iter()
-            .filter(|slot| slot.value.is_some())
-            .count()
+        // Every vacant slot appears exactly once in the free list. This is
+        // also called on each allocation to update peak_live; scanning all
+        // slots here makes allocation cost grow with the heap high-water mark.
+        self.slots.len() - self.free.len()
     }
 
     /// Returns current and cumulative heap statistics without triggering collection.
@@ -762,7 +979,7 @@ impl Heap {
             live: self.live_allocations(),
             slots: self.slots.len(),
             free: self.free.len(),
-            rooted: self.roots.borrow().len(),
+            rooted: self.roots.borrow().active.len(),
             remembered: self.remembered.len(),
             collections: self.collections,
             reclaimed_total: self.reclaimed_total,
@@ -770,9 +987,14 @@ impl Heap {
         }
     }
 
+    #[cfg(all(test, not(miri)))]
+    pub(crate) fn root_activity(&self) -> [usize; 3] {
+        self.roots.borrow().activity
+    }
+
     /// Verifies roots, traced edges, remembered owners, and the free list.
     pub fn verify(&self) -> Result<(), HeapVerificationError> {
-        for raw in self.roots.borrow().keys().copied() {
+        for raw in self.roots.borrow().active.iter().copied() {
             if self.raw_slot(raw).is_none() {
                 return Err(HeapVerificationError::DanglingRoot(raw));
             }
@@ -800,15 +1022,25 @@ impl Heap {
                 slot: index,
                 generation: slot.generation,
             };
-            let mut dangling = None;
+            let dangling = Cell::new(None);
             value.trace(&mut Tracer {
                 visit: &mut |edge| {
-                    if dangling.is_none() && self.raw_slot(edge).is_none() {
-                        dangling = Some(edge);
+                    if dangling.get().is_none() && self.raw_slot(edge).is_none() {
+                        dangling.set(Some(edge));
+                    }
+                },
+                conditional: &mut |key, value| {
+                    // A dead weak key may leave a stale entry until its owner's
+                    // next cleanup. A live key must still have a live value.
+                    if dangling.get().is_none()
+                        && self.raw_slot(key).is_some()
+                        && self.raw_slot(value).is_none()
+                    {
+                        dangling.set(Some(value));
                     }
                 },
             });
-            if let Some(edge) = dangling {
+            if let Some(edge) = dangling.get() {
                 return Err(HeapVerificationError::DanglingEdge { owner, edge });
             }
         }
@@ -849,5 +1081,139 @@ impl Default for Heap {
 }
 
 fn register_root(roots: &RootCounts, handle: RawHandle) {
-    *roots.borrow_mut().entry(handle).or_default() += 1;
+    roots.borrow_mut().register(handle);
+}
+
+#[cfg(test)]
+mod shared_record_tests {
+    use super::*;
+
+    #[cfg(not(miri))]
+    #[test]
+    fn diagnostic_root_activity_counts_registrations_and_balanced_removals() {
+        let drops = Rc::new(Cell::new(0));
+        let mut heap = Heap::new();
+        assert_eq!(heap.root_activity(), [0, 0, 0]);
+        let first = heap.allocate(record(&drops));
+        let second = heap.allocate_shared(Rc::new(record(&drops)));
+        let clone = first.clone();
+        assert_eq!(heap.root_activity(), [3, 0, 2]);
+        drop(first);
+        drop(clone);
+        assert_eq!(heap.root_activity(), [3, 2, 2]);
+        assert_eq!(heap.collect().retained, 1);
+        drop(second);
+        assert_eq!(heap.root_activity(), [3, 3, 2]);
+        assert_eq!(heap.collect().retained, 0);
+        assert_eq!(drops.get(), 2);
+    }
+
+    struct Record {
+        child: Cell<Option<Handle<Record>>>,
+        drops: Rc<Cell<usize>>,
+    }
+    impl Trace for Record {
+        fn trace(&self, tracer: &mut Tracer<'_>) {
+            if let Some(child) = self.child.get() {
+                tracer.mark(child);
+            }
+        }
+    }
+    impl Drop for Record {
+        fn drop(&mut self) {
+            self.drops.set(self.drops.get() + 1);
+        }
+    }
+    fn record(drops: &Rc<Cell<usize>>) -> Record {
+        Record {
+            child: Cell::new(None),
+            drops: drops.clone(),
+        }
+    }
+
+    #[test]
+    fn shared_identity_typed_access_and_retirement_do_not_use_rc_liveness() {
+        let drops = Rc::new(Cell::new(0));
+        let mut heap = Heap::new();
+        let data = Rc::new(record(&drops));
+        let root = heap.allocate_shared(data.clone());
+        let handle = root.handle();
+        assert!(Rc::ptr_eq(&data, &heap.shared(handle).unwrap()));
+        assert_eq!(heap.with(handle, |value| value.child.get()), Some(None));
+        assert!(heap.with_mut(handle, |_| ()).is_none());
+        assert!(Heap::new().shared(handle).is_none());
+        let wrong_type = Handle::<AllocationPayload> {
+            raw: handle.raw,
+            marker: PhantomData,
+        };
+        assert!(heap.shared(wrong_type).is_none());
+        let clone = root.clone();
+        drop(root);
+        assert_eq!(heap.collect().reclaimed, 0);
+        drop(clone);
+        // An Rc alone is not a registered root. Retirement invalidates the slot
+        // even if Rust temporarily still holds this record's storage.
+        assert_eq!(heap.collect().reclaimed, 1);
+        assert!(heap.shared(handle).is_none());
+        assert_eq!(drops.get(), 0);
+        drop(data);
+        assert_eq!(drops.get(), 1);
+        let replacement = heap.allocate_shared(Rc::new(record(&drops)));
+        assert_eq!(replacement.handle().raw.slot, handle.raw.slot);
+        assert_ne!(replacement.handle().raw.generation, handle.raw.generation);
+        assert!(heap.shared(handle).is_none());
+        drop(replacement);
+        let (stats, retired) = heap.collect_retiring();
+        assert_eq!(stats.reclaimed, 1);
+        assert_eq!(drops.get(), 1);
+        drop(retired);
+        assert_eq!(drops.get(), 2);
+    }
+
+    #[test]
+    fn incoming_shared_records_protect_owned_edges_at_threshold_and_capacity() {
+        let drops = Rc::new(Cell::new(0));
+        let mut heap = Heap::with_options(HeapOptions {
+            allocation_threshold: 0,
+            max_allocations: Some(2),
+        });
+        let child = heap.allocate(record(&drops));
+        let child_handle = child.handle();
+        let incoming = Rc::new(record(&drops));
+        incoming.child.set(Some(child_handle));
+        drop(child);
+        let parent = heap.allocate_shared(incoming);
+        assert!(heap.with(child_handle, |_| ()).is_some());
+        assert!(heap.shared(child_handle).is_none());
+        assert!(heap.try_allocate(record(&drops)).is_err());
+        assert_eq!(drops.get(), 1); // Only the rejected allocation was dropped.
+        heap.with_mut(child_handle, |value| value.child.set(Some(parent.handle())))
+            .unwrap();
+        assert_eq!(heap.collect().reclaimed, 0);
+        drop(parent);
+        assert_eq!(heap.collect().reclaimed, 2);
+        assert_eq!(drops.get(), 3);
+    }
+
+    #[test]
+    fn shared_records_participate_in_generational_barriers() {
+        let drops = Rc::new(Cell::new(0));
+        let mut heap = Heap::new();
+        let data = Rc::new(record(&drops));
+        let parent = heap.allocate_shared(data.clone());
+        heap.collect();
+        let child = heap.allocate(record(&drops));
+        let child_handle = child.handle();
+        heap.write_barrier(parent.handle(), child_handle).unwrap();
+        data.child.set(Some(child_handle));
+        drop(child);
+        assert_eq!(heap.collect_minor().reclaimed, 0);
+        assert!(heap.with(child_handle, |_| ()).is_some());
+        data.child.set(None);
+        assert_eq!(heap.collect().reclaimed, 1);
+        drop(data);
+        drop(parent);
+        assert_eq!(heap.collect().reclaimed, 1);
+        assert_eq!(drops.get(), 2);
+    }
 }

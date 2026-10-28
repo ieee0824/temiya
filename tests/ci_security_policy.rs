@@ -1,5 +1,6 @@
 const WORKFLOW: &str = include_str!("../.github/workflows/security.yml");
 const DEPENDABOT: &str = include_str!("../.github/dependabot.yml");
+const MIRI_RUNNER: &str = include_str!("../scripts/run-miri-shard.mjs");
 
 #[test]
 fn security_jobs_are_scheduled_bounded_and_failing() {
@@ -7,7 +8,7 @@ fn security_jobs_are_scheduled_bounded_and_failing() {
     assert!(WORKFLOW.contains("workflow_dispatch:"));
     assert!(WORKFLOW.contains("pull_request:"));
     assert!(WORKFLOW.contains("- Cargo.lock"));
-    assert_eq!(WORKFLOW.matches("timeout-minutes:").count(), 3);
+    assert_eq!(WORKFLOW.matches("timeout-minutes:").count(), 4);
     assert!(!WORKFLOW.contains("continue-on-error"));
 }
 
@@ -15,7 +16,12 @@ fn security_jobs_are_scheduled_bounded_and_failing() {
 fn audit_miri_and_sanitizer_commands_are_pinned() {
     assert!(WORKFLOW.contains("cargo-audit --version 0.22.2 --locked"));
     assert!(WORKFLOW.contains("audit --deny warnings"));
-    assert!(WORKFLOW.contains("nightly-2026-10-20 miri test --lib"));
+    assert!(WORKFLOW.contains("node scripts/run-miri-shard.mjs ${{ matrix.shard }} 16"));
+    assert!(MIRI_RUNNER.contains("'+nightly-2026-10-20', 'miri', 'test', '--locked', '--lib'"));
+    assert!(MIRI_RUNNER.contains("'--exact', '--nocapture'"));
+    assert!(MIRI_RUNNER.contains("1 passed; 0 failed; 0 ignored;"));
+    assert!(WORKFLOW.contains("needs: miri-shards"));
+    assert!(WORKFLOW.contains("run: test \"$MIRI_RESULT\" = success"));
     assert!(WORKFLOW.contains("-Zsanitizer=address"));
     assert!(WORKFLOW.contains("halt_on_error=1:detect_leaks=0"));
 }

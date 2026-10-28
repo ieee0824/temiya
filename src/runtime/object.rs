@@ -325,6 +325,7 @@ pub(super) struct BoundFunction {
 }
 
 pub(super) enum ManagedCallable {
+    JsonParse(super::host_data::JsonParseBuiltin),
     Date(super::host_data::DateFactory),
     Factory(CapturedFactory),
     Array(super::array_methods::ArrayBuiltin),
@@ -346,6 +347,7 @@ impl ManagedCallable {
             Self::Array(_) => Ok(None),
             Self::Factory(_) => Ok(None),
             Self::Date(_) => Ok(None),
+            Self::JsonParse(_) => Ok(None),
         }
     }
     fn is_callable(&self) -> bool {
@@ -364,10 +366,12 @@ impl ManagedCallable {
             Self::Array(_) => false,
             Self::Factory(factory) => factory.construct.is_some(),
             Self::Date(_) => true,
+            Self::JsonParse(_) => false,
         }
     }
     fn call(&self, owner: &Object, this: Value, arguments: &[Value]) -> RuntimeResult<Value> {
         match self {
+            Self::JsonParse(builtin) => builtin.call(owner, arguments),
             Self::Date(factory) => factory.call(),
             Self::Factory(factory) => {
                 let (needs_object, callback) = factory
@@ -452,6 +456,7 @@ impl ManagedCallable {
             Self::Array(call) => call.trace(tracer),
             Self::Factory(factory) => factory.object.trace(tracer),
             Self::Date(factory) => factory.trace(tracer),
+            Self::JsonParse(builtin) => builtin.trace(tracer),
             Self::Bound(bound) => bound.trace(tracer),
             Self::ProxyRevoker(slot) => {
                 if let Some(proxy) = &*slot.borrow() {
@@ -1591,6 +1596,49 @@ impl Object {
         }
         state.properties.remove(position);
         Ok(true)
+    }
+
+    /// Reads ordinary enumerable key flags without rooting property values.
+    pub(super) fn enumerable_own_string_keys(&self) -> RuntimeResult<Vec<JsString>> {
+        let state = self.0.state.borrow();
+        if state.proxy.is_none() && state.string_data.is_none() && state.elements.is_none() {
+            let mut indices = Vec::new();
+            let mut strings = Vec::new();
+            for entry in &state.properties {
+                if !entry.descriptor.enumerable() {
+                    continue;
+                }
+                let PropertyKey::String(name) = &entry.key else {
+                    continue;
+                };
+                if let Some(index) = entry.key.array_index() {
+                    indices.push((index, name.clone()));
+                } else {
+                    strings.push(name.clone());
+                }
+            }
+            indices.sort_unstable_by_key(|(index, _)| *index);
+            let mut result: Vec<_> = indices.into_iter().map(|(_, name)| name).collect();
+            result.extend(strings);
+            return Ok(result);
+        }
+        drop(state);
+        let mut result = Vec::new();
+        for key in self.try_own_property_keys()? {
+            if !matches!(key, PropertyKey::String(_)) {
+                continue;
+            }
+            if self
+                .try_get_own_property(&key)?
+                .is_some_and(|descriptor| descriptor.enumerable == Some(true))
+            {
+                let PropertyKey::String(name) = key else {
+                    unreachable!()
+                };
+                result.push(name);
+            }
+        }
+        Ok(result)
     }
 
     /// Implements ordinary `[[OwnPropertyKeys]]` ordering.

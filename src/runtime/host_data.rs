@@ -148,6 +148,67 @@ impl DateObject {
 /// JSON parsing and serialization over runtime Values.
 pub struct Json;
 
+pub(super) struct JsonParseBuiltin {
+    object_prototype: StoredObject,
+    array_prototype: StoredObject,
+}
+impl JsonParseBuiltin {
+    pub(super) fn create(intrinsics: &super::IntrinsicRegistry) -> RuntimeResult<Object> {
+        let function = intrinsics.get(super::IntrinsicId::FunctionPrototype);
+        let builtin = Self {
+            object_prototype: StoredObject::initial(
+                function.0.runtime(),
+                &intrinsics.get(super::IntrinsicId::ObjectPrototype),
+            )?,
+            array_prototype: StoredObject::initial(
+                function.0.runtime(),
+                &intrinsics.get(super::IntrinsicId::ArrayPrototype),
+            )?,
+        };
+        Ok(Object::managed_function_with_metadata(
+            &function,
+            "parse",
+            2,
+            super::object::ManagedCallable::JsonParse(builtin),
+        ))
+    }
+    pub(super) fn call(&self, owner: &Object, arguments: &[Value]) -> RuntimeResult<Value> {
+        let source = arguments
+            .first()
+            .unwrap_or(&Value::Undefined)
+            .to_js_string()?;
+        let parsed = parse_json(&source)?;
+        let prototypes = if matches!(
+            parsed,
+            serde_json::Value::Array(_) | serde_json::Value::Object(_)
+        ) {
+            Some((
+                self.object_prototype.load(owner)?,
+                self.array_prototype.load(owner)?,
+            ))
+        } else {
+            None
+        };
+        let value = from_json(
+            parsed,
+            prototypes.as_ref().map(|(object, array)| (object, array)),
+        )?;
+        let Some(Value::Object(reviver)) = arguments
+            .get(1)
+            .filter(|value| matches!(value, Value::Object(object) if object.is_callable()))
+        else {
+            return Ok(value);
+        };
+        revive("", value, &mut |key, value| {
+            reviver.call(Value::Undefined, &[Value::String(key.into()), value])
+        })
+    }
+    pub(super) fn trace(&self, tracer: &mut crate::gc::Tracer<'_>) {
+        self.object_prototype.trace(tracer);
+        self.array_prototype.trace(tracer);
+    }
+}
+
 /// Callback shape used by JSON reviver and replacer operations.
 pub type JsonTransform<'a> = dyn FnMut(&str, Value) -> RuntimeResult<Value> + 'a;
 
@@ -157,9 +218,7 @@ impl Json {
         source: &JsString,
         mut reviver: Option<&mut JsonTransform<'_>>,
     ) -> RuntimeResult<Value> {
-        let parsed: serde_json::Value = serde_json::from_str(&source.to_string_lossy())
-            .map_err(|error| RuntimeError::syntax_error(error.to_string()))?;
-        let value = from_json(parsed)?;
+        let value = from_json(parse_json(source)?, None)?;
         if let Some(reviver) = reviver.as_mut() {
             revive("", value, *reviver)
         } else {
@@ -192,7 +251,15 @@ impl IntlProvider for UnsupportedIntl {
     }
 }
 
-fn from_json(value: serde_json::Value) -> RuntimeResult<Value> {
+fn parse_json(source: &JsString) -> RuntimeResult<serde_json::Value> {
+    serde_json::from_str(&source.to_string_lossy())
+        .map_err(|error| RuntimeError::syntax_error(error.to_string()))
+}
+
+fn from_json(
+    value: serde_json::Value,
+    prototypes: Option<(&Object, &Object)>,
+) -> RuntimeResult<Value> {
     Ok(match value {
         serde_json::Value::Null => Value::Null,
         serde_json::Value::Bool(value) => Value::Boolean(value),
@@ -203,19 +270,36 @@ fn from_json(value: serde_json::Value) -> RuntimeResult<Value> {
         ),
         serde_json::Value::String(value) => Value::String(JsString::from(value)),
         serde_json::Value::Array(values) => {
-            let array = ArrayObject::new(values.len() as u32)?;
+            let length = u32::try_from(values.len())
+                .map_err(|_| RuntimeError::range_error("JSON array is too large"))?;
+            let array = if let Some((_, prototype)) = prototypes {
+                let array = ArrayObject::new_for(prototype, length)?;
+                array.object().initialize_prototype(Some(prototype.clone()));
+                array
+            } else {
+                ArrayObject::new(length)?
+            };
             for (index, value) in values.into_iter().enumerate() {
                 array.object().create_data_property(
                     JsString::from(index.to_string()).into(),
-                    from_json(value)?,
+                    from_json(value, prototypes)?,
                 )?;
             }
             Value::Object(array.object())
         }
         serde_json::Value::Object(values) => {
-            let object = Object::new();
+            let object = if let Some((prototype, _)) = prototypes {
+                let object = Object::new_for(prototype);
+                object.initialize_prototype(Some(prototype.clone()));
+                object
+            } else {
+                Object::new()
+            };
             for (key, value) in values {
-                object.create_data_property(JsString::from(key).into(), from_json(value)?)?;
+                object.create_data_property(
+                    JsString::from(key).into(),
+                    from_json(value, prototypes)?,
+                )?;
             }
             Value::Object(object)
         }
@@ -228,10 +312,14 @@ fn revive(
     reviver: &mut dyn FnMut(&str, Value) -> RuntimeResult<Value>,
 ) -> RuntimeResult<Value> {
     let value = if let Value::Object(object) = value {
-        for property in object.own_property_keys() {
-            let PropertyKey::String(name) = property else {
-                continue;
-            };
+        let keys = if let Some(array) = ArrayObject::from_object(object.clone()) {
+            (0..array.length())
+                .map(|index| JsString::from(index.to_string()))
+                .collect()
+        } else {
+            object.enumerable_own_string_keys()?
+        };
+        for name in keys {
             let text = name.to_string_lossy();
             let child = object.get(&PropertyKey::String(name.clone()))?;
             let revived = revive(&text, child, reviver)?;

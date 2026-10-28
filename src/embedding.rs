@@ -985,6 +985,9 @@ mod managed_allocation_tests {
                 "var buffer=new ArrayBuffer(8);var byteView=new TypedArray(buffer,1,4);var dataView=new DataView(buffer,2,2);if(ArrayBuffer.isView(byteView)&&ArrayBuffer.isView(dataView)&&Object.getPrototypeOf(byteView)===TypedArray.prototype&&Object.getPrototypeOf(dataView)===DataView.prototype){42;}else{0;}",
                 "if(ArrayBuffer.isView(new TypedArray(8))){42;}else{0;}",
                 "Number(42);",
+                r#"var jsonValue=JSON.parse('{"items":[{"answer":42}]}');if(Object.getPrototypeOf(jsonValue)===Object.prototype&&Array.isArray(jsonValue.items)&&Object.getPrototypeOf(jsonValue.items)===Array.prototype){jsonValue.items[0].answer;}else{0;}"#,
+                "JSON.parse('42');",
+                r#"var revived=JSON.parse('{"answer":20,"drop":1}',function(key,value){if(key==='answer'){return value+22;}if(key==='drop'){return undefined;}return value;});if(!('drop' in revived)){revived.answer;}else{0;}"#,
                 "var regexp=new RegExp('(a)?(b)');var match=regexp.exec('b');if(Array.isArray(match)&&Object.getPrototypeOf(match)===Array.prototype&&match.length===3&&match[1]===undefined&&match[2]==='b'){42;}else{0;}",
                 "var regexpCalled=RegExp('a+','g');if(regexpCalled.exec('aa')[0]==='aa'&&regexpCalled.exec('aa')===null){42;}else{0;}",
                 "var numberValues=Array.prototype.values.call(42);if(numberValues.next().done){42;}else{0;}",
@@ -1040,6 +1043,11 @@ mod managed_allocation_tests {
                 engine.evaluate(&invalid_regexp).unwrap_err().kind(),
                 ExceptionKind::SyntaxError
             );
+            let invalid_json = engine.compile(&realm, "JSON.parse('{');").unwrap();
+            assert_eq!(
+                engine.evaluate(&invalid_json).unwrap_err().kind(),
+                ExceptionKind::SyntaxError
+            );
             if backend == ScriptBackend::Ast {
                 let literal = engine
                     .compile(&realm, "var literal=/(a)?(b)/;literal.exec('b')[2];")
@@ -1052,6 +1060,93 @@ mod managed_allocation_tests {
                         .same_value(&Value::String("b".into()))
                 );
             }
+        }
+    }
+
+    #[test]
+    fn managed_json_revivers_keep_partial_graphs_alive_during_gc_and_evaluation_reentry() {
+        for backend in [ScriptBackend::Ast, ScriptBackend::Bytecode] {
+            let mut base = Engine::builder().script_backend(backend).build();
+            base.managed_allocation = true;
+            let engine = Rc::new(base);
+            let realm = engine.create_realm();
+            let calls = Rc::new(std::cell::RefCell::new(Vec::new()));
+            let callback_calls = calls.clone();
+            let callback_engine = engine.clone();
+            let callback_realm = realm.clone();
+            engine
+                .register_global_function(&realm, "revive", move |context, _, arguments| {
+                    callback_engine.runtime.verify_migration_barriers().unwrap();
+                    callback_engine.runtime.collect_migration_graph().unwrap();
+                    let nested = callback_engine.compile(&callback_realm, "40+2;").unwrap();
+                    assert!(
+                        callback_engine
+                            .evaluate(&nested)
+                            .unwrap()
+                            .value()
+                            .same_value(&Value::Number(42.0))
+                    );
+                    let Value::String(key) = arguments[0].value() else {
+                        panic!("reviver key");
+                    };
+                    let key = key.to_string_lossy();
+                    callback_calls.borrow_mut().push(key.clone());
+                    let value = match key.as_str() {
+                        "answer" => Value::Number(42.0),
+                        "drop" => Value::Undefined,
+                        "other" => {
+                            let prototype = callback_realm
+                                .realm
+                                .intrinsic(crate::runtime::IntrinsicId::ObjectPrototype);
+                            let object = Object::new_for(&prototype);
+                            assert!(object.set_prototype(Some(prototype)));
+                            object
+                                .create_data_property("answer".into(), Value::Number(42.0))
+                                .unwrap();
+                            Value::Object(object)
+                        }
+                        _ => arguments[1].value().clone(),
+                    };
+                    Ok(context.value(value))
+                })
+                .unwrap();
+            let script = engine.compile(&realm, r#"var result=JSON.parse('{"items":[{"answer":20,"drop":1}],"other":{"answer":20}}',revive);result;"#).unwrap();
+            assert_eq!(script.backend(), backend);
+            let value = engine.evaluate(&script).unwrap();
+            engine.runtime.verify_migration_barriers().unwrap();
+            assert_eq!(
+                *calls.borrow(),
+                ["answer", "drop", "0", "items", "answer", "other", ""]
+            );
+            let Value::Object(result) = value.value() else {
+                panic!("JSON root");
+            };
+            let weak = result.downgrade();
+            let Value::Object(items) = result.get(&"items".into()).unwrap() else {
+                panic!("JSON array");
+            };
+            let Value::Object(item) = items.get(&"0".into()).unwrap() else {
+                panic!("JSON item");
+            };
+            assert!(
+                item.get(&"answer".into())
+                    .unwrap()
+                    .same_value(&Value::Number(42.0))
+            );
+            assert!(item.get_own_property(&"drop".into()).is_none());
+            drop(item);
+            drop(items);
+            drop(script);
+            let clear = engine
+                .compile(&realm, "result=undefined;delete revive;")
+                .unwrap();
+            engine.evaluate(&clear).unwrap();
+            drop(clear);
+            engine.runtime.collect_migration_graph().unwrap();
+            assert!(weak.upgrade().is_some());
+            drop(value);
+            engine.runtime.collect_migration_graph().unwrap();
+            assert!(weak.upgrade().is_none());
         }
     }
 

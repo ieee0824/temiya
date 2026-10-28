@@ -453,6 +453,44 @@ mod stored_graph_tests {
     use super::*;
     use crate::runtime::{PropertyDescriptor, Value};
     #[test]
+    fn managed_enumerable_keys_keep_integer_order_and_skip_hidden_accessors() {
+        let runtime = Runtime::new();
+        let object = Object::new_in(&runtime);
+        let calls = Rc::new(std::cell::Cell::new(0));
+        let callback_calls = calls.clone();
+        let getter = Object::new_in(&runtime);
+        getter.set_native_call(move |_, _| {
+            callback_calls.set(callback_calls.get() + 1);
+            Ok(Value::Number(0.0))
+        });
+        object
+            .create_data_property("10".into(), Value::Number(10.0))
+            .unwrap();
+        object
+            .create_data_property("2".into(), Value::Number(2.0))
+            .unwrap();
+        object
+            .create_data_property("a".into(), Value::Number(1.0))
+            .unwrap();
+        object
+            .define_own_property(
+                "hidden".into(),
+                PropertyDescriptor::accessor(Some(getter.clone()), None, false, true),
+            )
+            .unwrap();
+        object
+            .create_data_property(crate::runtime::Symbol::new(None).into(), Value::Number(3.0))
+            .unwrap();
+        assert_eq!(
+            object.enumerable_own_string_keys().unwrap(),
+            vec!["2".into(), "10".into(), "a".into()]
+        );
+        assert_eq!(calls.get(), 0);
+        drop(getter);
+        drop(object);
+        assert_eq!(runtime.collect_migration_graph().unwrap().retained, 0);
+    }
+    #[test]
     fn lazy_native_captures_stay_traced_without_materializing_unused_facades() {
         let runtime = Runtime::new();
         let prototype = Object::new_in(&runtime);

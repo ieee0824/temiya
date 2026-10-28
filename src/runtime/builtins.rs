@@ -68,21 +68,11 @@ fn install_date_json(intrinsics: &IntrinsicRegistry, host: HostHooks) -> Runtime
     })?;
 
     let json = intrinsics.get(IntrinsicId::Json);
-    method(intrinsics, &json, "parse", 2, |_, arguments| {
-        let source = value_arg(arguments.first()).to_js_string()?;
-        let reviver = callable_arg(arguments.get(1)).ok();
-        let mut callback = |key: &str, value: Value| match &reviver {
-            Some(reviver) => reviver.call(
-                Value::Undefined,
-                &[Value::String(JsString::from(key)), value],
-            ),
-            None => Ok(value),
-        };
-        let callback = reviver
-            .as_ref()
-            .map(|_| &mut callback as &mut dyn FnMut(&str, Value) -> RuntimeResult<Value>);
-        Json::parse(&source, callback)
-    })?;
+    let parse = super::host_data::JsonParseBuiltin::create(intrinsics)?;
+    json.define_own_property(
+        "parse".into(),
+        PropertyDescriptor::data(Value::Object(parse), true, false, true),
+    )?;
     method(intrinsics, &json, "stringify", 3, |_, arguments| {
         let replacer = callable_arg(arguments.get(1)).ok();
         let mut callback = |key: &str, value: Value| match &replacer {

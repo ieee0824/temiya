@@ -255,6 +255,11 @@ impl StoredDescriptor {
             _ => None,
         }
     }
+    pub(super) fn enumerable(&self) -> bool {
+        match self {
+            Self::Data { enumerable, .. } | Self::Accessor { enumerable, .. } => *enumerable,
+        }
+    }
     pub(super) fn configurable(&self) -> Option<bool> {
         Some(match self {
             Self::Data { configurable, .. } | Self::Accessor { configurable, .. } => *configurable,

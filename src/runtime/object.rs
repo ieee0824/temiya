@@ -299,6 +299,7 @@ pub(super) struct BoundFunction {
 }
 
 pub(super) enum ManagedCallable {
+    Bytecode(super::bytecode_function::StoredClosure),
     Ast(super::function::StoredFunctionClosure),
     Bound(BoundFunction),
     ProxyRevoker(std::cell::RefCell<Option<StoredObject>>),
@@ -310,18 +311,21 @@ impl ManagedCallable {
             Self::Bound(bound) => bound.target.load(owner).map(Some),
             Self::ProxyRevoker(_) => Ok(None),
             Self::Ast(_) => Ok(None),
+            Self::Bytecode(_) => Ok(None),
         }
     }
     fn is_constructor(&self) -> bool {
         match self {
             Self::Bound(bound) => bound.constructor,
             Self::Ast(closure) => closure.is_constructor(),
+            Self::Bytecode(closure) => closure.is_constructor(),
             Self::ProxyRevoker(_) => false,
         }
     }
     fn call(&self, owner: &Object, this: Value, arguments: &[Value]) -> RuntimeResult<Value> {
         match self {
             Self::Ast(closure) => closure.call(owner, this, arguments),
+            Self::Bytecode(closure) => closure.call(owner, this, arguments),
             Self::Bound(bound) => {
                 let target = bound.target.load(owner)?;
                 let this_value = bound.this_value.load(owner)?;
@@ -349,6 +353,9 @@ impl ManagedCallable {
         if let Self::Ast(closure) = self {
             return closure.construct(owner, arguments, new_target);
         }
+        if let Self::Bytecode(closure) = self {
+            return closure.construct(owner, arguments, new_target);
+        }
         let Self::Bound(bound) = self else {
             return Err(RuntimeError::type_error("object is not a constructor"));
         };
@@ -364,6 +371,7 @@ impl ManagedCallable {
     fn trace(&self, tracer: &mut crate::gc::Tracer<'_>) {
         match self {
             Self::Ast(closure) => closure.trace(tracer),
+            Self::Bytecode(closure) => closure.trace(tracer),
             Self::Bound(bound) => bound.trace(tracer),
             Self::ProxyRevoker(slot) => {
                 if let Some(proxy) = &*slot.borrow() {

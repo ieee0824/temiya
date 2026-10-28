@@ -1,17 +1,78 @@
 //! Bytecode-backed function objects. No AST body evaluation occurs here.
-use std::{cell::RefCell, rc::Rc};
+use super::{environment::StoredEnvironment, execution::StoredRealm};
+use std::rc::Rc;
 
 use crate::bytecode::{Constant, FunctionTemplate, Instruction, VirtualMachine};
 
 use super::{
     Completion, Environment, IntrinsicId, Object, PropertyDescriptor, Realm, RuntimeError,
-    RuntimeResult, ThisBindingStatus, Value, WeakObject,
+    RuntimeResult, ThisBindingStatus, Value,
 };
 
 struct Closure {
     template: Rc<FunctionTemplate>,
     realm: Realm,
     environment: Environment,
+}
+
+pub(super) struct StoredClosure {
+    template: Rc<FunctionTemplate>,
+    realm: StoredRealm,
+    environment: StoredEnvironment,
+}
+impl StoredClosure {
+    fn load(&self, owner: &Object) -> RuntimeResult<Closure> {
+        Ok(Closure {
+            template: self.template.clone(),
+            realm: self.realm.load(owner)?,
+            environment: self.environment.load(owner)?,
+        })
+    }
+    pub(super) fn is_constructor(&self) -> bool {
+        !self.template.arrow
+    }
+    pub(super) fn call(
+        &self,
+        owner: &Object,
+        this: Value,
+        arguments: &[Value],
+    ) -> RuntimeResult<Value> {
+        let closure = self.load(owner)?;
+        closure
+            .call(owner.clone(), this, arguments, None)
+            .map_err(|error| closure.realm.bind_exception(error))
+    }
+    pub(super) fn construct(
+        &self,
+        owner: &Object,
+        arguments: &[Value],
+        new_target: Object,
+    ) -> RuntimeResult<Object> {
+        let closure = self.load(owner)?;
+        let instance = Object::new_for(&new_target);
+        let prototype = match new_target.get(&"prototype".into())? {
+            Value::Object(prototype) => prototype,
+            _ => closure.realm.intrinsic(IntrinsicId::ObjectPrototype),
+        };
+        instance.initialize_prototype(Some(prototype));
+        let value = closure
+            .call(
+                owner.clone(),
+                Value::Object(instance.clone()),
+                arguments,
+                Some(new_target),
+            )
+            .map_err(|error| closure.realm.bind_exception(error))?;
+        Ok(match value {
+            Value::Object(object) => object,
+            _ => instance,
+        })
+    }
+    pub(super) fn trace(&self, tracer: &mut crate::gc::Tracer<'_>) {
+        // FunctionTemplate constants are immutable, pointer-free code literals.
+        self.realm.trace(tracer);
+        self.environment.trace(tracer);
+    }
 }
 
 pub(crate) fn create(
@@ -29,73 +90,20 @@ pub(crate) fn create(
             Ok::<_, RuntimeError>(scope)
         })
         .transpose()?;
-    let closure = Rc::new(Closure {
-        environment: named.clone().unwrap_or(environment),
-        template,
-        realm: realm.clone(),
-    });
-    let slot = Rc::new(RefCell::new(None::<WeakObject>));
-    let call_closure = closure.clone();
-    let call_slot = slot.clone();
-    let callback = move |this, args: &[Value]| {
-        let function = call_slot
-            .borrow()
-            .as_ref()
-            .and_then(WeakObject::upgrade)
-            .ok_or_else(|| RuntimeError::internal_error("bytecode function not initialized"))?;
-        call_closure
-            .call(function, this, args, None)
-            .map_err(|error| call_closure.realm.bind_exception(error))
+    let function = Object::new_for(&realm.global_object());
+    let closure = StoredClosure {
+        template: template.clone(),
+        realm: StoredRealm::store(&function, realm)?,
+        environment: StoredEnvironment::store(&function, named.as_ref().unwrap_or(&environment))?,
     };
-    let function = if closure.template.arrow {
-        Object::native_function_for(&realm.global_object(), callback)
-    } else {
-        let construct_closure = closure.clone();
-        let construct_slot = slot.clone();
-        Object::native_callable_constructor_for(
-            &realm.global_object(),
-            callback,
-            move |args, new_target| {
-                let function = construct_slot
-                    .borrow()
-                    .as_ref()
-                    .and_then(WeakObject::upgrade)
-                    .ok_or_else(|| {
-                        RuntimeError::internal_error("bytecode constructor not initialized")
-                    })?;
-                let instance = Object::new_for(&new_target);
-                let prototype = match new_target.get(&"prototype".into())? {
-                    Value::Object(prototype) => prototype,
-                    _ => construct_closure
-                        .realm
-                        .intrinsic(IntrinsicId::ObjectPrototype),
-                };
-                instance.initialize_prototype(Some(prototype));
-                let value = construct_closure
-                    .call(
-                        function,
-                        Value::Object(instance.clone()),
-                        args,
-                        Some(new_target),
-                    )
-                    .map_err(|error| construct_closure.realm.bind_exception(error))?;
-                Ok(match value {
-                    Value::Object(object) => object,
-                    _ => instance,
-                })
-            },
-        )
-    };
-    *slot.borrow_mut() = Some(function.downgrade());
+    function.0.state.borrow_mut().managed_callable =
+        Some(Rc::new(super::object::ManagedCallable::Bytecode(closure)));
     function.initialize_prototype(Some(realm.intrinsic(IntrinsicId::FunctionPrototype)));
     for (name, value) in [
-        (
-            "length",
-            Value::Number(closure.template.parameters.len() as f64),
-        ),
+        ("length", Value::Number(template.parameters.len() as f64)),
         (
             "name",
-            Value::String(closure.template.name.clone().unwrap_or_default()),
+            Value::String(template.name.clone().unwrap_or_default()),
         ),
     ] {
         function.define_own_property(
@@ -103,12 +111,12 @@ pub(crate) fn create(
             PropertyDescriptor::data(value, false, false, true),
         )?;
     }
-    if !closure.template.arrow {
+    if !template.arrow {
         function.install_lazy_function_prototype(realm.intrinsic(IntrinsicId::ObjectPrototype))?;
     }
     if let Some(named) = named {
         named.initialize_binding(
-            closure.template.name.as_ref().expect("named template"),
+            template.name.as_ref().expect("named template"),
             Value::Object(function.clone()),
         )?;
     }

@@ -967,13 +967,26 @@ fn bound_function(target: Object, bound_this: Value, prefix: Vec<Value>) -> Runt
 }
 
 fn define_properties(target: &Object, descriptors: &Object) -> RuntimeResult<()> {
-    for key in descriptors.own_property_keys() {
+    // Conversion can invoke getters and Proxy traps. Keep every converted
+    // descriptor rooted until conversion of the entire list has succeeded.
+    let keys = descriptors.try_own_property_keys()?;
+    let mut pending = Vec::with_capacity(keys.len());
+    for key in keys {
+        let Some(own) = descriptors.try_get_own_property(&key)? else {
+            continue;
+        };
+        if own.enumerable != Some(true) {
+            continue;
+        }
         let Value::Object(descriptor) = descriptors.get(&key)? else {
             return Err(RuntimeError::type_error(
                 "property descriptor must be an object",
             ));
         };
-        require_define(target, key, PropertyDescriptor::from_object(&descriptor)?)?;
+        pending.push((key, PropertyDescriptor::from_object(&descriptor)?));
+    }
+    for (key, descriptor) in pending {
+        require_define(target, key, descriptor)?;
     }
     Ok(())
 }
@@ -1136,4 +1149,27 @@ pub(super) fn install_has_instance(
         PropertyDescriptor::data(Value::Object(method), false, false, false),
     )?;
     Ok(())
+}
+
+#[cfg(test)]
+mod descriptor_list_tests {
+    use super::*;
+
+    #[test]
+    fn conversion_failure_does_not_publish_earlier_descriptors() {
+        let target = Object::new();
+        let descriptors = Object::new();
+        let first = Object::new();
+        first
+            .create_data_property("value".into(), Value::Number(42.0))
+            .unwrap();
+        descriptors
+            .create_data_property("first".into(), Value::Object(first))
+            .unwrap();
+        descriptors
+            .create_data_property("invalid".into(), Value::Number(1.0))
+            .unwrap();
+        assert!(define_properties(&target, &descriptors).is_err());
+        assert!(target.own_property_keys().is_empty());
+    }
 }

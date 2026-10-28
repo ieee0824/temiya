@@ -1098,8 +1098,18 @@ mod managed_allocation_tests {
                     get:function(){forceCollection();return 42;}
                 });
                 var staticsCreated=Object.create(null,{answer:staticsFieldDescriptor});
+                var createDescriptors={};
+                Object.defineProperty(createDescriptors,'hidden',{get:function(){throw staticsTarget;}});
+                Object.defineProperty(createDescriptors,'first',{
+                    enumerable:true,get:function(){return {value:{answer:42}};}
+                });
+                Object.defineProperty(createDescriptors,'second',{
+                    enumerable:true,get:function(){forceCollection();return {value:42};}
+                });
+                createDescriptors[Symbol.iterator]={value:42};
+                var collectedCreated=Object.create(null,createDescriptors);
                 forceCollection();
-                if(staticsNames[0]==='answer'&&staticsKeys[0]==='answer'&&staticsDescriptor.value===42&&staticsCreated.answer===42){42;}else{0;}
+                if(staticsNames[0]==='answer'&&staticsKeys[0]==='answer'&&staticsDescriptor.value===42&&staticsCreated.answer===42&&collectedCreated.first.answer===42&&collectedCreated.second===42&&collectedCreated[Symbol.iterator]===42&&!('hidden' in collectedCreated)){42;}else{0;}
             "#).unwrap();
             assert!(
                 engine
@@ -1109,6 +1119,14 @@ mod managed_allocation_tests {
                     .same_value(&Value::Number(42.0)),
                 "{backend:?}"
             );
+            let throwing = engine.compile(&realm, "Object.create(null,new Proxy({},{ownKeys:function(){forceCollection();throw staticsTarget;}}));").unwrap();
+            let error = engine.evaluate(&throwing).unwrap_err();
+            let target = realm
+                .realm
+                .global_object()
+                .get(&"staticsTarget".into())
+                .unwrap();
+            assert!(error.thrown().unwrap().value().same_value(&target));
             realm
                 .realm
                 .global_object()

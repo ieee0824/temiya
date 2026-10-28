@@ -1198,9 +1198,10 @@ mod descriptor_list_tests {
 
     #[test]
     fn conversion_failure_does_not_publish_earlier_descriptors() {
-        let target = Object::new();
-        let descriptors = Object::new();
-        let first = Object::new();
+        let context = crate::runtime::AllocationContext::new();
+        let target = Object::new_in(&context);
+        let descriptors = Object::new_in(&context);
+        let first = Object::new_in(&context);
         first
             .create_data_property("value".into(), Value::Number(42.0))
             .unwrap();

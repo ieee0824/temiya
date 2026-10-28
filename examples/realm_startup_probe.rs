@@ -29,14 +29,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "case": "raw native callable; no Realm prototype or metadata",
         "iterations": 1000,
         "allocations": allocations::count(1000, || {
-            black_box(Object::native_function(|_, _| Ok(Value::Undefined)));
+            black_box(Object::native_function_in(realm.allocation_context(), |_, _| Ok(Value::Undefined)));
         }),
     }));
     for name in ["short", "native method with a long UTF-16 name: 日本語😀"] {
         // Both paths define the same actual own descriptors. This reference
         // isolates generic DefineOwnProperty cost; it is not a timing oracle.
         let reference = || {
-            let function = Object::native_function(|_, _| Ok(Value::Undefined));
+            let function =
+                Object::native_function_in(realm.allocation_context(), |_, _| Ok(Value::Undefined));
             function.set_prototype(Some(realm.intrinsic(IntrinsicId::FunctionPrototype)));
             for (key, value) in [
                 ("name", Value::String(name.into())),

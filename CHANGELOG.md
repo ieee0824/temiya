@@ -15,6 +15,11 @@ until 1.0, a minor version may contain breaking API changes.
 
 ### Changed
 
+- Remove contextless Object/native factories and Object `Default`; all Objects
+  now use the traced representation. Standalone Realms own a tracing context.
+- Native allocation callbacks can borrow their owner's context through
+  `native_function_with_context`, without retaining a Runtime capture.
+
 - JSON parsing, JobQueue, and standalone Promise Rust factories require an
   allocation context; JobQueue no longer implements `Default`.
 - Declarative and module Environment child factories require a parent;

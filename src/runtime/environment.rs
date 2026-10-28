@@ -247,6 +247,10 @@ struct ImportBinding {
 }
 
 impl Environment {
+    /// Borrows the shared context that owns this environment.
+    pub fn allocation_context(&self) -> &super::AllocationContext {
+        self.runtime().expect("environment allocation context")
+    }
     pub(crate) fn update_number_binding(
         &self,
         name: &JsString,
@@ -1782,6 +1786,7 @@ mod slot_hint_tests {
     }
     #[test]
     fn prepared_parameter_records_initialize_missing_and_duplicate_names() {
+        let context = Runtime::new();
         let names = [
             JsString::from("a"),
             JsString::from("a"),
@@ -1789,7 +1794,7 @@ mod slot_hint_tests {
         ];
         let env = Environment::function_with_parameters(
             None,
-            Object::new(),
+            Object::new_in(&context),
             None,
             ThisBindingStatus::Uninitialized,
             &names,
@@ -1815,8 +1820,13 @@ mod slot_hint_tests {
 
     #[test]
     fn number_update_respects_ignored_and_throwing_immutable_writes() {
-        let env =
-            Environment::function(None, Object::new(), None, ThisBindingStatus::Uninitialized);
+        let context = Runtime::new();
+        let env = Environment::function(
+            None,
+            Object::new_in(&context),
+            None,
+            ThisBindingStatus::Uninitialized,
+        );
         let name: JsString = "fixed".into();
         env.create_immutable_binding(name.clone(), false).unwrap();
         env.initialize_binding(&name, Value::Number(41.0)).unwrap();
@@ -1845,8 +1855,13 @@ mod slot_hint_tests {
 
     #[test]
     fn string_append_rechecks_shifted_slots_and_preserves_readonly_bindings() {
-        let env =
-            Environment::function(None, Object::new(), None, ThisBindingStatus::Uninitialized);
+        let context = Runtime::new();
+        let env = Environment::function(
+            None,
+            Object::new_in(&context),
+            None,
+            ThisBindingStatus::Uninitialized,
+        );
         let prefix: JsString = "prefix".into();
         let name: JsString = "value".into();
         env.create_mutable_binding(prefix.clone(), true).unwrap();
@@ -1887,8 +1902,13 @@ mod slot_hint_tests {
 
     #[test]
     fn stale_function_slot_hints_preserve_binding_identity_and_checks() {
-        let env =
-            Environment::function(None, Object::new(), None, ThisBindingStatus::Uninitialized);
+        let context = Runtime::new();
+        let env = Environment::function(
+            None,
+            Object::new_in(&context),
+            None,
+            ThisBindingStatus::Uninitialized,
+        );
         let discarded: JsString = "discarded".into();
         let name: JsString = "value".into();
         for (key, value, deletable) in [(&discarded, 0.0, true), (&name, 41.0, false)] {

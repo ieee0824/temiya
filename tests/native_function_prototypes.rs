@@ -31,7 +31,11 @@ fn public_engine_calls_native_js_and_bound_functions_through_function_prototype(
 }
 #[test]
 fn installed_intrinsic_callables_have_their_own_realms_function_prototype() {
-    for realm in [Realm::ordinary(), Realm::ordinary()] {
+    let allocation_context = temiya::runtime::AllocationContext::new();
+    for realm in [
+        Realm::ordinary_in(&allocation_context),
+        Realm::ordinary_in(&allocation_context),
+    ] {
         let function_prototype = realm.intrinsic(IntrinsicId::FunctionPrototype);
         for (_, holder) in realm.intrinsics().iter() {
             if holder.is_callable() || holder.is_constructor() {
@@ -76,7 +80,8 @@ fn installed_intrinsic_callables_have_their_own_realms_function_prototype() {
 }
 #[test]
 fn builtin_metadata_and_method_constructability_are_preserved() {
-    let realm = Realm::ordinary();
+    let allocation_context = temiya::runtime::AllocationContext::new();
+    let realm = Realm::ordinary_in(&allocation_context);
     for (id, name, length) in [
         (IntrinsicId::Math, "abs", 1.0),
         (IntrinsicId::FunctionPrototype, "call", 1.0),
@@ -147,9 +152,10 @@ fn registered_host_function_and_low_level_native_allocation_have_distinct_contra
 }
 #[test]
 fn realm_native_callbacks_and_bound_constructors_release_captured_host_state() {
+    let allocation_context = temiya::runtime::AllocationContext::new();
     let marker = Rc::new(());
     let weak = Rc::downgrade(&marker);
-    let realm = Realm::ordinary();
+    let realm = Realm::ordinary_in(&allocation_context);
     let expected = realm.intrinsic(IntrinsicId::FunctionPrototype);
     let native = realm
         .create_native_function("owned", 0, move |_, _| {
@@ -164,15 +170,17 @@ fn realm_native_callbacks_and_bound_constructors_release_captured_host_state() {
         Value::Number(42.0)
     ));
     drop(native);
+    allocation_context.collect_garbage().unwrap();
     assert!(weak.upgrade().is_none());
-    let realm = Realm::ordinary();
+    let realm = Realm::ordinary_in(&allocation_context);
     let marker = Rc::new(());
     let weak = Rc::downgrade(&marker);
     let target = Object::native_callable_constructor(
+        &allocation_context,
         |_, _| Ok(Value::Undefined),
-        move |_, _| {
+        move |_, target| {
             let _ = &marker;
-            Ok(Object::new())
+            Ok(Object::new_in(target.allocation_context()))
         },
     );
     let Value::Object(bind) = realm
@@ -184,18 +192,20 @@ fn realm_native_callbacks_and_bound_constructors_release_captured_host_state() {
     };
     let bound = bind.call(Value::Object(target), &[]).unwrap();
     drop(bound);
+    allocation_context.collect_garbage().unwrap();
     assert!(weak.upgrade().is_none());
 }
 #[test]
 fn call_apply_bind_preserve_getter_order_and_original_exception() {
+    let allocation_context = temiya::runtime::AllocationContext::new();
     assert!(matches!(
         evaluate(
             "let log=''; function f(a,b){log+='C';return this.x+a+b;} let args={get length(){log+='L';return 2;},get 0(){log+='A';return 20;},get 1(){log+='B';return 21;}}; let result=f.apply({x:1},args); result===42 && log==='LABC';"
         ),
         Value::Boolean(true)
     ));
-    let realm = Realm::ordinary();
-    let thrown = Object::new();
+    let realm = Realm::ordinary_in(&allocation_context);
+    let thrown = Object::new_in(&allocation_context);
     let marker = thrown.clone();
     let function = realm
         .create_native_function("throws", 0, move |_, _| {
@@ -220,19 +230,23 @@ fn call_apply_bind_preserve_getter_order_and_original_exception() {
 
 #[test]
 fn fresh_native_allocation_does_not_traverse_a_mutated_function_prototype_chain() {
+    let allocation_context = temiya::runtime::AllocationContext::new();
     use std::cell::Cell;
-    let realm = Realm::ordinary();
+    let realm = Realm::ordinary_in(&allocation_context);
     let calls = Rc::new(Cell::new(0));
     let count = calls.clone();
-    let target = Object::new();
-    let handler = Object::new();
+    let target = Object::new_in(&allocation_context);
+    let handler = Object::new_in(&allocation_context);
     handler
         .create_data_property(
             "getPrototypeOf".into(),
-            Value::Object(Object::native_function(move |_, _| {
-                count.set(count.get() + 1);
-                Ok(Value::Null)
-            })),
+            Value::Object(Object::native_function_in(
+                &allocation_context,
+                move |_, _| {
+                    count.set(count.get() + 1);
+                    Ok(Value::Null)
+                },
+            )),
         )
         .unwrap();
     let proxy = temiya::runtime::ProxyObject::new(target, handler).object();
@@ -255,6 +269,7 @@ fn fresh_native_allocation_does_not_traverse_a_mutated_function_prototype_chain(
 
 #[test]
 fn own_property_key_queries_preserve_order_brands_and_proxy_errors() {
+    let allocation_context = temiya::runtime::AllocationContext::new();
     use temiya::runtime::{JsString, PropertyDescriptor, PropertyKey, RuntimeErrorKind, Symbol};
     assert!(matches!(
         evaluate(
@@ -262,7 +277,7 @@ fn own_property_key_queries_preserve_order_brands_and_proxy_errors() {
         ),
         Value::Boolean(true)
     ));
-    let realm = Realm::ordinary();
+    let realm = Realm::ordinary_in(&allocation_context);
     let constructor = realm.intrinsic(IntrinsicId::Object);
     let Value::Object(names) = constructor.get(&"getOwnPropertyNames".into()).unwrap() else {
         panic!()
@@ -270,7 +285,7 @@ fn own_property_key_queries_preserve_order_brands_and_proxy_errors() {
     let Value::Object(symbols) = constructor.get(&"getOwnPropertySymbols".into()).unwrap() else {
         panic!()
     };
-    let source = Object::new();
+    let source = Object::new_in(&allocation_context);
     let symbol = Symbol::new(Some("own".into()));
     for (key, value) in [
         ("10".into(), Value::Number(10.0)),
@@ -338,18 +353,20 @@ fn own_property_key_queries_preserve_order_brands_and_proxy_errors() {
             );
         }
     }
-    let marker = Object::new();
+    let marker = Object::new_in(&allocation_context);
     let capture = marker.clone();
-    let handler = Object::new();
+    let handler = Object::new_in(&allocation_context);
     handler
         .create_data_property(
             "ownKeys".into(),
-            Value::Object(Object::native_function(move |_, _| {
-                Err(RuntimeError::thrown(Value::Object(capture.clone())))
-            })),
+            Value::Object(Object::native_function_in(
+                &allocation_context,
+                move |_, _| Err(RuntimeError::thrown(Value::Object(capture.clone()))),
+            )),
         )
         .unwrap();
-    let proxy = temiya::runtime::ProxyObject::new(Object::new(), handler).object();
+    let proxy =
+        temiya::runtime::ProxyObject::new(Object::new_in(&allocation_context), handler).object();
     for query in [&names, &symbols] {
         let error = query
             .call(Value::Undefined, &[Value::Object(proxy.clone())])
@@ -365,6 +382,7 @@ fn own_property_key_queries_preserve_order_brands_and_proxy_errors() {
 
 #[test]
 fn own_descriptor_queries_convert_keys_before_receiver_and_keep_proxy_exceptions() {
+    let allocation_context = temiya::runtime::AllocationContext::new();
     for name in ["hasOwnProperty", "propertyIsEnumerable"] {
         let source = format!(
             "let seen=''; let key={{[Symbol.toPrimitive](hint){{seen+=hint;throw 17;}}}}; let caught=false; try{{Object.prototype.{name}.call(null,key);}}catch(e){{caught=e===17;}} caught && seen==='string';"
@@ -377,19 +395,21 @@ fn own_descriptor_queries_convert_keys_before_receiver_and_keep_proxy_exceptions
         ),
         Value::Boolean(true)
     ));
-    let realm = Realm::ordinary();
-    let marker = Object::new();
+    let realm = Realm::ordinary_in(&allocation_context);
+    let marker = Object::new_in(&allocation_context);
     let capture = marker.clone();
-    let handler = Object::new();
+    let handler = Object::new_in(&allocation_context);
     handler
         .create_data_property(
             "getOwnPropertyDescriptor".into(),
-            Value::Object(Object::native_function(move |_, _| {
-                Err(RuntimeError::thrown(Value::Object(capture.clone())))
-            })),
+            Value::Object(Object::native_function_in(
+                &allocation_context,
+                move |_, _| Err(RuntimeError::thrown(Value::Object(capture.clone()))),
+            )),
         )
         .unwrap();
-    let proxy = temiya::runtime::ProxyObject::new(Object::new(), handler).object();
+    let proxy =
+        temiya::runtime::ProxyObject::new(Object::new_in(&allocation_context), handler).object();
     for name in ["hasOwnProperty", "propertyIsEnumerable"] {
         let Value::Object(method) = realm
             .intrinsic(IntrinsicId::ObjectPrototype)

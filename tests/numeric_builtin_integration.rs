@@ -100,7 +100,8 @@ fn bigint_radix_brand_checks_and_abrupt_order_are_observable() {
 
 #[test]
 fn numeric_constants_and_new_method_descriptors_match_the_public_contract() {
-    let realm = Realm::ordinary();
+    let allocation_context = temiya::runtime::AllocationContext::new();
+    let realm = Realm::ordinary_in(&allocation_context);
     let number = realm.intrinsic(IntrinsicId::Number);
     for (name, expected) in [
         ("NaN", f64::NAN),
@@ -153,8 +154,9 @@ fn numeric_constants_and_new_method_descriptors_match_the_public_contract() {
 
 #[test]
 fn bigint_valueof_accepts_an_actual_foreign_realm_wrapper() {
-    let first = Realm::ordinary();
-    let foreign = Realm::ordinary();
+    let allocation_context = temiya::runtime::AllocationContext::new();
+    let first = Realm::ordinary_in(&allocation_context);
+    let foreign = Realm::ordinary_in(&allocation_context);
     let constructor = foreign.intrinsic(IntrinsicId::Object);
     let wrapped = constructor
         .call(Value::Undefined, &[Value::BigInt((-42).into())])
@@ -176,6 +178,7 @@ fn bigint_valueof_accepts_an_actual_foreign_realm_wrapper() {
 
 #[test]
 fn explicit_numeric_constructors_preserve_exact_integers_and_conversion_errors() {
+    let allocation_context = temiya::runtime::AllocationContext::new();
     for source in [
         "BigInt(0)===0n && BigInt(-0)===0n && BigInt(9007199254740992)===9007199254740992n;",
         "BigInt(1e30)===1000000000000000019884624838656n;",
@@ -186,7 +189,7 @@ fn explicit_numeric_constructors_preserve_exact_integers_and_conversion_errors()
     ] {
         assert!(matches!(evaluate(source), Value::Boolean(true)), "{source}");
     }
-    let realm = Realm::ordinary();
+    let realm = Realm::ordinary_in(&allocation_context);
     let bigint = realm.intrinsic(IntrinsicId::BigInt);
     for number in [1.5, f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
         assert_eq!(
@@ -216,6 +219,7 @@ fn explicit_numeric_constructors_preserve_exact_integers_and_conversion_errors()
 #[test]
 #[ignore = "requires pinned Test262 corpus; retains original numeric builtin outcomes including harness gaps"]
 fn pinned_numeric_builtin_audit() {
+    let allocation_context = temiya::runtime::AllocationContext::new();
     use std::{collections::BTreeMap, process::Command};
     use temiya::{
         runtime::ScriptRecord,
@@ -280,20 +284,23 @@ fn pinned_numeric_builtin_audit() {
         }
         for variant in case.variants() {
             let run = || -> Result<(), String> {
-                let realm = Realm::ordinary();
+                let realm = Realm::ordinary_in(&allocation_context);
                 // Standard Test262 host createRealm facility; original JS remains intact.
-                let host = Object::new();
+                let host = Object::new_in(&allocation_context);
                 host.create_data_property(
                     "createRealm".into(),
-                    Value::Object(Object::native_function(|_, _| {
-                        let other = Realm::ordinary();
-                        let result = Object::new();
-                        result.create_data_property(
-                            "global".into(),
-                            Value::Object(other.global_object()),
-                        )?;
-                        Ok(Value::Object(result))
-                    })),
+                    Value::Object(Object::native_function_with_context(
+                        &allocation_context,
+                        |allocation_context, _, _| {
+                            let other = Realm::ordinary_in(allocation_context);
+                            let result = Object::new_in(allocation_context);
+                            result.create_data_property(
+                                "global".into(),
+                                Value::Object(other.global_object()),
+                            )?;
+                            Ok(Value::Object(result))
+                        },
+                    )),
                 )
                 .unwrap();
                 realm

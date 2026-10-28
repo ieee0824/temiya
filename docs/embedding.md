@@ -26,8 +26,18 @@ allocates in the shared heap without attaching a Realm's Function prototype.
 Use `register_global_function` for the Realm-aware callback contract. Objects
 from a separate `AllocationContext::new()` cannot be passed to this Engine;
 the boundary rejects them instead of copying their identity or graph. The
-contextless low-level constructors still use the legacy representation during
-the migration and cannot supply objects to Engine APIs.
+contextless `Object::new`, `native_function`, `native_constructor`, and Object
+`Default` factories have been removed. Use `new_in`, `native_function_in`, and
+`native_constructor_in` with an explicit context. The combined
+`native_callable_constructor` also requires its context as the first argument.
+
+`Object::allocation_context`, `Environment::allocation_context`, and
+`Realm::allocation_context` borrow an existing owner's context.
+`Object::native_function_with_context(context, callback)` passes that context
+to the callback as its first argument on each call, allowing allocation without
+capturing a Runtime owner. Native constructors can use their supplied
+new-target object's context. `Realm::ordinary()` creates a standalone Realm
+with its own heap; use `ordinary_in(context)` when multiple Realms share values.
 
 Opaque host callback captures are externally owned Rust values. Capturing an
 owned JavaScript handle keeps its root alive; hosts must release their own

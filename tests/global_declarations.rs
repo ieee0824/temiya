@@ -49,7 +49,8 @@ fn public_engine_exposes_global_var_and_function_on_this() {
 
 #[test]
 fn global_records_descriptors_and_cross_script_conflicts() {
-    let realm = Realm::ordinary();
+    let allocation_context = temiya::runtime::AllocationContext::new();
+    let realm = Realm::ordinary_in(&allocation_context);
     normal(
         &realm,
         "var variable=4; function callable(){return 5;} let lexical=6; const fixed=7;",
@@ -98,7 +99,8 @@ fn global_records_descriptors_and_cross_script_conflicts() {
 
 #[test]
 fn failed_preflight_does_not_create_other_bindings() {
-    let realm = Realm::ordinary();
+    let allocation_context = temiya::runtime::AllocationContext::new();
+    let realm = Realm::ordinary_in(&allocation_context);
     normal(&realm, "let existing=1;");
     assert_eq!(
         script(
@@ -138,7 +140,8 @@ fn failed_preflight_does_not_create_other_bindings() {
 
 #[test]
 fn restricted_existing_properties_and_strict_initializers() {
-    let realm = Realm::ordinary();
+    let allocation_context = temiya::runtime::AllocationContext::new();
+    let realm = Realm::ordinary_in(&allocation_context);
     realm
         .global_object()
         .define_own_property(
@@ -184,8 +187,9 @@ fn restricted_existing_properties_and_strict_initializers() {
 
 #[test]
 fn existing_configurable_property_reuse_allows_later_lexical_shadowing() {
+    let allocation_context = temiya::runtime::AllocationContext::new();
     for extensible in [true, false] {
-        let realm = Realm::ordinary();
+        let realm = Realm::ordinary_in(&allocation_context);
         realm
             .global_object()
             .define_own_property(
@@ -230,6 +234,7 @@ fn function_and_block_bindings_do_not_become_globals() {
 #[test]
 #[ignore = "requires pinned Test262 corpus in TEST262_DIR"]
 fn pinned_test262_global_declarations() {
+    let allocation_context = temiya::runtime::AllocationContext::new();
     use std::process::Command;
     use temiya::{
         runtime::{Object, RuntimeError},
@@ -275,28 +280,31 @@ fn pinned_test262_global_declarations() {
         for variant in case.variants() {
             assert!(matches!(variant, TestVariant::Sloppy | TestVariant::Strict));
             let run = || -> Result<(), String> {
-                let realm = Realm::ordinary();
+                let realm = Realm::ordinary_in(&allocation_context);
                 // Actual ScriptRecord parse/evaluate in this same Realm, not a
                 // stubbed result. This supplies only evalScript for this runner.
                 let eval_realm = realm.clone();
-                let host = Object::new();
+                let host = Object::new_in(&allocation_context);
                 host.create_data_property(
                     "evalScript".into(),
-                    Value::Object(Object::native_function(move |_, args| {
-                        let source = args
-                            .first()
-                            .cloned()
-                            .unwrap_or(Value::Undefined)
-                            .to_js_string()?
-                            .to_string_lossy();
-                        match ScriptRecord::parse(eval_realm.clone(), &source)?.evaluate()? {
-                            Completion::Normal(value) => Ok(value.unwrap_or(Value::Undefined)),
-                            Completion::Throw(value) => Err(RuntimeError::thrown(value)),
-                            _ => Err(RuntimeError::internal_error(
-                                "invalid completion from evalScript",
-                            )),
-                        }
-                    })),
+                    Value::Object(Object::native_function_in(
+                        &allocation_context,
+                        move |_, args| {
+                            let source = args
+                                .first()
+                                .cloned()
+                                .unwrap_or(Value::Undefined)
+                                .to_js_string()?
+                                .to_string_lossy();
+                            match ScriptRecord::parse(eval_realm.clone(), &source)?.evaluate()? {
+                                Completion::Normal(value) => Ok(value.unwrap_or(Value::Undefined)),
+                                Completion::Throw(value) => Err(RuntimeError::thrown(value)),
+                                _ => Err(RuntimeError::internal_error(
+                                    "invalid completion from evalScript",
+                                )),
+                            }
+                        },
+                    )),
                 )
                 .map_err(|e| e.to_string())?;
                 realm
@@ -374,9 +382,10 @@ fn pinned_test262_global_declarations() {
 
 #[test]
 fn global_state_and_errors_match_scoped_bytecode_api() {
+    let allocation_context = temiya::runtime::AllocationContext::new();
     use temiya::bytecode::{BytecodeCompiler, VirtualMachine};
-    let ast = Realm::ordinary();
-    let vm = Realm::ordinary();
+    let ast = Realm::ordinary_in(&allocation_context);
+    let vm = Realm::ordinary_in(&allocation_context);
     for source in [
         "var count=1; let lexical=2; const fixed=3; count+lexical;",
         "count=4; {let count=5; count;} count+lexical;",
@@ -414,11 +423,12 @@ fn global_state_and_errors_match_scoped_bytecode_api() {
 
 #[test]
 fn module_and_single_statement_entrypoints_keep_correct_records() {
+    let allocation_context = temiya::runtime::AllocationContext::new();
     use temiya::{
         parser::parse_script,
         runtime::{ModuleGraph, StatementEvaluator},
     };
-    let realm = Realm::ordinary();
+    let realm = Realm::ordinary_in(&allocation_context);
     let graph = ModuleGraph::new(realm.clone(), |_| {
         Ok("export var moduleLocal=3; export function read(){return moduleLocal;}".into())
     });
@@ -455,9 +465,10 @@ fn module_and_single_statement_entrypoints_keep_correct_records() {
 
 #[test]
 fn existing_accessor_var_does_not_read_or_redefine_property() {
+    let allocation_context = temiya::runtime::AllocationContext::new();
     use std::{cell::RefCell, rc::Rc};
     use temiya::runtime::Object;
-    let realm = Realm::ordinary();
+    let realm = Realm::ordinary_in(&allocation_context);
     let log = Rc::new(RefCell::new(vec![]));
     let get_log = log.clone();
     let set_log = log.clone();
@@ -466,16 +477,22 @@ fn existing_accessor_var_does_not_read_or_redefine_property() {
         .define_own_property(
             "accessor".into(),
             PropertyDescriptor::accessor(
-                Some(Object::native_function(move |_, _| {
-                    get_log.borrow_mut().push("get".to_owned());
-                    Ok(Value::Number(8.0))
-                })),
-                Some(Object::native_function(move |_, args| {
-                    set_log
-                        .borrow_mut()
-                        .push(format!("set:{}", args[0].to_number()?));
-                    Ok(Value::Undefined)
-                })),
+                Some(Object::native_function_in(
+                    &allocation_context,
+                    move |_, _| {
+                        get_log.borrow_mut().push("get".to_owned());
+                        Ok(Value::Number(8.0))
+                    },
+                )),
+                Some(Object::native_function_in(
+                    &allocation_context,
+                    move |_, args| {
+                        set_log
+                            .borrow_mut()
+                            .push(format!("set:{}", args[0].to_number()?));
+                        Ok(Value::Undefined)
+                    },
+                )),
                 true,
                 true,
             ),

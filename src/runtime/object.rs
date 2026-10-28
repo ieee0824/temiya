@@ -309,7 +309,7 @@ pub(super) trait NativeMetadata {
     fn source_mut(&mut self) -> &mut Option<StoredRealm>;
 }
 pub(super) trait NativeCallBody: NativeMetadata {
-    fn invoke(&self, this: Value, arguments: &[Value]) -> RuntimeResult<Value>;
+    fn invoke(&self, owner: &Object, this: Value, arguments: &[Value]) -> RuntimeResult<Value>;
 }
 pub(super) trait NativeConstructBody: NativeMetadata {
     fn invoke(&self, arguments: &[Value], new_target: Object) -> RuntimeResult<Object>;
@@ -336,8 +336,28 @@ impl<T> NativeMetadata for FunctionPayload<T> {
     }
 }
 impl<F: Fn(Value, &[Value]) -> RuntimeResult<Value>> NativeCallBody for FunctionPayload<F> {
-    fn invoke(&self, this: Value, arguments: &[Value]) -> RuntimeResult<Value> {
+    fn invoke(&self, _: &Object, this: Value, arguments: &[Value]) -> RuntimeResult<Value> {
         (self.body)(this, arguments)
+    }
+}
+
+struct ContextFunctionPayload<F> {
+    source: Option<StoredRealm>,
+    body: F,
+}
+impl<F> NativeMetadata for ContextFunctionPayload<F> {
+    fn source(&self) -> Option<&StoredRealm> {
+        self.source.as_ref()
+    }
+    fn source_mut(&mut self) -> &mut Option<StoredRealm> {
+        &mut self.source
+    }
+}
+impl<F: Fn(&super::AllocationContext, Value, &[Value]) -> RuntimeResult<Value>> NativeCallBody
+    for ContextFunctionPayload<F>
+{
+    fn invoke(&self, owner: &Object, this: Value, arguments: &[Value]) -> RuntimeResult<Value> {
+        (self.body)(owner.allocation_context(), this, arguments)
     }
 }
 impl<F: Fn(&[Value], Object) -> RuntimeResult<Object>> NativeConstructBody for FunctionPayload<F> {
@@ -616,6 +636,19 @@ pub(super) fn ordinary_state() -> ObjectState {
 }
 
 impl Object {
+    /// Creates a native callback that can allocate in its owner's context.
+    /// The context is borrowed for each call and is not captured by the payload.
+    pub fn native_function_with_context(
+        context: &super::AllocationContext,
+        callback: impl Fn(&super::AllocationContext, Value, &[Value]) -> RuntimeResult<Value> + 'static,
+    ) -> Self {
+        let object = Self::new_in(context);
+        object.0.state.borrow_mut().callable = Some(Rc::new(ContextFunctionPayload {
+            source: None,
+            body: callback,
+        }));
+        object
+    }
     /// Creates a Realm-independent native callback in an explicit context.
     pub fn native_function_in(
         context: &super::AllocationContext,
@@ -848,7 +881,7 @@ impl Object {
             return Ok(());
         };
         let parent = parent.load(self)?;
-        let prototype = self.0.runtime().map_or_else(Object::new, Object::new_in);
+        let prototype = Object::new_in(self.allocation_context());
         prototype.set_prototype(Some(parent));
         prototype.define_own_property(
             "constructor".into(),
@@ -911,16 +944,6 @@ impl Object {
     pub(crate) fn clear_native_call(&self) {
         let retired = self.0.state.borrow_mut().callable.take();
         drop(retired);
-    }
-
-    /// Allocates a callable object backed by a native Rust closure.
-    #[must_use]
-    pub fn native_function(
-        callback: impl Fn(Value, &[Value]) -> RuntimeResult<Value> + 'static,
-    ) -> Self {
-        let object = Self::new();
-        object.set_native_call(callback);
-        object
     }
 
     pub(super) fn native_function_for(
@@ -1037,7 +1060,7 @@ impl Object {
         // or observable identity. Seed complete properties in insertion order
         // without descriptor validation or a Vec growth allocation for four
         // entries when only two are needed. Later mutations use normal methods.
-        let object = prototype.0.runtime().map_or_else(Self::new, Self::new_in);
+        let object = Self::new_for(prototype);
         let source = prototype.source_realm();
         if let Some(source) = &source {
             source.record_owner(&object).expect("native source context");
@@ -1078,23 +1101,14 @@ impl Object {
         object
     }
 
-    /// Allocates a constructable object backed by a native Rust closure.
-    #[must_use]
-    pub fn native_constructor(
-        callback: impl Fn(&[Value], Object) -> RuntimeResult<Object> + 'static,
-    ) -> Self {
-        let object = Self::new();
-        object.set_native_construct(callback);
-        object
-    }
-
     /// Allocates an object with both native `[[Call]]` and `[[Construct]]` methods.
     #[must_use]
     pub fn native_callable_constructor(
+        context: &super::AllocationContext,
         call: impl Fn(Value, &[Value]) -> RuntimeResult<Value> + 'static,
         construct: impl Fn(&[Value], Object) -> RuntimeResult<Object> + 'static,
     ) -> Self {
-        let object = Self::native_function(call);
+        let object = Self::native_function_in(context, call);
         object.set_native_construct(construct);
         object
     }
@@ -1152,7 +1166,7 @@ impl Object {
             callback
                 .as_ref()
                 .expect("validated callable")
-                .invoke(this_value, arguments)
+                .invoke(self, this_value, arguments)
         };
         let result = result.map_err(|error| {
             self.bind_native_exception(
@@ -2163,7 +2177,8 @@ mod own_data_hint_tests {
 
     #[test]
     fn descriptor_lookup_hint_rechecks_keys_and_reads_current_descriptors() {
-        let object = Object::new();
+        let context = crate::runtime::AllocationContext::new();
+        let object = Object::new_in(&context);
         for (key, value) in [("a", 1.0), ("b", 2.0), ("c", 3.0)] {
             object
                 .create_data_property(key.into(), Value::Number(value))
@@ -2189,7 +2204,7 @@ mod own_data_hint_tests {
             .unwrap();
         assert!(matches!(object.get(&"c".into()).unwrap(), Value::Undefined));
 
-        let getter = Object::native_function(|_, _| Ok(Value::Number(9.0)));
+        let getter = Object::native_function_in(&context, |_, _| Ok(Value::Number(9.0)));
         object.get(&"b".into()).unwrap();
         object
             .define_own_property(
@@ -2279,7 +2294,7 @@ mod own_data_hint_tests {
     #[test]
     fn own_data_hint_rechecks_keys_descriptors_and_exotic_objects() {
         let context = crate::runtime::AllocationContext::new();
-        let object = Object::new();
+        let object = Object::new_in(&context);
         let prefix: PropertyKey = "prefix".into();
         let key: PropertyKey = "x".into();
         object
@@ -2300,7 +2315,7 @@ mod own_data_hint_tests {
                 .0
                 .same_value(&Value::Number(41.0))
         );
-        let getter = Object::native_function(|_, _| Ok(Value::Number(42.0)));
+        let getter = Object::native_function_in(&context, |_, _| Ok(Value::Number(42.0)));
         assert!(
             object
                 .define_own_property(
@@ -2312,7 +2327,8 @@ mod own_data_hint_tests {
         assert!(object.own_data_value_with_hint(&key, Some(hint)).is_none());
         assert!(object.get(&key).unwrap().same_value(&Value::Number(42.0)));
 
-        let proxy = crate::runtime::ProxyObject::new(object.clone(), Object::new()).object();
+        let proxy =
+            crate::runtime::ProxyObject::new(object.clone(), Object::new_in(&context)).object();
         assert!(proxy.own_data_value_with_hint(&key, None).is_none());
         assert!(proxy.get(&key).unwrap().same_value(&Value::Number(42.0)));
         let string = crate::runtime::StringObject::new(&context, "abc".into()).object();

@@ -5,7 +5,8 @@ use temiya::{
 };
 
 fn setup(source: &str) -> Realm {
-    let realm = Realm::ordinary();
+    let allocation_context = temiya::runtime::AllocationContext::new();
+    let realm = Realm::ordinary_in(&allocation_context);
     StatementEvaluator::new(realm.clone())
         .evaluate_program(&parse_script(source).unwrap())
         .unwrap();
@@ -208,6 +209,7 @@ fn spread_rejects_array_like_objects_and_invalid_protocol_records() {
 
 #[test]
 fn array_iterator_alias_brand_completion_and_dynamic_length_are_preserved() {
+    let allocation_context = temiya::runtime::AllocationContext::new();
     let realm = setup(
         "var a=[20]; var i=a.values(); var first=i.next().value; a[1]=22; var second=i.next().value; var end=i.next().done; a[2]=99; var stillDone=i.next().done;",
     );
@@ -229,7 +231,7 @@ fn array_iterator_alias_brand_completion_and_dynamic_length_are_preserved() {
         panic!("missing next")
     };
     assert_eq!(
-        next.call(Value::Object(Object::new()), &[])
+        next.call(Value::Object(Object::new_in(&allocation_context)), &[])
             .unwrap_err()
             .kind(),
         RuntimeErrorKind::TypeError

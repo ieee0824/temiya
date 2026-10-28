@@ -7,8 +7,9 @@ use temiya::{
 };
 
 fn run(source: &str) -> Value {
+    let allocation_context = temiya::runtime::AllocationContext::new();
     let code = BytecodeCompiler::compile(source).unwrap_or_else(|e| panic!("{source}: {e}"));
-    let result = VirtualMachine::execute_in_realm(&code, &Realm::ordinary())
+    let result = VirtualMachine::execute_in_realm(&code, &Realm::ordinary_in(&allocation_context))
         .unwrap_or_else(|e| panic!("{source}: {e}"));
     match result {
         Completion::Normal(value) => value.unwrap_or(Value::Undefined),
@@ -91,6 +92,7 @@ fn loop_completion_values_and_terminal_bodies_are_preserved() {
 
 #[test]
 fn lexical_head_tdz_const_assignment_and_abrupt_errors_are_not_retried() {
+    let allocation_context = temiya::runtime::AllocationContext::new();
     for (source, kind) in [
         (
             "let i=42;for(let i=i;false;){}",
@@ -99,11 +101,13 @@ fn lexical_head_tdz_const_assignment_and_abrupt_errors_are_not_retried() {
         ("for(const i=0;i<1;i++){}", RuntimeErrorKind::TypeError),
     ] {
         let code = BytecodeCompiler::compile(source).unwrap();
-        let error = VirtualMachine::execute_in_realm(&code, &Realm::ordinary()).unwrap_err();
+        let error =
+            VirtualMachine::execute_in_realm(&code, &Realm::ordinary_in(&allocation_context))
+                .unwrap_err();
         assert_eq!(error.kind(), kind);
     }
     let code = BytecodeCompiler::compile("var seen=0;for(;;){seen++;throw 42;}").unwrap();
-    let realm = Realm::ordinary();
+    let realm = Realm::ordinary_in(&allocation_context);
     assert!(matches!(
         VirtualMachine::execute_in_realm(&code, &realm).unwrap(),
         Completion::Throw(Value::Number(42.0))
@@ -197,6 +201,7 @@ fn invalid_jump_targets_are_rejected_even_in_unreachable_owned_ast() {
 #[test]
 #[ignore = "requires pinned Test262 corpus in TEST262_DIR"]
 fn pinned_test262_bytecode_loops() {
+    let allocation_context = temiya::runtime::AllocationContext::new();
     use std::{collections::BTreeMap, process::Command};
     use temiya::{
         parser::parse_script,
@@ -283,7 +288,7 @@ fn pinned_test262_bytecode_loops() {
                     }
                     return Ok(());
                 }
-                let realm = Realm::ordinary();
+                let realm = Realm::ordinary_in(&allocation_context);
                 for harness in ["sta.js", "assert.js"]
                     .into_iter()
                     .chain(case.metadata.includes.iter().map(String::as_str))

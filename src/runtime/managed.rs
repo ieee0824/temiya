@@ -61,34 +61,19 @@ pub(super) struct ObjectRoot {
     runtime: Runtime,
 }
 #[derive(Clone)]
-pub(super) enum ObjectReference {
-    Legacy(Rc<ObjectData>),
-    Managed(Rc<ObjectRoot>),
-}
+pub(super) struct ObjectReference(Rc<ObjectRoot>);
 impl Deref for ObjectReference {
     type Target = ObjectData;
     fn deref(&self) -> &Self::Target {
-        match self {
-            Self::Legacy(data) => data,
-            Self::Managed(root) => &root.data,
-        }
+        &self.0.data
     }
 }
 impl ObjectReference {
-    pub(super) fn legacy(data: ObjectData) -> Self {
-        Self::Legacy(Rc::new(data))
-    }
     pub(super) fn runtime(&self) -> Option<&Runtime> {
-        match self {
-            Self::Legacy(_) => None,
-            Self::Managed(root) => Some(&root.runtime),
-        }
+        Some(&self.0.runtime)
     }
     pub(super) fn handle(&self) -> Option<Handle<ManagedObject>> {
-        match self {
-            Self::Legacy(_) => None,
-            Self::Managed(root) => Some(root.root.handle()),
-        }
+        Some(self.0.root.handle())
     }
     pub(super) fn same_object(&self, other: &Self) -> bool {
         std::ptr::eq(&**self, &**other)
@@ -96,60 +81,35 @@ impl ObjectReference {
 }
 
 #[derive(Clone)]
-pub(super) enum WeakObjectRoot {
-    Legacy(Weak<ObjectData>),
-    Managed {
-        runtime: Weak<RuntimeData>,
-        handle: Handle<ManagedObject>,
-    },
+pub(super) struct WeakObjectRoot {
+    runtime: Weak<RuntimeData>,
+    handle: Handle<ManagedObject>,
 }
 impl WeakObjectRoot {
     pub(super) fn handle(&self) -> Option<Handle<ManagedObject>> {
-        match self {
-            Self::Managed { handle, .. } => Some(*handle),
-            Self::Legacy(_) => None,
-        }
+        Some(self.handle)
     }
 
     pub(super) fn is_live(&self) -> bool {
-        match self {
-            Self::Legacy(weak) => weak.strong_count() > 0,
-            Self::Managed { runtime, handle } => runtime
-                .upgrade()
-                .is_some_and(|runtime| runtime.heap.borrow().with(*handle, |_| ()).is_some()),
-        }
+        self.runtime
+            .upgrade()
+            .is_some_and(|runtime| runtime.heap.borrow().with(self.handle, |_| ()).is_some())
     }
 
     pub(super) fn matches(&self, object: &Object) -> bool {
-        match (self, &object.0) {
-            (Self::Legacy(weak), ObjectReference::Legacy(data)) => {
-                weak.as_ptr() == Rc::as_ptr(data)
-            }
-            (Self::Managed { handle, .. }, ObjectReference::Managed(root)) => {
-                *handle == root.root.handle()
-            }
-            _ => false,
-        }
+        self.handle == object.0.0.root.handle()
     }
 
     pub(super) fn new(object: &Object) -> Self {
-        match &object.0 {
-            ObjectReference::Legacy(data) => Self::Legacy(Rc::downgrade(data)),
-            ObjectReference::Managed(root) => Self::Managed {
-                runtime: Rc::downgrade(&root.runtime.0),
-                handle: root.root.handle(),
-            },
+        Self {
+            runtime: Rc::downgrade(&object.0.0.runtime.0),
+            handle: object.0.0.root.handle(),
         }
     }
 
     #[cfg(test)]
     pub(super) fn upgrade(&self) -> Option<Object> {
-        match self {
-            Self::Legacy(weak) => weak
-                .upgrade()
-                .map(|data| Object(ObjectReference::Legacy(data))),
-            Self::Managed { runtime, handle } => Runtime(runtime.upgrade()?).root_object(*handle),
-        }
+        Runtime(self.runtime.upgrade()?).root_object(self.handle)
     }
 }
 
@@ -406,13 +366,13 @@ impl Runtime {
             runtime: self.clone(),
         });
         *data.facade.borrow_mut() = Rc::downgrade(&facade);
-        Object(ObjectReference::Managed(facade))
+        Object(ObjectReference(facade))
     }
     pub(super) fn root_object(&self, handle: Handle<ManagedObject>) -> Option<Object> {
         let heap = self.0.heap.borrow();
         let data = heap.with(handle, |object| object.data.clone())?;
         if let Some(facade) = data.facade.borrow().upgrade() {
-            let object = Object(ObjectReference::Managed(facade));
+            let object = Object(ObjectReference(facade));
             self.remember_active_object(&object);
             return Some(object);
         }
@@ -424,7 +384,7 @@ impl Runtime {
             runtime: self.clone(),
         });
         *data.facade.borrow_mut() = Rc::downgrade(&facade);
-        let object = Object(ObjectReference::Managed(facade));
+        let object = Object(ObjectReference(facade));
         self.remember_active_object(&object);
         Some(object)
     }
@@ -1179,7 +1139,8 @@ mod stored_graph_tests {
         drop(object_prototype);
         assert_eq!(runtime.diagnostics().rooted, 1);
         assert_eq!(runtime.collect_migration_graph().unwrap().retained, 3);
-        let foreign = Object::new();
+        let foreign_context = Runtime::new();
+        let foreign = Object::new_in(&foreign_context);
         assert!(crate::runtime::proxy::ProxyRevocable::create(&factory, &foreign).is_err());
         assert_eq!(runtime.diagnostics().live, 3);
         let target = Object::new_in(&runtime);
@@ -1461,11 +1422,12 @@ mod stored_graph_tests {
         assert!(weak.upgrade().is_none());
     }
     #[test]
-    fn foreign_and_unmanaged_edges_are_rejected_before_property_or_prototype_changes() {
+    fn foreign_heap_edges_are_rejected_before_property_or_prototype_changes() {
         let runtime = Runtime::new();
         let other = Runtime::new();
         let owner = Object::new_in(&runtime);
-        for foreign in [Object::new_in(&other), Object::new()] {
+        let third = Runtime::new();
+        for foreign in [Object::new_in(&other), Object::new_in(&third)] {
             assert!(
                 owner
                     .create_data_property("x".into(), Value::Object(foreign.clone()))

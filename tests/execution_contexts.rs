@@ -11,7 +11,8 @@ fn context(realm: &Realm) -> ExecutionContext {
 
 #[test]
 fn realm_owns_global_object_and_environment() {
-    let realm = Realm::ordinary();
+    let allocation_context = temiya::runtime::AllocationContext::new();
+    let realm = Realm::ordinary_in(&allocation_context);
     let global = realm.global_object();
     assert!(
         realm
@@ -21,12 +22,13 @@ fn realm_owns_global_object_and_environment() {
             .same_value(&Value::Object(global.clone()))
     );
     assert_eq!(realm.global_environment().binding_object(), Some(global));
-    assert_ne!(realm, Realm::ordinary());
+    assert_ne!(realm, Realm::ordinary_in(&allocation_context));
 }
 
 #[test]
 fn script_records_and_contexts_preserve_ownership() {
-    let realm = Realm::ordinary();
+    let allocation_context = temiya::runtime::AllocationContext::new();
+    let realm = Realm::ordinary_in(&allocation_context);
     let program = parse_script("let answer = 42;").unwrap();
     let script = ScriptRecord::new(realm.clone(), program.clone());
     assert_eq!(script.realm(), realm);
@@ -42,7 +44,8 @@ fn script_records_and_contexts_preserve_ownership() {
 
 #[test]
 fn execution_context_environments_can_change_at_block_boundaries() {
-    let realm = Realm::ordinary();
+    let allocation_context = temiya::runtime::AllocationContext::new();
+    let realm = Realm::ordinary_in(&allocation_context);
     let mut context = context(&realm);
     let lexical = Environment::declarative(context.lexical_environment().clone());
     let variable = Environment::declarative(context.variable_environment().clone());
@@ -54,7 +57,8 @@ fn execution_context_environments_can_change_at_block_boundaries() {
 
 #[test]
 fn enter_and_leave_suspend_and_resume_callers() {
-    let realm = Realm::ordinary();
+    let allocation_context = temiya::runtime::AllocationContext::new();
+    let realm = Realm::ordinary_in(&allocation_context);
     let outer = context(&realm);
     let outer_id = outer.identity();
     let inner = context(&realm);
@@ -77,7 +81,8 @@ fn enter_and_leave_suspend_and_resume_callers() {
 
 #[test]
 fn suspend_and_resume_validate_state_transitions() {
-    let realm = Realm::ordinary();
+    let allocation_context = temiya::runtime::AllocationContext::new();
+    let realm = Realm::ordinary_in(&allocation_context);
     let mut agent = Agent::new();
     assert_eq!(
         agent.suspend().unwrap_err().kind(),
@@ -111,7 +116,8 @@ fn suspend_and_resume_validate_state_transitions() {
 
 #[test]
 fn run_in_context_restores_stack_after_abrupt_completion() {
-    let realm = Realm::ordinary();
+    let allocation_context = temiya::runtime::AllocationContext::new();
+    let realm = Realm::ordinary_in(&allocation_context);
     let root = context(&realm);
     let root_id = root.identity();
     let child = context(&realm);
@@ -135,7 +141,8 @@ fn run_in_context_restores_stack_after_abrupt_completion() {
 
 #[test]
 fn run_in_context_returns_values_and_cleans_top_level_context() {
-    let realm = Realm::ordinary();
+    let allocation_context = temiya::runtime::AllocationContext::new();
+    let realm = Realm::ordinary_in(&allocation_context);
     let mut agent = Agent::new();
     let value = agent
         .run_in_context(context(&realm), |agent| {
@@ -149,7 +156,8 @@ fn run_in_context_returns_values_and_cleans_top_level_context() {
 
 #[test]
 fn scoped_execution_protects_and_restores_a_suspended_caller() {
-    let realm = Realm::ordinary();
+    let allocation_context = temiya::runtime::AllocationContext::new();
+    let realm = Realm::ordinary_in(&allocation_context);
     let mut agent = Agent::new();
     agent.enter(context(&realm)).unwrap();
     agent.suspend().unwrap();
@@ -169,8 +177,9 @@ fn scoped_execution_protects_and_restores_a_suspended_caller() {
 
 #[test]
 fn function_context_records_function_and_realm_identity() {
-    let realm = Realm::ordinary();
-    let function = Object::native_function(|_, _| Ok(Value::Undefined));
+    let allocation_context = temiya::runtime::AllocationContext::new();
+    let realm = Realm::ordinary_in(&allocation_context);
+    let function = Object::native_function_in(&allocation_context, |_, _| Ok(Value::Undefined));
     let environment = Environment::function(
         Some(realm.global_environment()),
         function.clone(),

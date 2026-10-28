@@ -13,7 +13,8 @@ fn method(object: &Object, name: &str) -> Object {
 
 #[test]
 fn proxy_constructor_and_revocable_are_installed() {
-    let realm = Realm::ordinary();
+    let allocation_context = temiya::runtime::AllocationContext::new();
+    let realm = Realm::ordinary_in(&allocation_context);
     let constructor = realm.intrinsic(IntrinsicId::Proxy);
     assert_eq!(
         constructor.call(Value::Undefined, &[]).unwrap_err().kind(),
@@ -23,7 +24,10 @@ fn proxy_constructor_and_revocable_are_installed() {
     let result = method(&constructor, "revocable")
         .call(
             Value::Undefined,
-            &[Value::Object(Object::new()), Value::Object(Object::new())],
+            &[
+                Value::Object(Object::new_in(&allocation_context)),
+                Value::Object(Object::new_in(&allocation_context)),
+            ],
         )
         .unwrap();
     let Value::Object(result) = result else {
@@ -52,28 +56,34 @@ fn proxy_constructor_and_revocable_are_installed() {
 
 #[test]
 fn get_set_has_and_delete_traps_receive_target_and_keys() {
-    let target = Object::new();
+    let allocation_context = temiya::runtime::AllocationContext::new();
+    let target = Object::new_in(&allocation_context);
     target
         .create_data_property("x".into(), Value::Number(1.0))
         .unwrap();
-    let handler = Object::new();
+    let handler = Object::new_in(&allocation_context);
     handler
         .create_data_property(
             "get".into(),
-            Value::Object(Object::native_function(|_, arguments| {
-                let Value::String(key) = &arguments[1] else {
-                    panic!()
-                };
-                Ok(Value::String(
-                    format!("trap:{}", key.to_string_lossy()).into(),
-                ))
-            })),
+            Value::Object(Object::native_function_in(
+                &allocation_context,
+                |_, arguments| {
+                    let Value::String(key) = &arguments[1] else {
+                        panic!()
+                    };
+                    Ok(Value::String(
+                        format!("trap:{}", key.to_string_lossy()).into(),
+                    ))
+                },
+            )),
         )
         .unwrap();
     handler
         .create_data_property(
             "has".into(),
-            Value::Object(Object::native_function(|_, _| Ok(Value::Boolean(false)))),
+            Value::Object(Object::native_function_in(&allocation_context, |_, _| {
+                Ok(Value::Boolean(false))
+            })),
         )
         .unwrap();
     let proxy = ProxyObject::new(target, handler).object();
@@ -85,24 +95,29 @@ fn get_set_has_and_delete_traps_receive_target_and_keys() {
 
 #[test]
 fn target_invariants_reject_lying_traps() {
-    let target = Object::new();
+    let allocation_context = temiya::runtime::AllocationContext::new();
+    let target = Object::new_in(&allocation_context);
     target
         .define_own_property(
             "locked".into(),
             PropertyDescriptor::data(Value::Number(1.0), false, true, false),
         )
         .unwrap();
-    let handler = Object::new();
+    let handler = Object::new_in(&allocation_context);
     handler
         .create_data_property(
             "get".into(),
-            Value::Object(Object::native_function(|_, _| Ok(Value::Number(2.0)))),
+            Value::Object(Object::native_function_in(&allocation_context, |_, _| {
+                Ok(Value::Number(2.0))
+            })),
         )
         .unwrap();
     handler
         .create_data_property(
             "deleteProperty".into(),
-            Value::Object(Object::native_function(|_, _| Ok(Value::Boolean(true)))),
+            Value::Object(Object::native_function_in(&allocation_context, |_, _| {
+                Ok(Value::Boolean(true))
+            })),
         )
         .unwrap();
     let proxy = ProxyObject::new(target, handler).object();
@@ -118,27 +133,29 @@ fn target_invariants_reject_lying_traps() {
 
 #[test]
 fn own_keys_enforces_duplicates_and_non_configurable_keys() {
-    let target = Object::new();
+    let allocation_context = temiya::runtime::AllocationContext::new();
+    let target = Object::new_in(&allocation_context);
     target
         .define_own_property(
             "fixed".into(),
             PropertyDescriptor::data(Value::Undefined, true, true, false),
         )
         .unwrap();
-    let result = Object::new();
+    let result = Object::new_in(&allocation_context);
     result
         .create_data_property("0".into(), Value::String("other".into()))
         .unwrap();
     result
         .create_data_property("length".into(), Value::Number(1.0))
         .unwrap();
-    let handler = Object::new();
+    let handler = Object::new_in(&allocation_context);
     handler
         .create_data_property(
             "ownKeys".into(),
-            Value::Object(Object::native_function(move |_, _| {
-                Ok(Value::Object(result.clone()))
-            })),
+            Value::Object(Object::native_function_in(
+                &allocation_context,
+                move |_, _| Ok(Value::Object(result.clone())),
+            )),
         )
         .unwrap();
     let proxy = ProxyObject::new(target, handler).object();
@@ -150,11 +167,13 @@ fn own_keys_enforces_duplicates_and_non_configurable_keys() {
 
 #[test]
 fn revocation_invalidates_objects_calls_and_construction() {
+    let allocation_context = temiya::runtime::AllocationContext::new();
     let target = Object::native_callable_constructor(
+        &allocation_context,
         |_, _| Ok(Value::Number(1.0)),
-        |_, _| Ok(Object::new()),
+        |_, target| Ok(Object::new_in(target.allocation_context())),
     );
-    let proxy = ProxyObject::new(target, Object::new());
+    let proxy = ProxyObject::new(target, Object::new_in(&allocation_context));
     assert!(matches!(
         proxy.object().call(Value::Undefined, &[]).unwrap(),
         Value::Number(1.0)
@@ -184,29 +203,33 @@ fn revocation_invalidates_objects_calls_and_construction() {
 
 #[test]
 fn traps_can_reenter_the_same_proxy() {
-    let target = Object::new();
+    let allocation_context = temiya::runtime::AllocationContext::new();
+    let target = Object::new_in(&allocation_context);
     target
         .create_data_property("inner".into(), Value::Number(9.0))
         .unwrap();
     let holder = Rc::new(RefCell::new(None::<Object>));
     let captured = holder.clone();
-    let handler = Object::new();
+    let handler = Object::new_in(&allocation_context);
     handler
         .create_data_property(
             "get".into(),
-            Value::Object(Object::native_function(move |_, arguments| {
-                let Value::String(key) = &arguments[1] else {
-                    panic!()
-                };
-                if key == &"outer".into() {
-                    captured.borrow().as_ref().unwrap().get(&"inner".into())
-                } else {
-                    let Value::Object(target) = &arguments[0] else {
+            Value::Object(Object::native_function_in(
+                &allocation_context,
+                move |_, arguments| {
+                    let Value::String(key) = &arguments[1] else {
                         panic!()
                     };
-                    target.get(&key.clone().into())
-                }
-            })),
+                    if key == &"outer".into() {
+                        captured.borrow().as_ref().unwrap().get(&"inner".into())
+                    } else {
+                        let Value::Object(target) = &arguments[0] else {
+                            panic!()
+                        };
+                        target.get(&key.clone().into())
+                    }
+                },
+            )),
         )
         .unwrap();
     let proxy = ProxyObject::new(target, handler).object();

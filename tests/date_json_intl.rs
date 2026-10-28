@@ -28,7 +28,8 @@ fn date_clips_boundaries_and_formats_iso_utc() {
 
 #[test]
 fn realm_date_uses_injected_host_clock() {
-    let global = Object::new();
+    let allocation_context = temiya::runtime::AllocationContext::new();
+    let global = Object::new_in(&allocation_context);
     let realm = Realm::try_new_with_host(
         global.clone(),
         Value::Object(global),

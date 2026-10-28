@@ -56,7 +56,7 @@ fn descriptor_conversion_round_trips_present_fields() {
     assert!(converted.value.is_none());
     assert!(converted.writable.is_none());
 
-    let invalid = Object::new();
+    let invalid = Object::new_in(&context);
     invalid
         .create_data_property("get".into(), Value::Number(1.0))
         .unwrap();
@@ -70,13 +70,14 @@ fn descriptor_conversion_round_trips_present_fields() {
 
 #[test]
 fn descriptor_conversion_observes_inherited_fields_and_getters() {
-    let prototype = Object::new();
+    let allocation_context = temiya::runtime::AllocationContext::new();
+    let prototype = Object::new_in(&allocation_context);
     prototype
         .create_data_property("enumerable".into(), Value::Boolean(true))
         .unwrap();
     let calls = Rc::new(RefCell::new(0));
     let observed = Rc::clone(&calls);
-    let getter = Object::native_function(move |this, _| {
+    let getter = Object::native_function_in(&allocation_context, move |this, _| {
         *observed.borrow_mut() += 1;
         assert!(matches!(this, Value::Object(_)));
         Ok(Value::Boolean(true))
@@ -87,7 +88,7 @@ fn descriptor_conversion_observes_inherited_fields_and_getters() {
             PropertyDescriptor::accessor(Some(getter), None, false, true),
         )
         .unwrap();
-    let object = Object::new();
+    let object = Object::new_in(&allocation_context);
     assert!(object.set_prototype(Some(prototype)));
 
     let descriptor = PropertyDescriptor::from_object(&object).unwrap();
@@ -98,7 +99,8 @@ fn descriptor_conversion_observes_inherited_fields_and_getters() {
 
 #[test]
 fn descriptor_invariants_and_partial_attribute_updates_are_enforced() {
-    let object = Object::new();
+    let allocation_context = temiya::runtime::AllocationContext::new();
+    let object = Object::new_in(&allocation_context);
     assert!(
         object
             .define_own_property(
@@ -192,14 +194,15 @@ fn descriptor_invariants_and_partial_attribute_updates_are_enforced() {
 
 #[test]
 fn descriptor_kind_changes_require_configurability() {
-    let object = Object::new();
+    let allocation_context = temiya::runtime::AllocationContext::new();
+    let object = Object::new_in(&allocation_context);
     object
         .define_own_property(
             key("open"),
             PropertyDescriptor::data(Value::Number(1.0), true, true, true),
         )
         .unwrap();
-    let getter = Object::native_function(|_, _| Ok(Value::Number(2.0)));
+    let getter = Object::native_function_in(&allocation_context, |_, _| Ok(Value::Number(2.0)));
     assert!(
         object
             .define_own_property(
@@ -231,8 +234,9 @@ fn descriptor_kind_changes_require_configurability() {
 
 #[test]
 fn ordinary_get_and_set_preserve_the_receiver_across_prototypes() {
-    let prototype = Object::new();
-    let getter = Object::native_function(|this, _| {
+    let allocation_context = temiya::runtime::AllocationContext::new();
+    let prototype = Object::new_in(&allocation_context);
+    let getter = Object::native_function_in(&allocation_context, |this, _| {
         let Value::Object(receiver) = this else {
             panic!("receiver was not an object");
         };
@@ -240,7 +244,7 @@ fn ordinary_get_and_set_preserve_the_receiver_across_prototypes() {
     });
     let assigned = Rc::new(RefCell::new(None));
     let assigned_by_setter = Rc::clone(&assigned);
-    let setter = Object::native_function(move |this, arguments| {
+    let setter = Object::native_function_in(&allocation_context, move |this, arguments| {
         let Value::Object(receiver) = this else {
             panic!("receiver was not an object");
         };
@@ -260,7 +264,7 @@ fn ordinary_get_and_set_preserve_the_receiver_across_prototypes() {
         )
         .unwrap();
 
-    let object = Object::new();
+    let object = Object::new_in(&allocation_context);
     object
         .create_data_property(key("marker"), Value::String(JsString::from("child")))
         .unwrap();
@@ -284,7 +288,8 @@ fn ordinary_get_and_set_preserve_the_receiver_across_prototypes() {
 
 #[test]
 fn ordinary_objects_reject_forbidden_writes_and_deletes() {
-    let object = Object::new();
+    let allocation_context = temiya::runtime::AllocationContext::new();
+    let object = Object::new_in(&allocation_context);
     object
         .define_own_property(
             key("locked"),
@@ -307,7 +312,8 @@ fn ordinary_objects_reject_forbidden_writes_and_deletes() {
 
 #[test]
 fn own_property_keys_follow_ecmascript_order() {
-    let object = Object::new();
+    let allocation_context = temiya::runtime::AllocationContext::new();
+    let object = Object::new_in(&allocation_context);
     let first_symbol = Symbol::new(Some(JsString::from("first")));
     let second_symbol = Symbol::new(Some(JsString::from("second")));
     for property in [
@@ -337,9 +343,10 @@ fn own_property_keys_follow_ecmascript_order() {
 
 #[test]
 fn prototype_changes_reject_cycles_and_non_extensible_objects() {
-    let first = Object::new();
-    let second = Object::new();
-    let third = Object::new();
+    let allocation_context = temiya::runtime::AllocationContext::new();
+    let first = Object::new_in(&allocation_context);
+    let second = Object::new_in(&allocation_context);
+    let third = Object::new_in(&allocation_context);
     assert!(first.set_prototype(Some(second.clone())));
     assert!(second.set_prototype(Some(third.clone())));
     assert!(!third.set_prototype(Some(first)));

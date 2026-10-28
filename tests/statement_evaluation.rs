@@ -6,7 +6,8 @@ use temiya::{
 };
 
 fn setup() -> (StatementEvaluator, Environment) {
-    let realm = Realm::ordinary();
+    let allocation_context = temiya::runtime::AllocationContext::new();
+    let realm = Realm::ordinary_in(&allocation_context);
     let environment = Environment::declarative(realm.global_environment());
     (
         StatementEvaluator::with_environments(

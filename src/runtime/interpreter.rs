@@ -89,8 +89,13 @@ mod function_reference_tests {
 
     #[test]
     fn retained_function_hint_survives_binding_vector_changes() {
-        let environment =
-            Environment::function(None, Object::new(), None, ThisBindingStatus::Uninitialized);
+        let context = crate::runtime::AllocationContext::new();
+        let environment = Environment::function(
+            None,
+            Object::new_in(&context),
+            None,
+            ThisBindingStatus::Uninitialized,
+        );
         let prefix: JsString = "prefix".into();
         let value: JsString = "value".into();
         environment

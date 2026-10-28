@@ -65,6 +65,7 @@ fn math_handles_nan_signed_zero_infinity_and_rounding() {
 
 #[test]
 fn bigint_width_operations_and_mixed_numeric_errors() {
+    let allocation_context = temiya::runtime::AllocationContext::new();
     assert_eq!(
         Math::bigint_as_uint_n(8, &BigInt::from(-1)).unwrap(),
         BigInt::from(255)
@@ -73,7 +74,7 @@ fn bigint_width_operations_and_mixed_numeric_errors() {
         Math::bigint_as_int_n(8, &BigInt::from(255)).unwrap(),
         BigInt::from(-1)
     );
-    let realm = Realm::ordinary();
+    let realm = Realm::ordinary_in(&allocation_context);
     let bigint = realm.intrinsic(IntrinsicId::BigInt);
     assert!(!bigint.is_constructor());
     assert!(matches!(
@@ -90,7 +91,8 @@ fn bigint_width_operations_and_mixed_numeric_errors() {
 
 #[test]
 fn math_intrinsic_converts_arguments_and_rejects_bigint() {
-    let realm = Realm::ordinary();
+    let allocation_context = temiya::runtime::AllocationContext::new();
+    let realm = Realm::ordinary_in(&allocation_context);
     let math = realm.intrinsic(IntrinsicId::Math);
     assert!(matches!(
         method(&math, "round")

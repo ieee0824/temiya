@@ -257,17 +257,21 @@ impl Realm {
         Ok(realm)
     }
 
-    /// Creates a Realm whose global-this value is its fresh global object.
+    /// Creates a standalone Realm with its own context and a fresh global object.
     #[must_use]
     pub fn ordinary() -> Self {
-        let global_object = Object::new();
-        Self::new(global_object.clone(), Value::Object(global_object))
+        Self::ordinary_in(&super::AllocationContext::new())
     }
 
     /// Creates a Realm in an explicit shared allocation context.
     pub fn ordinary_in(runtime: &super::AllocationContext) -> Self {
         let global_object = Object::new_in(runtime);
         Self::new(global_object.clone(), Value::Object(global_object))
+    }
+
+    /// Borrows this Realm's shared allocation context.
+    pub fn allocation_context(&self) -> &super::AllocationContext {
+        self.runtime().expect("Realm allocation context")
     }
 
     /// Returns an engine-local identity for this Realm.

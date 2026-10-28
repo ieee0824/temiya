@@ -281,9 +281,12 @@ factories now require context; parentless declarative/module Environments use
 explicit `*_in(context)` factories, while child records require a parent.
 VM blocks and cloned loop Environments require the parent guaranteed by the
 bytecode verifier and inherit its allocation context.
-Contextless Object/native and Realm factories still need migration. The Legacy
-storage variants and the private Legacy queue path for Legacy Realms have not
-yet been eliminated.
+Contextless Object/native factories and Object `Default` are now removed.
+Object and WeakObject have only the traced representation. Standalone
+`Realm::ordinary` owns a fresh tracing context, while `ordinary_in` shares an
+explicit context. Native allocation callbacks can borrow their owner's context
+per invocation without capturing Runtime ownership. Other Legacy facade/storage
+variants and the unreachable private Legacy queue path still need removal.
 
 The coordinated tracing migration changes `Realm::intrinsics()` from a borrowed
 registry to an owning `IntrinsicRegistry` snapshot. The snapshot and its clones

@@ -11,7 +11,42 @@ fn string(value: &str) -> Value {
 }
 
 #[test]
+fn native_allocator_borrows_its_context_without_a_retained_runtime_capture() {
+    let allocation_context = temiya::runtime::AllocationContext::new();
+    let marker = Rc::new(());
+    let weak = Rc::downgrade(&marker);
+    let factory =
+        Object::native_function_with_context(&allocation_context, move |context, _, arguments| {
+            let _keep_capture = &marker;
+            context.collect_garbage()?;
+            let object = Object::new_in(context);
+            object.create_data_property("answer".into(), arguments[0].clone())?;
+            context.collect_garbage()?;
+            Ok(Value::Object(object))
+        });
+    let Value::Object(result) = factory
+        .call(Value::Undefined, &[Value::Number(42.0)])
+        .unwrap()
+    else {
+        panic!("object result")
+    };
+    drop(factory);
+    allocation_context.collect_garbage().unwrap();
+    assert!(weak.upgrade().is_none());
+    drop(allocation_context);
+    let clone = result.clone();
+    drop(result);
+    assert!(
+        clone
+            .get(&"answer".into())
+            .unwrap()
+            .same_value(&Value::Number(42.0))
+    );
+}
+
+#[test]
 fn values_preserve_utf16_and_identity() {
+    let allocation_context = temiya::runtime::AllocationContext::new();
     let lone_surrogate = JsString::from_code_units(vec![0xd800, b'a' as u16]);
     assert_eq!(lone_surrogate.code_units(), &[0xd800, 0x61]);
 
@@ -24,9 +59,12 @@ fn values_preserve_utf16_and_identity() {
             .same_value(&Value::Symbol(Symbol::new(second.description().cloned())))
     );
 
-    let object = Object::new();
+    let object = Object::new_in(&allocation_context);
     assert!(Value::Object(object.clone()).same_value(&Value::Object(object)));
-    assert!(!Value::Object(Object::new()).same_value(&Value::Object(Object::new())));
+    assert!(
+        !Value::Object(Object::new_in(&allocation_context))
+            .same_value(&Value::Object(Object::new_in(&allocation_context)))
+    );
 }
 
 #[test]
@@ -39,6 +77,7 @@ fn same_value_handles_nan_and_signed_zero() {
 
 #[test]
 fn to_boolean_follows_ecmascript_falsiness() {
+    let allocation_context = temiya::runtime::AllocationContext::new();
     for value in [
         Value::Undefined,
         Value::Null,
@@ -51,18 +90,20 @@ fn to_boolean_follows_ecmascript_falsiness() {
     ] {
         assert!(!value.to_boolean(), "{value:?}");
     }
-    assert!(Value::Object(Object::new()).to_boolean());
+    assert!(Value::Object(Object::new_in(&allocation_context)).to_boolean());
     assert!(Value::Symbol(Symbol::new(None)).to_boolean());
 }
 
 #[test]
 fn to_primitive_observes_exotic_and_ordinary_order() {
-    let object = Object::new();
+    let allocation_context = temiya::runtime::AllocationContext::new();
+    let object = Object::new_in(&allocation_context);
     let calls = Rc::new(RefCell::new(Vec::new()));
     let value_calls = Rc::clone(&calls);
+    let non_primitive = Object::new_in(&allocation_context);
     object.set_value_of_hook(move || {
         value_calls.borrow_mut().push("valueOf");
-        Ok(Value::Object(Object::new()))
+        Ok(Value::Object(non_primitive.clone()))
     });
     let string_calls = Rc::clone(&calls);
     object.set_to_string_hook(move || {
@@ -70,12 +111,13 @@ fn to_primitive_observes_exotic_and_ordinary_order() {
         Ok(string("converted"))
     });
     assert!(matches!(
-        Value::Object(object).to_primitive(PrimitiveHint::Number),
+        Value::Object(object.clone()).to_primitive(PrimitiveHint::Number),
         Ok(Value::String(value)) if value == JsString::from("converted")
     ));
     assert_eq!(calls.borrow().as_slice(), &["valueOf", "toString"]);
+    object.set_value_of_hook(|| Ok(Value::Undefined));
 
-    let exotic = Object::new();
+    let exotic = Object::new_in(&allocation_context);
     exotic.set_to_primitive_hook(|hint| {
         assert_eq!(hint, PrimitiveHint::String);
         Ok(Value::Number(7.0))
@@ -88,7 +130,8 @@ fn to_primitive_observes_exotic_and_ordinary_order() {
 
 #[test]
 fn to_primitive_propagates_errors_and_rejects_object_results() {
-    let throwing = Object::new();
+    let allocation_context = temiya::runtime::AllocationContext::new();
+    let throwing = Object::new_in(&allocation_context);
     throwing.set_to_primitive_hook(|_| Err(RuntimeError::type_error("boom")));
     let error = Value::Object(throwing)
         .to_primitive(PrimitiveHint::Default)
@@ -96,13 +139,15 @@ fn to_primitive_propagates_errors_and_rejects_object_results() {
     assert_eq!(error.kind(), RuntimeErrorKind::TypeError);
     assert_eq!(error.message(), "boom");
 
-    let invalid = Object::new();
-    invalid.set_to_primitive_hook(|_| Ok(Value::Object(Object::new())));
+    let invalid = Object::new_in(&allocation_context);
+    let non_primitive = Object::new_in(&allocation_context);
+    invalid.set_to_primitive_hook(move |_| Ok(Value::Object(non_primitive.clone())));
     assert!(
-        Value::Object(invalid)
+        Value::Object(invalid.clone())
             .to_primitive(PrimitiveHint::Default)
             .is_err()
     );
+    invalid.set_to_primitive_hook(|_| Ok(Value::Undefined));
 }
 
 #[test]

@@ -56,7 +56,7 @@ through the public APIs, including the unsupported cases. See
 The 0.2 migration branch integrates a shared tracing heap into `Engine`, with
 allocation safepoints and `Engine::collect_garbage`. Host-created objects use
 the Engine's explicit allocation context; see [embedding](docs/embedding.md).
-Legacy low-level constructors remain during the migration. Debugger and
+Legacy storage variants remain during the migration. Debugger and
 optimizing-tier contracts are development components. The Test262 tooling
 records corpus metadata but does not yet establish whole-engine conformance.
 The previous default API passed the fixed original-eleven omoikane Boa comparison

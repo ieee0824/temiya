@@ -21,6 +21,7 @@ fn check(realm: &Realm, source: &str, vm: bool) {
 }
 #[test]
 fn holes_empty_spreads_and_trailing_commas_preserve_length_and_own_properties() {
+    let allocation_context = temiya::runtime::AllocationContext::new();
     for vm in [false, true] {
         for source in [
             "var a=[,,42,,];a.length===4&&!(0 in a)&&!(1 in a)&&a[2]===42&&!(3 in a);",
@@ -29,14 +30,15 @@ fn holes_empty_spreads_and_trailing_commas_preserve_length_and_own_properties() 
             "var a=[...'\u{1f600}'];a.length===1&&a[0].length===2;",
             "var a=[1,[2,,3],4];a.length===3&&a[1].length===3&&!(1 in a[1]);",
         ] {
-            check(&Realm::ordinary(), source, vm);
+            check(&Realm::ordinary_in(&allocation_context), source, vm);
         }
     }
 }
 #[test]
 fn custom_iterator_captures_next_once_and_preserves_evaluation_order() {
+    let allocation_context = temiya::runtime::AllocationContext::new();
     for vm in [false, true] {
-        let realm = Realm::ordinary();
+        let realm = Realm::ordinary_in(&allocation_context);
         execute(&realm,"var log='';var n=0;function mark(x){log+=x;return x;}var iterator={next:function(){log+='N';iterator.next=function(){throw 99;};n++;return {done:n>2,value:n};},return:function(){log+='R';return {};}};var iterable={[Symbol.iterator]:function(){log+='I';return iterator;}};",false).unwrap();
         check(
             &realm,
@@ -47,9 +49,10 @@ fn custom_iterator_captures_next_once_and_preserves_evaluation_order() {
 }
 #[test]
 fn iterator_failures_propagate_and_do_not_close_or_evaluate_later_elements() {
+    let allocation_context = temiya::runtime::AllocationContext::new();
     for failing in ["next-get", "next-call", "done", "value"] {
         for vm in [false, true] {
-            let realm = Realm::ordinary();
+            let realm = Realm::ordinary_in(&allocation_context);
             let setup = format!(
                 "var log='';var marker={{}};var failing='{failing}';var iterator={{get next(){{log+='G';if(failing==='next-get')throw marker;return function(){{log+='N';if(failing==='next-call')throw marker;return {{get done(){{log+='D';if(failing==='done')throw marker;return false;}},get value(){{log+='V';throw marker;}}}};}};}},return:function(){{log+='R';return {{}};}}}};var iterable={{[Symbol.iterator]:function(){{log+='I';return iterator;}}}};function later(){{log+='L';return 0;}}"
             );
@@ -72,8 +75,9 @@ fn iterator_failures_propagate_and_do_not_close_or_evaluate_later_elements() {
 }
 #[test]
 fn array_like_objects_require_an_iterator() {
+    let allocation_context = temiya::runtime::AllocationContext::new();
     for vm in [false, true] {
-        let realm = Realm::ordinary();
+        let realm = Realm::ordinary_in(&allocation_context);
         execute(&realm, "var value={0:42,length:1};", false).unwrap();
         assert_eq!(
             execute(&realm, "[...value];", vm).unwrap_err().kind(),
@@ -84,6 +88,7 @@ fn array_like_objects_require_an_iterator() {
 
 #[test]
 fn array_instructions_check_scope_stack_state_and_length_overflow() {
+    let allocation_context = temiya::runtime::AllocationContext::new();
     use temiya::bytecode::{
         Bytecode, Constant, Instruction, ScopeDescriptor, ScopeKind, VerifyErrorKind,
     };
@@ -134,7 +139,7 @@ fn array_instructions_check_scope_stack_state_and_length_overflow() {
     .verify()
     .unwrap();
     assert_eq!(
-        VirtualMachine::execute_in_realm(&code, &Realm::ordinary())
+        VirtualMachine::execute_in_realm(&code, &Realm::ordinary_in(&allocation_context))
             .unwrap_err()
             .kind(),
         RuntimeErrorKind::RangeError
@@ -144,6 +149,7 @@ fn array_instructions_check_scope_stack_state_and_length_overflow() {
 #[test]
 #[ignore = "requires pinned Test262 corpus in TEST262_DIR"]
 fn pinned_test262_array_literals() {
+    let allocation_context = temiya::runtime::AllocationContext::new();
     use std::process::Command;
     use temiya::test262::{NegativePhase, TEST262_REVISION, TestCase};
     let root = std::env::var("TEST262_DIR").expect("TEST262_DIR required");
@@ -186,7 +192,7 @@ fn pinned_test262_array_literals() {
                             Err("parse-negative accepted".into())
                         };
                     }
-                    let realm = Realm::ordinary();
+                    let realm = Realm::ordinary_in(&allocation_context);
                     for harness in ["sta.js", "assert.js"]
                         .into_iter()
                         .chain(case.metadata.includes.iter().map(String::as_str))

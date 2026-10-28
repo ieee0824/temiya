@@ -622,7 +622,8 @@ mod managed_tests {
         let key = Object::new_in(&runtime);
         map.try_set(Value::Object(key.clone()), Value::Number(42.0))
             .unwrap();
-        let foreign = Object::new();
+        let foreign_context = Runtime::new();
+        let foreign = Object::new_in(&foreign_context);
         assert!(
             map.try_set(Value::Object(key.clone()), Value::Object(foreign.clone()))
                 .is_err()
@@ -655,7 +656,7 @@ mod managed_tests {
             assert!(!map.has(&Value::Number(99.0)));
         }
         assert_eq!(runtime.diagnostics().rooted, before);
-        assert!(!map.has(&Value::Object(Object::new())));
+        assert!(!map.has(&Value::Object(Object::new_in(&foreign_context))));
         assert!(map.delete(&Value::Number(f64::NAN)));
         set.try_add(Value::Number(-0.0)).unwrap();
         set.try_add(Value::Number(0.0)).unwrap();

@@ -124,7 +124,7 @@ impl Promise {
         if let Some(prototype) = &function_prototype {
             StoredObject::initial(queue.runtime(), prototype)?;
         }
-        let object = queue.runtime().map_or_else(Object::new, Object::new_in);
+        let object = Object::new_in(queue.runtime().expect("queue allocation context"));
         let data = Rc::new(RefCell::new(PromiseData {
             settlement: Settlement::Pending,
             reactions: Vec::new(),

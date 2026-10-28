@@ -313,19 +313,20 @@ impl Object {
     pub(super) fn downgrade(&self) -> WeakObject {
         WeakObject(managed::WeakObjectRoot::new(self))
     }
-    /// Allocates an ordinary object with the standard fallback conversion behavior.
-    #[must_use]
-    pub fn new() -> Self {
-        Self(managed::ObjectReference::legacy(ObjectData::ordinary()))
-    }
-
     /// Allocates an ordinary object in an explicit shared context.
     pub fn new_in(runtime: &AllocationContext) -> Self {
         runtime.allocate_object(ObjectData::ordinary())
     }
 
+    /// Borrows the shared context that owns this object.
+    pub fn allocation_context(&self) -> &AllocationContext {
+        self.0
+            .runtime()
+            .expect("objects have an allocation context")
+    }
+
     pub(crate) fn new_for(context: &Object) -> Self {
-        context.0.runtime().map_or_else(Self::new, Self::new_in)
+        Self::new_in(context.allocation_context())
     }
 
     pub(crate) fn check_allocation_context(&self, value: &Object) -> RuntimeResult<()> {
@@ -370,12 +371,6 @@ impl WeakObject {
     #[cfg(test)]
     pub(super) fn upgrade(&self) -> Option<Object> {
         self.0.upgrade()
-    }
-}
-
-impl Default for Object {
-    fn default() -> Self {
-        Self::new()
     }
 }
 

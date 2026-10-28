@@ -6,6 +6,7 @@ use temiya::{
 
 #[test]
 fn local_number_updates_preserve_signed_zero_nonfinite_and_fallback_types() {
+    let allocation_context = temiya::runtime::AllocationContext::new();
     for source in [
         "(function(){var x=-0;var old=x++;return 1/old===-Infinity && x===1;})();",
         "(function(){let x=0;var a=--x;var b=x--;return a===-1 && b===-1 && x===-2;})();",
@@ -16,13 +17,14 @@ fn local_number_updates_preserve_signed_zero_nonfinite_and_fallback_types() {
     ] {
         for vm in [false, true] {
             assert!(
-                result(&Realm::ordinary(), source, vm).same_value(&Value::Boolean(true)),
+                result(&Realm::ordinary_in(&allocation_context), source, vm)
+                    .same_value(&Value::Boolean(true)),
                 "{source}"
             );
         }
     }
     for vm in [false, true] {
-        let realm = Realm::ordinary();
+        let realm = Realm::ordinary_in(&allocation_context);
         let source = "var read;function f(){const x=41;read=function(){return x;};x++;}f();";
         assert_eq!(
             execute(&realm, source, vm).unwrap_err().kind(),
@@ -34,6 +36,7 @@ fn local_number_updates_preserve_signed_zero_nonfinite_and_fallback_types() {
 
 #[test]
 fn lexical_updates_capture_verified_binding_before_numeric_coercion() {
+    let allocation_context = temiya::runtime::AllocationContext::new();
     let source = "var calls=0;function f(){var x=new Object();x.valueOf=function(){calls++;x=99;return 41;};for(var i=0;i<1;i++){var old=x++;}return old+':'+x+':'+calls;}f();";
     let code = BytecodeCompiler::compile(source).unwrap();
     assert!(code.bytecode().constants.iter().any(|constant| {
@@ -65,13 +68,15 @@ fn lexical_updates_capture_verified_binding_before_numeric_coercion() {
     }));
     for vm in [false, true] {
         assert!(
-            result(&Realm::ordinary(), source, vm).same_value(&Value::String("41:42:1".into()))
+            result(&Realm::ordinary_in(&allocation_context), source, vm)
+                .same_value(&Value::String("41:42:1".into()))
         );
     }
 }
 
 #[test]
 fn local_compound_assignments_snapshot_values_and_preserve_abrupt_ordering() {
+    let allocation_context = temiya::runtime::AllocationContext::new();
     for source in [
         "(function(){var x=20;var y=(x+=(x=100,22));return x===42&&y===42;})();",
         "(function(){let x=20;function rhs(){x=100;return 22;}return (x+=rhs())===42&&x===42;})();",
@@ -82,20 +87,21 @@ fn local_compound_assignments_snapshot_values_and_preserve_abrupt_ordering() {
     ] {
         for vm in [false, true] {
             assert!(
-                result(&Realm::ordinary(), source, vm).same_value(&Value::Boolean(true)),
+                result(&Realm::ordinary_in(&allocation_context), source, vm)
+                    .same_value(&Value::Boolean(true)),
                 "{source}"
             );
         }
     }
     for vm in [false, true] {
-        let realm = Realm::ordinary();
+        let realm = Realm::ordinary_in(&allocation_context);
         let source = "var calls=0;function f(){const x=41;x+=(calls++,1);}f();";
         assert_eq!(
             execute(&realm, source, vm).unwrap_err().kind(),
             RuntimeErrorKind::TypeError
         );
         assert!(result(&realm, "calls;", vm).same_value(&Value::Number(1.0)));
-        let realm = Realm::ordinary();
+        let realm = Realm::ordinary_in(&allocation_context);
         let source = "var calls=0;function f(){x+=(calls++,1);let x;}f();";
         assert_eq!(
             execute(&realm, source, vm).unwrap_err().kind(),
@@ -107,46 +113,57 @@ fn local_compound_assignments_snapshot_values_and_preserve_abrupt_ordering() {
 
 #[test]
 fn loop_compound_binding_retains_identity_across_coercion_and_capture() {
+    let allocation_context = temiya::runtime::AllocationContext::new();
     let source = "var calls=0;function f(){var x={valueOf:function(){calls++;x=99;return 41;}};function read(){return x;}for(var i=0;i<1;i++){x+=1;}return read()+':'+calls;}f();";
     for vm in [false, true] {
-        assert!(result(&Realm::ordinary(), source, vm).same_value(&Value::String("42:1".into())));
+        assert!(
+            result(&Realm::ordinary_in(&allocation_context), source, vm)
+                .same_value(&Value::String("42:1".into()))
+        );
     }
 }
 
 #[test]
 fn global_update_observes_proxy_has_trap() {
+    let allocation_context = temiya::runtime::AllocationContext::new();
     use std::{cell::Cell, rc::Rc};
     use temiya::runtime::{Object, ProxyObject};
     for vm in [false, true] {
         let count = Rc::new(Cell::new(0));
-        let target = Object::new();
-        let handler = Object::new();
+        let target = Object::new_in(&allocation_context);
+        let handler = Object::new_in(&allocation_context);
         let proxy = ProxyObject::new(target.clone(), handler.clone()).object();
         let realm = Realm::new(proxy.clone(), Value::Object(proxy));
         let observed = count.clone();
         handler
             .create_data_property(
                 "has".into(),
-                Value::Object(Object::native_function(move |_, args| {
-                    let Value::Object(target) = &args[0] else {
-                        panic!("target expected")
-                    };
-                    let key = args[1].to_property_key()?;
-                    if key == "x".into() {
-                        observed.set(observed.get() + 1);
-                    }
-                    Ok(Value::Boolean(target.has_property(&key)?))
-                })),
+                Value::Object(Object::native_function_in(
+                    &allocation_context,
+                    move |_, args| {
+                        let Value::Object(target) = &args[0] else {
+                            panic!("target expected")
+                        };
+                        let key = args[1].to_property_key()?;
+                        if key == "x".into() {
+                            observed.set(observed.get() + 1);
+                        }
+                        Ok(Value::Boolean(target.has_property(&key)?))
+                    },
+                )),
             )
             .unwrap();
         let reset = count.clone();
         target
             .create_data_property(
                 "reset".into(),
-                Value::Object(Object::native_function(move |_, _| {
-                    reset.set(0);
-                    Ok(Value::Undefined)
-                })),
+                Value::Object(Object::native_function_in(
+                    &allocation_context,
+                    move |_, _| {
+                        reset.set(0);
+                        Ok(Value::Undefined)
+                    },
+                )),
             )
             .unwrap();
         let source = "var x=41;reset();x++;";
@@ -179,6 +196,7 @@ fn result(realm: &Realm, source: &str, vm: bool) -> Value {
 
 #[test]
 fn updates_return_numeric_prefix_postfix_values_and_preserve_bigint() {
+    let allocation_context = temiya::runtime::AllocationContext::new();
     for (source, expected) in [
         (
             "var n='41';var old=n++;old+':'+n;",
@@ -195,7 +213,7 @@ fn updates_return_numeric_prefix_postfix_values_and_preserve_bigint() {
         ("var n=1/0;n++;", Value::Number(f64::INFINITY)),
     ] {
         for vm in [false, true] {
-            let value = result(&Realm::ordinary(), source, vm);
+            let value = result(&Realm::ordinary_in(&allocation_context), source, vm);
             assert!(value.same_value(&expected), "{source}: {value:?}");
         }
     }
@@ -203,9 +221,10 @@ fn updates_return_numeric_prefix_postfix_values_and_preserve_bigint() {
 
 #[test]
 fn computed_update_converts_key_once_and_obeys_get_numeric_set_order() {
+    let allocation_context = temiya::runtime::AllocationContext::new();
     let source = "var log='';var calls=0;var stored;var key=new Object();key[Symbol.toPrimitive]=function(hint){calls++;log=log+hint;return calls===1?'first':'other';};var number=new Object();number[Symbol.toPrimitive]=function(hint){log=log+hint;return 41;};var obj=new Object();var desc=new Object();desc.get=function(){if(!(this===obj)){throw 99;}log=log+'G';return number;};desc.set=function(v){if(!(this===obj)){throw 99;}log=log+'S';stored=v;};desc.configurable=true;Object.defineProperty(obj,'first',desc);var old=(obj[key])++;old+':'+stored+':'+log;";
     for vm in [false, true] {
-        let realm = Realm::ordinary();
+        let realm = Realm::ordinary_in(&allocation_context);
         assert!(
             result(&realm, source, vm).same_value(&Value::String("41:42:stringGnumberS".into()))
         );
@@ -222,6 +241,7 @@ fn computed_update_converts_key_once_and_obeys_get_numeric_set_order() {
 
 #[test]
 fn update_errors_skip_writes_and_preserve_tdz_const_and_symbols() {
+    let allocation_context = temiya::runtime::AllocationContext::new();
     for (source, expected) in [
         ("missing++;", RuntimeErrorKind::ReferenceError),
         ("x++;let x=1;", RuntimeErrorKind::ReferenceError),
@@ -237,7 +257,7 @@ fn update_errors_skip_writes_and_preserve_tdz_const_and_symbols() {
         ),
     ] {
         for vm in [false, true] {
-            let realm = Realm::ordinary();
+            let realm = Realm::ordinary_in(&allocation_context);
             let error = execute(&realm, source, vm).unwrap_err();
             assert_eq!(error.kind(), expected, "{source}");
             if expected == RuntimeErrorKind::ThrownValue {
@@ -254,6 +274,7 @@ fn update_errors_skip_writes_and_preserve_tdz_const_and_symbols() {
 
 #[test]
 fn typeof_unresolved_names_tdz_callables_and_other_values_match() {
+    let allocation_context = temiya::runtime::AllocationContext::new();
     for (source, expected) in [
         ("typeof (missing);", "undefined"),
         ("typeof null;", "object"),
@@ -265,15 +286,20 @@ fn typeof_unresolved_names_tdz_callables_and_other_values_match() {
     ] {
         for vm in [false, true] {
             assert!(
-                result(&Realm::ordinary(), source, vm).same_value(&Value::String(expected.into()))
+                result(&Realm::ordinary_in(&allocation_context), source, vm)
+                    .same_value(&Value::String(expected.into()))
             );
         }
     }
     for vm in [false, true] {
         assert_eq!(
-            execute(&Realm::ordinary(), "typeof x;let x=1;", vm)
-                .unwrap_err()
-                .kind(),
+            execute(
+                &Realm::ordinary_in(&allocation_context),
+                "typeof x;let x=1;",
+                vm
+            )
+            .unwrap_err()
+            .kind(),
             RuntimeErrorKind::ReferenceError
         );
     }
@@ -281,15 +307,16 @@ fn typeof_unresolved_names_tdz_callables_and_other_values_match() {
 
 #[test]
 fn public_references_retain_coerced_object_keys_between_get_and_put() {
+    let allocation_context = temiya::runtime::AllocationContext::new();
     use std::{cell::Cell, rc::Rc};
     use temiya::runtime::{JsString, Object, Reference, ReferencedName};
-    let object = Object::new();
+    let object = Object::new_in(&allocation_context);
     object
         .create_data_property("first".into(), Value::Number(1.0))
         .unwrap();
     let calls = Rc::new(Cell::new(0));
     let captured = calls.clone();
-    let key = Object::new();
+    let key = Object::new_in(&allocation_context);
     key.set_to_primitive_hook(move |_| {
         let count = captured.get() + 1;
         captured.set(count);
@@ -329,17 +356,19 @@ fn public_references_retain_coerced_object_keys_between_get_and_put() {
 
 #[test]
 fn resolved_reference_releases_the_original_object_key_before_getter() {
+    let allocation_context = temiya::runtime::AllocationContext::new();
     use std::rc::Rc;
     use temiya::runtime::{Object, PropertyDescriptor, Reference, ReferencedName};
     let marker = Rc::new(());
     let weak = Rc::downgrade(&marker);
-    let key = Object::new();
+    let key = Object::new_in(&allocation_context);
     key.set_to_primitive_hook(move |_| {
         let _retain_until_conversion = &marker;
         Ok(Value::String("answer".into()))
     });
-    let object = Object::new();
-    let getter = Object::native_function(move |_, _| {
+    let object = Object::new_in(&allocation_context);
+    let getter = Object::native_function_with_context(&allocation_context, move |context, _, _| {
+        context.collect_garbage()?;
         assert!(
             weak.upgrade().is_none(),
             "computed key retained after conversion"
@@ -368,6 +397,7 @@ fn resolved_reference_releases_the_original_object_key_before_getter() {
 
 #[test]
 fn unary_numeric_operations_use_number_hint_and_bigint_rules() {
+    let allocation_context = temiya::runtime::AllocationContext::new();
     for (source, expected) in [
         ("-0;", Value::Number(-0.0)),
         ("~4294967296;", Value::Number(-1.0)),
@@ -383,7 +413,7 @@ fn unary_numeric_operations_use_number_hint_and_bigint_rules() {
     ] {
         for vm in [false, true] {
             assert!(
-                result(&Realm::ordinary(), source, vm).same_value(&expected),
+                result(&Realm::ordinary_in(&allocation_context), source, vm).same_value(&expected),
                 "{source}"
             );
         }
@@ -395,7 +425,9 @@ fn unary_numeric_operations_use_number_hint_and_bigint_rules() {
     ] {
         for vm in [false, true] {
             assert_eq!(
-                execute(&Realm::ordinary(), source, vm).unwrap_err().kind(),
+                execute(&Realm::ordinary_in(&allocation_context), source, vm)
+                    .unwrap_err()
+                    .kind(),
                 RuntimeErrorKind::TypeError,
                 "{source}"
             );
@@ -405,12 +437,13 @@ fn unary_numeric_operations_use_number_hint_and_bigint_rules() {
 
 #[test]
 fn computed_key_conversion_can_reenter_the_same_public_reference() {
+    let allocation_context = temiya::runtime::AllocationContext::new();
     use std::{
         cell::{Cell, OnceCell},
         rc::Rc,
     };
     use temiya::runtime::{Object, Reference, ReferencedName};
-    let object = Object::new();
+    let object = Object::new_in(&allocation_context);
     object
         .create_data_property("answer".into(), Value::Number(42.0))
         .unwrap();
@@ -418,7 +451,7 @@ fn computed_key_conversion_can_reenter_the_same_public_reference() {
     let weak = Rc::downgrade(&slot);
     let calls = Rc::new(Cell::new(0));
     let counter = calls.clone();
-    let key = Object::new();
+    let key = Object::new_in(&allocation_context);
     key.set_to_primitive_hook(move |_| {
         let previous = counter.get();
         counter.set(previous + 1);
@@ -461,6 +494,7 @@ fn computed_key_conversion_can_reenter_the_same_public_reference() {
 
 #[test]
 fn global_name_resolution_has_traps_precede_reads_and_initializer_values() {
+    let allocation_context = temiya::runtime::AllocationContext::new();
     use std::{cell::RefCell, rc::Rc};
     use temiya::runtime::{Object, ProxyObject};
     let mut failures = Vec::new();
@@ -471,44 +505,53 @@ fn global_name_resolution_has_traps_precede_reads_and_initializer_values() {
     ] {
         for vm in [false, true] {
             let log = Rc::new(RefCell::new(String::new()));
-            let target = Object::new();
-            let handler = Object::new();
+            let target = Object::new_in(&allocation_context);
+            let handler = Object::new_in(&allocation_context);
             let proxy = ProxyObject::new(target.clone(), handler.clone()).object();
             let realm = Realm::new(proxy.clone(), Value::Object(proxy));
             let observed = log.clone();
             handler
                 .create_data_property(
                     "has".into(),
-                    Value::Object(Object::native_function(move |_, args| {
-                        let Value::Object(target) = &args[0] else {
-                            panic!()
-                        };
-                        let key = args[1].to_property_key()?;
-                        if key == "x".into() {
-                            observed.borrow_mut().push('H');
-                        }
-                        Ok(Value::Boolean(target.has_property(&key)?))
-                    })),
+                    Value::Object(Object::native_function_in(
+                        &allocation_context,
+                        move |_, args| {
+                            let Value::Object(target) = &args[0] else {
+                                panic!()
+                            };
+                            let key = args[1].to_property_key()?;
+                            if key == "x".into() {
+                                observed.borrow_mut().push('H');
+                            }
+                            Ok(Value::Boolean(target.has_property(&key)?))
+                        },
+                    )),
                 )
                 .unwrap();
             let reset = log.clone();
             target
                 .create_data_property(
                     "reset".into(),
-                    Value::Object(Object::native_function(move |_, _| {
-                        reset.borrow_mut().clear();
-                        Ok(Value::Undefined)
-                    })),
+                    Value::Object(Object::native_function_in(
+                        &allocation_context,
+                        move |_, _| {
+                            reset.borrow_mut().clear();
+                            Ok(Value::Undefined)
+                        },
+                    )),
                 )
                 .unwrap();
             let rhs = log.clone();
             target
                 .create_data_property(
                     "rhs".into(),
-                    Value::Object(Object::native_function(move |_, _| {
-                        rhs.borrow_mut().push('R');
-                        Ok(Value::Number(42.0))
-                    })),
+                    Value::Object(Object::native_function_in(
+                        &allocation_context,
+                        move |_, _| {
+                            rhs.borrow_mut().push('R');
+                            Ok(Value::Number(42.0))
+                        },
+                    )),
                 )
                 .unwrap();
             assert!(matches!(
@@ -527,9 +570,10 @@ fn global_name_resolution_has_traps_precede_reads_and_initializer_values() {
 
 #[test]
 fn var_initializer_uses_the_with_environment_reference_in_ast() {
+    let allocation_context = temiya::runtime::AllocationContext::new();
     assert!(
         result(
-            &Realm::ordinary(),
+            &Realm::ordinary_in(&allocation_context),
             "var x=1;var object={x:2};with(object){var x=3;}object.x===3&&x===1;",
             false
         )
@@ -539,15 +583,16 @@ fn var_initializer_uses_the_with_environment_reference_in_ast() {
 
 #[test]
 fn resolved_global_reference_retains_source_strictness_after_deletion() {
+    let allocation_context = temiya::runtime::AllocationContext::new();
     use std::{cell::Cell, rc::Rc};
     use temiya::runtime::{Object, ProxyObject};
     for strict in [false, true] {
         for vm in [false, true] {
-            let target = Object::new();
+            let target = Object::new_in(&allocation_context);
             target
                 .create_data_property("x".into(), Value::Number(42.0))
                 .unwrap();
-            let handler = Object::new();
+            let handler = Object::new_in(&allocation_context);
             let proxy = ProxyObject::new(target.clone(), handler.clone()).object();
             let realm = Realm::new(proxy.clone(), Value::Object(proxy));
             let reads = Rc::new(Cell::new(99));
@@ -555,31 +600,37 @@ fn resolved_global_reference_retains_source_strictness_after_deletion() {
             handler
                 .create_data_property(
                     "has".into(),
-                    Value::Object(Object::native_function(move |_, args| {
-                        let Value::Object(target) = &args[0] else {
-                            panic!()
-                        };
-                        let key = args[1].to_property_key()?;
-                        if key == "x".into() {
-                            let count = seen.get();
-                            seen.set(count + 1);
-                            if count == 0 {
-                                assert!(target.delete(&key));
-                                return Ok(Value::Boolean(true));
+                    Value::Object(Object::native_function_in(
+                        &allocation_context,
+                        move |_, args| {
+                            let Value::Object(target) = &args[0] else {
+                                panic!()
+                            };
+                            let key = args[1].to_property_key()?;
+                            if key == "x".into() {
+                                let count = seen.get();
+                                seen.set(count + 1);
+                                if count == 0 {
+                                    assert!(target.delete(&key));
+                                    return Ok(Value::Boolean(true));
+                                }
                             }
-                        }
-                        Ok(Value::Boolean(target.has_property(&key)?))
-                    })),
+                            Ok(Value::Boolean(target.has_property(&key)?))
+                        },
+                    )),
                 )
                 .unwrap();
             let counter = reads.clone();
             target
                 .create_data_property(
                     "reset".into(),
-                    Value::Object(Object::native_function(move |_, _| {
-                        counter.set(0);
-                        Ok(Value::Undefined)
-                    })),
+                    Value::Object(Object::native_function_in(
+                        &allocation_context,
+                        move |_, _| {
+                            counter.set(0);
+                            Ok(Value::Undefined)
+                        },
+                    )),
                 )
                 .unwrap();
             let source = if strict {
@@ -604,6 +655,7 @@ fn resolved_global_reference_retains_source_strictness_after_deletion() {
 #[test]
 #[ignore = "requires pinned Test262 corpus in TEST262_DIR"]
 fn pinned_test262_var_binding_resolution() {
+    let allocation_context = temiya::runtime::AllocationContext::new();
     use std::process::Command;
     use temiya::test262::TEST262_REVISION;
     let root = std::env::var("TEST262_DIR").expect("TEST262_DIR required");
@@ -619,7 +671,7 @@ fn pinned_test262_var_binding_resolution() {
     assert_eq!(git(&["rev-parse", "HEAD"]).trim(), TEST262_REVISION);
     let read = |path: &str| git(&["show", &format!("{TEST262_REVISION}:{path}")]);
     let path = "test/language/statements/variable/binding-resolution.js";
-    let realm = Realm::ordinary();
+    let realm = Realm::ordinary_in(&allocation_context);
     for name in ["sta.js", "assert.js"] {
         assert!(matches!(
             execute(&realm, &read(&format!("harness/{name}")), false).unwrap(),

@@ -71,6 +71,12 @@ fn root_lifetimes_stay_independent_across_slot_reuse_and_unrelated_drops() {
     assert_eq!(heap.root_count(stale), 0);
     assert!(heap.root(stale).is_none());
     let mut other_heap = Heap::new();
+    // Match the still-live second allocation's slot and generation, so only
+    // the heap identity distinguishes the foreign root from our own entry.
+    let _foreign_first = other_heap.allocate(Node {
+        value: 8,
+        child: None,
+    });
     let foreign = other_heap.allocate(Node {
         value: 9,
         child: None,

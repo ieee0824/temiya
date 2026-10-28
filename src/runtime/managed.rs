@@ -168,9 +168,9 @@ impl Runtime {
         drop(retired);
         Ok(stats)
     }
-    pub(super) fn record_object_edge(
+    pub(super) fn record_object_edge<T: Trace>(
         &self,
-        owner: Handle<ManagedObject>,
+        owner: Handle<T>,
         target: Handle<ManagedObject>,
     ) -> super::RuntimeResult<()> {
         self.0
@@ -191,6 +191,78 @@ impl Runtime {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn typed_non_object_owners_store_and_trace_object_edges_with_barriers() {
+        use crate::runtime::stored::{StoredOwner, StoredValue};
+        struct Record(RefCell<Option<StoredValue>>);
+        impl Trace for Record {
+            fn trace(&self, tracer: &mut Tracer<'_>) {
+                if let Some(value) = &*self.0.borrow() {
+                    value.trace(tracer);
+                }
+            }
+        }
+        struct Facade {
+            root: Root<Record>,
+            runtime: Runtime,
+        }
+        impl StoredOwner for Facade {
+            type Allocation = Record;
+            fn runtime(&self) -> Option<&Runtime> {
+                Some(&self.runtime)
+            }
+            fn handle(&self) -> Option<Handle<Record>> {
+                Some(self.root.handle())
+            }
+        }
+        let runtime = Runtime::new();
+        let root = runtime
+            .0
+            .heap
+            .borrow_mut()
+            .allocate(Record(RefCell::new(None)));
+        let owner = Facade {
+            root,
+            runtime: runtime.clone(),
+        };
+        runtime.collect_migration_graph().unwrap();
+        let target = Object::new_in(&runtime);
+        let weak = target.downgrade();
+        let value =
+            StoredValue::store(&owner, &super::super::Value::Object(target.clone())).unwrap();
+        runtime
+            .0
+            .heap
+            .borrow()
+            .with(owner.root.handle(), |record| {
+                *record.0.borrow_mut() = Some(value)
+            })
+            .unwrap();
+        drop(target);
+        assert_eq!(runtime.diagnostics().rooted, 1);
+        let mut heap = runtime.0.heap.borrow_mut();
+        heap.verify_write_barriers().unwrap();
+        assert_eq!(heap.collect_minor().reclaimed, 0);
+        drop(heap);
+        let loaded = runtime
+            .0
+            .heap
+            .borrow()
+            .with(owner.root.handle(), |record| {
+                record.0.borrow().clone().unwrap()
+            })
+            .unwrap()
+            .load(&owner)
+            .unwrap();
+        assert!(matches!(loaded, super::super::Value::Object(_)));
+        drop(loaded);
+        assert!(weak.upgrade().is_some());
+        let foreign = Object::new_in(&Runtime::new());
+        assert!(StoredValue::store(&owner, &super::super::Value::Object(foreign)).is_err());
+        drop(owner);
+        assert_eq!(runtime.collect_migration_graph().unwrap().reclaimed, 2);
+        assert!(weak.upgrade().is_none());
+    }
     #[test]
     fn managed_facades_share_identity_and_registration_across_clones() {
         let runtime = Runtime::new();

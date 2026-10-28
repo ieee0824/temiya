@@ -1,10 +1,27 @@
 //! Non-owning heap edges. Public Values/Objects remain owning rooted facades.
 use super::{
-    JsString, Object, PropertyDescriptor, RuntimeError, RuntimeResult, Symbol, Value,
+    JsString, Object, PropertyDescriptor, Runtime, RuntimeError, RuntimeResult, Symbol, Value,
     managed::ManagedObject,
 };
-use crate::gc::{Handle, Tracer};
+use crate::gc::{Handle, Trace, Tracer};
 use num_bigint::BigInt;
+
+// An active facade supplies context; stored records never own this facade.
+// Typed owner handles let environments/realms use the same barrier protocol.
+pub(super) trait StoredOwner {
+    type Allocation: Trace;
+    fn runtime(&self) -> Option<&Runtime>;
+    fn handle(&self) -> Option<Handle<Self::Allocation>>;
+}
+impl StoredOwner for Object {
+    type Allocation = ManagedObject;
+    fn runtime(&self) -> Option<&Runtime> {
+        self.0.runtime()
+    }
+    fn handle(&self) -> Option<Handle<ManagedObject>> {
+        self.0.handle()
+    }
+}
 
 #[derive(Clone, Debug)]
 pub(super) enum StoredObject {
@@ -13,8 +30,8 @@ pub(super) enum StoredObject {
     Managed(Handle<ManagedObject>),
 }
 impl StoredObject {
-    pub(super) fn check_context(owner: &Object, value: &Object) -> RuntimeResult<()> {
-        match (owner.0.runtime(), value.0.runtime()) {
+    pub(super) fn check_context(owner: &impl StoredOwner, value: &Object) -> RuntimeResult<()> {
+        match (owner.runtime(), value.0.runtime()) {
             (None, None) => Ok(()),
             (Some(left), Some(right)) if left.same_heap(right) => Ok(()),
             _ => Err(RuntimeError::type_error(
@@ -22,12 +39,12 @@ impl StoredObject {
             )),
         }
     }
-    pub(super) fn store(owner: &Object, value: &Object) -> RuntimeResult<Self> {
-        match (owner.0.runtime(), value.0.runtime()) {
+    pub(super) fn store(owner: &impl StoredOwner, value: &Object) -> RuntimeResult<Self> {
+        match (owner.runtime(), value.0.runtime()) {
             (None, None) => Ok(Self::Legacy(value.clone())),
             (Some(left), Some(right)) if left.same_heap(right) => {
                 let target = value.0.handle().expect("managed object handle");
-                left.record_object_edge(owner.0.handle().expect("managed owner handle"), target)?;
+                left.record_object_edge(owner.handle().expect("managed owner handle"), target)?;
                 Ok(Self::Managed(target))
             }
             _ => Err(RuntimeError::type_error(
@@ -35,8 +52,8 @@ impl StoredObject {
             )),
         }
     }
-    pub(super) fn load(&self, owner: &Object) -> RuntimeResult<Object> {
-        match (self, owner.0.runtime()) {
+    pub(super) fn load(&self, owner: &impl StoredOwner) -> RuntimeResult<Object> {
+        match (self, owner.runtime()) {
             (Self::Legacy(value), None) => Ok(value.clone()),
             (Self::Managed(handle), Some(runtime)) => runtime
                 .root_object(*handle)
@@ -65,7 +82,7 @@ pub(super) enum StoredValue {
     Object(StoredObject),
 }
 impl StoredValue {
-    pub(super) fn store(owner: &Object, value: &Value) -> RuntimeResult<Self> {
+    pub(super) fn store(owner: &impl StoredOwner, value: &Value) -> RuntimeResult<Self> {
         Ok(match value {
             Value::Undefined => Self::Undefined,
             Value::Null => Self::Null,
@@ -77,7 +94,7 @@ impl StoredValue {
             Value::Object(v) => Self::Object(StoredObject::store(owner, v)?),
         })
     }
-    pub(super) fn load(&self, owner: &Object) -> RuntimeResult<Value> {
+    pub(super) fn load(&self, owner: &impl StoredOwner) -> RuntimeResult<Value> {
         Ok(match self {
             Self::Undefined => Value::Undefined,
             Self::Null => Value::Null,

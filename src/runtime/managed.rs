@@ -132,6 +132,45 @@ impl WeakObjectRoot {
 }
 
 impl Runtime {
+    pub(super) fn allocate_module(
+        &self,
+        data: super::pipeline::ModuleData,
+    ) -> super::SourceTextModule {
+        use super::pipeline::{ManagedModule, ModuleReference, ModuleRoot};
+        let data = Rc::new(data);
+        let root = self
+            .0
+            .heap
+            .borrow_mut()
+            .allocate(ManagedModule { data: data.clone() });
+        let facade = Rc::new(ModuleRoot {
+            root,
+            data: data.clone(),
+            runtime: self.clone(),
+        });
+        *data.facade.borrow_mut() = Rc::downgrade(&facade);
+        super::SourceTextModule(ModuleReference::Managed(facade))
+    }
+    pub(super) fn root_module(
+        &self,
+        handle: Handle<super::pipeline::ManagedModule>,
+    ) -> Option<super::SourceTextModule> {
+        use super::pipeline::{ModuleReference, ModuleRoot};
+        let heap = self.0.heap.borrow();
+        let data = heap.with(handle, |module| module.data.clone())?;
+        if let Some(facade) = data.facade.borrow().upgrade() {
+            return Some(super::SourceTextModule(ModuleReference::Managed(facade)));
+        }
+        let root = heap.root(handle)?;
+        drop(heap);
+        let facade = Rc::new(ModuleRoot {
+            root,
+            data: data.clone(),
+            runtime: self.clone(),
+        });
+        *data.facade.borrow_mut() = Rc::downgrade(&facade);
+        Some(super::SourceTextModule(ModuleReference::Managed(facade)))
+    }
     pub(super) fn allocate_job_queue(
         &self,
         data: super::job_queue::JobQueueData,

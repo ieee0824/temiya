@@ -54,6 +54,17 @@ pub(super) enum StoredRealm {
     Managed(Handle<ManagedRealm>),
 }
 impl StoredRealm {
+    pub(super) fn initial(runtime: Option<&Runtime>, realm: &Realm) -> RuntimeResult<Self> {
+        match (runtime, realm.runtime()) {
+            (None, None) => Ok(Self::Legacy(realm.clone())),
+            (Some(left), Some(right)) if left.same_heap(right) => {
+                Ok(Self::Managed(realm.handle().expect("managed Realm")))
+            }
+            _ => Err(RuntimeError::type_error(
+                "Realm allocation context mismatch",
+            )),
+        }
+    }
     pub(super) fn record_owner(&self, owner: &Object) -> RuntimeResult<()> {
         match (self, owner.0.runtime()) {
             (Self::Managed(handle), Some(runtime)) => {

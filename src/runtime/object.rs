@@ -380,6 +380,7 @@ pub(super) struct BoundFunction {
 }
 
 pub(super) enum ManagedCallable {
+    ModuleBinding(super::pipeline::ModuleBinding),
     Generator(super::generator::GeneratorAction),
     Promise(super::promise::PromiseAction),
     ProxyRevocable(super::proxy::ProxyRevocable),
@@ -398,6 +399,7 @@ pub(super) enum ManagedCallable {
 impl ManagedCallable {
     pub(super) fn bound_target(&self, owner: &Object) -> RuntimeResult<Option<Object>> {
         match self {
+            Self::ModuleBinding(_) => Ok(None),
             Self::Generator(_) => Ok(None),
             Self::Promise(_) => Ok(None),
             Self::ProxyRevocable(_) => Ok(None),
@@ -421,6 +423,7 @@ impl ManagedCallable {
     }
     fn is_constructor(&self) -> bool {
         match self {
+            Self::ModuleBinding(_) => false,
             Self::Generator(_) => false,
             Self::Promise(_) => false,
             Self::ProxyRevocable(_) => false,
@@ -438,6 +441,7 @@ impl ManagedCallable {
     }
     fn call(&self, owner: &Object, this: Value, arguments: &[Value]) -> RuntimeResult<Value> {
         match self {
+            Self::ModuleBinding(binding) => binding.call(owner),
             Self::Generator(action) => action.call(owner, arguments),
             Self::Promise(action) => action.call(owner, arguments),
             Self::ProxyRevocable(factory) => factory.call(owner, arguments),
@@ -524,6 +528,7 @@ impl ManagedCallable {
     }
     fn trace(&self, tracer: &mut crate::gc::Tracer<'_>) {
         match self {
+            Self::ModuleBinding(binding) => binding.trace(tracer),
             Self::Generator(action) => action.trace(tracer),
             Self::Promise(action) => action.trace(tracer),
             Self::ProxyRevocable(factory) => factory.trace(tracer),
@@ -597,6 +602,7 @@ pub(super) struct ObjectState {
     pub(super) weak_set_data: Option<super::collections::WeakSetSlot>,
     pub(super) promise_data: Option<Rc<std::cell::RefCell<super::promise::PromiseData>>>,
     pub(super) generator_data: Option<Rc<std::cell::RefCell<super::generator::GeneratorSlot>>>,
+    pub(super) module_namespace: Option<Box<super::pipeline::StoredModule>>,
     pub(super) date_value: Option<f64>,
     pub(super) iterator: Option<Box<super::iterator::IteratorSlot>>,
     pub(super) proxy: Option<Box<super::proxy::ProxySlot>>,
@@ -2067,6 +2073,9 @@ impl super::ObjectData {
     // non-owning, typed captures and active evaluator roots.
     pub(super) fn trace_object_edges(&self, tracer: &mut crate::gc::Tracer<'_>) {
         let state = self.state.borrow();
+        if let Some(module) = &state.module_namespace {
+            module.trace(tracer);
+        }
         if let Some(generator) = &state.generator_data {
             generator.borrow().trace(tracer);
         }

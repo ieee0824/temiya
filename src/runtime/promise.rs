@@ -91,6 +91,24 @@ impl std::fmt::Debug for Promise {
     }
 }
 impl Promise {
+    pub(super) fn settled_in(
+        realm: &super::Realm,
+        result: RuntimeResult<Value>,
+    ) -> RuntimeResult<Self> {
+        let promise = Self::pending_with_function_prototype(
+            realm.job_queue(),
+            Some(realm.intrinsic(super::IntrinsicId::FunctionPrototype)),
+        )?;
+        match result {
+            Ok(value) => {
+                promise.resolve(value)?;
+            }
+            Err(error) => {
+                promise.reject(error)?;
+            }
+        }
+        Ok(promise)
+    }
     /// Creates a pending Promise with a fresh queue.
     pub fn pending() -> RuntimeResult<Self> {
         Self::pending_on(JobQueue::new())
@@ -509,19 +527,7 @@ pub(super) fn settled_promise_object(
     realm: &super::Realm,
     result: RuntimeResult<Value>,
 ) -> RuntimeResult<Object> {
-    let promise = Promise::pending_with_function_prototype(
-        realm.job_queue(),
-        Some(realm.intrinsic(super::IntrinsicId::FunctionPrototype)),
-    )?;
-    match result {
-        Ok(value) => {
-            promise.resolve(value)?;
-        }
-        Err(error) => {
-            promise.reject(error)?;
-        }
-    }
-    Ok(promise.object)
+    Promise::settled_in(realm, result).map(|promise| promise.object)
 }
 pub(super) fn await_value(value: Value) -> RuntimeResult<Value> {
     let Value::Object(object) = &value else {

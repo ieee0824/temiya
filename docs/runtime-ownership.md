@@ -369,3 +369,19 @@ Code vectors move between active/suspended states without per-resume deep
 copies; yield* resumes pop one stored delegated value without decoding or
 rewriting the remaining vector. Existing generator syntax/protocol limitations
 and the Legacy representation remain pending release gates.
+
+Source Text Module records now use the shared managed heap with rooted public
+facades. Their dependency records, Realm/environment, cached evaluation Promise,
+and cached exception payloads are typed stored edges. Public ModuleGraph caches
+retain module roots while the graph is retained; dependency cycles contain no
+public module/Realm/Promise roots. Facade clones and reloads share one root.
+
+Namespace objects are cached per module, have a strong stored owner edge even
+when there are no exports/getters, and retain typed live-binding getters rather
+than opaque closures owning module facades. Escaped namespaces therefore keep
+cyclic dependency graphs and live bindings valid after ModuleGraph is dropped.
+Cached Promise/error values can separately outlive their module records. Module
+evaluation creates Promise functions with the known source Realm metadata.
+Parsing moves the Program into its record after collecting requests, avoiding
+the prior full AST clone. Existing linking/evaluation and module-namespace
+conformance limitations remain separate from this ownership migration.

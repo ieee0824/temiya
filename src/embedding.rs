@@ -1080,6 +1080,37 @@ mod managed_allocation_tests {
     }
 
     #[test]
+    fn managed_module_handles_keep_dependency_cycles_after_engine_drop() {
+        let mut engine = Engine::builder().build();
+        engine.managed_allocation = true;
+        let realm = engine.create_realm();
+        let runtime = engine.runtime.clone();
+        let module = engine.load_module(&realm, "a", |name| {
+            Ok(match name {
+                "a" => "import {getB} from 'b';export function getA(){return 20;}export function answer(){return getB();}",
+                "b" => "import {getA} from 'a';export function getB(){return getA()+22;}",
+                _ => return Err(HostError::type_error("unknown module")),
+            }.to_owned())
+        }).unwrap();
+        engine.evaluate_module(&module).unwrap();
+        let clone = module.clone();
+        drop((module, realm, engine));
+        runtime.verify_migration_barriers().unwrap();
+        runtime.collect_migration_graph().unwrap();
+        let Value::Object(answer) = clone.module.get_export(&"answer".into()).unwrap() else {
+            panic!("function")
+        };
+        assert!(
+            answer
+                .call(Value::Undefined, &[])
+                .unwrap()
+                .same_value(&Value::Number(42.0))
+        );
+        drop((answer, clone));
+        assert_eq!(runtime.collect_migration_graph().unwrap().retained, 0);
+    }
+
+    #[test]
     fn managed_generator_frames_survive_gc_and_reject_execution_reentry() {
         use crate::runtime::{Generator, GeneratorState};
         let mut engine = Engine::builder().script_backend(ScriptBackend::Ast).build();

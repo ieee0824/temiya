@@ -979,6 +979,8 @@ mod managed_allocation_tests {
                 "var constructedArray=new Array({answer:42});constructedArray[0].answer;",
                 "Object.prototype.valueOf.call(42).valueOf();",
                 "(new Number(42)).valueOf();",
+                "(new Date(42)).valueOf();",
+                "if((new Date(0)).toISOString()==='1970-01-01T00:00:00.000Z'&&typeof Date()==='string'&&typeof Date.now()==='number'){42;}else{0;}",
                 "if((new String('💡')).valueOf()==='💡' && String(Symbol.iterator).slice(0,7)==='Symbol('){42;}else{0;}",
                 "var buffer=new ArrayBuffer(8);var byteView=new TypedArray(buffer,1,4);var dataView=new DataView(buffer,2,2);if(ArrayBuffer.isView(byteView)&&ArrayBuffer.isView(dataView)&&Object.getPrototypeOf(byteView)===TypedArray.prototype&&Object.getPrototypeOf(dataView)===DataView.prototype){42;}else{0;}",
                 "if(ArrayBuffer.isView(new TypedArray(8))){42;}else{0;}",

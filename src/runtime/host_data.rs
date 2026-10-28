@@ -5,6 +5,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
+use super::stored::StoredObject;
 use super::{ArrayObject, JsString, Object, PropertyKey, RuntimeError, RuntimeResult, Value};
 
 /// Host-dependent services used by Realm built-ins.
@@ -40,17 +41,60 @@ impl Default for HostHooks {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DateObject(Object);
 
+pub(super) struct DateFactory {
+    prototype: StoredObject,
+    // Explicit external host state: managed captures belong in traced fields.
+    host: HostHooks,
+}
+impl DateFactory {
+    pub(super) fn install(
+        constructor: &Object,
+        prototype: &Object,
+        host: HostHooks,
+    ) -> RuntimeResult<()> {
+        let factory = Self {
+            prototype: StoredObject::store(constructor, prototype)?,
+            host,
+        };
+        constructor.set_managed_callable(super::object::ManagedCallable::Date(factory));
+        Ok(())
+    }
+    pub(super) fn call(&self) -> RuntimeResult<Value> {
+        DateObject::format_value(DateObject::clip(self.host.now())).map(Value::String)
+    }
+    pub(super) fn construct(&self, owner: &Object, arguments: &[Value]) -> RuntimeResult<Object> {
+        let prototype = self.prototype.load(owner)?;
+        let value = match arguments.first() {
+            Some(value) => value.to_number()?,
+            None => self.host.now(),
+        };
+        let object = DateObject::new_for(&prototype, value).object();
+        object.initialize_prototype(Some(prototype));
+        Ok(object)
+    }
+    pub(super) fn trace(&self, tracer: &mut crate::gc::Tracer<'_>) {
+        self.prototype.trace(tracer);
+    }
+}
+
 impl DateObject {
     /// Creates a Date after applying the ECMAScript TimeClip boundary.
     #[must_use]
     pub fn new(milliseconds: f64) -> Self {
-        let value = if milliseconds.is_finite() && milliseconds.abs() <= 8.64e15 {
+        Self::initialize(Object::new(), milliseconds)
+    }
+    pub(crate) fn new_for(context: &Object, milliseconds: f64) -> Self {
+        Self::initialize(Object::new_for(context), milliseconds)
+    }
+    fn clip(milliseconds: f64) -> f64 {
+        if milliseconds.is_finite() && milliseconds.abs() <= 8.64e15 {
             milliseconds.trunc()
         } else {
             f64::NAN
-        };
-        let object = Object::new();
-        object.0.state.borrow_mut().date_value = Some(value);
+        }
+    }
+    fn initialize(object: Object, milliseconds: f64) -> Self {
+        object.0.state.borrow_mut().date_value = Some(Self::clip(milliseconds));
         Self(object)
     }
     /// Creates a Date using an explicit host clock.
@@ -76,7 +120,9 @@ impl DateObject {
     }
     /// Formats an ISO-8601 UTC string or returns RangeError for an invalid Date.
     pub fn to_iso_string(&self) -> RuntimeResult<JsString> {
-        let value = self.value();
+        Self::format_value(self.value())
+    }
+    fn format_value(value: f64) -> RuntimeResult<JsString> {
         if value.is_nan() {
             return Err(RuntimeError::range_error("invalid Date"));
         }
@@ -296,4 +342,63 @@ fn civil_from_days(days_since_epoch: i64) -> (i64, i64, i64) {
     let month = month_prime + if month_prime < 10 { 3 } else { -9 };
     year += i64::from(month <= 2);
     (year, month, day)
+}
+
+#[cfg(test)]
+mod managed_tests {
+    use super::*;
+
+    #[test]
+    fn managed_date_factory_survives_clock_reentry_and_releases_its_cycle() {
+        let runtime = crate::runtime::Runtime::new();
+        let constructor = Object::new_in(&runtime);
+        runtime.collect_migration_graph().unwrap();
+        let prototype = Object::new_in(&runtime);
+        let weak = prototype.downgrade();
+        let calls = Rc::new(std::cell::Cell::new(0));
+        let callback_calls = calls.clone();
+        let callback_runtime = runtime.clone();
+        let host = HostHooks::new(move || {
+            callback_runtime.collect_migration_graph().unwrap();
+            callback_calls.set(callback_calls.get() + 1);
+            1234.9
+        });
+        DateFactory::install(&constructor, &prototype, host).unwrap();
+        prototype
+            .create_data_property("constructor".into(), Value::Object(constructor.clone()))
+            .unwrap();
+        drop(prototype);
+        runtime.verify_migration_barriers().unwrap();
+        assert_eq!(runtime.diagnostics().rooted, 1);
+        assert!(
+            constructor
+                .call(Value::Undefined, &[])
+                .unwrap()
+                .same_value(&Value::String("1970-01-01T00:00:01.234Z".into()))
+        );
+        assert_eq!(calls.get(), 1);
+        let date =
+            DateObject::from_object(constructor.construct(&[], constructor.clone()).unwrap())
+                .unwrap();
+        assert_eq!(date.value(), 1234.0);
+        assert_eq!(date.object().prototype(), weak.upgrade());
+        let explicit = DateObject::from_object(
+            constructor
+                .construct(&[Value::Number(42.0)], constructor.clone())
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(explicit.value(), 42.0);
+        assert_eq!(calls.get(), 2);
+        drop(explicit);
+        drop(constructor);
+        runtime.collect_migration_graph().unwrap();
+        assert_eq!(
+            date.to_iso_string().unwrap(),
+            JsString::from("1970-01-01T00:00:01.234Z")
+        );
+        drop(date);
+        assert_eq!(runtime.collect_migration_graph().unwrap().retained, 0);
+        assert!(weak.upgrade().is_none());
+    }
 }

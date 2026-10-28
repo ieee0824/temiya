@@ -55,22 +55,7 @@ fn install_proxy(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {
 fn install_date_json(intrinsics: &IntrinsicRegistry, host: HostHooks) -> RuntimeResult<()> {
     let date = intrinsics.get(IntrinsicId::Date);
     let date_prototype = intrinsics.get(IntrinsicId::DatePrototype);
-    let call_host = host.clone();
-    date.set_native_call(move |_, _| {
-        DateObject::now(&call_host)
-            .to_iso_string()
-            .map(Value::String)
-    });
-    let construct_host = host.clone();
-    date.set_native_construct(move |arguments, _| {
-        let value = match arguments.first() {
-            Some(value) => value.to_number()?,
-            None => construct_host.now(),
-        };
-        let object = DateObject::new(value).object();
-        object.set_prototype(Some(date_prototype.clone()));
-        Ok(object)
-    });
+    super::host_data::DateFactory::install(&date, &date_prototype, host.clone())?;
     method(intrinsics, &date, "now", 0, move |_, _| {
         Ok(Value::Number(host.now()))
     })?;

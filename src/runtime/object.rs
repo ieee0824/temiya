@@ -325,6 +325,7 @@ pub(super) struct BoundFunction {
 }
 
 pub(super) enum ManagedCallable {
+    Date(super::host_data::DateFactory),
     Factory(CapturedFactory),
     Array(super::array_methods::ArrayBuiltin),
     CapturedObject(CapturedObjectCall),
@@ -344,6 +345,7 @@ impl ManagedCallable {
             Self::CapturedObject(_) => Ok(None),
             Self::Array(_) => Ok(None),
             Self::Factory(_) => Ok(None),
+            Self::Date(_) => Ok(None),
         }
     }
     fn is_callable(&self) -> bool {
@@ -361,10 +363,12 @@ impl ManagedCallable {
             Self::CapturedObject(_) => false,
             Self::Array(_) => false,
             Self::Factory(factory) => factory.construct.is_some(),
+            Self::Date(_) => true,
         }
     }
     fn call(&self, owner: &Object, this: Value, arguments: &[Value]) -> RuntimeResult<Value> {
         match self {
+            Self::Date(factory) => factory.call(),
             Self::Factory(factory) => {
                 let (needs_object, callback) = factory
                     .call
@@ -412,6 +416,9 @@ impl ManagedCallable {
         arguments: &[Value],
         new_target: Object,
     ) -> RuntimeResult<Object> {
+        if let Self::Date(factory) = self {
+            return factory.construct(owner, arguments);
+        }
         if let Self::Factory(factory) = self {
             let callback = factory
                 .construct
@@ -444,6 +451,7 @@ impl ManagedCallable {
             Self::CapturedObject(call) => call.object.trace(tracer),
             Self::Array(call) => call.trace(tracer),
             Self::Factory(factory) => factory.object.trace(tracer),
+            Self::Date(factory) => factory.trace(tracer),
             Self::Bound(bound) => bound.trace(tracer),
             Self::ProxyRevoker(slot) => {
                 if let Some(proxy) = &*slot.borrow() {
@@ -530,18 +538,20 @@ impl Object {
             call,
             construct,
         };
+        self.set_managed_callable(ManagedCallable::Factory(factory));
+        Ok(())
+    }
+
+    pub(super) fn set_managed_callable(&self, callable: ManagedCallable) {
         let retired = {
             let mut state = self.0.state.borrow_mut();
             (
                 state.callable.take(),
                 state.construct.take(),
-                state
-                    .managed_callable
-                    .replace(Rc::new(ManagedCallable::Factory(factory))),
+                state.managed_callable.replace(Rc::new(callable)),
             )
         };
         drop(retired);
-        Ok(())
     }
     pub(super) fn new_bound(
         target: &Object,

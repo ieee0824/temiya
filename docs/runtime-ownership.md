@@ -34,9 +34,10 @@ The diagnostic invocation emits JSON and exits zero after safety checks. The
 strict invocation emits the same observations and exits **2** while any token
 survives teardown. The recorded
 [baseline](../benchmarks/runtime-ownership-baseline.json) released the acyclic
-control but retained all six cyclic/function cases. See the function-allocation
-update below for current observations. This is an observed failure,
-not an ignored test or a claimed collector pass. `tests/runtime_ownership.rs`
+control but retained all six cyclic/function cases. The function-allocation
+update below records an intermediate reduction to three retained cases. The
+tracing branch now exits zero with all seven fixtures released; the historical
+failures are preserved rather than counted as collector passes. `tests/runtime_ownership.rs`
 checks live-handle/clone/function/prototype safety and acyclic release; it does
 not require known leaks to persist after migration. The strict command is the
 post-migration reclamation acceptance test.
@@ -90,7 +91,7 @@ runtime allocation collection is enabled.
 | ModuleData / Dependency (`pipeline.rs`) | realm, environment, dependency modules, cached error, evaluation Promise | S; cycles are traced, not individually pinned; status/specifier/program are leaves |
 | ModuleGraph | realm, resolver callback, cached modules | S while graph retained; resolver capture contract matches host callback; ModuleKey/request strings/attributes are leaves |
 | ExecutionContext / Agent | realm, script, function, lexical/variable environments; retained stack entries | Active R regions; suspended/protected entries retain their full graph until removed |
-| Engine / EngineBuilder (`embedding.rs`) | currently options, Box<dyn Any> host_state; no Heap | Engine owns shared Runtime in target design; opaque host state can own explicit external roots |
+| Engine / EngineBuilder (`embedding.rs`) | options, Box<dyn Any> host_state; Engine also owns shared Runtime | Engine owns the tracing heap through Runtime; opaque host state can own explicit external roots |
 | RealmHandle / CompiledScript / ModuleHandle / ValueHandle / Exception | Realm / ScriptRecord / SourceTextModule / Value / thrown ValueHandle | R registered persistently with origin Runtime and existing provenance checks |
 | HostCallContext / host arguments and results | IDs only in context; arguments, receiver and return handles have Values | Active R for call; validate result provenance before adopting its internal edge |
 | FFI wrappers / registry (`ffi.rs`) | boxed Engine/Realm/Script/Value handles; registry stores kind/address only | Wrappers own R, release exactly once; address registry is not an extra GC root; CString errors have no Value edge |
@@ -213,7 +214,7 @@ roots cycles; applying Rc trial deletion without enumerating native captures
 cannot distinguish hidden internal edges from external references. Both still
 need the explicit graph and callback work selected above.
 
-## Function allocation retention update
+## Historical function allocation retention update
 
 The function-allocation change keeps the internal callable self lookup weak.
 For constructable ordinary functions, the own `prototype` data property is
@@ -462,7 +463,7 @@ remains live, nested region sharing and unwind cleanup.
 
 All five managed allocation families (Object, Environment, Realm, JobQueue,
 SourceTextModule) now collect before allocation through a Runtime safepoint.
-The configured production interval remains disabled during migration. Tests set
+The normal production interval is 4096 managed allocations. Tests set
 an interval of zero to collect at every allocation, including Realm/intrinsic
 bootstrap, AST and VM closures/constructors, builtin result creation, generators,
 Promise reactions, and cyclic module loading/evaluation.

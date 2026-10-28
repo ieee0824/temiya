@@ -50,7 +50,16 @@ and reusable slots, reporting stale-generation and cross-heap edges immediately.
 `Heap::diagnostics` exposes live/root/free counts plus cumulative collections,
 reclamation, and peak live allocations for tests and leak investigations.
 
-The current Engine's ownership graph, selected migration representation,
-rooting protocol, public retention probe and implementation gates are documented
-in [runtime ownership migration](runtime-ownership.md). The strict probe currently
-fails on three cyclic cases after the function-allocation update; these collector contracts do not imply runtime reclamation.
+Engine Realms share a tracing heap. Public Object, Environment, Realm, JobQueue
+and Module facades register roots; stored graph edges contain typed handles.
+Normal allocation safepoints collect every 4096 managed allocations, and
+`Engine::collect_garbage` permits explicit collection. The runtime uses full
+collection; standalone minor-collector support does not enable generational
+collection in Engine.
+
+The ownership graph, rooting protocol, public retention probe and delivery gates
+are documented in [runtime ownership migration](runtime-ownership.md). The strict
+public probe now releases all seven fixtures after the final handle is dropped,
+while preserving values retained across Engine teardown. Separate live-Engine
+tests cover allocation safepoints, jobs, suspended generators, module cycles,
+weak collections, host reentry and cross-heap rejection.

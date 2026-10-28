@@ -347,3 +347,25 @@ reaction calls, and host hooks. Cross-context writes are rejected before state
 or reaction-list mutation. These changes migrate the existing Promise/async
 implementation; they do not add Promise constructor completeness or bytecode
 support for async syntax.
+
+Generator objects now own a traced slot with a stored suspended frame. The
+frame stores evaluator Realms/environments/this/newTarget, statement variable
+environments, pending Reference bases/names/receivers/primitive prototypes,
+delegated values, and pending return values through non-owning edges. Computed
+Reference names keep their unresolved value and @@toPrimitive identity without
+coercing at suspension. Mutable function-binding position hints remain hints
+and are validated by the existing Reference algorithms when restored.
+
+Resumption takes the stored frame out of the slot and marks the generator
+Executing before invoking continuations or user code. Active evaluator and
+Reference facades root the frame on the Rust stack; no generator RefCell borrow
+spans JavaScript callbacks. A scoped guard completes and releases the frame on
+errors/unwinding. Successful suspension records write barriers and publishes the
+stored frame without an intervening managed allocation or callback. Completion,
+throw, and return clear suspended captures while escaped error values retain
+their own roots. Generator methods use declared strong target captures and
+iterator-result objects allocate in their source context with Object.prototype.
+Code vectors move between active/suspended states without per-resume deep
+copies; yield* resumes pop one stored delegated value without decoding or
+rewriting the remaining vector. Existing generator syntax/protocol limitations
+and the Legacy representation remain pending release gates.

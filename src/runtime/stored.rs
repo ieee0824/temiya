@@ -129,6 +129,18 @@ pub(super) enum StoredValue {
     Object(StoredObject),
 }
 impl StoredValue {
+    pub(super) fn into_value(self, owner: &impl StoredOwner) -> RuntimeResult<Value> {
+        Ok(match self {
+            Self::Undefined => Value::Undefined,
+            Self::Null => Value::Null,
+            Self::Boolean(value) => Value::Boolean(value),
+            Self::Number(value) => Value::Number(value),
+            Self::String(value) => Value::String(value),
+            Self::Symbol(value) => Value::Symbol(value),
+            Self::BigInt(value) => Value::BigInt(value),
+            Self::Object(value) => Value::Object(value.load(owner)?),
+        })
+    }
     // Collection scans compare stored keys directly, without registering roots
     // or materializing Object facades for each candidate.
     pub(super) fn same_value_zero(&self, value: &Value) -> bool {

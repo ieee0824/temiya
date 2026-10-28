@@ -1341,3 +1341,181 @@ pub(crate) fn unary_numeric_value(
         )),
     }
 }
+
+// Heap snapshots used by suspended generators. Active evaluators/references
+// remain public rooted facades while user code is executing.
+pub(super) struct StoredExpressionEvaluator {
+    realm: super::execution::StoredRealm,
+    environment: super::environment::StoredEnvironment,
+    this_value: super::stored::StoredValue,
+    new_target: Option<super::stored::StoredObject>,
+    strict: bool,
+}
+impl StoredExpressionEvaluator {
+    pub(super) fn store(owner: &Object, evaluator: ExpressionEvaluator) -> RuntimeResult<Self> {
+        Ok(Self {
+            realm: super::execution::StoredRealm::store(owner, &evaluator.realm)?,
+            environment: super::environment::StoredEnvironment::store(
+                owner,
+                &evaluator.environment,
+            )?,
+            this_value: super::stored::StoredValue::store_owned(owner, evaluator.this_value)?,
+            new_target: evaluator
+                .new_target
+                .as_ref()
+                .map(|target| super::stored::StoredObject::store(owner, target))
+                .transpose()?,
+            strict: evaluator.strict,
+        })
+    }
+    pub(super) fn load(self, owner: &Object) -> RuntimeResult<ExpressionEvaluator> {
+        Ok(ExpressionEvaluator {
+            realm: self.realm.load(owner)?,
+            environment: self.environment.load(owner)?,
+            this_value: self.this_value.into_value(owner)?,
+            new_target: self
+                .new_target
+                .as_ref()
+                .map(|target| target.load(owner))
+                .transpose()?,
+            strict: self.strict,
+        })
+    }
+    pub(super) fn trace(&self, tracer: &mut crate::gc::Tracer<'_>) {
+        self.realm.trace(tracer);
+        self.environment.trace(tracer);
+        self.this_value.trace(tracer);
+        if let Some(target) = &self.new_target {
+            target.trace(tracer);
+        }
+    }
+}
+
+enum StoredReferenceBase {
+    Environment(super::environment::StoredEnvironment),
+    FunctionBinding(super::environment::StoredEnvironment, usize),
+    Property(super::stored::StoredValue),
+    Unresolvable(super::stored::StoredObject),
+}
+enum StoredReferencedName {
+    PropertyKey(PropertyKey),
+    Value(super::stored::StoredValue),
+    Computed(super::stored::StoredValue, super::Symbol),
+}
+pub(super) struct StoredReference {
+    base: StoredReferenceBase,
+    name: StoredReferencedName,
+    strict: bool,
+    this_value: Option<super::stored::StoredValue>,
+    primitive_prototype: Option<super::stored::StoredObject>,
+}
+impl StoredReference {
+    pub(super) fn store(owner: &Object, reference: Reference) -> RuntimeResult<Self> {
+        use super::{
+            environment::StoredEnvironment,
+            stored::{StoredObject, StoredValue},
+        };
+        let name = match reference.name {
+            ReferenceName::Plain(name) => name,
+            ReferenceName::Computed(cell) => cell.into_inner(),
+        };
+        Ok(Self {
+            base: match reference.base {
+                ReferenceBase::Environment(env) => {
+                    StoredReferenceBase::Environment(StoredEnvironment::store(owner, &env)?)
+                }
+                ReferenceBase::FunctionBinding(env, index) => StoredReferenceBase::FunctionBinding(
+                    StoredEnvironment::store(owner, &env)?,
+                    index,
+                ),
+                ReferenceBase::Property(value) => {
+                    StoredReferenceBase::Property(StoredValue::store_owned(owner, value)?)
+                }
+                ReferenceBase::Unresolvable(global) => {
+                    StoredReferenceBase::Unresolvable(StoredObject::store(owner, &global)?)
+                }
+            },
+            name: match name {
+                ReferencedName::PropertyKey(key) => StoredReferencedName::PropertyKey(key),
+                ReferencedName::Value(value) => {
+                    StoredReferencedName::Value(StoredValue::store_owned(owner, value)?)
+                }
+                ReferencedName::Computed {
+                    value,
+                    to_primitive,
+                } => StoredReferencedName::Computed(
+                    StoredValue::store_owned(owner, value)?,
+                    to_primitive,
+                ),
+            },
+            strict: reference.strict,
+            this_value: reference
+                .this_value
+                .map(|value| StoredValue::store_owned(owner, value))
+                .transpose()?,
+            primitive_prototype: reference
+                .primitive_prototype
+                .as_ref()
+                .map(|prototype| StoredObject::store(owner, prototype))
+                .transpose()?,
+        })
+    }
+    pub(super) fn load(self, owner: &Object) -> RuntimeResult<Reference> {
+        Ok(Reference {
+            base: match self.base {
+                StoredReferenceBase::Environment(env) => {
+                    ReferenceBase::Environment(env.load(owner)?)
+                }
+                StoredReferenceBase::FunctionBinding(env, index) => {
+                    ReferenceBase::FunctionBinding(env.load(owner)?, index)
+                }
+                StoredReferenceBase::Property(value) => {
+                    ReferenceBase::Property(value.into_value(owner)?)
+                }
+                StoredReferenceBase::Unresolvable(global) => {
+                    ReferenceBase::Unresolvable(global.load(owner)?)
+                }
+            },
+            name: ReferenceName::new(match self.name {
+                StoredReferencedName::PropertyKey(key) => ReferencedName::PropertyKey(key),
+                StoredReferencedName::Value(value) => {
+                    ReferencedName::Value(value.into_value(owner)?)
+                }
+                StoredReferencedName::Computed(value, to_primitive) => ReferencedName::Computed {
+                    value: value.into_value(owner)?,
+                    to_primitive,
+                },
+            }),
+            strict: self.strict,
+            this_value: self
+                .this_value
+                .map(|value| value.into_value(owner))
+                .transpose()?,
+            primitive_prototype: self
+                .primitive_prototype
+                .as_ref()
+                .map(|prototype| prototype.load(owner))
+                .transpose()?,
+        })
+    }
+    pub(super) fn trace(&self, tracer: &mut crate::gc::Tracer<'_>) {
+        match &self.base {
+            StoredReferenceBase::Environment(env)
+            | StoredReferenceBase::FunctionBinding(env, _) => env.trace(tracer),
+            StoredReferenceBase::Property(value) => value.trace(tracer),
+            StoredReferenceBase::Unresolvable(global) => global.trace(tracer),
+        }
+        match &self.name {
+            StoredReferencedName::Value(value) | StoredReferencedName::Computed(value, _) => {
+                value.trace(tracer)
+            }
+            StoredReferencedName::PropertyKey(_) => {}
+        }
+        if let Some(value) = &self.this_value {
+            value.trace(tracer);
+        }
+        if let Some(prototype) = &self.primitive_prototype {
+            prototype.trace(tracer);
+        }
+    }
+}

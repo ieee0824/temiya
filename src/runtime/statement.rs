@@ -6,7 +6,7 @@ use crate::ast::{
 };
 
 use super::{
-    Environment, EnvironmentKind, ExpressionEvaluator, FunctionKind, JsString,
+    Environment, EnvironmentKind, ExpressionEvaluator, FunctionKind, JsString, Object,
     ObjectEnvironmentOptions, PropertyKey, Realm, RuntimeError, RuntimeResult, Value,
     function::create_function, interpreter::strict_equal,
 };
@@ -957,4 +957,33 @@ fn enumerable_keys(value: &Value) -> RuntimeResult<Vec<Value>> {
             PropertyKey::Symbol(_) => None,
         })
         .collect())
+}
+
+pub(super) struct StoredStatementEvaluator {
+    expression: super::interpreter::StoredExpressionEvaluator,
+    variable_environment: super::environment::StoredEnvironment,
+}
+impl StoredStatementEvaluator {
+    pub(super) fn store(owner: &Object, evaluator: StatementEvaluator) -> RuntimeResult<Self> {
+        Ok(Self {
+            expression: super::interpreter::StoredExpressionEvaluator::store(
+                owner,
+                evaluator.expression,
+            )?,
+            variable_environment: super::environment::StoredEnvironment::store(
+                owner,
+                &evaluator.variable_environment,
+            )?,
+        })
+    }
+    pub(super) fn load(self, owner: &Object) -> RuntimeResult<StatementEvaluator> {
+        Ok(StatementEvaluator {
+            expression: self.expression.load(owner)?,
+            variable_environment: self.variable_environment.load(owner)?,
+        })
+    }
+    pub(super) fn trace(&self, tracer: &mut crate::gc::Tracer<'_>) {
+        self.expression.trace(tracer);
+        self.variable_environment.trace(tracer);
+    }
 }

@@ -1080,6 +1080,308 @@ mod managed_allocation_tests {
     }
 
     #[test]
+    fn managed_generator_frames_survive_gc_and_reject_execution_reentry() {
+        use crate::runtime::{Generator, GeneratorState};
+        let mut engine = Engine::builder().script_backend(ScriptBackend::Ast).build();
+        engine.managed_allocation = true;
+        let realm = engine.create_realm();
+        let runtime = engine.runtime.clone();
+        let callback_runtime = runtime.clone();
+        engine
+            .register_global_function(&realm, "collectGenerator", move |context, _, _| {
+                callback_runtime.verify_migration_barriers().unwrap();
+                callback_runtime.collect_migration_graph().unwrap();
+                Ok(context.value(Value::Undefined))
+            })
+            .unwrap();
+        let script = engine.compile(&realm, r#"
+            var activeGenerator;
+            function* values(marker) {
+                collectGenerator();
+                var rejected=false;
+                try { activeGenerator.next(); } catch(error) { rejected=error instanceof TypeError; }
+                let input=yield marker;
+                collectGenerator();
+                if(!rejected){throw 0;}
+                return input.answer;
+            }
+            var generatorMarker={answer:20};
+            activeGenerator=values(generatorMarker);
+            generatorMarker.gen=activeGenerator;
+            generatorMarker=undefined;
+            activeGenerator;
+        "#).unwrap();
+        let handle = engine.evaluate(&script).unwrap();
+        drop(script);
+        let Value::Object(object) = handle.value() else {
+            panic!("generator")
+        };
+        let generator = Generator::from_object(object.clone()).unwrap();
+        let first = generator.next(Value::Undefined).unwrap();
+        let Value::Object(marker) = first.value else {
+            panic!("marker")
+        };
+        let weak = marker.downgrade();
+        drop(marker);
+        assert_eq!(generator.state(), GeneratorState::SuspendedYield);
+        realm
+            .realm
+            .global_object()
+            .set(&"activeGenerator".into(), Value::Undefined)
+            .unwrap();
+        runtime.collect_migration_graph().unwrap();
+        assert!(weak.upgrade().is_some());
+        let input = Object::new_for(object);
+        input
+            .create_data_property("answer".into(), Value::Number(42.0))
+            .unwrap();
+        let result = generator.next(Value::Object(input)).unwrap();
+        assert!(result.done && result.value.same_value(&Value::Number(42.0)));
+        assert_eq!(generator.state(), GeneratorState::Completed);
+        runtime.collect_migration_graph().unwrap();
+        assert!(
+            weak.upgrade().is_none(),
+            "completed generators release local bindings"
+        );
+        let Value::Object(next) = object.get(&"next".into()).unwrap() else {
+            panic!("next")
+        };
+        realm
+            .realm
+            .global_object()
+            .try_delete(&"collectGenerator".into())
+            .unwrap();
+        drop((generator, handle, realm, engine));
+        runtime.collect_migration_graph().unwrap();
+        let Value::Object(result) = next.call(Value::Undefined, &[]).unwrap() else {
+            panic!("result")
+        };
+        assert!(
+            result
+                .get(&"done".into())
+                .unwrap()
+                .same_value(&Value::Boolean(true))
+        );
+        assert!(result.prototype().is_some());
+        drop((result, next));
+        assert_eq!(runtime.collect_migration_graph().unwrap().retained, 0);
+    }
+
+    #[test]
+    fn managed_generator_references_keep_uncoerced_keys_and_aliases_across_suspension() {
+        use crate::runtime::Generator;
+        let mut engine = Engine::builder().script_backend(ScriptBackend::Ast).build();
+        engine.managed_allocation = true;
+        let realm = engine.create_realm();
+        let runtime = engine.runtime.clone();
+        let callback_runtime = runtime.clone();
+        engine
+            .register_global_function(&realm, "collectGenerator", move |context, _, _| {
+                callback_runtime.verify_migration_barriers().unwrap();
+                callback_runtime.collect_migration_graph().unwrap();
+                Ok(context.value(Value::Undefined))
+            })
+            .unwrap();
+        let script = engine
+            .compile(
+                &realm,
+                r#"
+            var abandon; var resume; var keyCalls=0; var nestedOK=false;
+            function* assign(base,key){
+                arguments=undefined;
+                abandon=function(){base=undefined;key=undefined;};
+                base[key]=yield 20;
+                return 42;
+            }
+            var referenceBase={};var referenceKey={};
+            referenceKey[Symbol.toPrimitive]=function(){
+                keyCalls++;
+                try { resume(); } catch(error) { nestedOK=error instanceof TypeError; }
+                collectGenerator();
+                return 'answer';
+            };
+            var referenceGenerator=assign(referenceBase,referenceKey);
+            resume=referenceGenerator.next;
+            referenceGenerator;
+        "#,
+            )
+            .unwrap();
+        let handle = engine.evaluate(&script).unwrap();
+        drop(script);
+        let global = realm.realm.global_object();
+        let Value::Object(base) = global.get(&"referenceBase".into()).unwrap() else {
+            panic!("base")
+        };
+        let Value::Object(key) = global.get(&"referenceKey".into()).unwrap() else {
+            panic!("key")
+        };
+        let weak = [base.downgrade(), key.downgrade()];
+        drop((base, key));
+        let Value::Object(object) = handle.value() else {
+            panic!("generator")
+        };
+        let generator = Generator::from_object(object.clone()).unwrap();
+        assert!(
+            generator
+                .next(Value::Undefined)
+                .unwrap()
+                .value
+                .same_value(&Value::Number(20.0))
+        );
+        assert!(
+            global
+                .get(&"keyCalls".into())
+                .unwrap()
+                .same_value(&Value::Number(0.0))
+        );
+        let clear = engine.compile(&realm, "abandon();abandon=undefined;referenceBase=undefined;referenceKey=undefined;referenceGenerator=undefined;").unwrap();
+        engine.evaluate(&clear).unwrap();
+        drop(clear);
+        runtime.collect_migration_graph().unwrap();
+        assert!(weak.iter().all(|value| value.upgrade().is_some()));
+        assert!(generator.next(Value::Number(42.0)).unwrap().done);
+        assert!(
+            weak[0]
+                .upgrade()
+                .unwrap()
+                .get(&"answer".into())
+                .unwrap()
+                .same_value(&Value::Number(42.0))
+        );
+        assert!(
+            global
+                .get(&"keyCalls".into())
+                .unwrap()
+                .same_value(&Value::Number(1.0))
+        );
+        assert!(
+            global
+                .get(&"nestedOK".into())
+                .unwrap()
+                .same_value(&Value::Boolean(true))
+        );
+        global.set(&"resume".into(), Value::Undefined).unwrap();
+        global.try_delete(&"collectGenerator".into()).unwrap();
+        runtime.collect_migration_graph().unwrap();
+        assert!(weak.iter().all(|value| value.upgrade().is_none()));
+        drop((generator, handle, global, realm, engine));
+        assert_eq!(runtime.collect_migration_graph().unwrap().retained, 0);
+    }
+
+    #[test]
+    fn managed_generator_delegation_traces_only_remaining_values() {
+        use crate::runtime::Generator;
+        let mut engine = Engine::builder().script_backend(ScriptBackend::Ast).build();
+        engine.managed_allocation = true;
+        let realm = engine.create_realm();
+        let script = engine.compile(&realm, "var abandon;function* values(items){arguments=undefined;abandon=function(){items=undefined;};yield* items;return 42;}var delegatedItems=[{answer:20},{answer:22}];var delegatedGenerator=values(delegatedItems);delegatedGenerator;").unwrap();
+        let handle = engine.evaluate(&script).unwrap();
+        drop(script);
+        let global = realm.realm.global_object();
+        let Value::Object(items) = global.get(&"delegatedItems".into()).unwrap() else {
+            panic!("items")
+        };
+        let weak: Vec<_> = ["0", "1"]
+            .into_iter()
+            .map(|index| {
+                let Value::Object(value) = items.get(&index.into()).unwrap() else {
+                    panic!("value")
+                };
+                value.downgrade()
+            })
+            .collect();
+        drop(items);
+        let Value::Object(object) = handle.value() else {
+            panic!("generator")
+        };
+        let generator = Generator::from_object(object.clone()).unwrap();
+        drop(generator.next(Value::Undefined).unwrap());
+        let clear = engine.compile(&realm, "abandon();abandon=undefined;delegatedItems=undefined;delegatedGenerator=undefined;").unwrap();
+        engine.evaluate(&clear).unwrap();
+        drop(clear);
+        engine.runtime.collect_migration_graph().unwrap();
+        assert!(weak[0].upgrade().is_none());
+        assert!(weak[1].upgrade().is_some());
+        let next = generator.next(Value::Undefined).unwrap();
+        let Value::Object(value) = next.value else {
+            panic!("value")
+        };
+        assert!(
+            value
+                .get(&"answer".into())
+                .unwrap()
+                .same_value(&Value::Number(22.0))
+        );
+        drop(value);
+        engine.runtime.collect_migration_graph().unwrap();
+        assert!(weak[1].upgrade().is_none());
+        assert!(
+            generator
+                .next(Value::Undefined)
+                .unwrap()
+                .value
+                .same_value(&Value::Number(42.0))
+        );
+        let runtime = engine.runtime.clone();
+        drop((generator, handle, global, realm, engine));
+        assert_eq!(runtime.collect_migration_graph().unwrap().retained, 0);
+    }
+
+    #[test]
+    fn managed_generator_abrupt_completion_releases_frames_and_keeps_escaped_errors() {
+        use crate::runtime::{Generator, GeneratorState};
+        for mode in 0..3 {
+            let mut engine = Engine::builder().script_backend(ScriptBackend::Ast).build();
+            engine.managed_allocation = true;
+            let realm = engine.create_realm();
+            let runtime = engine.runtime.clone();
+            let script = engine.compile(&realm, "function* abrupt(marker){yield marker;throw marker;}var abruptMarker={answer:42};var abruptGenerator=abrupt(abruptMarker);abruptMarker=undefined;abruptGenerator;").unwrap();
+            let handle = engine.evaluate(&script).unwrap();
+            drop(script);
+            let Value::Object(object) = handle.value() else {
+                panic!("generator")
+            };
+            let generator = Generator::from_object(object.clone()).unwrap();
+            let first = generator.next(Value::Undefined).unwrap();
+            let Value::Object(marker) = first.value else {
+                panic!("marker")
+            };
+            let weak = marker.downgrade();
+            drop(marker);
+            runtime.collect_migration_graph().unwrap();
+            let foreign_runtime = crate::runtime::Runtime::new();
+            let foreign = Object::new_in(&foreign_runtime);
+            assert!(generator.next(Value::Object(foreign)).is_err());
+            assert_eq!(generator.state(), GeneratorState::SuspendedYield);
+            match mode {
+                0 => assert!(generator.return_(Value::Number(7.0)).unwrap().done),
+                1 => {
+                    let error = generator.throw(Value::Number(9.0)).unwrap_err();
+                    assert!(
+                        error
+                            .thrown_value()
+                            .unwrap()
+                            .same_value(&Value::Number(9.0))
+                    );
+                }
+                _ => {
+                    let error = generator.next(Value::Undefined).unwrap_err();
+                    runtime.collect_migration_graph().unwrap();
+                    assert!(
+                        matches!(error.thrown_value(), Some(Value::Object(value)) if Some(value.clone()) == weak.upgrade())
+                    );
+                    drop(error);
+                }
+            }
+            assert_eq!(generator.state(), GeneratorState::Completed);
+            runtime.collect_migration_graph().unwrap();
+            assert!(weak.upgrade().is_none());
+            drop((generator, handle, realm, engine));
+            assert_eq!(runtime.collect_migration_graph().unwrap().retained, 0);
+        }
+    }
+
+    #[test]
     fn managed_promise_reactions_execute_ast_and_vm_callbacks_across_collection() {
         use crate::runtime::Promise;
         for backend in [ScriptBackend::Ast, ScriptBackend::Bytecode] {

@@ -316,3 +316,17 @@ Escaped native functions and exceptions keep the source graph alive, and its
 cycles are reclaimed after the last external root is dropped. Transitional
 Legacy objects do not acquire native source metadata; removal of that
 representation and enabling managed allocation remain required release gates.
+
+Realm job queues now have managed heap records and rooted public facades. The
+Realm stores a typed queue handle rather than an owning public queue. Repeated
+public queue loads/clones share one root registration; an escaped empty queue
+can outlive its Realm without retaining that Realm's intrinsic graph.
+
+Internal `TracedJob` payloads report their stored edges. Enqueue validates those
+edges against the queue's heap and records its write barrier before publication.
+Dequeue moves a job to a traced active list before invoking it, so collection in
+callbacks or nested job runs still sees every capture. Scoped guards remove
+active entries and reset draining state on success, errors, and unwinding. Jobs
+are invoked after releasing the queue's state borrow. Public host `enqueue`
+wraps the host FnOnce in one Rc allocation and retains the explicit host-root
+contract; internal Promise jobs still require conversion to typed payloads.

@@ -121,7 +121,7 @@ pub(super) struct RealmData {
     id: u64,
     global_object: StoredObject,
     global_environment: StoredEnvironment,
-    job_queue: JobQueue,
+    job_queue: super::job_queue::StoredJobQueue,
     intrinsics: OnceCell<super::intrinsics::StoredIntrinsicRegistry>,
     well_known_symbols: WellKnownSymbols,
     host_hooks: HostHooks,
@@ -131,10 +131,10 @@ impl Trace for RealmData {
     fn trace(&self, tracer: &mut Tracer<'_>) {
         self.global_object.trace(tracer);
         self.global_environment.trace(tracer);
+        self.job_queue.trace(tracer);
         if let Some(intrinsics) = self.intrinsics.get() {
             intrinsics.trace(tracer);
         }
-        // Job payloads still own active public roots during this migration.
     }
 }
 
@@ -200,12 +200,15 @@ impl Realm {
         let well_known_symbols = WellKnownSymbols::initialize();
         let global_environment = Environment::global(global_object.clone(), global_this_value);
         let runtime = global_object.0.runtime().cloned();
+        let queue = runtime
+            .as_ref()
+            .map_or_else(JobQueue::new, JobQueue::new_in);
         let data = RealmData {
             facade: RefCell::new(Weak::new()),
             id: next_id(&NEXT_ID, "Realm"),
             global_object: StoredObject::initial(runtime.as_ref(), &global_object)?,
             global_environment: StoredEnvironment::initial(runtime.as_ref(), &global_environment)?,
-            job_queue: JobQueue::new(),
+            job_queue: super::job_queue::StoredJobQueue::initial(runtime.as_ref(), &queue)?,
             intrinsics: OnceCell::new(),
             well_known_symbols,
             host_hooks,
@@ -273,7 +276,7 @@ impl Realm {
     /// Returns the Realm's Promise Job Queue.
     #[must_use]
     pub fn job_queue(&self) -> JobQueue {
-        self.0.job_queue.clone()
+        self.0.job_queue.load(self).expect("live Realm Job Queue")
     }
 
     /// Returns an owning snapshot of this Realm's intrinsic registry.

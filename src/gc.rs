@@ -529,6 +529,38 @@ impl Heap {
         Ok(())
     }
 
+    /// Validates a payload's edges before publishing it and remembers its owner.
+    pub(crate) fn record_traced_edges<T: Trace, U: Trace + ?Sized>(
+        &mut self,
+        owner: Handle<T>,
+        edges: &U,
+    ) -> Result<(), WriteBarrierError> {
+        let old = self
+            .raw_slot(owner.raw)
+            .ok_or(WriteBarrierError::InvalidOwner)?
+            .old;
+        let invalid = Cell::new(false);
+        let young = Cell::new(false);
+        let check = |edge| match self.raw_slot(edge) {
+            Some(slot) => young.set(young.get() || !slot.old),
+            None => invalid.set(true),
+        };
+        edges.trace(&mut Tracer {
+            visit: &mut |edge| check(edge),
+            conditional: &mut |key, value| {
+                check(key);
+                check(value);
+            },
+        });
+        if invalid.get() {
+            return Err(WriteBarrierError::InvalidTarget);
+        }
+        if old && young.get() {
+            self.remembered.insert(owner.raw);
+        }
+        Ok(())
+    }
+
     /// Verifies that every observed old-to-young edge has a remembered owner.
     pub fn verify_write_barriers(&self) -> Result<(), WriteBarrierError> {
         for (index, slot) in self.slots.iter().enumerate() {

@@ -132,6 +132,61 @@ impl WeakObjectRoot {
 }
 
 impl Runtime {
+    pub(super) fn allocate_job_queue(
+        &self,
+        data: super::job_queue::JobQueueData,
+    ) -> super::JobQueue {
+        use super::job_queue::{JobQueueReference, JobQueueRoot, ManagedJobQueue};
+        let data = Rc::new(RefCell::new(data));
+        let root = self
+            .0
+            .heap
+            .borrow_mut()
+            .allocate(ManagedJobQueue { data: data.clone() });
+        let facade = Rc::new(JobQueueRoot {
+            root,
+            data: data.clone(),
+            runtime: self.clone(),
+        });
+        data.borrow_mut().facade = Rc::downgrade(&facade);
+        super::JobQueue(JobQueueReference::Managed(facade))
+    }
+
+    pub(super) fn root_job_queue(
+        &self,
+        handle: crate::gc::Handle<super::job_queue::ManagedJobQueue>,
+    ) -> Option<super::JobQueue> {
+        use super::job_queue::{JobQueueReference, JobQueueRoot};
+        let heap = self.0.heap.borrow();
+        let data = heap.with(handle, |queue| queue.data.clone())?;
+        if let Some(facade) = data.borrow().facade.upgrade() {
+            return Some(super::JobQueue(JobQueueReference::Managed(facade)));
+        }
+        let root = heap.root(handle)?;
+        drop(heap);
+        let facade = Rc::new(JobQueueRoot {
+            root,
+            data: data.clone(),
+            runtime: self.clone(),
+        });
+        data.borrow_mut().facade = Rc::downgrade(&facade);
+        Some(super::JobQueue(JobQueueReference::Managed(facade)))
+    }
+
+    pub(super) fn record_job_edges(
+        &self,
+        owner: Handle<super::job_queue::ManagedJobQueue>,
+        edges: &impl Trace,
+    ) -> super::RuntimeResult<()> {
+        self.0
+            .heap
+            .borrow_mut()
+            .record_traced_edges(owner, edges)
+            .map_err(|_| {
+                super::RuntimeError::type_error("Job contains an invalid or foreign heap edge")
+            })
+    }
+
     pub(super) fn root_realm(
         &self,
         handle: Handle<super::execution::ManagedRealm>,

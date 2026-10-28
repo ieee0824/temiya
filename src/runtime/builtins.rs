@@ -269,16 +269,20 @@ fn install_numeric(
     let number = intrinsics.get(IntrinsicId::Number);
     let number_prototype = intrinsics.get(IntrinsicId::NumberPrototype);
     let number_key: PropertyKey = symbols.get(super::WellKnownSymbol::ToPrimitive).into();
-    let construct_number_key = number_key.clone();
-    number.set_native_call(move |_, arguments| {
-        number_argument(arguments.first(), &number_key).map(Value::Number)
-    });
-    number.set_native_construct(move |arguments, _| {
-        let value = number_argument(arguments.first(), &construct_number_key)?;
-        let object = NumberObject::new(value).object();
-        object.set_prototype(Some(number_prototype.clone()));
-        Ok(object)
-    });
+    number.set_captured_factory(
+        &number_prototype,
+        Some(number_key),
+        Some((false, |_, key, _, arguments| {
+            number_argument(arguments.first(), key.expect("Number primitive key"))
+                .map(Value::Number)
+        })),
+        Some(|prototype, key, arguments, _| {
+            let value = number_argument(arguments.first(), key.expect("Number primitive key"))?;
+            let object = NumberObject::new_for(prototype, value).object();
+            object.initialize_prototype(Some(prototype.clone()));
+            Ok(object)
+        }),
+    )?;
     for (name, value) in [
         ("NaN", f64::NAN),
         ("POSITIVE_INFINITY", f64::INFINITY),
@@ -517,14 +521,14 @@ fn install_regexp(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {
 fn install_indexed(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {
     let array = intrinsics.get(IntrinsicId::Array);
     let array_prototype = intrinsics.get(IntrinsicId::ArrayPrototype);
-    let prototype_for_call = array_prototype.clone();
-    array.set_native_call(move |_, arguments| {
-        create_array(arguments, &prototype_for_call).map(Value::Object)
-    });
-    let prototype_for_construct = array_prototype;
-    array.set_native_construct(move |arguments, _| {
-        create_array(arguments, &prototype_for_construct)
-    });
+    array.set_captured_factory(
+        &array_prototype,
+        None,
+        Some((true, |prototype, _, _, arguments| {
+            create_array(arguments, prototype.expect("Array prototype")).map(Value::Object)
+        })),
+        Some(|prototype, _, arguments, _| create_array(arguments, prototype)),
+    )?;
     method(intrinsics, &array, "isArray", 1, |_, arguments| {
         Ok(Value::Boolean(
             matches!(arguments.first(), Some(Value::Object(object)) if ArrayObject::from_object(object.clone()).is_some()),

@@ -453,6 +453,69 @@ mod stored_graph_tests {
     use super::*;
     use crate::runtime::{PropertyDescriptor, Value};
     #[test]
+    fn declared_factories_preserve_callability_and_reclaim_constructor_cycles() {
+        for callable in [false, true] {
+            let runtime = Runtime::new();
+            let function = Object::new_in(&runtime);
+            runtime.collect_migration_graph().unwrap();
+            let prototype = Object::new_in(&runtime);
+            let weak = [function.downgrade(), prototype.downgrade()];
+            function
+                .set_captured_factory(
+                    &prototype,
+                    None,
+                    if callable {
+                        Some((false, |capture, _, _, _| {
+                            assert!(capture.is_none());
+                            Ok(Value::Number(42.0))
+                        }))
+                    } else {
+                        None
+                    },
+                    Some(|prototype, _, _, _| {
+                        let instance = Object::new_for(prototype);
+                        instance.initialize_prototype(Some(prototype.clone()));
+                        Ok(instance)
+                    }),
+                )
+                .unwrap();
+            prototype
+                .create_data_property("constructor".into(), Value::Object(function.clone()))
+                .unwrap();
+            drop(prototype);
+            runtime.verify_migration_barriers().unwrap();
+            assert_eq!(runtime.diagnostics().rooted, 1);
+            assert_eq!(runtime.collect_migration_graph().unwrap().retained, 2);
+            assert_eq!(function.is_callable(), callable);
+            assert!(function.is_constructor());
+            if callable {
+                assert!(
+                    function
+                        .call(Value::Undefined, &[])
+                        .unwrap()
+                        .same_value(&Value::Number(42.0))
+                );
+            } else {
+                assert!(function.call(Value::Undefined, &[]).is_err());
+            }
+            let foreign = Object::new_in(&Runtime::new());
+            assert!(
+                function
+                    .set_captured_factory(&foreign, None, None, None)
+                    .is_err()
+            );
+            assert_eq!(function.is_callable(), callable);
+            assert!(function.is_constructor());
+            let instance = function.construct(&[], function.clone()).unwrap();
+            assert_eq!(instance.prototype(), weak[1].upgrade());
+            drop(function);
+            assert_eq!(runtime.collect_migration_graph().unwrap().retained, 3);
+            drop(instance);
+            assert_eq!(runtime.collect_migration_graph().unwrap().retained, 0);
+            assert!(weak.iter().all(|object| object.upgrade().is_none()));
+        }
+    }
+    #[test]
     fn declared_native_object_captures_are_traced_without_hidden_roots() {
         let runtime = Runtime::new();
         let prototype = Object::new_in(&runtime);

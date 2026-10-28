@@ -299,6 +299,18 @@ pub(super) struct CapturedObjectCall {
     callback: CapturedObjectCallback,
 }
 
+pub(super) type CapturedFactoryCallback =
+    fn(Option<&Object>, Option<&PropertyKey>, Value, &[Value]) -> RuntimeResult<Value>;
+pub(super) type CapturedFactoryConstructor =
+    fn(&Object, Option<&PropertyKey>, &[Value], Object) -> RuntimeResult<Object>;
+pub(super) struct CapturedFactory {
+    object: StoredObject,
+    key: Option<PropertyKey>,
+    // Calls such as Number(number) need only a leaf coercion key, not a rooted prototype.
+    call: Option<(bool, CapturedFactoryCallback)>,
+    construct: Option<CapturedFactoryConstructor>,
+}
+
 pub(super) struct BoundFunction {
     pub(super) target: StoredObject,
     this_value: StoredValue,
@@ -307,6 +319,7 @@ pub(super) struct BoundFunction {
 }
 
 pub(super) enum ManagedCallable {
+    Factory(CapturedFactory),
     Array(super::array_methods::ArrayBuiltin),
     CapturedObject(CapturedObjectCall),
     Bytecode(super::bytecode_function::StoredClosure),
@@ -324,6 +337,13 @@ impl ManagedCallable {
             Self::Bytecode(_) => Ok(None),
             Self::CapturedObject(_) => Ok(None),
             Self::Array(_) => Ok(None),
+            Self::Factory(_) => Ok(None),
+        }
+    }
+    fn is_callable(&self) -> bool {
+        match self {
+            Self::Factory(factory) => factory.call.is_some(),
+            _ => true,
         }
     }
     fn is_constructor(&self) -> bool {
@@ -334,10 +354,22 @@ impl ManagedCallable {
             Self::ProxyRevoker(_) => false,
             Self::CapturedObject(_) => false,
             Self::Array(_) => false,
+            Self::Factory(factory) => factory.construct.is_some(),
         }
     }
     fn call(&self, owner: &Object, this: Value, arguments: &[Value]) -> RuntimeResult<Value> {
         match self {
+            Self::Factory(factory) => {
+                let (needs_object, callback) = factory
+                    .call
+                    .ok_or_else(|| RuntimeError::type_error("object is not callable"))?;
+                let object = if needs_object {
+                    Some(factory.object.load(owner)?)
+                } else {
+                    None
+                };
+                callback(object.as_ref(), factory.key.as_ref(), this, arguments)
+            }
             Self::Array(call) => call.call(owner, this, arguments),
             Self::CapturedObject(call) => {
                 let object = call.object.load(owner)?;
@@ -369,6 +401,13 @@ impl ManagedCallable {
         arguments: &[Value],
         new_target: Object,
     ) -> RuntimeResult<Object> {
+        if let Self::Factory(factory) = self {
+            let callback = factory
+                .construct
+                .ok_or_else(|| RuntimeError::type_error("object is not a constructor"))?;
+            let object = factory.object.load(owner)?;
+            return callback(&object, factory.key.as_ref(), arguments, new_target);
+        }
         if let Self::Ast(closure) = self {
             return closure.construct(owner, arguments, new_target);
         }
@@ -393,6 +432,7 @@ impl ManagedCallable {
             Self::Bytecode(closure) => closure.trace(tracer),
             Self::CapturedObject(call) => call.object.trace(tracer),
             Self::Array(call) => call.trace(tracer),
+            Self::Factory(factory) => factory.object.trace(tracer),
             Self::Bound(bound) => bound.trace(tracer),
             Self::ProxyRevoker(slot) => {
                 if let Some(proxy) = &*slot.borrow() {
@@ -466,6 +506,32 @@ pub(super) fn ordinary_state() -> ObjectState {
 }
 
 impl Object {
+    pub(super) fn set_captured_factory(
+        &self,
+        capture: &Object,
+        key: Option<PropertyKey>,
+        call: Option<(bool, CapturedFactoryCallback)>,
+        construct: Option<CapturedFactoryConstructor>,
+    ) -> RuntimeResult<()> {
+        let factory = CapturedFactory {
+            object: StoredObject::store(self, capture)?,
+            key,
+            call,
+            construct,
+        };
+        let retired = {
+            let mut state = self.0.state.borrow_mut();
+            (
+                state.callable.take(),
+                state.construct.take(),
+                state
+                    .managed_callable
+                    .replace(Rc::new(ManagedCallable::Factory(factory))),
+            )
+        };
+        drop(retired);
+        Ok(())
+    }
     pub(super) fn new_bound(
         target: &Object,
         this_value: &Value,
@@ -758,7 +824,10 @@ impl Object {
     pub fn is_callable(&self) -> bool {
         let state = self.0.state.borrow();
         state.callable.is_some()
-            || state.managed_callable.is_some()
+            || state
+                .managed_callable
+                .as_ref()
+                .is_some_and(|call| call.is_callable())
             || state.proxy.as_ref().is_some_and(|proxy| proxy.callable)
     }
 
@@ -771,7 +840,11 @@ impl Object {
             let state = self.0.state.borrow();
             (
                 state.callable.clone(),
-                state.managed_callable.clone(),
+                state
+                    .managed_callable
+                    .as_ref()
+                    .filter(|call| call.is_callable())
+                    .cloned(),
                 state.proxy.as_ref().is_some_and(|proxy| proxy.callable),
             )
         };

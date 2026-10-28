@@ -978,6 +978,8 @@ mod managed_allocation_tests {
                 "function sum(a,b){return a+b;}sum(20,22);",
                 "var constructedArray=new Array({answer:42});constructedArray[0].answer;",
                 "Object.prototype.valueOf.call(42).valueOf();",
+                "(new Number(42)).valueOf();",
+                "Number(42);",
                 "var numberValues=Array.prototype.values.call(42);if(numberValues.next().done){42;}else{0;}",
                 "var textValues=Array.prototype.values.call('💡');if(textValues.next().value==='\\uD83D' && textValues.next().value==='\\uDCA1' && textValues.next().done){42;}else{0;}",
                 "var stack=[];stack.push(20,22);stack.shift()+stack.pop();",

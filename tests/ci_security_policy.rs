@@ -16,7 +16,7 @@ fn security_jobs_are_scheduled_bounded_and_failing() {
 fn audit_miri_and_sanitizer_commands_are_pinned() {
     assert!(WORKFLOW.contains("cargo-audit --version 0.22.2 --locked"));
     assert!(WORKFLOW.contains("audit --deny warnings"));
-    assert!(WORKFLOW.contains("node scripts/run-miri-shard.mjs ${{ matrix.shard }} 8"));
+    assert!(WORKFLOW.contains("node scripts/run-miri-shard.mjs ${{ matrix.shard }} 16"));
     assert!(MIRI_RUNNER.contains("'+nightly-2026-10-20', 'miri', 'test', '--locked', '--lib'"));
     assert!(MIRI_RUNNER.contains("'--exact', '--nocapture'"));
     assert!(MIRI_RUNNER.contains("1 passed; 0 failed; 0 ignored;"));

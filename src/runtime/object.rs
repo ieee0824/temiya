@@ -2288,7 +2288,7 @@ impl super::ObjectData {
             entry.descriptor.trace(tracer);
         }
         if let Some(elements) = &state.elements {
-            elements.for_each(|descriptor| descriptor.trace(tracer));
+            elements.for_each_traceable(|descriptor| descriptor.trace(tracer));
         }
     }
 }

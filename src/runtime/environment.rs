@@ -161,16 +161,6 @@ enum EnvironmentRecord {
 
 impl Trace for EnvironmentData {
     fn trace(&self, tracer: &mut Tracer<'_>) {
-        fn object(value: &Object, tracer: &mut Tracer<'_>) {
-            if let Some(handle) = value.0.handle() {
-                tracer.mark(handle);
-            }
-        }
-        fn value(value: &Value, tracer: &mut Tracer<'_>) {
-            if let Value::Object(value) = value {
-                object(value, tracer);
-            }
-        }
         fn bindings(record: &DeclarativeRecord, tracer: &mut Tracer<'_>) {
             for binding in &record.bindings {
                 if let Some(v) = &binding.value {
@@ -183,11 +173,11 @@ impl Trace for EnvironmentData {
         }
         match &*self.record.borrow() {
             EnvironmentRecord::Declarative(record) => bindings(record, tracer),
-            EnvironmentRecord::Object(record) => object(&record.binding_object, tracer),
+            EnvironmentRecord::Object(record) => record.binding_object.trace(tracer),
             EnvironmentRecord::Global(record) => {
-                object(&record.object_record.binding_object, tracer);
+                record.object_record.binding_object.trace(tracer);
                 bindings(&record.declarative_record, tracer);
-                value(&record.global_this_value, tracer);
+                record.global_this_value.trace(tracer);
             }
             EnvironmentRecord::Function(record) => {
                 bindings(&record.declarative_record, tracer);
@@ -224,14 +214,14 @@ struct Binding {
 
 #[derive(Clone)]
 struct ObjectRecord {
-    binding_object: Object,
+    binding_object: StoredObject,
     options: ObjectEnvironmentOptions,
 }
 
 struct GlobalRecord {
     object_record: ObjectRecord,
     declarative_record: DeclarativeRecord,
-    global_this_value: Value,
+    global_this_value: StoredValue,
     var_declared_names: Vec<JsString>,
 }
 
@@ -405,29 +395,39 @@ impl Environment {
         outer: Option<Self>,
         options: ObjectEnvironmentOptions,
     ) -> Self {
-        Self::new(
+        let runtime = binding_object.0.runtime().cloned();
+        let stored = StoredObject::initial(runtime.as_ref(), &binding_object)
+            .expect("binding object context");
+        Self::new_with_runtime(
             outer,
             EnvironmentRecord::Object(ObjectRecord {
-                binding_object,
+                binding_object: stored,
                 options,
             }),
+            runtime,
         )
     }
 
     /// Creates a global environment record.
     #[must_use]
     pub fn global(global_object: Object, global_this_value: Value) -> Self {
-        Self::new(
+        let runtime = global_object.0.runtime().cloned();
+        let binding_object =
+            StoredObject::initial(runtime.as_ref(), &global_object).expect("global object context");
+        let stored_this = StoredValue::initial(runtime.as_ref(), &global_this_value)
+            .expect("global this context");
+        Self::new_with_runtime(
             None,
             EnvironmentRecord::Global(GlobalRecord {
                 object_record: ObjectRecord {
-                    binding_object: global_object,
+                    binding_object,
                     options: ObjectEnvironmentOptions::default(),
                 },
                 declarative_record: DeclarativeRecord::default(),
-                global_this_value,
+                global_this_value: stored_this,
                 var_declared_names: Vec::new(),
             }),
+            runtime,
         )
     }
 
@@ -509,18 +509,7 @@ impl Environment {
     }
 
     fn new(outer: Option<Self>, record: EnvironmentRecord) -> Self {
-        let runtime = outer
-            .as_ref()
-            .and_then(StoredOwner::runtime)
-            .cloned()
-            .or_else(|| {
-                let object = match &record {
-                    EnvironmentRecord::Object(record) => Some(&record.binding_object),
-                    EnvironmentRecord::Global(record) => Some(&record.object_record.binding_object),
-                    _ => None,
-                };
-                object.and_then(|object| object.0.runtime()).cloned()
-            });
+        let runtime = outer.as_ref().and_then(StoredOwner::runtime).cloned();
         Self::new_with_runtime(outer, record, runtime)
     }
 
@@ -592,7 +581,7 @@ impl Environment {
                 }
             }
         };
-        object_record.has_binding(name)
+        object_record.has_binding(self, name)
     }
 
     /// Creates an uninitialized mutable binding.
@@ -605,7 +594,7 @@ impl Environment {
             }
         };
         if let Some(record) = object_record {
-            return record.create_mutable(name, deletable);
+            return record.create_mutable(self, name, deletable);
         }
         let mut record = self.0.record.borrow_mut();
         match &mut *record {
@@ -646,7 +635,7 @@ impl Environment {
     /// Initializes an existing binding, ending its temporal dead zone.
     pub fn initialize_binding(&self, name: &JsString, value: Value) -> RuntimeResult<()> {
         if let Some(record) = self.object_record_for_binding(name) {
-            return record.initialize(name, value);
+            return record.initialize(self, name, value);
         }
         let mut record = self.0.record.borrow_mut();
         match &mut *record {
@@ -682,7 +671,7 @@ impl Environment {
         strict: bool,
     ) -> RuntimeResult<()> {
         if let Some(record) = self.object_record_for_binding(name) {
-            return record.set(name, value, strict);
+            return record.set(self, name, value, strict);
         }
         let mut record = self.0.record.borrow_mut();
         match &mut *record {
@@ -717,7 +706,7 @@ impl Environment {
     /// Reads a binding, raising ReferenceError for absent or uninitialized names.
     pub fn get_binding_value(&self, name: &JsString, strict: bool) -> RuntimeResult<Value> {
         if let Some(record) = self.object_record_for_binding(name) {
-            return record.get(name, strict);
+            return record.get(self, name, strict);
         }
         let imported = {
             let record = self.0.record.borrow();
@@ -754,21 +743,27 @@ impl Environment {
 
     /// Deletes a binding when the record and its attributes allow deletion.
     pub fn delete_binding(&self, name: &JsString) -> RuntimeResult<bool> {
+        if let Some(object_record) = self.object_record_for_binding(name) {
+            let deleted = object_record.delete(self, name)?;
+            if deleted {
+                let mut record = self.0.record.borrow_mut();
+                if let EnvironmentRecord::Global(record) = &mut *record {
+                    record
+                        .var_declared_names
+                        .retain(|candidate| candidate != name);
+                }
+            }
+            return Ok(deleted);
+        }
         let mut record = self.0.record.borrow_mut();
         match &mut *record {
             EnvironmentRecord::Declarative(record) => Ok(record.delete(name)),
-            EnvironmentRecord::Object(record) => Ok(record.delete(name)),
+            EnvironmentRecord::Object(_) => unreachable!(),
             EnvironmentRecord::Global(record) => {
                 if record.declarative_record.has_binding(name) {
                     Ok(record.declarative_record.delete(name))
                 } else {
-                    let deleted = record.object_record.delete(name);
-                    if deleted {
-                        record
-                            .var_declared_names
-                            .retain(|candidate| candidate != name);
-                    }
-                    Ok(deleted)
+                    unreachable!()
                 }
             }
             EnvironmentRecord::Function(record) => Ok(record.declarative_record.delete(name)),
@@ -845,8 +840,19 @@ impl Environment {
     #[must_use]
     pub fn binding_object(&self) -> Option<Object> {
         match &*self.0.record.borrow() {
-            EnvironmentRecord::Object(record) => Some(record.binding_object.clone()),
-            EnvironmentRecord::Global(record) => Some(record.object_record.binding_object.clone()),
+            EnvironmentRecord::Object(record) => Some(
+                record
+                    .binding_object
+                    .load(self)
+                    .expect("live binding object"),
+            ),
+            EnvironmentRecord::Global(record) => Some(
+                record
+                    .object_record
+                    .binding_object
+                    .load(self)
+                    .expect("live global object"),
+            ),
             _ => None,
         }
     }
@@ -856,7 +862,7 @@ impl Environment {
     pub fn with_base_object(&self) -> Option<Object> {
         match &*self.0.record.borrow() {
             EnvironmentRecord::Object(record) if record.options.with_environment => {
-                Some(record.binding_object.clone())
+                Some(record.binding_object.load(self).expect("live with object"))
             }
             _ => None,
         }
@@ -1006,7 +1012,7 @@ impl Environment {
 
     /// Returns the Global Environment Record's `[[GlobalThisValue]]`.
     pub fn global_this_value(&self) -> RuntimeResult<Value> {
-        self.with_global(|record| Ok(record.global_this_value.clone()))
+        self.with_global(|record| record.global_this_value.load(self))
     }
 
     /// Returns whether this function record provides a local `this` binding.
@@ -1081,7 +1087,7 @@ impl Environment {
     }
 
     fn global_binding_object(&self) -> RuntimeResult<Object> {
-        self.with_global(|record| Ok(record.object_record.binding_object.clone()))
+        self.with_global(|record| record.object_record.binding_object.load(self))
     }
 
     fn with_global<T>(
@@ -1274,31 +1280,42 @@ impl Binding {
 }
 
 impl ObjectRecord {
-    fn has_binding(&self, name: &JsString) -> RuntimeResult<bool> {
-        let found = self.binding_object.has_property(&string_key(name))?;
+    fn has_binding(&self, owner: &Environment, name: &JsString) -> RuntimeResult<bool> {
+        let object = self.binding_object.load(owner)?;
+        let found = object.has_property(&string_key(name))?;
         if !found || !self.options.with_environment {
             return Ok(found);
         }
         let Some(unscopables_key) = &self.options.unscopables_key else {
             return Ok(true);
         };
-        let unscopables = self.binding_object.get(unscopables_key)?;
+        let unscopables = object.get(unscopables_key)?;
         if let Value::Object(unscopables) = unscopables {
             return Ok(!unscopables.get(&string_key(name))?.to_boolean());
         }
         Ok(true)
     }
 
-    fn create_mutable(&self, name: JsString, deletable: bool) -> RuntimeResult<()> {
+    fn create_mutable(
+        &self,
+        owner: &Environment,
+        name: JsString,
+        deletable: bool,
+    ) -> RuntimeResult<()> {
+        let object = self.binding_object.load(owner)?;
         define_or_error(
-            &self.binding_object,
+            &object,
             string_key(&name),
             PropertyDescriptor::data(Value::Undefined, true, true, deletable),
         )
     }
 
-    fn initialize(&self, name: &JsString, value: Value) -> RuntimeResult<()> {
-        if self.binding_object.set(&string_key(name), value)? {
+    fn initialize(&self, owner: &Environment, name: &JsString, value: Value) -> RuntimeResult<()> {
+        if self
+            .binding_object
+            .load(owner)?
+            .set(&string_key(name), value)?
+        {
             Ok(())
         } else {
             Err(RuntimeError::type_error(
@@ -1307,27 +1324,41 @@ impl ObjectRecord {
         }
     }
 
-    fn set(&self, name: &JsString, value: Value, strict: bool) -> RuntimeResult<()> {
-        if self.binding_object.set(&string_key(name), value)? || !strict {
+    fn set(
+        &self,
+        owner: &Environment,
+        name: &JsString,
+        value: Value,
+        strict: bool,
+    ) -> RuntimeResult<()> {
+        if self
+            .binding_object
+            .load(owner)?
+            .set(&string_key(name), value)?
+            || !strict
+        {
             Ok(())
         } else {
             Err(RuntimeError::type_error("object binding is not writable"))
         }
     }
 
-    fn get(&self, name: &JsString, strict: bool) -> RuntimeResult<Value> {
-        if !self.binding_object.has_property(&string_key(name))? {
+    fn get(&self, owner: &Environment, name: &JsString, strict: bool) -> RuntimeResult<Value> {
+        let object = self.binding_object.load(owner)?;
+        if !object.has_property(&string_key(name))? {
             return if strict {
                 Err(reference_error(name, "is not defined"))
             } else {
                 Ok(Value::Undefined)
             };
         }
-        self.binding_object.get(&string_key(name))
+        object.get(&string_key(name))
     }
 
-    fn delete(&self, name: &JsString) -> bool {
-        self.binding_object.delete(&string_key(name))
+    fn delete(&self, owner: &Environment, name: &JsString) -> RuntimeResult<bool> {
+        self.binding_object
+            .load(owner)?
+            .try_delete(&string_key(name))
     }
 }
 
@@ -1355,6 +1386,63 @@ fn reference_error(name: &JsString, detail: &str) -> RuntimeError {
 mod slot_hint_tests {
     use super::*;
     #[test]
+    fn managed_object_and_global_records_do_not_root_their_stored_objects() {
+        for global in [false, true] {
+            let runtime = Runtime::new();
+            let object = Object::new_in(&runtime);
+            object
+                .create_data_property("answer".into(), Value::Number(42.0))
+                .unwrap();
+            object
+                .create_data_property("self".into(), Value::Object(object.clone()))
+                .unwrap();
+            let weak = object.downgrade();
+            let global_this = Object::new_in(&runtime);
+            let weak_this = global_this.downgrade();
+            let environment = if global {
+                Environment::global(object.clone(), Value::Object(global_this.clone()))
+            } else {
+                Environment::object(
+                    object.clone(),
+                    None,
+                    ObjectEnvironmentOptions {
+                        with_environment: true,
+                        ..ObjectEnvironmentOptions::default()
+                    },
+                )
+            };
+            drop(object);
+            drop(global_this);
+            assert_eq!(runtime.diagnostics().rooted, 1);
+            assert_eq!(
+                runtime.collect_migration_graph().unwrap().retained,
+                if global { 3 } else { 2 }
+            );
+            assert_eq!(environment.binding_object(), weak.upgrade());
+            assert!(
+                environment
+                    .get_binding_value(&"answer".into(), true)
+                    .unwrap()
+                    .same_value(&Value::Number(42.0))
+            );
+            if global {
+                assert!(
+                    environment
+                        .global_this_value()
+                        .unwrap()
+                        .same_value(&Value::Object(weak_this.upgrade().unwrap()))
+                );
+            } else {
+                assert_eq!(environment.with_base_object(), weak.upgrade());
+                assert!(weak_this.upgrade().is_none());
+            }
+            drop(environment);
+            assert_eq!(runtime.collect_migration_graph().unwrap().retained, 0);
+            assert!(weak.upgrade().is_none());
+            assert!(weak_this.upgrade().is_none());
+        }
+    }
+    #[test]
     fn managed_global_declarations_release_borrows_before_proxy_reentry_and_gc() {
         let runtime = Runtime::new();
         let target = Object::new_in(&runtime);
@@ -1379,7 +1467,7 @@ mod slot_hint_tests {
                 Value::Object(trap.clone()),
             )
             .unwrap();
-        let proxy = crate::runtime::ProxyObject::try_new(target.clone(), handler).unwrap();
+        let proxy = crate::runtime::ProxyObject::try_new(target.clone(), handler.clone()).unwrap();
         let environment = Environment::global(proxy.object(), Value::Object(proxy.object()));
         *slot.borrow_mut() = Some(environment.clone());
         environment
@@ -1397,9 +1485,33 @@ mod slot_hint_tests {
                 .same_value(&Value::Number(42.0))
         );
         assert!(calls.get() >= 2);
+        let delete_trap = Object::new_in(&runtime);
+        let delete_runtime = runtime.clone();
+        let delete_slot = slot.clone();
+        delete_trap.set_native_call(move |_, arguments| {
+            delete_runtime.collect_migration_graph().unwrap();
+            let environment = delete_slot.borrow().clone().unwrap();
+            environment.create_mutable_binding("deleteNested".into(), false)?;
+            let Value::Object(target) = &arguments[0] else {
+                panic!("delete target");
+            };
+            let Value::String(key) = &arguments[1] else {
+                panic!("delete key");
+            };
+            target.try_delete(&key.clone().into()).map(Value::Boolean)
+        });
+        handler
+            .create_data_property("deleteProperty".into(), Value::Object(delete_trap.clone()))
+            .unwrap();
+        assert!(environment.delete_binding(&"function".into()).unwrap());
+        assert!(!environment.has_var_declaration(&"function".into()).unwrap());
+        assert!(target.get_own_property(&"function".into()).is_none());
         let marker = Object::new_in(&runtime);
         let thrown = marker.clone();
         trap.set_native_call(move |_, _| Err(RuntimeError::thrown(Value::Object(thrown.clone()))));
+        let thrown = marker.clone();
+        delete_trap
+            .set_native_call(move |_, _| Err(RuntimeError::thrown(Value::Object(thrown.clone()))));
         for result in [
             environment
                 .has_restricted_global_property(&"abrupt".into())
@@ -1412,6 +1524,7 @@ mod slot_hint_tests {
                 .map(|_| ()),
             environment.create_global_var_binding("abrupt".into(), true),
             environment.create_global_function_binding("abrupt".into(), Value::Number(0.0), true),
+            environment.delete_binding(&"abrupt".into()).map(|_| ()),
         ] {
             assert!(
                 result
@@ -1425,6 +1538,7 @@ mod slot_hint_tests {
         assert!(target.get_own_property(&"abrupt".into()).is_none());
         // Ordinary host captures explicitly release their external roots.
         trap.clear_native_call();
+        delete_trap.clear_native_call();
         slot.borrow_mut().take();
     }
     #[test]

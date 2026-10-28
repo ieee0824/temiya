@@ -1437,6 +1437,9 @@ impl super::ObjectData {
         if let Some(target) = &state.bound_target {
             target.trace(tracer);
         }
+        if let Some(iterator) = &state.iterator {
+            iterator.trace(tracer);
+        }
         for entry in &state.properties {
             entry.descriptor.trace(tracer);
         }

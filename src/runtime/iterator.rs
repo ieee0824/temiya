@@ -10,13 +10,25 @@ pub(crate) const MAX_ARGUMENTS: usize = 65_536;
 
 pub(super) enum IteratorSlot {
     Array {
-        target: Option<Object>,
+        target: Option<super::stored::StoredObject>,
         index: u64,
     },
     String {
         text: Option<JsString>,
         index: usize,
     },
+}
+
+impl IteratorSlot {
+    pub(super) fn trace(&self, tracer: &mut crate::gc::Tracer<'_>) {
+        if let Self::Array {
+            target: Some(target),
+            ..
+        } = self
+        {
+            target.trace(tracer);
+        }
+    }
 }
 
 pub(crate) fn push_argument(arguments: &mut Vec<Value>, value: Value) -> RuntimeResult<()> {
@@ -128,8 +140,9 @@ pub(super) fn install(
     let boxing = super::array_methods::iterator_boxing(intrinsics, symbols);
     method(&array, &function, "values", 0, move |this, _| {
         let target = boxing(this)?;
-        let result = Object::new();
+        let result = Object::new_for(&array_iterator);
         result.set_prototype(Some(array_iterator.clone()));
+        let target = super::stored::StoredObject::store(&result, &target)?;
         result.0.state.borrow_mut().iterator = Some(Box::new(IteratorSlot::Array {
             target: Some(target),
             index: 0,
@@ -152,7 +165,7 @@ pub(super) fn install(
                 ));
             }
             let text = primitive(&this, &to_primitive, true)?.to_js_string()?;
-            let result = Object::new();
+            let result = Object::new_for(&string_iterator);
             result.set_prototype(Some(string_iterator.clone()));
             result.0.state.borrow_mut().iterator = Some(Box::new(IteratorSlot::String {
                 text: Some(text),
@@ -189,7 +202,7 @@ fn symbol_method(
 }
 
 fn result(prototype: &Object, value: Value, done: bool) -> RuntimeResult<Value> {
-    let result = Object::new();
+    let result = Object::new_for(prototype);
     result.set_prototype(Some(prototype.clone()));
     result.create_data_property("value".into(), value)?;
     result.create_data_property("done".into(), Value::Boolean(done))?;
@@ -214,6 +227,7 @@ fn array_next(this: Value, to_primitive: &PropertyKey, prototype: &Object) -> Ru
     let Some(target) = target else {
         return result(prototype, Value::Undefined, true);
     };
+    let target = target.load(&iterator)?;
     let length = primitive(&target.get(&"length".into())?, to_primitive, false)?.to_number()?;
     let length = (length as u64).min(9_007_199_254_740_991);
     if index >= length {
@@ -273,4 +287,60 @@ fn string_next(this: Value, prototype: &Object) -> RuntimeResult<Value> {
     };
     let done = value.is_none();
     result(prototype, value.unwrap_or(Value::Undefined), done)
+}
+
+#[cfg(test)]
+mod managed_tests {
+    use super::*;
+    use crate::runtime::ArrayObject;
+
+    #[test]
+    fn managed_iterator_keeps_target_until_exhaustion_then_releases_it() {
+        let runtime = crate::runtime::Runtime::new();
+        let prototype = Object::new_in(&runtime);
+        let target = ArrayObject::new_for(&prototype, 1).unwrap().object();
+        target
+            .create_data_property("0".into(), Value::Number(42.0))
+            .unwrap();
+        let weak = target.downgrade();
+        let iterator = Object::new_in(&runtime);
+        let stored = super::super::stored::StoredObject::store(&iterator, &target).unwrap();
+        iterator.0.state.borrow_mut().iterator = Some(Box::new(IteratorSlot::Array {
+            target: Some(stored),
+            index: 0,
+        }));
+        drop(target);
+        runtime.collect_migration_graph().unwrap();
+        assert!(weak.upgrade().is_some());
+        let Value::Object(first) = array_next(
+            Value::Object(iterator.clone()),
+            &"unused".into(),
+            &prototype,
+        )
+        .unwrap() else {
+            panic!("iterator result");
+        };
+        assert!(
+            first
+                .get(&"value".into())
+                .unwrap()
+                .same_value(&Value::Number(42.0))
+        );
+        drop(first);
+        let Value::Object(last) = array_next(
+            Value::Object(iterator.clone()),
+            &"unused".into(),
+            &prototype,
+        )
+        .unwrap() else {
+            panic!("iterator result");
+        };
+        assert!(last.get(&"done".into()).unwrap().to_boolean());
+        drop(last);
+        runtime.collect_migration_graph().unwrap();
+        assert!(weak.upgrade().is_none());
+        drop(iterator);
+        drop(prototype);
+        assert_eq!(runtime.collect_migration_graph().unwrap().retained, 0);
+    }
 }

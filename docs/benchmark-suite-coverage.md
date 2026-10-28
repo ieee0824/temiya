@@ -35,5 +35,9 @@ latest source6c3 cohort records32 faster/1 noise decisions and does not qualify
 all33; its hosted follow-up remains pending. Unqualified/unaffined runs and
 material regressions against main are retained alongside these observations.
 These newer results do not retroactively change the historical component
-cohort or establish cross-engine GC pause superiority. #427's remaining phase,
-comparison and integration requirements need their own completion audit.
+cohort or establish cross-engine GC pause superiority. #427's [phase evidence map](../benchmarks/runtime-gc/experiments/primitive-prototypes-6c3/phase-acceptance-map.json)
+records each stage separately. The current original-eleven Engine GC profile
+also has a clean-source/compiler/machine/affinity record and independent
+root/pause checks; it is a single instrumented pass, not cross-engine GC
+performance proof. Latest hosted speed/full-Miri and final integration audits
+remain required before completion.

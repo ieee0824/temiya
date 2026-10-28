@@ -1,7 +1,5 @@
 //! Fundamental Object, Function, and Reflect built-ins.
 
-use std::{cell::RefCell, rc::Rc};
-
 use super::{
     ArrayBuffer, ArrayObject, DataView, DateObject, HostHooks, IntrinsicId, IntrinsicRegistry,
     JsString, Json, MapObject, Math, NumberObject, Object, PropertyDescriptor, PropertyKey,
@@ -937,43 +935,8 @@ fn method(
 
 fn bound_function(target: Object, bound_this: Value, prefix: Vec<Value>) -> RuntimeResult<Object> {
     let prototype = target.try_prototype()?;
-    let call_target = target.clone();
-    let call_prefix = prefix.clone();
-    let call = move |_: Value, suffix: &[Value]| {
-        let mut arguments = call_prefix.clone();
-        arguments.extend_from_slice(suffix);
-        call_target.call(bound_this.clone(), &arguments)
-    };
-    let function = if target.is_constructor() {
-        let slot = Rc::new(RefCell::new(None::<super::WeakObject>));
-        let construct_slot = slot.clone();
-        let construct_target = target.clone();
-        let construct_prefix = prefix;
-        let function =
-            Object::native_callable_constructor_for(&target, call, move |suffix, new_target| {
-                let mut arguments = construct_prefix.clone();
-                arguments.extend_from_slice(suffix);
-                let actual_new_target = if construct_slot
-                    .borrow()
-                    .as_ref()
-                    .and_then(super::WeakObject::upgrade)
-                    .as_ref()
-                    == Some(&new_target)
-                {
-                    construct_target.clone()
-                } else {
-                    new_target
-                };
-                construct_target.construct(&arguments, actual_new_target)
-            });
-        *slot.borrow_mut() = Some(function.downgrade());
-        function
-    } else {
-        Object::native_function_for(&target, call)
-    };
+    let function = Object::new_bound(&target, &bound_this, &prefix)?;
     function.initialize_prototype(prototype);
-    let stored_target = super::stored::StoredObject::store(&function, &target)?;
-    function.0.state.borrow_mut().bound_target = Some(stored_target);
     Ok(function)
 }
 

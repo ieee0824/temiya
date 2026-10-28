@@ -291,6 +291,32 @@ fn callable_or_undefined(value: Value, name: &str) -> RuntimeResult<Option<Objec
 type NativeCall = Rc<dyn Fn(Value, &[Value]) -> RuntimeResult<Value>>;
 type NativeConstruct = Rc<dyn Fn(&[Value], Object) -> RuntimeResult<Object>>;
 
+pub(super) struct BoundFunction {
+    pub(super) target: StoredObject,
+    this_value: StoredValue,
+    arguments: Vec<StoredValue>,
+    constructor: bool,
+}
+
+impl BoundFunction {
+    fn arguments(&self, owner: &Object, suffix: &[Value]) -> RuntimeResult<Vec<Value>> {
+        let mut arguments = Vec::with_capacity(self.arguments.len() + suffix.len());
+        for value in &self.arguments {
+            arguments.push(value.load(owner)?);
+        }
+        arguments.extend_from_slice(suffix);
+        Ok(arguments)
+    }
+
+    fn trace(&self, tracer: &mut crate::gc::Tracer<'_>) {
+        self.target.trace(tracer);
+        self.this_value.trace(tracer);
+        for argument in &self.arguments {
+            argument.trace(tracer);
+        }
+    }
+}
+
 #[derive(Clone)]
 struct PropertyEntry {
     key: PropertyKey,
@@ -306,7 +332,7 @@ pub(super) struct ObjectState {
     // read, so deleting/reordering properties never returns a stale descriptor.
     last_property: Cell<usize>,
     callable: Option<NativeCall>,
-    pub(super) bound_target: Option<StoredObject>,
+    pub(super) bound: Option<Rc<BoundFunction>>,
     construct: Option<NativeConstruct>,
     // The own data property already exists. Only its initial object value is
     // deferred until an operation observes or redefines that descriptor.
@@ -335,6 +361,24 @@ pub(super) fn ordinary_state() -> ObjectState {
 }
 
 impl Object {
+    pub(super) fn new_bound(
+        target: &Object,
+        this_value: &Value,
+        arguments: &[Value],
+    ) -> RuntimeResult<Self> {
+        let object = Self::new_for(target);
+        let bound = BoundFunction {
+            target: StoredObject::store(&object, target)?,
+            this_value: StoredValue::store(&object, this_value)?,
+            arguments: arguments
+                .iter()
+                .map(|value| StoredValue::store(&object, value))
+                .collect::<RuntimeResult<_>>()?,
+            constructor: target.is_constructor(),
+        };
+        object.0.state.borrow_mut().bound = Some(Rc::new(bound));
+        Ok(object)
+    }
     pub(crate) fn own_element_value(&self, index: u32) -> Option<Value> {
         let state = self.0.state.borrow();
         if !state.array
@@ -556,7 +600,8 @@ impl Object {
     /// Returns whether this object has a `[[Call]]` internal method.
     #[must_use]
     pub fn is_callable(&self) -> bool {
-        self.0.state.borrow().callable.is_some()
+        let state = self.0.state.borrow();
+        state.callable.is_some() || state.bound.is_some()
     }
 
     /// Invokes this object's `[[Call]]` internal method.
@@ -564,9 +609,15 @@ impl Object {
     /// Calls and construction share a per-thread nesting limit of 32. Exceeding
     /// the limit returns RangeError; normal and abrupt exits release the budget.
     pub fn call(&self, this_value: Value, arguments: &[Value]) -> RuntimeResult<Value> {
-        let callback = self.0.state.borrow().callable.clone().ok_or_else(|| {
-            RuntimeError::type_error("object does not have a [[Call]] internal method")
-        })?;
+        let (callback, bound) = {
+            let state = self.0.state.borrow();
+            (state.callable.clone(), state.bound.clone())
+        };
+        if callback.is_none() && bound.is_none() {
+            return Err(RuntimeError::type_error(
+                "object does not have a [[Call]] internal method",
+            ));
+        }
         if self.0.runtime().is_some() {
             if let Value::Object(value) = &this_value {
                 StoredObject::check_context(self, value)?;
@@ -578,7 +629,14 @@ impl Object {
             }
         }
         let _depth = CallDepthGuard::enter()?;
-        let result = callback(this_value, arguments);
+        let result = if let Some(bound) = bound {
+            let target = bound.target.load(self)?;
+            let this_value = bound.this_value.load(self)?;
+            let arguments = bound.arguments(self, arguments)?;
+            target.call(this_value, &arguments)
+        } else {
+            callback.expect("validated callable")(this_value, arguments)
+        };
         if let Err(error) = &result {
             self.check_abrupt_context(error)?;
         }
@@ -594,15 +652,22 @@ impl Object {
     /// Returns whether this object has a `[[Construct]]` internal method.
     #[must_use]
     pub fn is_constructor(&self) -> bool {
-        self.0.state.borrow().construct.is_some()
+        let state = self.0.state.borrow();
+        state.construct.is_some() || state.bound.as_ref().is_some_and(|bound| bound.constructor)
     }
 
     /// Invokes this object's `[[Construct]]` internal method.
     /// Shares the nesting limit documented on [`Self::call`].
     pub fn construct(&self, arguments: &[Value], new_target: Self) -> RuntimeResult<Self> {
-        let callback = self.0.state.borrow().construct.clone().ok_or_else(|| {
-            RuntimeError::type_error("object does not have a [[Construct]] internal method")
-        })?;
+        let (callback, bound) = {
+            let state = self.0.state.borrow();
+            (state.construct.clone(), state.bound.clone())
+        };
+        if callback.is_none() && !bound.as_ref().is_some_and(|bound| bound.constructor) {
+            return Err(RuntimeError::type_error(
+                "object does not have a [[Construct]] internal method",
+            ));
+        }
         if self.0.runtime().is_some() {
             StoredObject::check_context(self, &new_target)?;
             for value in arguments {
@@ -612,7 +677,18 @@ impl Object {
             }
         }
         let _depth = CallDepthGuard::enter()?;
-        let result = callback(arguments, new_target);
+        let result = if let Some(bound) = bound {
+            let target = bound.target.load(self)?;
+            let arguments = bound.arguments(self, arguments)?;
+            let new_target = if new_target == *self {
+                target.clone()
+            } else {
+                new_target
+            };
+            target.construct(&arguments, new_target)
+        } else {
+            callback.expect("validated constructor")(arguments, new_target)
+        };
         if let Err(error) = &result {
             self.check_abrupt_context(error)?;
         }
@@ -1434,8 +1510,8 @@ impl super::ObjectData {
         if let Some(parent) = &state.lazy_function_prototype {
             parent.trace(tracer);
         }
-        if let Some(target) = &state.bound_target {
-            target.trace(tracer);
+        if let Some(bound) = &state.bound {
+            bound.trace(tracer);
         }
         if let Some(iterator) = &state.iterator {
             iterator.trace(tracer);

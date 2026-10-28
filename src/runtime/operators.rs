@@ -248,9 +248,9 @@ fn has_instance(
         } else if !constructor.is_callable() {
             return Ok(false);
         }
-        let bound = constructor.0.state.borrow().bound_target.clone();
-        if let Some(target) = bound {
-            constructor = target.load(&constructor)?;
+        let bound = constructor.0.state.borrow().bound.clone();
+        if let Some(bound) = bound {
+            constructor = bound.target.load(&constructor)?;
             ordinary = false;
             continue;
         }

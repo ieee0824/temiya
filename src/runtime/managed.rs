@@ -235,6 +235,61 @@ mod stored_graph_tests {
     use super::*;
     use crate::runtime::{PropertyDescriptor, Value};
     #[test]
+    fn bound_function_captures_are_traced_without_rooting_their_cycles() {
+        let runtime = Runtime::new();
+        let target = Object::new_in(&runtime);
+        target.set_native_call(|this, arguments| {
+            let Value::Object(this) = this else {
+                panic!("bound this");
+            };
+            let Value::Object(argument) = &arguments[0] else {
+                panic!("bound argument");
+            };
+            Ok(Value::Number(
+                this.get(&"answer".into())?.to_number()?
+                    + argument.get(&"answer".into())?.to_number()?,
+            ))
+        });
+        let this = Object::new_in(&runtime);
+        this.create_data_property("answer".into(), Value::Number(40.0))
+            .unwrap();
+        let argument = Object::new_in(&runtime);
+        argument
+            .create_data_property("answer".into(), Value::Number(2.0))
+            .unwrap();
+        let bound = Object::new_bound(
+            &target,
+            &Value::Object(this.clone()),
+            &[Value::Object(argument.clone())],
+        )
+        .unwrap();
+        let weak = [
+            target.downgrade(),
+            this.downgrade(),
+            argument.downgrade(),
+            bound.downgrade(),
+        ];
+        for object in [&target, &this, &argument] {
+            object
+                .create_data_property("back".into(), Value::Object(bound.clone()))
+                .unwrap();
+        }
+        drop(target);
+        drop(this);
+        drop(argument);
+        assert_eq!(runtime.diagnostics().rooted, 1);
+        assert_eq!(runtime.collect_migration_graph().unwrap().retained, 4);
+        assert!(
+            bound
+                .call(Value::Undefined, &[])
+                .unwrap()
+                .same_value(&Value::Number(42.0))
+        );
+        drop(bound);
+        assert_eq!(runtime.collect_migration_graph().unwrap().reclaimed, 4);
+        assert!(weak.iter().all(|object| object.upgrade().is_none()));
+    }
+    #[test]
     fn real_object_properties_are_unrooted_edges_and_cycles_are_swept() {
         let runtime = Runtime::new();
         let object = Object::new_in(&runtime);

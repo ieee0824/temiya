@@ -108,7 +108,7 @@ controls have slower labels for prop-mono pair 2 (1.425354), object-alloc pair 0
 identical executable hashes and show variability, not an implementation change.
 All direct baseline/Boa ARM comparisons also have 33 faster decisions.
 
-### Intel arithmetic remains unfinished
+### Historical Intel arithmetic result before final qualification
 
 Run 40555924150 copy 1 actually matched Intel Xeon 6973P-C and measured source
 4fb82dbc, baseline main and pinned actual Boa on the same host. Arithmetic
@@ -127,6 +127,31 @@ obtained no Xeon 6973P-C. Availability records retain all actual CPU models and
 skip measurements before building. Successful skipped jobs count as neither
 correctness nor speed passes. General AMD/ARM qualification does not substitute
 for the Intel requirement. No self-hosted runner was available at inspection.
+
+### Completed Intel acceptance and original-input profile
+
+The later production source merged in #517 beats pinned actual omoikane Boa
+on the original arithmetic input in all three Intel6973P-C pairs:
+0.852346 / 0.852616 / 0.804638 (run40607319755). Baseline/Boa also wins
+all three; candidate/baseline and same-binary arithmetic controls are within
+noise. Additional matched run40614644680 records three further wins and
+preserves baseline and same-binary variation without attributing it to code.
+
+Actual Intel instruction run40617376161 copy4 profiles baseline5616425 and
+source87c64d3 (production equivalent to merged main60eb4d3). Both workers
+complete the original 2,000,000 iterations twice, returning64 in actual
+Bytecode mode. Whole-process instruction totals are7,322,533,045 and
+7,154,510,797. VM/value/binding work remains substantial; the annotated
+integer-remainder helper accounts for160,000,000 current references
+(about2.24%), overlapping its containing arithmetic attribution. These
+are instruction references, not hardware cycles or native time shares.
+The original numerical implementation and boundary checks remain unchanged.
+
+[Actual Intel raw profiles, provenance, contributions and offline checks](../benchmarks/intel-arithmetic/README.md)
+complete the remaining profile requirement of #510. Earlier failed oracle
+and unavailable probes are retained; corrected independent arithmetic starts
+at1, matching the unmodified input, and returns64. Broader #427/#120
+application/collector/SpiderMonkey targets remain unfinished.
 
 ### Additional actual async evidence
 

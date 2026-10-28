@@ -1721,6 +1721,43 @@ impl Object {
 
     /// Defines a writable, enumerable, configurable own data property.
     pub fn create_data_property(&self, key: PropertyKey, value: Value) -> RuntimeResult<bool> {
+        if let Value::Object(value) = &value {
+            StoredObject::check_context(self, value)?;
+        }
+        {
+            let mut state = self.0.state.borrow_mut();
+            if state.proxy.is_none()
+                && !state.array
+                && state.string_data.is_none()
+                && state.lazy_function_prototype.is_none()
+            {
+                let position = state.properties.iter().position(|entry| entry.key == key);
+                if let Some(position) = position {
+                    // CreateDataProperty requests configurable=true, so an
+                    // existing nonconfigurable property always rejects it.
+                    if state.properties[position].descriptor.configurable() != Some(true) {
+                        return Ok(false);
+                    }
+                } else if !state.extensible {
+                    return Ok(false);
+                }
+                // All attributes are supplied and true. A configurable own
+                // descriptor can be replaced without loading its old value or
+                // getter facades. Validate/store the new edge before publishing.
+                let descriptor = StoredDescriptor::Data {
+                    value: StoredValue::store_owned(self, value)?,
+                    writable: true,
+                    enumerable: true,
+                    configurable: true,
+                };
+                if let Some(position) = position {
+                    state.properties[position].descriptor = descriptor;
+                } else {
+                    state.properties.push(PropertyEntry { key, descriptor });
+                }
+                return Ok(true);
+            }
+        }
         self.define_own_property(key, PropertyDescriptor::data(value, true, true, true))
     }
 

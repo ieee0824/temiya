@@ -11,6 +11,9 @@ pub(crate) fn create(realm: &Realm) -> Object {
 }
 
 pub(crate) fn property_key(realm: &Realm, value: Value) -> RuntimeResult<PropertyKey> {
+    if !matches!(value, Value::Object(_)) {
+        return value.to_property_key();
+    }
     super::coercion::primitive_with_hint(
         &value,
         &realm.well_known_symbol(WellKnownSymbol::ToPrimitive).into(),

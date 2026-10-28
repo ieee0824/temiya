@@ -356,3 +356,87 @@ fn prototype_changes_reject_cycles_and_non_extensible_objects() {
     assert!(!second.set_prototype(None));
     assert_eq!(second.prototype(), Some(third));
 }
+
+#[test]
+fn create_data_property_replaces_configurable_accessors_without_calling_them() {
+    let context = temiya::runtime::AllocationContext::new();
+    let object = Object::new_in(&context);
+    let getter = Object::native_function_in(&context, |_, _| {
+        panic!("replacing a descriptor must not invoke its getter")
+    });
+    object
+        .define_own_property(
+            key("x"),
+            PropertyDescriptor::accessor(Some(getter), None, false, true),
+        )
+        .unwrap();
+    object
+        .create_data_property(key("last"), Value::Undefined)
+        .unwrap();
+    object.prevent_extensions();
+    let child = Object::new_in(&context);
+    child
+        .create_data_property(key("self"), Value::Object(child.clone()))
+        .unwrap();
+    assert!(
+        object
+            .create_data_property(key("x"), Value::Object(child.clone()))
+            .unwrap()
+    );
+    drop(child);
+    context.collect_garbage().unwrap();
+    let descriptor = object.get_own_property(&key("x")).unwrap();
+    assert!(descriptor.is_data_descriptor());
+    assert_eq!(descriptor.writable, Some(true));
+    assert_eq!(descriptor.enumerable, Some(true));
+    assert_eq!(descriptor.configurable, Some(true));
+    let Some(Value::Object(child)) = descriptor.value else {
+        panic!("object value")
+    };
+    assert!(
+        child
+            .get(&key("self"))
+            .unwrap()
+            .same_value(&Value::Object(child.clone()))
+    );
+    assert_eq!(object.own_property_keys(), vec![key("x"), key("last")]);
+    assert!(
+        !object
+            .create_data_property(key("new"), Value::Undefined)
+            .unwrap()
+    );
+}
+
+#[test]
+fn create_data_property_rejects_foreign_edges_atomically_even_when_nonextensible() {
+    let context = temiya::runtime::AllocationContext::new();
+    let foreign_context = temiya::runtime::AllocationContext::new();
+    let object = Object::new_in(&context);
+    object
+        .create_data_property(key("x"), Value::Number(42.0))
+        .unwrap();
+    object
+        .define_own_property(
+            key("locked"),
+            PropertyDescriptor::data(Value::Number(1.0), true, true, false),
+        )
+        .unwrap();
+    object.prevent_extensions();
+    let foreign = Object::new_in(&foreign_context);
+    for name in ["x", "locked", "new"] {
+        assert!(
+            object
+                .create_data_property(key(name), Value::Object(foreign.clone()))
+                .is_err()
+        );
+    }
+    assert_same(object.get(&key("x")).unwrap(), Value::Number(42.0));
+    assert_same(object.get(&key("locked")).unwrap(), Value::Number(1.0));
+    assert!(
+        !object
+            .create_data_property(key("locked"), Value::Number(2.0))
+            .unwrap()
+    );
+    assert_eq!(object.own_property_keys(), vec![key("x"), key("locked")]);
+    context.collect_garbage().unwrap();
+}

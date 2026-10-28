@@ -1,12 +1,15 @@
 //! Bytecode-backed function objects. No AST body evaluation occurs here.
-use super::{environment::StoredEnvironment, execution::StoredRealm};
+use super::{
+    environment::{FunctionThis, StoredEnvironment},
+    execution::StoredRealm,
+};
 use std::rc::Rc;
 
 use crate::bytecode::{Constant, FunctionTemplate, Instruction, VirtualMachine};
 
 use super::{
     Completion, Environment, IntrinsicId, Object, PropertyDescriptor, Realm, RuntimeError,
-    RuntimeResult, ThisBindingStatus, Value,
+    RuntimeResult, Value,
 };
 
 struct Closure {
@@ -133,10 +136,16 @@ impl Closure {
         arguments: &[Value],
         new_target: Option<Object>,
     ) -> RuntimeResult<Value> {
-        let this_status = if self.template.arrow {
-            ThisBindingStatus::Lexical
+        let this = if self.template.arrow {
+            FunctionThis::Lexical
         } else {
-            ThisBindingStatus::Uninitialized
+            FunctionThis::Initialized(if self.template.strict {
+                this
+            } else if matches!(this, Value::Undefined | Value::Null) {
+                self.realm.global_this_value()?
+            } else {
+                boxed_this(&self.realm, this)?
+            })
         };
         let frame = if !self.template.arguments_object {
             let body = self.template.body.bytecode();
@@ -151,31 +160,24 @@ impl Closure {
                 Some(self.environment.clone()),
                 function,
                 new_target,
-                this_status,
+                this,
                 &self.template.parameters,
                 arguments,
                 capacity,
             )
         } else {
-            Environment::function(
+            Environment::function_with_parameters(
                 Some(self.environment.clone()),
                 function,
                 new_target,
-                this_status,
+                this,
+                &[],
+                &[],
+                0,
             )
         };
-        if !self.template.arrow {
-            let this = if self.template.strict {
-                this
-            } else if matches!(this, Value::Undefined | Value::Null) {
-                self.realm.global_this_value()?
-            } else {
-                boxed_this(&self.realm, this)?
-            };
-            frame.bind_this_value(this)?;
-            if self.template.arguments_object {
-                super::function::bind_arguments(&self.realm, &frame, arguments)?;
-            }
+        if !self.template.arrow && self.template.arguments_object {
+            super::function::bind_arguments(&self.realm, &frame, arguments)?;
         }
         if self.template.arguments_object {
             for (index, name) in self.template.parameters.iter().enumerate() {

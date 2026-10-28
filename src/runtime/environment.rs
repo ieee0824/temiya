@@ -49,6 +49,12 @@ pub enum ThisBindingStatus {
     Initialized,
 }
 
+pub(crate) enum FunctionThis {
+    Lexical,
+    Uninitialized,
+    Initialized(Value),
+}
+
 /// An identity-bearing lexical environment with an optional outer environment.
 #[derive(Clone)]
 pub struct Environment(pub(super) EnvironmentReference);
@@ -428,6 +434,23 @@ impl Environment {
         new_target: Option<Object>,
         this_status: ThisBindingStatus,
     ) -> Self {
+        let this = match this_status {
+            ThisBindingStatus::Lexical => FunctionThis::Lexical,
+            ThisBindingStatus::Uninitialized => FunctionThis::Uninitialized,
+            ThisBindingStatus::Initialized => FunctionThis::Initialized(Value::Undefined),
+        };
+        Self::function_with_parameters(outer, function_object, new_target, this, &[], &[], 0)
+    }
+
+    pub(crate) fn function_with_parameters(
+        outer: Option<Self>,
+        function_object: Object,
+        new_target: Option<Object>,
+        this: FunctionThis,
+        parameters: &[JsString],
+        arguments: &[Value],
+        capacity: usize,
+    ) -> Self {
         let runtime = function_object.0.runtime().cloned();
         let stored_new_target = new_target
             .as_ref()
@@ -436,34 +459,21 @@ impl Environment {
             .expect("new.target allocation context");
         let stored_function = StoredObject::initial(runtime.as_ref(), &function_object)
             .expect("function allocation context");
-        Self::new_with_runtime(
-            outer,
-            EnvironmentRecord::Function(FunctionRecord {
-                declarative_record: DeclarativeRecord::default(),
-                this_status,
-                this_value: (this_status == ThisBindingStatus::Initialized)
-                    .then_some(StoredValue::Undefined),
-                function_object: stored_function,
-                new_target: stored_new_target,
-            }),
-            runtime,
-        )
-    }
-
-    pub(crate) fn function_with_parameters(
-        outer: Option<Self>,
-        function_object: Object,
-        new_target: Option<Object>,
-        this_status: ThisBindingStatus,
-        parameters: &[JsString],
-        arguments: &[Value],
-        capacity: usize,
-    ) -> Self {
-        let environment = Self::function(outer, function_object, new_target, this_status);
+        let (this_status, this_value) = match this {
+            FunctionThis::Lexical => (ThisBindingStatus::Lexical, None),
+            FunctionThis::Uninitialized => (ThisBindingStatus::Uninitialized, None),
+            FunctionThis::Initialized(value) => (
+                ThisBindingStatus::Initialized,
+                Some(
+                    StoredValue::initial(runtime.as_ref(), &value)
+                        .expect("this allocation context"),
+                ),
+            ),
+        };
         let mut bindings: Vec<Binding> = Vec::with_capacity(capacity.max(parameters.len()));
         for (index, name) in parameters.iter().enumerate() {
-            let value = StoredValue::store(
-                &environment,
+            let value = StoredValue::initial(
+                runtime.as_ref(),
                 arguments.get(index).unwrap_or(&Value::Undefined),
             )
             .expect("parameter allocation context");
@@ -481,14 +491,19 @@ impl Environment {
                 });
             }
         }
-        {
-            let mut record = environment.0.record.borrow_mut();
-            let EnvironmentRecord::Function(record) = &mut *record else {
-                unreachable!()
-            };
-            record.declarative_record.bindings = bindings;
-        }
-        environment
+        // All initial edges participate in the incoming-record trace before
+        // allocation. They need no post-publication write barriers.
+        Self::new_with_runtime(
+            outer,
+            EnvironmentRecord::Function(FunctionRecord {
+                declarative_record: DeclarativeRecord { bindings },
+                this_status,
+                this_value,
+                function_object: stored_function,
+                new_target: stored_new_target,
+            }),
+            runtime,
+        )
     }
 
     /// Creates a module environment record in its required parent's context.
@@ -1769,7 +1784,7 @@ mod slot_hint_tests {
             None,
             Object::new_in(&context),
             None,
-            ThisBindingStatus::Uninitialized,
+            FunctionThis::Uninitialized,
             &names,
             &[Value::Number(1.0)],
             3,
@@ -1789,6 +1804,72 @@ mod slot_hint_tests {
                 .unwrap()
                 .same_value(&Value::Number(42.0))
         );
+    }
+
+    #[test]
+    fn prepared_function_edges_survive_collection_before_frame_publication() {
+        let context = Runtime::new();
+        let function = Object::new_in(&context);
+        let weak_function = function.downgrade();
+        let receiver = Object::new_in(&context);
+        receiver
+            .create_data_property("self".into(), Value::Object(receiver.clone()))
+            .unwrap();
+        let weak_receiver = receiver.downgrade();
+        let argument = Object::new_in(&context);
+        argument
+            .create_data_property("answer".into(), Value::Number(42.0))
+            .unwrap();
+        let target = Object::new_in(&context);
+        let weak_target = target.downgrade();
+        let arguments = [Value::Object(argument)];
+        context.set_allocation_collection_interval(1);
+        let environment = Environment::function_with_parameters(
+            None,
+            function,
+            Some(target),
+            FunctionThis::Initialized(Value::Object(receiver)),
+            &["value".into()],
+            &arguments,
+            1,
+        );
+        drop(arguments);
+        context.collect_garbage().unwrap();
+        assert_eq!(
+            environment.function_object().unwrap(),
+            weak_function.upgrade().unwrap()
+        );
+        assert_eq!(
+            environment.new_target().unwrap().unwrap(),
+            weak_target.upgrade().unwrap()
+        );
+        {
+            let Value::Object(receiver) = environment.get_this_binding().unwrap() else {
+                panic!("receiver")
+            };
+            assert_eq!(receiver, weak_receiver.upgrade().unwrap());
+            assert!(
+                receiver
+                    .get(&"self".into())
+                    .unwrap()
+                    .same_value(&Value::Object(receiver.clone()))
+            );
+            let Value::Object(argument) = environment
+                .get_binding_value(&"value".into(), true)
+                .unwrap()
+            else {
+                panic!("argument")
+            };
+            assert!(
+                argument
+                    .get(&"answer".into())
+                    .unwrap()
+                    .same_value(&Value::Number(42.0))
+            );
+        }
+        context.verify_migration_barriers().unwrap();
+        drop(environment);
+        assert_eq!(context.collect_garbage().unwrap().retained, 0);
     }
 
     #[test]

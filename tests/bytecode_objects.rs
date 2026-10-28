@@ -54,6 +54,18 @@ fn computed_key_conversion_precedes_value_evaluation_once() {
         );
     }
 }
+
+#[test]
+fn named_keys_preserve_utf16_order_and_define_data_without_prototype_setters() {
+    for vm in [false, true] {
+        let realm = Realm::ordinary();
+        check(
+            &realm,
+            r#"var log='';Object.defineProperty(Object.prototype,'x',{set:function(v){throw 'setter';},configurable:true});var o={x:(log+='a',1),'\uD800':(log+='b',2),x:(log+='c',42),__proto__:null};var keys=Object.getOwnPropertyNames(o);o.x===42&&o['\uD800']===2&&log==='abc'&&keys[0]==='x'&&keys[1]==='\uD800'&&Object.getPrototypeOf(o)===null;"#,
+            vm,
+        );
+    }
+}
 #[test]
 fn spread_copies_enumerable_values_symbols_and_utf16_without_setters() {
     let allocation_context = temiya::runtime::AllocationContext::new();
@@ -200,5 +212,40 @@ fn object_instructions_require_scope_and_operands() {
             code.verify().unwrap_err().kind(),
             VerifyErrorKind::StackUnderflow
         );
+    }
+}
+
+#[test]
+fn named_object_definition_rejects_nonstring_and_missing_constant_names() {
+    use temiya::bytecode::{
+        Bytecode, Constant, Instruction, ScopeDescriptor, ScopeKind, VerifyErrorKind,
+    };
+    for (name, expected) in [
+        (1, VerifyErrorKind::InvalidConstantKind),
+        (2, VerifyErrorKind::ConstantOutOfBounds),
+    ] {
+        let code = Bytecode {
+            constants: vec![
+                Constant::Scope(ScopeDescriptor {
+                    kind: ScopeKind::Global,
+                    strict: false,
+                    bindings: vec![],
+                    functions: vec![],
+                }),
+                Constant::Number(42.0),
+            ],
+            instructions: vec![
+                Instruction::EnterScope(0),
+                Instruction::CreateObject,
+                Instruction::LoadConstant(1),
+                Instruction::DefineNamedObjectProperty {
+                    name,
+                    prototype_setter: false,
+                },
+                Instruction::Return,
+            ],
+            local_count: 0,
+        };
+        assert_eq!(code.verify().unwrap_err().kind(), expected);
     }
 }

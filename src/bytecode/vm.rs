@@ -99,6 +99,27 @@ impl VirtualMachine {
                     )?;
                     stack.push(Value::Object(object));
                 }
+                Instruction::DefineNamedObjectProperty {
+                    name,
+                    prototype_setter,
+                } => {
+                    let value = pop(&mut stack)?;
+                    let Value::Object(object) = pop(&mut stack)? else {
+                        return Err(RuntimeError::type_error(
+                            "object initializer target is not an object",
+                        ));
+                    };
+                    let Constant::String(name) = &body.constants[name as usize] else {
+                        unreachable!("verified String property name")
+                    };
+                    crate::runtime::object_literal::define_data(
+                        &object,
+                        name.clone().into(),
+                        value,
+                        prototype_setter,
+                    )?;
+                    stack.push(Value::Object(object));
+                }
                 Instruction::SpreadObject => {
                     let source = pop(&mut stack)?;
                     let Value::Object(object) = pop(&mut stack)? else {

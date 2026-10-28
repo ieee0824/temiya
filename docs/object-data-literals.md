@@ -16,11 +16,21 @@ Proxy errors from ownKeys, getOwnPropertyDescriptor and get propagate and stop
 later evaluation. String primitives contribute enumerable UTF-16 indices.
 Object copy does not use the iterator protocol.
 
-The new instructions are `CreateObject` (+1 operand), `CoercePropertyKey`
-(replace one operand), `DefineObjectProperty` (object/key/value to object), and
-`SpreadObject` (object/source to object). They require an active verified scope
+The instructions are `CreateObject` (+1 operand), `CoercePropertyKey`
+(replace one operand), `DefineObjectProperty` (object/key/value to object),
+`DefineNamedObjectProperty` (object/value to object using a String constant),
+and `SpreadObject` (object/source to object). They require an active verified scope
 and sufficient operands. Runtime target checks also reject malformed operand
 values. No AST evaluator is used by these VM instructions.
+
+Noncomputed identifier and String names use `DefineNamedObjectProperty` without
+materializing and coercing a key Value. The verifier requires a valid String
+constant, and runtime definition still uses the shared data/prototype operation.
+Computed and numeric names keep their existing conversion path before the RHS.
+Shorthands, duplicate keys, UTF-16 names and the literal prototype setter retain
+their original evaluation order and meaning. This removes repeated String-key
+conversion observed in the tracing-branch object-allocation instruction profile;
+native speed qualification is recorded separately in the runtime migration.
 
 Object methods, accessors and their HomeObject/super behavior are still rejected
 by this bytecode lowering. Function name inference for anonymous data-property

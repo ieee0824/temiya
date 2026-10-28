@@ -239,6 +239,8 @@ pub enum Instruction {
     CoercePropertyKey,
     /// Consume object/key/value and retain the object after a data definition.
     DefineObjectProperty { prototype_setter: bool },
+    /// Define a constant String key from object/value, retaining the object.
+    DefineNamedObjectProperty { name: u32, prototype_setter: bool },
     /// Consume object/source and retain the object after CopyDataProperties.
     SpreadObject,
     /// Push a fresh Array and its next initializer index (two operands).
@@ -375,6 +377,7 @@ impl Instruction {
             Self::CreateObject => 0,
             Self::CoercePropertyKey => 1,
             Self::DefineObjectProperty { .. } => 3,
+            Self::DefineNamedObjectProperty { .. } => 2,
             Self::SpreadObject => 2,
             Self::CreateArray => 0,
             Self::AppendArray | Self::SpreadArray => 3,
@@ -430,6 +433,7 @@ impl Instruction {
             Self::CreateObject => 1,
             Self::CoercePropertyKey => 0,
             Self::DefineObjectProperty { .. } => -2,
+            Self::DefineNamedObjectProperty { .. } => -1,
             Self::SpreadObject => -1,
             Self::CreateArray => 2,
             Self::AppendArray | Self::SpreadArray | Self::FinishArray => -1,
@@ -806,6 +810,7 @@ fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
             | Instruction::GetName { name: index, .. }
             | Instruction::ResolveName { name: index, .. }
             | Instruction::GetNamedProperty { name: index, .. }
+            | Instruction::DefineNamedObjectProperty { name: index, .. }
             | Instruction::ResolveNamedProperty { name: index, .. } => {
                 if !matches!(constant(index)?, Constant::String(_)) {
                     return Err(error(VerifyErrorKind::InvalidConstantKind));

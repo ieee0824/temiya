@@ -66,6 +66,31 @@ correct benchmark values alone do not establish them. The full Miri gate is
 partitioned from Miri's actual test listing, executes each assigned test exactly,
 and requires every shard to pass; plan validation alone is not a Miri pass.
 
+### Hosted follow-up at revision51d9abf
+
+[Run40723916807](https://github.com/ieee0824/temiya/actions/runs/40723916807)
+records two independent x64 machines without selecting a CPU model or pinning
+guest affinity. Both complete all four original-eleven report sets: candidate
+versus main, candidate versus actual Boa, main versus actual Boa, and candidate
+versus its identical executable. Every report has66 correct workers and1056
+checked warmup/sample results. Independent recomputation validates all medians,
+MADs, ratios, decisions, input oracles, complete coverage and alternating order.
+
+Neither machine qualifies the entire candidate against Boa. On AMD EPYC9V45,
+32 comparisons pass and one object-allocation comparison is within the noise
+gate (ratio0.908, less than the required10% improvement). Main versus Boa passes
+all33 comparisons; the identical-executable control has33 noise decisions.
+On Intel Xeon6973P-C,24 candidate comparisons pass, seven are within noise and
+two arithmetic comparisons are slower than Boa (ratios1.16–1.17). Main versus
+Boa has31 passes and two noise decisions. Its identical-executable control has
+28 noise, three faster and two slower decisions, so machine/process variability
+is observable but does not excuse or erase the failed candidate qualification.
+
+[All reports, build/compiler/machine metadata, progress and checksums](../benchmarks/runtime-gc/hosted-boa)
+retain both hosts and all controls. The local CPU0 result above remains bounded
+to its recorded condition. It does not prove the required speed goal on these
+hosted machines; allocation and execution costs still need improvement.
+
 ### Separate allocation, root and pause observations
 
 `embedding::runtime_workload_profile::original_eleven_runtime_allocation_root_and_collection_profile`

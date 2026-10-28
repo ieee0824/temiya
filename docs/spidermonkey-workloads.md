@@ -74,6 +74,27 @@ the negative result. The previously established actual-omoikane-Boa advantage
 on these eleven inputs is a separate comparison; it does not imply a
 SpiderMonkey advantage.
 
+## Traced-runtime follow-up
+
+[Run 40723878569](https://github.com/ieee0824/temiya/actions/runs/40723878569)
+measures migration revision `51d9abf63ee2d31491962b02974c7745c19127a7` on Linux
+x64 AMD EPYC 9V74, four logical CPUs with guest affinity `0-3`. It reuses the
+verified pinned shell from build40530470739 and the unchanged eleven inputs,
+15 samples, three alternating pairs and 512 MiB/180-second watchdog. Both
+reports contain66 correct workers and1056 checked warmup/sample results.
+Independent recomputation verifies every median, MAD, ratio, noise decision,
+oracle, complete coverage and alternating order.
+
+All33 comparisons in each mode remain slower for Temiya beyond the threshold.
+Its elapsed-time ratios range3.17–8.31 in JIT-disabled mode and36.15–599.05
+with default settings. Enabled default tier settings still do not prove that
+each workload reached a particular JIT tier. The successful workflow establishes
+valid measurements, not a speed win. Results on this host and source cannot
+establish a controlled regression or improvement against the older cohort.
+
+[Both raw reports, adapter checks, build/run provenance and progress logs](../benchmarks/runtime-gc/spidermonkey)
+retain this negative result alongside the separate actual-Boa comparisons.
+
 Pinned API source:
 [evaluate/dateNow](https://github.com/mozilla-firefox/firefox/blob/5a78f4525f81f7323c2c044965096723318af6e6/js/src/shell/js.cpp),
 [file input](https://github.com/mozilla-firefox/firefox/blob/5a78f4525f81f7323c2c044965096723318af6e6/js/src/shell/OSObject.cpp).

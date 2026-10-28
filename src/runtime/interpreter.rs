@@ -210,6 +210,38 @@ pub struct Reference {
     primitive_prototype: Option<Object>,
 }
 
+// The Realm registry is immutable after bootstrap. These external facades live
+// only for one VM invocation and retain objects already reachable through its
+// borrowed, rooted Realm. Property values/descriptors are never cached, and a
+// nested invocation gets an independent context even when it enters another Realm.
+pub(crate) struct PropertyReferenceContext<'a> {
+    realm: &'a Realm,
+    prototypes: [Option<Object>; 5],
+}
+
+impl<'a> PropertyReferenceContext<'a> {
+    pub(crate) fn new(realm: &'a Realm) -> Self {
+        Self {
+            realm,
+            prototypes: Default::default(),
+        }
+    }
+
+    pub(crate) fn reference(
+        &mut self,
+        base: Value,
+        name: ReferencedName,
+        strict: bool,
+    ) -> Reference {
+        let realm = self.realm;
+        Reference::property_with_prototypes(realm, base, name, strict, |id, index| {
+            self.prototypes[index]
+                .get_or_insert_with(|| realm.intrinsic(id))
+                .clone()
+        })
+    }
+}
+
 impl Reference {
     // Only VM-verified function slots provide hints. Each read/write validates
     // the name again, so reentrant deletion or insertion cannot retarget it.
@@ -268,12 +300,22 @@ impl Reference {
         name: ReferencedName,
         strict: bool,
     ) -> Self {
+        Self::property_with_prototypes(realm, base, name, strict, |id, _| realm.intrinsic(id))
+    }
+
+    fn property_with_prototypes(
+        realm: &Realm,
+        base: Value,
+        name: ReferencedName,
+        strict: bool,
+        prototype_for: impl FnOnce(super::IntrinsicId, usize) -> Object,
+    ) -> Self {
         let prototype = match &base {
-            Value::String(_) => Some(super::IntrinsicId::StringPrototype),
-            Value::Number(_) => Some(super::IntrinsicId::NumberPrototype),
-            Value::Boolean(_) => Some(super::IntrinsicId::BooleanPrototype),
-            Value::BigInt(_) => Some(super::IntrinsicId::BigIntPrototype),
-            Value::Symbol(_) => Some(super::IntrinsicId::SymbolPrototype),
+            Value::String(_) => Some((super::IntrinsicId::StringPrototype, 0)),
+            Value::Number(_) => Some((super::IntrinsicId::NumberPrototype, 1)),
+            Value::Boolean(_) => Some((super::IntrinsicId::BooleanPrototype, 2)),
+            Value::BigInt(_) => Some((super::IntrinsicId::BigIntPrototype, 3)),
+            Value::Symbol(_) => Some((super::IntrinsicId::SymbolPrototype, 4)),
             _ => None,
         };
         let name = match name {
@@ -284,7 +326,7 @@ impl Reference {
             name => name,
         };
         let mut reference = Self::property(base, name, strict, None);
-        reference.primitive_prototype = prototype.map(|id| realm.intrinsic(id));
+        reference.primitive_prototype = prototype.map(|(id, index)| prototype_for(id, index));
         reference
     }
 

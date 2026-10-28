@@ -1,6 +1,6 @@
 use crate::runtime::{
-    ArrayObject, Completion, Environment, EnvironmentKind, Object, Realm, Reference,
-    ReferencedName, RuntimeError, RuntimeResult, Value, binary_number, binary_values,
+    ArrayObject, Completion, Environment, EnvironmentKind, Object, PropertyReferenceContext, Realm,
+    Reference, ReferencedName, RuntimeError, RuntimeResult, Value, binary_number, binary_values,
     binary_values_in_realm,
 };
 
@@ -71,6 +71,7 @@ impl VirtualMachine {
         function: Option<&Environment>,
     ) -> RuntimeResult<Completion> {
         let _object_roots = realm.and_then(Realm::enter_object_root_region);
+        let mut property_context = realm.map(PropertyReferenceContext::new);
         let body = bytecode.bytecode();
         let mut scalar_values: Option<Box<[Value]>> = None;
         let mut scopes: Vec<ScopeFrame<'_>> = vec![];
@@ -462,12 +463,10 @@ impl VirtualMachine {
                             *hint = None;
                         }
                     }
-                    let reference = Reference::property_in_realm(
-                        realm.expect("verified scoped property access"),
-                        base,
-                        ReferencedName::PropertyKey(key),
-                        strict,
-                    );
+                    let reference = property_context
+                        .as_mut()
+                        .expect("verified scoped property access")
+                        .reference(base, ReferencedName::PropertyKey(key), strict);
                     if matches!(instruction, Instruction::GetNamedProperty { .. }) {
                         stack.push(reference.get_value()?);
                     } else {
@@ -483,12 +482,10 @@ impl VirtualMachine {
                             continue;
                         }
                     }
-                    let reference = Reference::property_in_realm(
-                        realm.expect("verified scoped property access"),
-                        base,
-                        ReferencedName::Value(key),
-                        strict,
-                    );
+                    let reference = property_context
+                        .as_mut()
+                        .expect("verified scoped property access")
+                        .reference(base, ReferencedName::Value(key), strict);
                     if matches!(instruction, Instruction::GetProperty { .. }) {
                         stack.push(reference.get_value()?);
                     } else {

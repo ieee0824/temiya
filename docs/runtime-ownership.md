@@ -678,6 +678,17 @@ history of allocated objects between collection points. Tests cover cache bounds
 slot retirement under allocation collection, explicit collection while a clone
 remains live, nested region sharing and unwind cleanup.
 
+Primitive property References in one VM invocation may also retain the five
+primitive-prototype facades from that invocation's fixed, borrowed Realm.
+The stored intrinsic registry is initialized once and does not change identity;
+its prototype objects are already strongly reachable through the rooted Realm.
+These are external VM-frame roots, never heap-owned roots or cached property
+values. Current descriptors and prototype chains are read for every access, and
+computed-key coercion stays at Reference consumption. All facade entries drop
+on return or unwind. The public regression alternates all five primitive kinds
+across two Realms, reenters a third Realm, collects during each outer iteration,
+mutates an accessed property, and verifies zero live cells after releasing roots.
+
 All five managed allocation families (Object, Environment, Realm, JobQueue,
 SourceTextModule) now collect before allocation through a Runtime safepoint.
 The normal production interval is 4096 managed allocations. Tests set

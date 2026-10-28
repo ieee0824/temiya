@@ -5,6 +5,73 @@ use temiya::{
 };
 
 #[test]
+fn primitive_prototype_facades_stay_realm_local_and_live_through_collection() {
+    use std::{cell::RefCell, rc::Rc};
+    use temiya::runtime::{AllocationContext, IntrinsicId, Object};
+    let context = AllocationContext::new();
+    let first = Realm::ordinary_in(&context);
+    let second = Realm::ordinary_in(&context);
+    let nested = Realm::ordinary_in(&context);
+    nested
+        .intrinsic(IntrinsicId::StringPrototype)
+        .create_data_property("probe".into(), Value::Number(71.0))
+        .unwrap();
+    let nested_body = BytecodeCompiler::compile("'nested'.probe;").unwrap();
+    // Opaque host captures are external roots and are released explicitly below.
+    let reentry = Rc::new(RefCell::new(Some(nested.clone())));
+    let reentry_from_callback = reentry.clone();
+    let collect_context = context.clone();
+    let collect = Object::native_function_in(&context, move |_, _| {
+        {
+            let entered = reentry_from_callback.borrow();
+            assert!(matches!(
+                VirtualMachine::execute_in_realm(&nested_body, entered.as_ref().unwrap())?,
+                Completion::Normal(Some(Value::Number(71.0)))
+            ));
+        }
+        collect_context.collect_garbage()?;
+        Ok(Value::Undefined)
+    });
+    for realm in [&first, &second] {
+        realm
+            .global_object()
+            .create_data_property("gc".into(), Value::Object(collect.clone()))
+            .unwrap();
+    }
+    let count = if cfg!(miri) { 2 } else { 8 };
+    let body = BytecodeCompiler::compile(&format!(
+        "var total=0;for(var i=0;i<{count};i++){{total+='x'.probe+(1).probe+(true).probe+(1n).probe+Symbol.iterator.probe;gc();}}\
+        String.prototype.probe='x'.probe+1;total+'x'.probe;"
+    ))
+    .unwrap();
+    for (realm, mark) in [(&first, 7.0), (&second, 31.0), (&first, 19.0)] {
+        for (index, id) in [
+            IntrinsicId::StringPrototype,
+            IntrinsicId::NumberPrototype,
+            IntrinsicId::BooleanPrototype,
+            IntrinsicId::BigIntPrototype,
+            IntrinsicId::SymbolPrototype,
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            realm
+                .intrinsic(id)
+                .create_data_property("probe".into(), Value::Number(mark + index as f64))
+                .unwrap();
+        }
+        let expected = (5.0 * mark + 10.0) * f64::from(count) + mark + 1.0;
+        assert!(matches!(
+            VirtualMachine::execute_in_realm(&body, realm).unwrap(),
+            Completion::Normal(Some(Value::Number(value))) if value == expected
+        ));
+    }
+    reentry.borrow_mut().take();
+    drop((collect, first, second, nested));
+    assert_eq!(context.collect_garbage().unwrap().retained, 0);
+}
+
+#[test]
 fn local_number_updates_preserve_signed_zero_nonfinite_and_fallback_types() {
     let allocation_context = temiya::runtime::AllocationContext::new();
     for source in [

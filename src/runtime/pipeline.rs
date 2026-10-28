@@ -897,6 +897,7 @@ fn program_has_top_level_await(program: &Program) -> bool {
 mod managed_tests {
     use super::*;
     fn graph(runtime: &Runtime, sources: &[(&str, &str)]) -> (Realm, ModuleGraph) {
+        runtime.set_allocation_collection_interval(0);
         let realm = Realm::ordinary_in(runtime);
         let callback_runtime = runtime.clone();
         let callback = realm

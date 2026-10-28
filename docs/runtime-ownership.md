@@ -400,3 +400,29 @@ non-null primitives have no own properties. Object queries retain their fallible
 Proxy operations. Property-key conversion still precedes null receiver errors.
 This removes the remaining contextless temporary boxing in these execution
 paths, without adding a root registration per primitive property check.
+
+## Allocation safepoint audit on the tracing branch
+
+All five managed allocation families (Object, Environment, Realm, JobQueue,
+SourceTextModule) now collect before allocation through a Runtime safepoint.
+The configured production interval remains disabled during migration. Tests set
+an interval of zero to collect at every allocation, including Realm/intrinsic
+bootstrap, AST and VM closures/constructors, builtin result creation, generators,
+Promise reactions, and cyclic module loading/evaluation.
+
+The incoming unpublished record is an additional scoped tracing root during
+collection. Heap automatic threshold/capacity collection likewise traces its
+incoming value; the regression previously reclaimed a target referenced only by
+the new allocation. Retirement completes under the Heap borrow, then payloads
+are dropped after releasing that borrow. Reentrant allocation during host Drop
+skips nested collection until retirement finishes, and stale handles remain
+invalid after slot reuse. Scalar values do not gain persistent root slots.
+
+The original seven teardown fixtures are reused unchanged through an injected
+Engine constructor. They now pass strict reclamation with managed allocation
+and every-allocation GC, without an extra collection after final handle drop.
+An additional test runs the same root/clone transitions with a live Engine and
+collects after each transition, preserving callbacks/constructors/closures and
+releasing the host token after the last handle. These are internal migration
+checks; the public default, strict CLI default, API/version migration, complete
+stress/ABI/toolchain gates, and performance qualification remain pending.

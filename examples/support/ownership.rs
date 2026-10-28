@@ -71,7 +71,10 @@ fn ensure(condition: bool, message: &str) -> Result<(), Box<dyn Error>> {
 }
 
 pub fn observe(case: &Case) -> Result<Observation, Box<dyn Error>> {
-    let engine = Engine::default();
+    observe_with_engine(case, Engine::default())
+}
+
+pub fn observe_with_engine(case: &Case, engine: Engine) -> Result<Observation, Box<dyn Error>> {
     let realm = engine.create_realm();
     let token = Rc::new(());
     let weak = Rc::downgrade(&token);

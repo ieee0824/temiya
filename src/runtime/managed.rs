@@ -3,22 +3,21 @@
 //! Allocation collection stays disabled until stored edges and every callable,
 //! environment, frame and host boundary have moved to the tracing protocol.
 use std::{
-    cell::RefCell,
+    cell::{Cell, RefCell},
     ops::Deref,
     rc::{Rc, Weak},
 };
 
 use super::{Object, ObjectData};
 use crate::gc::{Handle, Heap, HeapOptions, Root, Trace, Tracer};
-#[cfg(test)]
-use std::cell::Cell;
 
 #[derive(Clone)]
 pub(crate) struct Runtime(Rc<RuntimeData>);
 pub(super) struct RuntimeData {
     heap: RefCell<Heap>,
-    #[cfg(test)]
     collecting: Cell<bool>,
+    allocation_interval: Cell<usize>,
+    allocation_remaining: Cell<usize>,
 }
 
 pub(super) struct ManagedObject {
@@ -132,17 +131,45 @@ impl WeakObjectRoot {
 }
 
 impl Runtime {
+    fn allocation_safepoint(&self, incoming: &impl Trace) {
+        let interval = self.0.allocation_interval.get();
+        if interval == usize::MAX || self.0.collecting.get() {
+            return;
+        }
+        let remaining = self.0.allocation_remaining.get();
+        if remaining > 1 {
+            self.0.allocation_remaining.set(remaining - 1);
+            return;
+        }
+        self.0.collecting.set(true);
+        struct Reset<'a>(&'a Cell<bool>);
+        impl Drop for Reset<'_> {
+            fn drop(&mut self) {
+                self.0.set(false);
+            }
+        }
+        let _reset = Reset(&self.0.collecting);
+        let (_, retired) = self.0.heap.borrow_mut().collect_retiring_with(incoming);
+        // A destructor may allocate/evaluate. Nested allocations skip collection
+        // until this collection's retired payloads have all been released.
+        drop(retired);
+        self.0.allocation_remaining.set(interval);
+    }
+
+    #[cfg(test)]
+    pub(crate) fn set_allocation_collection_interval(&self, interval: usize) {
+        self.0.allocation_interval.set(interval);
+        self.0.allocation_remaining.set(interval);
+    }
     pub(super) fn allocate_module(
         &self,
         data: super::pipeline::ModuleData,
     ) -> super::SourceTextModule {
         use super::pipeline::{ManagedModule, ModuleReference, ModuleRoot};
         let data = Rc::new(data);
-        let root = self
-            .0
-            .heap
-            .borrow_mut()
-            .allocate(ManagedModule { data: data.clone() });
+        let incoming = ManagedModule { data: data.clone() };
+        self.allocation_safepoint(&incoming);
+        let root = self.0.heap.borrow_mut().allocate(incoming);
         let facade = Rc::new(ModuleRoot {
             root,
             data: data.clone(),
@@ -177,11 +204,9 @@ impl Runtime {
     ) -> super::JobQueue {
         use super::job_queue::{JobQueueReference, JobQueueRoot, ManagedJobQueue};
         let data = Rc::new(RefCell::new(data));
-        let root = self
-            .0
-            .heap
-            .borrow_mut()
-            .allocate(ManagedJobQueue { data: data.clone() });
+        let incoming = ManagedJobQueue { data: data.clone() };
+        self.allocation_safepoint(&incoming);
+        let root = self.0.heap.borrow_mut().allocate(incoming);
         let facade = Rc::new(JobQueueRoot {
             root,
             data: data.clone(),
@@ -249,11 +274,9 @@ impl Runtime {
     pub(super) fn allocate_realm(&self, data: super::execution::RealmData) -> super::Realm {
         use super::execution::{ManagedRealm, RealmReference, RealmRoot};
         let data = Rc::new(data);
-        let root = self
-            .0
-            .heap
-            .borrow_mut()
-            .allocate(ManagedRealm { data: data.clone() });
+        let incoming = ManagedRealm { data: data.clone() };
+        self.allocation_safepoint(&incoming);
+        let root = self.0.heap.borrow_mut().allocate(incoming);
         let facade = Rc::new(RealmRoot {
             root,
             data: data.clone(),
@@ -288,11 +311,9 @@ impl Runtime {
     ) -> super::Environment {
         use super::environment::{EnvironmentReference, EnvironmentRoot, ManagedEnvironment};
         let data = Rc::new(data);
-        let root = self
-            .0
-            .heap
-            .borrow_mut()
-            .allocate(ManagedEnvironment { data: data.clone() });
+        let incoming = ManagedEnvironment { data: data.clone() };
+        self.allocation_safepoint(&incoming);
+        let root = self.0.heap.borrow_mut().allocate(incoming);
         let facade = Rc::new(EnvironmentRoot {
             root,
             data: data.clone(),
@@ -307,17 +328,16 @@ impl Runtime {
                 allocation_threshold: usize::MAX,
                 max_allocations: None,
             })),
-            #[cfg(test)]
             collecting: Cell::new(false),
+            allocation_interval: Cell::new(usize::MAX),
+            allocation_remaining: Cell::new(usize::MAX),
         }))
     }
     pub(super) fn allocate_object(&self, data: ObjectData) -> Object {
         let data = Rc::new(data);
-        let root = self
-            .0
-            .heap
-            .borrow_mut()
-            .allocate(ManagedObject { data: data.clone() });
+        let incoming = ManagedObject { data: data.clone() };
+        self.allocation_safepoint(&incoming);
+        let root = self.0.heap.borrow_mut().allocate(incoming);
         let facade = Rc::new(ObjectRoot {
             root,
             data: data.clone(),
@@ -393,6 +413,68 @@ impl Runtime {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn allocation_collection_retires_host_payloads_before_reentrant_allocation() {
+        use crate::runtime::Value;
+        struct Reenter {
+            runtime: Runtime,
+            observed: Rc<RefCell<Option<super::super::WeakObject>>>,
+        }
+        impl Drop for Reenter {
+            fn drop(&mut self) {
+                let before = self.runtime.diagnostics().collections;
+                assert!(self.runtime.collect_migration_graph().is_err());
+                let object = Object::new_in(&self.runtime);
+                object
+                    .create_data_property("answer".into(), Value::Number(42.0))
+                    .unwrap();
+                *self.observed.borrow_mut() = Some(object.downgrade());
+                assert_eq!(
+                    self.runtime.diagnostics().collections,
+                    before,
+                    "nested allocations defer collection"
+                );
+            }
+        }
+        let runtime = Runtime::new();
+        runtime.set_allocation_collection_interval(0);
+        let context = Object::new_in(&runtime);
+        let observed = Rc::new(RefCell::new(None));
+        let dropper = Reenter {
+            runtime: runtime.clone(),
+            observed: observed.clone(),
+        };
+        let function = Object::native_function_for(&context, move |_, _| {
+            let _keep_capture = &dropper;
+            Ok(Value::Undefined)
+        });
+        let weak_function = function.downgrade();
+        drop((function, context));
+        let object = Object::new_in(&runtime);
+        assert!(
+            weak_function.upgrade().is_none(),
+            "slot reuse must not resurrect the old callable"
+        );
+        assert!(observed.borrow().as_ref().unwrap().upgrade().is_some());
+        drop(object);
+        assert_eq!(runtime.collect_migration_graph().unwrap().retained, 0);
+        assert!(observed.borrow().as_ref().unwrap().upgrade().is_none());
+    }
+
+    #[test]
+    fn allocation_interval_collects_unrooted_cycles_without_number_roots() {
+        let runtime = Runtime::new();
+        runtime.set_allocation_collection_interval(3);
+        for _ in 0..12 {
+            let object = Object::new_in(&runtime);
+            object
+                .create_data_property("self".into(), super::super::Value::Object(object.clone()))
+                .unwrap();
+        }
+        assert_eq!(runtime.diagnostics().collections, 4);
+        assert_eq!(runtime.diagnostics().rooted, 0);
+        assert_eq!(runtime.collect_migration_graph().unwrap().retained, 0);
+    }
     #[test]
     fn native_functions_retain_source_realms_and_materialize_errors_there() {
         use crate::runtime::{IntrinsicId, Realm, RuntimeError, Value};

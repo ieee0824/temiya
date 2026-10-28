@@ -26,6 +26,23 @@ fn node() -> Node {
 }
 
 #[test]
+fn automatic_collection_preserves_edges_in_the_incoming_allocation() {
+    let mut heap = Heap::stress();
+    let target = heap.allocate(node());
+    let handle = target.handle();
+    drop(target);
+    let owner = heap.allocate(Node {
+        edges: vec![handle],
+        conditional: Vec::new(),
+    });
+    assert!(heap.with(handle, |_| ()).is_some());
+    heap.verify().unwrap();
+    assert_eq!(heap.live_allocations(), 2);
+    drop(owner);
+    assert_eq!(heap.collect().reclaimed, 2);
+}
+
+#[test]
 fn owned_ephemerons_require_a_live_owner_and_do_not_bootstrap_key_cycles() {
     let mut heap = Heap::new();
     let owner = heap.allocate(node());

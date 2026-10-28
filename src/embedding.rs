@@ -973,6 +973,7 @@ mod managed_allocation_tests {
         for backend in [ScriptBackend::Ast, ScriptBackend::Bytecode] {
             let mut engine = Engine::builder().script_backend(backend).build();
             engine.managed_allocation = true;
+            engine.runtime.set_allocation_collection_interval(0);
             let realm = engine.create_realm();
             for source in [
                 "function sum(a,b){return a+b;}sum(20,22);",
@@ -1084,9 +1085,128 @@ mod managed_allocation_tests {
     }
 
     #[test]
+    fn managed_allocation_stress_passes_the_original_seven_teardown_fixtures() {
+        for case in crate::ownership_probe::CASES {
+            let mut engine = Engine::builder().build();
+            engine.managed_allocation = true;
+            engine.runtime.set_allocation_collection_interval(0);
+            let observation = crate::ownership_probe::observe_with_engine(case, engine).unwrap();
+            assert!(
+                observation.alive_with_handle && observation.alive_with_clone,
+                "{observation:?}"
+            );
+            assert!(!observation.alive_after_drop, "{observation:?}");
+        }
+    }
+
+    #[test]
+    fn original_ownership_fixtures_release_after_last_handle_in_a_live_engine() {
+        for case in crate::ownership_probe::CASES {
+            let mut engine = Engine::builder().build();
+            engine.managed_allocation = true;
+            engine.runtime.set_allocation_collection_interval(0);
+            let realm = engine.create_realm();
+            let token = Rc::new(());
+            let weak = Rc::downgrade(&token);
+            engine
+                .register_global_function(&realm, "marker", move |context, _, _| {
+                    let _keep_capture = &token;
+                    Ok(context.value(Value::Number(42.0)))
+                })
+                .unwrap();
+            let script = engine.compile(&realm, case.source).unwrap();
+            let root = engine.evaluate(&script).unwrap();
+            let clone = root.clone();
+            let cleanup = engine
+                .compile(&realm, "value=null;var escaped=null;")
+                .unwrap();
+            engine.evaluate(&cleanup).unwrap();
+            drop((script, cleanup));
+            engine.runtime.collect_migration_graph().unwrap();
+            assert!(weak.upgrade().is_some(), "{}", case.name);
+            let Value::Object(object) = root.value() else {
+                panic!("object")
+            };
+            let target = if case.constructor_root {
+                object.get(&"constructor".into()).unwrap()
+            } else {
+                Value::Object(object.clone())
+            };
+            let Value::Object(target) = target else {
+                panic!("constructor")
+            };
+            if case.callable_root {
+                assert!(
+                    target
+                        .call(Value::Undefined, &[])
+                        .unwrap()
+                        .same_value(&Value::Number(42.0))
+                );
+            }
+            let Value::Object(marker) = target.get(&"probe".into()).unwrap() else {
+                panic!("marker")
+            };
+            assert!(
+                marker
+                    .call(Value::Undefined, &[])
+                    .unwrap()
+                    .same_value(&Value::Number(42.0))
+            );
+            drop((marker, target, root));
+            engine.runtime.collect_migration_graph().unwrap();
+            assert!(weak.upgrade().is_some(), "clone: {}", case.name);
+            drop(clone);
+            engine.runtime.collect_migration_graph().unwrap();
+            assert!(weak.upgrade().is_none(), "last handle: {}", case.name);
+            let runtime = engine.runtime.clone();
+            drop((realm, engine));
+            assert_eq!(runtime.collect_migration_graph().unwrap().retained, 0);
+        }
+    }
+
+    #[test]
+    fn every_allocation_collection_preserves_ast_and_vm_execution() {
+        for backend in [ScriptBackend::Ast, ScriptBackend::Bytecode] {
+            let mut engine = Engine::builder().script_backend(backend).build();
+            engine.managed_allocation = true;
+            engine.runtime.set_allocation_collection_interval(0);
+            let realm = engine.create_realm();
+            for source in [
+                "var partial={first:{answer:20},second:{answer:22}};partial.first.answer+partial.second.answer;",
+                "function outer(x){return function(y){return x+y;};}var add=outer(20);add(22);",
+                "function Box(x){this.answer=x;}var made=new Box(42);made.answer;",
+                "var array=[{answer:20},{answer:22}];array[0].answer+array[1].answer;",
+                "var map=new Map();var key={};map.set(key,{answer:42});map.get(key).answer;",
+                "var weak=new WeakMap();var weakKey={};weak.set(weakKey,{answer:42});weak.get(weakKey).answer;",
+                r#"JSON.parse('{"answer":42}').answer;"#,
+                "var wrapped=new Proxy({answer:42},{});wrapped.answer;",
+                "(function(){return this.valueOf();}).call(42);",
+                "var names=Object.getOwnPropertyNames({answer:42});if(names[0]==='answer'){42;}else{0;}",
+            ] {
+                let script = engine.compile(&realm, source).unwrap();
+                assert_eq!(script.backend(), backend);
+                assert!(
+                    engine
+                        .evaluate(&script)
+                        .unwrap()
+                        .value()
+                        .same_value(&Value::Number(42.0)),
+                    "{backend:?}: {source}"
+                );
+                engine.runtime.verify_migration_barriers().unwrap();
+            }
+            assert!(engine.runtime.diagnostics().collections > 100);
+            let runtime = engine.runtime.clone();
+            drop((realm, engine));
+            assert_eq!(runtime.collect_migration_graph().unwrap().retained, 0);
+        }
+    }
+
+    #[test]
     fn managed_with_boxes_primitives_in_the_current_realm() {
         let mut engine = Engine::builder().script_backend(ScriptBackend::Ast).build();
         engine.managed_allocation = true;
+        engine.runtime.set_allocation_collection_interval(0);
         let realm = engine.create_realm();
         for source in [
             "var withAnswer=0;with('𝄞'){withAnswer=length+40;}withAnswer;",
@@ -1119,6 +1239,7 @@ mod managed_allocation_tests {
     fn managed_module_handles_keep_dependency_cycles_after_engine_drop() {
         let mut engine = Engine::builder().build();
         engine.managed_allocation = true;
+        engine.runtime.set_allocation_collection_interval(0);
         let realm = engine.create_realm();
         let runtime = engine.runtime.clone();
         let module = engine.load_module(&realm, "a", |name| {
@@ -1151,6 +1272,7 @@ mod managed_allocation_tests {
         use crate::runtime::{Generator, GeneratorState};
         let mut engine = Engine::builder().script_backend(ScriptBackend::Ast).build();
         engine.managed_allocation = true;
+        engine.runtime.set_allocation_collection_interval(0);
         let realm = engine.create_realm();
         let runtime = engine.runtime.clone();
         let callback_runtime = runtime.clone();
@@ -1239,6 +1361,7 @@ mod managed_allocation_tests {
         use crate::runtime::Generator;
         let mut engine = Engine::builder().script_backend(ScriptBackend::Ast).build();
         engine.managed_allocation = true;
+        engine.runtime.set_allocation_collection_interval(0);
         let realm = engine.create_realm();
         let runtime = engine.runtime.clone();
         let callback_runtime = runtime.clone();
@@ -1340,6 +1463,7 @@ mod managed_allocation_tests {
         use crate::runtime::Generator;
         let mut engine = Engine::builder().script_backend(ScriptBackend::Ast).build();
         engine.managed_allocation = true;
+        engine.runtime.set_allocation_collection_interval(0);
         let realm = engine.create_realm();
         let script = engine.compile(&realm, "var abandon;function* values(items){arguments=undefined;abandon=function(){items=undefined;};yield* items;return 42;}var delegatedItems=[{answer:20},{answer:22}];var delegatedGenerator=values(delegatedItems);delegatedGenerator;").unwrap();
         let handle = engine.evaluate(&script).unwrap();
@@ -1400,6 +1524,7 @@ mod managed_allocation_tests {
         for mode in 0..3 {
             let mut engine = Engine::builder().script_backend(ScriptBackend::Ast).build();
             engine.managed_allocation = true;
+            engine.runtime.set_allocation_collection_interval(0);
             let realm = engine.create_realm();
             let runtime = engine.runtime.clone();
             let script = engine.compile(&realm, "function* abrupt(marker){yield marker;throw marker;}var abruptMarker={answer:42};var abruptGenerator=abrupt(abruptMarker);abruptMarker=undefined;abruptGenerator;").unwrap();
@@ -1454,6 +1579,7 @@ mod managed_allocation_tests {
         for backend in [ScriptBackend::Ast, ScriptBackend::Bytecode] {
             let mut engine = Engine::builder().script_backend(backend).build();
             engine.managed_allocation = true;
+            engine.runtime.set_allocation_collection_interval(0);
             let realm = engine.create_realm();
             let runtime = engine.runtime.clone();
             let callback_runtime = runtime.clone();
@@ -1519,6 +1645,7 @@ mod managed_allocation_tests {
         use crate::runtime::Promise;
         let mut engine = Engine::builder().script_backend(ScriptBackend::Ast).build();
         engine.managed_allocation = true;
+        engine.runtime.set_allocation_collection_interval(0);
         let realm = engine.create_realm();
         for source in [
             "(async function(){return {answer:42};})();",

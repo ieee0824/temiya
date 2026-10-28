@@ -264,6 +264,31 @@ mod tests {
     use super::*;
     use crate::runtime::{Object, Realm, Value, stored::StoredObject};
 
+    #[test]
+    fn allocation_safepoints_trace_unpublished_queue_payloads() {
+        let runtime = Runtime::new();
+        runtime.set_allocation_collection_interval(0);
+        let object = Object::new_in(&runtime);
+        object
+            .create_data_property("answer".into(), Value::Number(42.0))
+            .unwrap();
+        let weak = object.downgrade();
+        let mut incoming = JobQueueData::default();
+        incoming.jobs.push_back(Rc::new(ReadJob {
+            capture: StoredObject::initial(Some(&runtime), &object).unwrap(),
+            nested: None,
+            fail: false,
+        }));
+        drop(object);
+        assert_eq!(runtime.diagnostics().rooted, 0);
+        let queue = runtime.allocate_job_queue(incoming);
+        assert!(weak.upgrade().is_some());
+        assert!(queue.run_one().unwrap());
+        drop(queue);
+        assert_eq!(runtime.collect_migration_graph().unwrap().retained, 0);
+        assert!(weak.upgrade().is_none());
+    }
+
     struct ReadJob {
         capture: StoredObject,
         nested: Option<StoredObject>,

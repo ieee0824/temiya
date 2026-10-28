@@ -135,10 +135,8 @@ trait Allocation: Trace {
 
 // Runtime retirement releases the outer RefCell borrow before dropping host
 // payloads. Standalone collection keeps its immediate-drop behavior.
-#[cfg(test)]
 pub(crate) struct RetiredAllocations(Vec<Box<dyn Allocation>>);
 
-#[cfg(test)]
 impl Drop for RetiredAllocations {
     fn drop(&mut self) {
         self.0.clear();
@@ -431,14 +429,14 @@ impl Heap {
     /// Allocates and roots a value, collecting first when configured limits require it.
     pub fn try_allocate<T: Trace>(&mut self, value: T) -> Result<Root<T>, OutOfMemory> {
         if self.allocations_since_collection >= self.options.allocation_threshold {
-            self.collect();
+            self.collect_with_retire(drop, Some(&value));
         }
         if self
             .options
             .max_allocations
             .is_some_and(|limit| self.live_allocations() >= limit)
         {
-            self.collect();
+            self.collect_with_retire(drop, Some(&value));
             if self
                 .options
                 .max_allocations
@@ -638,23 +636,39 @@ impl Heap {
 
     /// Performs a complete stop-the-world mark-and-sweep collection.
     pub fn collect(&mut self) -> CollectionStats {
-        self.collect_with_retire(drop)
+        self.collect_with_retire(drop, None)
     }
 
     #[cfg(test)]
     pub(crate) fn collect_retiring(&mut self) -> (CollectionStats, RetiredAllocations) {
         let mut retired = RetiredAllocations(Vec::new());
-        let stats = self.collect_with_retire(|value| retired.0.push(value));
+        let stats = self.collect_with_retire(|value| retired.0.push(value), None);
+        (stats, retired)
+    }
+
+    pub(crate) fn collect_retiring_with(
+        &mut self,
+        incoming: &impl Trace,
+    ) -> (CollectionStats, RetiredAllocations) {
+        let mut retired = RetiredAllocations(Vec::new());
+        let stats = self.collect_with_retire(|value| retired.0.push(value), Some(incoming));
         (stats, retired)
     }
 
     fn collect_with_retire(
         &mut self,
         mut retire: impl FnMut(Box<dyn Allocation>),
+        incoming: Option<&dyn Trace>,
     ) -> CollectionStats {
         let mut marked = HashSet::new();
         let mut traced_ephemerons = Vec::new();
         let mut queue = self.roots.borrow().keys().copied().collect::<VecDeque<_>>();
+        if let Some(incoming) = incoming {
+            incoming.trace(&mut Tracer {
+                visit: &mut |edge| queue.push_back(edge),
+                conditional: &mut |key, value| traced_ephemerons.push((key, value)),
+            });
+        }
         while let Some(raw) = queue.pop_front() {
             if !marked.insert(raw) {
                 continue;

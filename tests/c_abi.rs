@@ -203,3 +203,71 @@ fn c_callback_can_reenter_compile_and_evaluate() {
         let _ = temiya_engine_free(engine);
     }
 }
+
+#[test]
+fn returned_values_survive_allocation_collection_and_engine_teardown() {
+    let mut engine = ptr::null_mut();
+    let mut realm = ptr::null_mut();
+    let mut initial_script = ptr::null_mut();
+    let mut pressure_script = ptr::null_mut();
+    let mut object = ptr::null_mut();
+    let mut number = ptr::null_mut();
+    let mut error = ptr::null_mut();
+    // SAFETY: Every handle is owned until its checked free; value operations
+    // deliberately follow Engine teardown to exercise the independent lifetime.
+    unsafe {
+        assert_eq!(temiya_engine_new(&mut engine, &mut error), TemiyaStatus::Ok);
+        assert_eq!(
+            temiya_realm_new(engine, &mut realm, &mut error),
+            TemiyaStatus::Ok
+        );
+        assert_eq!(
+            temiya_script_compile(
+                engine,
+                realm,
+                c"var retained={};retained.self=retained;retained;".as_ptr(),
+                &mut initial_script,
+                &mut error
+            ),
+            TemiyaStatus::Ok
+        );
+        assert_eq!(
+            temiya_script_evaluate(engine, initial_script, &mut object, &mut error),
+            TemiyaStatus::Ok
+        );
+        // Remove the JS root. Enough cyclic allocations trigger normal GC while
+        // the C value handle is the only external root for the returned object.
+        assert_eq!(
+            temiya_script_compile(
+                engine,
+                realm,
+                c"retained=null;for(var i=0;i<5000;i++){var o={};o.self=o;}42;".as_ptr(),
+                &mut pressure_script,
+                &mut error
+            ),
+            TemiyaStatus::Ok
+        );
+        assert_eq!(
+            temiya_script_evaluate(engine, pressure_script, &mut number, &mut error),
+            TemiyaStatus::Ok
+        );
+        assert_eq!(temiya_script_free(initial_script), TemiyaStatus::Ok);
+        assert_eq!(temiya_script_free(pressure_script), TemiyaStatus::Ok);
+        assert_eq!(temiya_realm_free(realm), TemiyaStatus::Ok);
+        assert_eq!(temiya_engine_free(engine), TemiyaStatus::Ok);
+        let mut output = 0.0;
+        assert_eq!(
+            temiya_value_to_number(number, &mut output),
+            TemiyaStatus::Ok
+        );
+        assert_eq!(output, 42.0);
+        // The numeric accessor intentionally rejects objects without coercion.
+        assert_eq!(
+            temiya_value_to_number(object, &mut output),
+            TemiyaStatus::InvalidArgument
+        );
+        assert_eq!(temiya_value_free(number), TemiyaStatus::Ok);
+        assert_eq!(temiya_value_free(object), TemiyaStatus::Ok);
+        assert!(error.is_null());
+    }
+}

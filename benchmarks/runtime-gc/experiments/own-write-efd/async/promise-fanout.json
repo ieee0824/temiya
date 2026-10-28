@@ -1,0 +1,11 @@
+{
+  "name": "promise-fanout",
+  "group": "async",
+  "iterations": 2048,
+  "expected": 2096128,
+  "before_drain_expected": 0,
+  "setup": "async function seed(value){return value;}\nvar completed=0,total=0;\nfunction collect(value){total+=value;completed++;}\nfunction launch(count){completed=0;total=0;for(var i=0;i<count;i++)seed(i).then(collect);return completed;}",
+  "invocation": "launch(2048);",
+  "completion": "completed===2048?total:-1;",
+  "oracle": "Sum of integers 0..2047 is 2048*2047/2, with exactly 2048 completed reactions"
+}

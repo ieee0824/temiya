@@ -65,6 +65,7 @@ jobs:
     needs: miri-shards
     if: always()
     runs-on: ubuntu-latest
+    timeout-minutes: 2
     steps:
       - name: Require every Miri shard to pass
         env:

@@ -9,6 +9,10 @@ or cross-heap handles fail safely.
 `Root<T>` registers reachability with RAII. Cloning a root adds a registration;
 dropping it removes one. Runtime state may store handles, but a handle that must
 survive a collection point needs a live root or a traced path from one.
+Root counts use slot-indexed entries with complete heap/slot/generation identity
+checks. A dense list tracks distinct active roots, so registration and final
+release avoid hashing, while collection visits active roots without scanning
+the heap's historical slot count. Root clones retain separate registrations.
 
 Types stored in the heap implement `Trace` and report every strong outgoing
 handle through `Tracer::mark`. They do not trace weak edges and must not retain

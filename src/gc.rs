@@ -6,7 +6,7 @@
 use std::{
     any::Any,
     cell::{Cell, RefCell},
-    collections::{HashMap, HashSet, VecDeque},
+    collections::{HashSet, VecDeque},
     fmt,
     hash::{Hash, Hasher},
     marker::PhantomData,
@@ -159,7 +159,65 @@ struct Slot {
     old: bool,
 }
 
-type RootCounts = Rc<RefCell<HashMap<RawHandle, usize>>>;
+// Handles already carry a dense slot index. Root registration must not hash
+// three identity words on every allocation, facade revival and final drop.
+// The active list also keeps collection proportional to live roots rather
+// than the heap's historical slot count.
+#[derive(Default)]
+struct RootTable {
+    slots: Vec<Option<RootEntry>>,
+    active: Vec<RawHandle>,
+}
+struct RootEntry {
+    identity: RawHandle,
+    count: usize,
+    position: usize,
+}
+impl RootTable {
+    fn register(&mut self, identity: RawHandle) {
+        if self.slots.len() <= identity.slot {
+            self.slots.resize_with(identity.slot + 1, || None);
+        }
+        if let Some(entry) = &mut self.slots[identity.slot] {
+            if entry.count != 0 {
+                assert_eq!(entry.identity, identity, "live root identity changed");
+                entry.count += 1;
+                return;
+            }
+        }
+        self.slots[identity.slot] = Some(RootEntry {
+            identity,
+            count: 1,
+            position: self.active.len(),
+        });
+        self.active.push(identity);
+    }
+    fn unregister(&mut self, identity: RawHandle) {
+        let entry = self.slots[identity.slot].as_mut().expect("registered root");
+        assert_eq!(entry.identity, identity, "root identity changed");
+        assert_ne!(entry.count, 0, "root already unregistered");
+        entry.count -= 1;
+        if entry.count != 0 {
+            return;
+        }
+        let position = entry.position;
+        self.active.swap_remove(position);
+        if let Some(moved) = self.active.get(position) {
+            self.slots[moved.slot]
+                .as_mut()
+                .expect("active root")
+                .position = position;
+        }
+    }
+    fn count(&self, identity: RawHandle) -> usize {
+        self.slots
+            .get(identity.slot)
+            .and_then(Option::as_ref)
+            .filter(|entry| entry.identity == identity)
+            .map_or(0, |entry| entry.count)
+    }
+}
+type RootCounts = Rc<RefCell<RootTable>>;
 
 /// An owning registration that keeps a handle reachable across collection points.
 pub struct Root<T: Trace> {
@@ -187,12 +245,7 @@ impl<T: Trace> Clone for Root<T> {
 
 impl<T: Trace> Drop for Root<T> {
     fn drop(&mut self) {
-        let mut roots = self.roots.borrow_mut();
-        let count = roots.get_mut(&self.handle.raw).expect("registered root");
-        *count -= 1;
-        if *count == 0 {
-            roots.remove(&self.handle.raw);
-        }
+        self.roots.borrow_mut().unregister(self.handle.raw);
     }
 }
 
@@ -399,7 +452,7 @@ impl Heap {
             id: NEXT_HEAP.fetch_add(1, Ordering::Relaxed),
             slots: Vec::new(),
             free: Vec::new(),
-            roots: Rc::new(RefCell::new(HashMap::new())),
+            roots: Rc::new(RefCell::new(RootTable::default())),
             options,
             allocations_since_collection: 0,
             remembered: HashSet::new(),
@@ -615,12 +668,12 @@ impl Heap {
     /// Returns the number of explicit root registrations for a handle.
     #[must_use]
     pub fn root_count<T: Trace>(&self, handle: Handle<T>) -> usize {
-        self.roots.borrow().get(&handle.raw).copied().unwrap_or(0)
+        self.roots.borrow().count(handle.raw)
     }
 
     /// Traces each currently rooted allocation into a collector callback.
     pub fn trace_roots(&self, visit: &mut dyn FnMut(RawHandle)) {
-        let roots = self.roots.borrow().keys().copied().collect::<Vec<_>>();
+        let roots = self.roots.borrow().active.clone();
         for raw in roots {
             visit(raw);
             if let Some(slot) = self.raw_slot(raw) {
@@ -661,7 +714,7 @@ impl Heap {
     ) -> CollectionStats {
         let mut marked = HashSet::new();
         let mut traced_ephemerons = Vec::new();
-        let mut queue = self.roots.borrow().keys().copied().collect::<VecDeque<_>>();
+        let mut queue = VecDeque::from(self.roots.borrow().active.clone());
         if let Some(incoming) = incoming {
             incoming.trace(&mut Tracer {
                 visit: &mut |edge| queue.push_back(edge),
@@ -745,7 +798,7 @@ impl Heap {
         let mut marked = HashSet::new();
         let mut traced_ephemerons = Vec::new();
         let mut queue = VecDeque::new();
-        let roots = self.roots.borrow().keys().copied().collect::<Vec<_>>();
+        let roots = self.roots.borrow().active.clone();
         let seeds = roots
             .iter()
             .copied()
@@ -857,7 +910,7 @@ impl Heap {
             live: self.live_allocations(),
             slots: self.slots.len(),
             free: self.free.len(),
-            rooted: self.roots.borrow().len(),
+            rooted: self.roots.borrow().active.len(),
             remembered: self.remembered.len(),
             collections: self.collections,
             reclaimed_total: self.reclaimed_total,
@@ -867,7 +920,7 @@ impl Heap {
 
     /// Verifies roots, traced edges, remembered owners, and the free list.
     pub fn verify(&self) -> Result<(), HeapVerificationError> {
-        for raw in self.roots.borrow().keys().copied() {
+        for raw in self.roots.borrow().active.iter().copied() {
             if self.raw_slot(raw).is_none() {
                 return Err(HeapVerificationError::DanglingRoot(raw));
             }
@@ -954,5 +1007,5 @@ impl Default for Heap {
 }
 
 fn register_root(roots: &RootCounts, handle: RawHandle) {
-    *roots.borrow_mut().entry(handle).or_default() += 1;
+    roots.borrow_mut().register(handle);
 }

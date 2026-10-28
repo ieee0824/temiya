@@ -977,6 +977,12 @@ mod managed_allocation_tests {
             for source in [
                 "function sum(a,b){return a+b;}sum(20,22);",
                 "var constructedArray=new Array({answer:42});constructedArray[0].answer;",
+                "Object.prototype.valueOf.call(42).valueOf();",
+                "var numberValues=Array.prototype.values.call(42);if(numberValues.next().done){42;}else{0;}",
+                "var textValues=Array.prototype.values.call('💡');if(textValues.next().value==='\\uD83D' && textValues.next().value==='\\uDCA1' && textValues.next().done){42;}else{0;}",
+                "var stack=[];stack.push(20,22);stack.shift()+stack.pop();",
+                "if(Object.prototype.toString.call(null)==='[object Null]' && Array.prototype.push.call(42,0)===1){42;}else{0;}",
+                "if(Object.prototype.valueOf.call(42n).valueOf()===42n){42;}else{0;}",
                 "var calledArray=Array({answer:42});calledArray[0].answer;",
                 "var arrayIter=[{answer:42}].values();arrayIter.next().value.answer;",
                 "var proxyValue=new Proxy({answer:42},{});proxyValue.answer;",

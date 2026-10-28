@@ -307,6 +307,7 @@ pub(super) struct BoundFunction {
 }
 
 pub(super) enum ManagedCallable {
+    Array(super::array_methods::ArrayBuiltin),
     CapturedObject(CapturedObjectCall),
     Bytecode(super::bytecode_function::StoredClosure),
     Ast(super::function::StoredFunctionClosure),
@@ -322,6 +323,7 @@ impl ManagedCallable {
             Self::Ast(_) => Ok(None),
             Self::Bytecode(_) => Ok(None),
             Self::CapturedObject(_) => Ok(None),
+            Self::Array(_) => Ok(None),
         }
     }
     fn is_constructor(&self) -> bool {
@@ -331,10 +333,12 @@ impl ManagedCallable {
             Self::Bytecode(closure) => closure.is_constructor(),
             Self::ProxyRevoker(_) => false,
             Self::CapturedObject(_) => false,
+            Self::Array(_) => false,
         }
     }
     fn call(&self, owner: &Object, this: Value, arguments: &[Value]) -> RuntimeResult<Value> {
         match self {
+            Self::Array(call) => call.call(owner, this, arguments),
             Self::CapturedObject(call) => {
                 let object = call.object.load(owner)?;
                 (call.callback)(&object, call.key.as_ref(), this, arguments)
@@ -388,6 +392,7 @@ impl ManagedCallable {
             Self::Ast(closure) => closure.trace(tracer),
             Self::Bytecode(closure) => closure.trace(tracer),
             Self::CapturedObject(call) => call.object.trace(tracer),
+            Self::Array(call) => call.trace(tracer),
             Self::Bound(bound) => bound.trace(tracer),
             Self::ProxyRevoker(slot) => {
                 if let Some(proxy) = &*slot.borrow() {
@@ -674,6 +679,15 @@ impl Object {
             None,
             Some(Rc::new(ManagedCallable::CapturedObject(call))),
         ))
+    }
+
+    pub(super) fn managed_function_with_metadata(
+        prototype: &Object,
+        name: &str,
+        length: u32,
+        callable: ManagedCallable,
+    ) -> Self {
+        Self::function_with_metadata(prototype, name, length, None, Some(Rc::new(callable)))
     }
 
     fn function_with_metadata(

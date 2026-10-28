@@ -3,7 +3,7 @@
 use super::{
     IntrinsicId, IntrinsicRegistry, JsString, Object, PropertyDescriptor, PropertyKey, Realm,
     Reference, ReferencedName, RuntimeError, RuntimeResult, Value, WellKnownSymbol,
-    WellKnownSymbols, array_methods::method, coercion::primitive,
+    WellKnownSymbols, coercion::primitive,
 };
 
 pub(crate) const MAX_ARGUMENTS: usize = 65_536;
@@ -153,18 +153,11 @@ pub(super) fn install(
     )?;
     let array = intrinsics.get(IntrinsicId::ArrayPrototype);
     // Borrow the same ToObject implementation as other generic Array methods.
-    let boxing = super::array_methods::iterator_boxing(intrinsics, symbols);
-    method(&array, &function, "values", 0, move |this, _| {
-        let target = boxing(this)?;
-        let result = Object::new_for(&array_iterator);
-        result.set_prototype(Some(array_iterator.clone()));
-        let target = super::stored::StoredObject::store(&result, &target)?;
-        result.0.state.borrow_mut().iterator = Some(Box::new(IteratorSlot::Array {
-            target: Some(target),
-            index: 0,
-        }));
-        Ok(Value::Object(result))
-    })?;
+    let values = super::array_methods::values_function(intrinsics, symbols, &array_iterator)?;
+    array.define_own_property(
+        "values".into(),
+        PropertyDescriptor::data(Value::Object(values), true, false, true),
+    )?;
     array.define_own_property(
         iterator_key.clone(),
         PropertyDescriptor::data(array.get(&"values".into())?, true, false, true),
@@ -184,6 +177,17 @@ pub(super) fn install(
             PropertyDescriptor::data(Value::Object(values), true, false, true),
         )?;
     Ok(())
+}
+
+pub(super) fn array_values(prototype: &Object, target: Object) -> RuntimeResult<Object> {
+    let result = Object::new_for(prototype);
+    let target = super::stored::StoredObject::store(&result, &target)?;
+    result.initialize_prototype(Some(prototype.clone()));
+    result.0.state.borrow_mut().iterator = Some(Box::new(IteratorSlot::Array {
+        target: Some(target),
+        index: 0,
+    }));
+    Ok(result)
 }
 
 fn string_values(

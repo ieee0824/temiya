@@ -536,6 +536,12 @@ edge at the allocation safepoint even after its last public facade is consumed.
 This removes the temporary global-object facade lookup and post-allocation
 prototype write/barrier without changing prototype identity or initializer order.
 
+Verified numeric-return calls resolve a captured Environment only when a guarded
+captured binding is actually read. Parameter-only calls need no Realm or
+Environment facade revival. The stored strong Realm/Environment edges remain
+traced; this is not a weakening of captures. Failed guards reuse any loaded
+Environment and enter the ordinary VM path once, with source-Realm error binding.
+
 Both explicit collection and allocation collection clear this region before
 tracing. Cached facades therefore cannot keep an otherwise dead key, cycle,
 callback, or Realm alive through collection. Active operands, References,

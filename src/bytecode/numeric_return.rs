@@ -2,7 +2,7 @@
 use super::{
     BinaryOperator, BindingKind, Bytecode, Constant, Instruction, ScopeKind, UnaryNumericOperator,
 };
-use crate::runtime::{Environment, JsString, Value, binary_number, unary_numeric_value};
+use crate::runtime::{JsString, Value, binary_number, unary_numeric_value};
 
 const STACK_LIMIT: usize = 8;
 
@@ -112,7 +112,7 @@ impl NumericReturnPlan {
         &self,
         parameters: &[JsString],
         arguments: &[Value],
-        captures: &Environment,
+        mut captures: impl FnMut(&JsString) -> Option<f64>,
     ) -> Option<Value> {
         let mut stack: [Value; STACK_LIMIT] = std::array::from_fn(|_| Value::Undefined);
         let mut depth = 0;
@@ -133,7 +133,7 @@ impl NumericReturnPlan {
                     } else if *own {
                         return None;
                     } else {
-                        captures.try_pure_number_binding(name)?
+                        captures(name)?
                     };
                     stack[depth] = Value::Number(number);
                     depth += 1;

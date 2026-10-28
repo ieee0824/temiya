@@ -517,7 +517,7 @@ impl VerifiedBytecode {
         &self,
         parameters: &[JsString],
         arguments: &[crate::runtime::Value],
-        captures: &crate::runtime::Environment,
+        captures: impl FnMut(&JsString) -> Option<f64>,
     ) -> Option<crate::runtime::Value> {
         self.numeric_return
             .as_ref()?

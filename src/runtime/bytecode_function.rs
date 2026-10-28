@@ -43,9 +43,31 @@ impl StoredClosure {
         this: Value,
         arguments: &[Value],
     ) -> RuntimeResult<Value> {
-        let closure = self.load(owner)?;
+        let mut environment = None;
+        if !self.template.arguments_object {
+            if let Some(value) = self.template.body.try_numeric_return(
+                &self.template.parameters,
+                arguments,
+                |name| {
+                    if environment.is_none() {
+                        environment = Some(self.environment.load(owner).ok()?);
+                    }
+                    environment.as_ref()?.try_pure_number_binding(name)
+                },
+            ) {
+                return Ok(value);
+            }
+        }
+        let closure = Closure {
+            template: self.template.clone(),
+            realm: self.realm.load(owner)?,
+            environment: match environment {
+                Some(environment) => environment,
+                None => self.environment.load(owner)?,
+            },
+        };
         closure
-            .call(owner.clone(), this, arguments, None)
+            .call_fallback(owner.clone(), this, arguments, None)
             .map_err(|error| closure.realm.bind_exception(error))
     }
     pub(super) fn construct(
@@ -140,11 +162,21 @@ impl Closure {
             if let Some(value) = self.template.body.try_numeric_return(
                 &self.template.parameters,
                 arguments,
-                &self.environment,
+                |name| self.environment.try_pure_number_binding(name),
             ) {
                 return Ok(value);
             }
         }
+        self.call_fallback(function, this, arguments, new_target)
+    }
+
+    fn call_fallback(
+        &self,
+        function: Object,
+        this: Value,
+        arguments: &[Value],
+        new_target: Option<Object>,
+    ) -> RuntimeResult<Value> {
         let this = if self.template.arrow {
             FunctionThis::Lexical
         } else {
@@ -221,6 +253,34 @@ fn boxed_this(realm: &Realm, value: Value) -> RuntimeResult<Value> {
 mod numeric_return_tests {
     use super::*;
     use crate::{bytecode::BytecodeCompiler, runtime::Runtime};
+
+    #[cfg(not(miri))]
+    #[test]
+    fn parameter_only_numeric_calls_do_not_revive_unused_realm_or_environment_roots() {
+        let runtime = Runtime::new();
+        let realm = Realm::ordinary_in(&runtime);
+        let code = BytecodeCompiler::compile("(function(x){return x+2;});").unwrap();
+        let Completion::Normal(Some(Value::Object(function))) =
+            VirtualMachine::execute_in_realm(&code, &realm).unwrap()
+        else {
+            panic!("function")
+        };
+        drop(realm);
+        runtime.collect_garbage().unwrap();
+        let (_, before, _) = runtime.profile_snapshot();
+        for _ in 0..100 {
+            assert!(
+                function
+                    .call(Value::Undefined, &[Value::Number(40.0)])
+                    .unwrap()
+                    .same_value(&Value::Number(42.0))
+            );
+        }
+        let (_, after, _) = runtime.profile_snapshot();
+        assert_eq!(after, before);
+        drop(function);
+        assert_eq!(runtime.collect_garbage().unwrap().retained, 0);
+    }
 
     #[test]
     fn pure_numeric_calls_allocate_no_managed_frames_and_code_keeps_no_runtime_edges() {

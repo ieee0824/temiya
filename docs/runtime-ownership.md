@@ -8,6 +8,55 @@ use explicit or inherited allocation contexts; Legacy facade/storage variants
 and the private Legacy queue fallback have been removed. The original
 baseline observations below describe the starting point, not the current branch.
 
+## Measured runtime integration
+
+The runtime source at `fb6a3ed0edea27a23196bd956dabd066cde8f6ee` passes the
+[original eleven-workload comparison](../benchmarks/runtime-gc/boa-comparison.json)
+against omoikane's actual modified Boa through its public JsRuntime embedding.
+The comparison pins omoikane to `007556adccb8fb4329236932ca8175f8e8d119d2`, uses
+the original bodies, setup identities, counts and numeric oracles, and keeps
+the same 512 MiB / 180-second process watchdog. Each case uses 15 samples in
+three alternating process pairs on local Linux ARM64, with the same Rust compiler
+and release profile. All 66 worker runs return the correct result. Every pair
+passes the existing noise gate: improvement greater than both 10% and three
+times the sum of relative median absolute deviations. Temiya's observed maximum
+process high-water mark is 9052 KiB.
+
+[Source verification](../benchmarks/runtime-gc/source-verification.json) records
+the identical source-tree objects and byte-for-byte identical rebuilt worker
+after optional facade-cache experiments were removed. The accompanying
+[strict public probe](../benchmarks/runtime-gc/ownership-probe.json) releases all
+seven fixtures and verifies that both original and cloned handles remain usable.
+
+The separate [main regression control](../benchmarks/runtime-gc/main-comparison.json)
+compares the same candidate with frozen main `2d503cc`. Tracing introduces a
+material throughput cost: several cases take 12–46% longer than main, despite
+remaining faster than the pinned Boa. This is not a regression-free result.
+Function call is faster than main; string concatenation and prototype-method
+differences remain within the comparison's noise threshold. The table gives
+the range of process-pair median time ratios; smaller is faster.
+
+| Workload | Temiya / omoikane Boa | Traced runtime / main |
+| --- | --- | --- |
+| arith | 0.64–0.65× | 1.12–1.20× |
+| prop-mono | 0.75–0.79× | 1.33–1.41× |
+| prop-mega | 0.58–0.60× | 1.42–1.46× |
+| call | 0.41–0.54× | 0.72–0.73× |
+| closure-alloc | 0.85–0.87× | 1.29–1.39× |
+| object-alloc | 0.78–0.81× | 1.36–1.38× |
+| string-concat | 0.41–0.42× | 1.05–1.06× |
+| array | 0.64–0.65× | 1.31–1.33× |
+| primitive-string-property | 0.51–0.52× | 1.09–1.15× |
+| primitive-string-method | 0.67–0.69× | 1.21–1.36× |
+| proto-method | 0.57–0.63× | 0.94–0.95× |
+
+These are eleven microbenchmarks on one machine, not whole-application
+compatibility, arbitrary JavaScript superiority, or a SpiderMonkey result.
+GC reachability and rooted-handle safety have independent tests and probes;
+correct benchmark values alone do not establish them. The full Miri gate is
+partitioned from Miri's actual test listing, executes each assigned test exactly,
+and requires every shard to pass; plan validation alone is not a Miri pass.
+
 ## Evidence and acceptance probe
 
 The fixed omoikane closure-allocation workload creates 300,000 ordinary

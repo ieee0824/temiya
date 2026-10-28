@@ -1,0 +1,94 @@
+{
+  "recorded_at": "2026-10-28T13:19:31.263Z",
+  "qualified_source_revision": "fb6a3ed0edea27a23196bd956dabd066cde8f6ee",
+  "reproduced_source_revision": "b5d0d98967b3e802413dbed7693492f99993862c",
+  "identical_git_objects": {
+    "src": "61ded24c54bf8bd152eba7528da2612ef28de121",
+    "Cargo.toml": "f863e0d9af0b72db8c8fdf59a244a7e9cbd56dae",
+    "Cargo.lock": "e0e7f6ac7e4abfa3c12c3af30d305bbb87af50fc",
+    "examples": "ffdda6d7c05676adbd99a47b9866e6f25b911e69"
+  },
+  "qualified_and_rebuilt_worker_sha256": "e6a99cecee83c5cb044e9963ba96f03cfc961129e9f503255ae316bcc4007a49",
+  "binary_identical": true,
+  "ownership_probe": {
+    "exit_code": 0,
+    "cases": 7,
+    "reclamation_ready": true,
+    "scope": "public Engine; globals removed, scripts/Realm/Engine and both value handles dropped"
+  },
+  "all_features": {
+    "passed": 642,
+    "ignored": 20,
+    "suites": 86,
+    "source_revision": "fb6a3ed0edea27a23196bd956dabd066cde8f6ee"
+  },
+  "local_miri": {
+    "passed": 3,
+    "ignored": 0,
+    "selection": "gc::shared_record_tests",
+    "toolchain": "nightly-2026-10-20",
+    "flags": [
+      "-Zmiri-strict-provenance",
+      "-Zmiri-symbolic-alignment-check"
+    ],
+    "full_library_pass": false
+  },
+  "miri_shard_plan": {
+    "available": 116,
+    "assigned": 116,
+    "unique": 116,
+    "shards": [
+      {
+        "shard": 0,
+        "tests": 15
+      },
+      {
+        "shard": 1,
+        "tests": 15
+      },
+      {
+        "shard": 2,
+        "tests": 15
+      },
+      {
+        "shard": 3,
+        "tests": 15
+      },
+      {
+        "shard": 4,
+        "tests": 14
+      },
+      {
+        "shard": 5,
+        "tests": 14
+      },
+      {
+        "shard": 6,
+        "tests": 14
+      },
+      {
+        "shard": 7,
+        "tests": 14
+      }
+    ],
+    "qualification": "actual Miri listing partition validated; does not execute every test"
+  },
+  "target_audit": {
+    "observed_head": "e989a76ab44bf0dbc95a75f839dce53b3263df71",
+    "measured_revision": "007556adccb8fb4329236932ca8175f8e8d119d2",
+    "unchanged_git_objects": {
+      "engine/boa": "40987e9103fb3cd52085cb70158eb6802f2e61e3",
+      "engine/regress": "09bcfd279ffd58acdb8ec72291cd0460ed260d01",
+      "Cargo.toml": "5789a24e6f572121111f1c63af0f177723b0aae1",
+      "Cargo.lock": "5d41d8f1f3496384d49a8965734e2b3f7e546479"
+    },
+    "embedding_src_js_changed": true,
+    "scope": "Timings use the measured pinned embedding. Matching engine trees do not measure the newer application embedding."
+  },
+  "limitations": [
+    "one local Linux ARM64 machine",
+    "eleven original workloads only",
+    "material throughput regressions versus main retained in main-comparison.json",
+    "full Miri, final CI and fuzz validation pending"
+  ]
+}

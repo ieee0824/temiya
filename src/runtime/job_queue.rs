@@ -76,8 +76,8 @@ impl Deref for JobQueueReference {
 /// A Realm-local FIFO queue for Promise reactions and thenable jobs.
 #[derive(Clone)]
 pub struct JobQueue(pub(super) JobQueueReference);
-impl Default for JobQueue {
-    fn default() -> Self {
+impl JobQueue {
+    pub(super) fn legacy() -> Self {
         Self(JobQueueReference::Legacy(Rc::new(RefCell::new(
             JobQueueData::default(),
         ))))
@@ -177,11 +177,7 @@ impl Drop for Draining {
 impl JobQueue {
     /// Creates an empty queue.
     #[must_use]
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    pub(super) fn new_in(runtime: &Runtime) -> Self {
+    pub fn new(runtime: &super::AllocationContext) -> Self {
         runtime.allocate_job_queue(JobQueueData::default())
     }
 
@@ -336,7 +332,7 @@ mod tests {
     fn traced_jobs_retain_captures_after_dequeue_nested_runs_and_errors() {
         for fail in [false, true] {
             let runtime = Runtime::new();
-            let queue = JobQueue::new_in(&runtime);
+            let queue = JobQueue::new(&runtime);
             runtime.collect_migration_graph().unwrap();
             let first = Object::new_in(&runtime);
             let second = Object::new_in(&runtime);
@@ -372,7 +368,7 @@ mod tests {
     #[test]
     fn unrooted_queues_release_pending_jobs_and_reject_foreign_edges() {
         let runtime = Runtime::new();
-        let queue = JobQueue::new_in(&runtime);
+        let queue = JobQueue::new(&runtime);
         let foreign_runtime = Runtime::new();
         let foreign = Object::new_in(&foreign_runtime);
         assert!(
@@ -429,7 +425,7 @@ mod tests {
     #[test]
     fn draining_and_hook_state_survive_reentry_errors_and_panics() {
         let runtime = Runtime::new();
-        let queue = JobQueue::new_in(&runtime);
+        let queue = JobQueue::new(&runtime);
         let hook_queue = queue.clone();
         queue.set_unhandled_rejection_hook(move |_| {
             hook_queue.set_unhandled_rejection_hook(|_| {});

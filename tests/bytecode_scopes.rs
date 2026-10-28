@@ -4,6 +4,67 @@ use temiya::{
     runtime::{Completion, Realm, RuntimeErrorKind, StatementEvaluator, Value},
 };
 
+#[test]
+fn block_iteration_clone_preserves_the_supplied_realms_context() {
+    use temiya::bytecode::{
+        BindingKind, Bytecode, Constant, Instruction, ScopeBinding, ScopeDescriptor, ScopeKind,
+    };
+    use temiya::runtime::{AllocationContext, Object};
+    let context = AllocationContext::new();
+    let realm = Realm::ordinary_in(&context);
+    let code = Bytecode {
+        constants: vec![
+            Constant::Scope(ScopeDescriptor {
+                kind: ScopeKind::Global,
+                strict: false,
+                bindings: vec![],
+                functions: vec![],
+            }),
+            Constant::Scope(ScopeDescriptor {
+                kind: ScopeKind::Block,
+                strict: false,
+                bindings: vec![ScopeBinding {
+                    name: "value".into(),
+                    kind: BindingKind::Let,
+                }],
+                functions: vec![],
+            }),
+        ],
+        instructions: vec![
+            Instruction::EnterScope(0),
+            Instruction::EnterScope(1),
+            Instruction::CreateObject,
+            Instruction::InitializeBinding { scope: 1, slot: 0 },
+            Instruction::CloneLoopBindings,
+            Instruction::LoadBinding { scope: 1, slot: 0 },
+            Instruction::ExitScope,
+            Instruction::ExitScope,
+            Instruction::Complete,
+        ],
+        local_count: 0,
+    }
+    .verify()
+    .unwrap();
+    let Completion::Normal(Some(Value::Object(object))) =
+        VirtualMachine::execute_in_realm(&code, &realm).unwrap()
+    else {
+        panic!("object result")
+    };
+    let peer = Object::new_in(&context);
+    object
+        .create_data_property("peer".into(), Value::Object(peer.clone()))
+        .unwrap();
+    context.collect_garbage().unwrap();
+    assert!(
+        object
+            .get(&"peer".into())
+            .unwrap()
+            .same_value(&Value::Object(peer.clone()))
+    );
+    drop((object, peer, realm));
+    assert_eq!(context.collect_garbage().unwrap().retained, 0);
+}
+
 fn compare(source: &str) {
     let program = parse_script(source).unwrap();
     let ast = StatementEvaluator::new(Realm::ordinary()).evaluate_program(&program);

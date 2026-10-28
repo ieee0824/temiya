@@ -10,7 +10,7 @@ use temiya::{
 
 fn evaluator() -> (ExpressionEvaluator, Environment) {
     let realm = Realm::ordinary();
-    let environment = Environment::declarative(Some(realm.global_environment()));
+    let environment = Environment::declarative(realm.global_environment());
     (
         ExpressionEvaluator::with_environment(realm, environment.clone(), Value::Undefined, false),
         environment,
@@ -155,7 +155,7 @@ fn optional_chain_short_circuits_a_contiguous_chain_only() {
 #[test]
 fn accessor_getvalue_putvalue_and_strict_failures_are_observable() {
     let realm = Realm::ordinary();
-    let environment = Environment::declarative(Some(realm.global_environment()));
+    let environment = Environment::declarative(realm.global_environment());
     let stored = Rc::new(RefCell::new(Value::Number(1.0)));
     let getter_value = stored.clone();
     let getter = Object::native_function(move |_, _| Ok(getter_value.borrow().clone()));

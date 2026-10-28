@@ -7,7 +7,7 @@ use temiya::{
 
 fn setup() -> (StatementEvaluator, Environment) {
     let realm = Realm::ordinary();
-    let environment = Environment::declarative(Some(realm.global_environment()));
+    let environment = Environment::declarative(realm.global_environment());
     (
         StatementEvaluator::with_environments(
             realm,

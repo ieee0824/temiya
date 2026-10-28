@@ -27,7 +27,7 @@ impl ArrayObject {
         Self::initialize(Object::new_for(context), length)
     }
 
-    pub(super) fn initialize(object: Object, length: u32) -> RuntimeResult<Self> {
+    fn initialize(object: Object, length: u32) -> RuntimeResult<Self> {
         object.0.state.borrow_mut().array = true;
         object.0.state.borrow_mut().elements = Some(Box::default());
         object.define_own_property(

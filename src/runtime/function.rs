@@ -125,7 +125,7 @@ pub(super) fn create_function(
     }
     let name_environment =
         if let Some(ExprKind::Identifier(name)) = code.name.as_ref().map(|name| &name.kind) {
-            let environment = Environment::declarative(Some(evaluator.environment.clone()));
+            let environment = Environment::declarative(evaluator.environment.clone());
             environment.create_immutable_binding(JsString::from(name.as_str()), false)?;
             Some(environment)
         } else {

@@ -5,7 +5,7 @@ use temiya::runtime::{
 };
 
 fn context(realm: &Realm) -> ExecutionContext {
-    let environment = Environment::declarative(Some(realm.global_environment()));
+    let environment = Environment::declarative(realm.global_environment());
     ExecutionContext::new(realm.clone(), None, environment.clone(), environment)
 }
 
@@ -44,8 +44,8 @@ fn script_records_and_contexts_preserve_ownership() {
 fn execution_context_environments_can_change_at_block_boundaries() {
     let realm = Realm::ordinary();
     let mut context = context(&realm);
-    let lexical = Environment::declarative(Some(context.lexical_environment().clone()));
-    let variable = Environment::declarative(Some(context.variable_environment().clone()));
+    let lexical = Environment::declarative(context.lexical_environment().clone());
+    let variable = Environment::declarative(context.variable_environment().clone());
     context.set_lexical_environment(lexical.clone());
     context.set_variable_environment(variable.clone());
     assert_eq!(context.lexical_environment(), &lexical);

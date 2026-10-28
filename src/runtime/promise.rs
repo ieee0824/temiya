@@ -110,8 +110,8 @@ impl Promise {
         Ok(promise)
     }
     /// Creates a pending Promise with a fresh queue.
-    pub fn pending() -> RuntimeResult<Self> {
-        Self::pending_on(JobQueue::new())
+    pub fn pending(context: &super::AllocationContext) -> RuntimeResult<Self> {
+        Self::pending_on(JobQueue::new(context))
     }
     /// Creates a pending Promise on the supplied queue.
     pub fn pending_on(queue: JobQueue) -> RuntimeResult<Self> {
@@ -164,8 +164,8 @@ impl Promise {
         })
     }
     /// Creates an already-fulfilled Promise.
-    pub fn fulfilled(value: Value) -> RuntimeResult<Self> {
-        Self::fulfilled_on(JobQueue::new(), value)
+    pub fn fulfilled(context: &super::AllocationContext, value: Value) -> RuntimeResult<Self> {
+        Self::fulfilled_on(JobQueue::new(context), value)
     }
     /// Creates an already-fulfilled Promise on the supplied queue.
     pub fn fulfilled_on(queue: JobQueue, value: Value) -> RuntimeResult<Self> {
@@ -174,8 +174,11 @@ impl Promise {
         Ok(promise)
     }
     /// Creates an already-rejected Promise.
-    pub fn rejected(error: RuntimeError) -> RuntimeResult<Self> {
-        Self::rejected_on(JobQueue::new(), error)
+    pub fn rejected(
+        context: &super::AllocationContext,
+        error: RuntimeError,
+    ) -> RuntimeResult<Self> {
+        Self::rejected_on(JobQueue::new(context), error)
     }
     /// Creates an already-rejected Promise on the supplied queue.
     pub fn rejected_on(queue: JobQueue, error: RuntimeError) -> RuntimeResult<Self> {
@@ -544,7 +547,7 @@ mod tests {
     #[test]
     fn managed_promise_slots_and_escaped_then_functions_have_no_registry_roots() {
         let runtime = Runtime::new();
-        let queue = JobQueue::new_in(&runtime);
+        let queue = JobQueue::new(&runtime);
         let promise = Promise::pending_on(queue.clone()).unwrap();
         let object = promise.object();
         let weak = object.downgrade();
@@ -567,7 +570,7 @@ mod tests {
     fn managed_settlements_and_reactions_survive_gc_and_release_cycles_after_jobs() {
         for rejected in [false, true] {
             let runtime = Runtime::new();
-            let queue = JobQueue::new_in(&runtime);
+            let queue = JobQueue::new(&runtime);
             let source = Promise::pending_on(queue.clone()).unwrap();
             runtime.collect_migration_graph().unwrap();
             let value = Object::new_in(&runtime);
@@ -615,7 +618,7 @@ mod tests {
     #[test]
     fn state_setter_collection_keeps_unpublished_reactions_alive() {
         let runtime = Runtime::new();
-        let queue = JobQueue::new_in(&runtime);
+        let queue = JobQueue::new(&runtime);
         let source = Promise::pending_on(queue.clone()).unwrap();
         let callback_runtime = runtime.clone();
         let callback = Object::native_function_for(&source.object, move |_, args| {
@@ -654,7 +657,7 @@ mod tests {
     #[test]
     fn thenable_resolvers_retain_their_target_after_dequeue_and_can_escape() {
         let runtime = Runtime::new();
-        let queue = JobQueue::new_in(&runtime);
+        let queue = JobQueue::new(&runtime);
         let source = Promise::pending_on(queue.clone()).unwrap();
         let weak = source.object().downgrade();
         let escaped = Rc::new(RefCell::new(None));
@@ -703,7 +706,7 @@ mod tests {
     #[test]
     fn unhandled_error_payload_survives_source_drop_and_collection_in_the_hook() {
         let runtime = Runtime::new();
-        let queue = JobQueue::new_in(&runtime);
+        let queue = JobQueue::new(&runtime);
         let source = Promise::pending_on(queue.clone()).unwrap();
         let weak_source = source.object().downgrade();
         runtime.collect_migration_graph().unwrap();
@@ -745,8 +748,8 @@ mod tests {
     #[test]
     fn adoption_jobs_keep_derived_promises_and_other_queues_alive() {
         let runtime = Runtime::new();
-        let source_queue = JobQueue::new_in(&runtime);
-        let target_queue = JobQueue::new_in(&runtime);
+        let source_queue = JobQueue::new(&runtime);
+        let target_queue = JobQueue::new(&runtime);
         let source = Promise::pending_on(source_queue.clone()).unwrap();
         let target = Promise::pending_on(target_queue.clone()).unwrap();
         let weak = target.object().downgrade();
@@ -769,7 +772,7 @@ mod tests {
     #[test]
     fn foreign_promise_inputs_do_not_change_state_or_allocate_reactions() {
         let runtime = Runtime::new();
-        let queue = JobQueue::new_in(&runtime);
+        let queue = JobQueue::new(&runtime);
         let source = Promise::pending_on(queue.clone()).unwrap();
         let foreign_runtime = Runtime::new();
         let foreign = Object::new_in(&foreign_runtime);

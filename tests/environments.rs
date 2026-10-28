@@ -16,7 +16,8 @@ fn assert_number(value: Value, expected: f64) {
 
 #[test]
 fn declarative_bindings_enforce_tdz_mutability_and_deletion() {
-    let environment = Environment::declarative(None);
+    let context = temiya::runtime::AllocationContext::new();
+    let environment = Environment::declarative_in(&context);
     assert_eq!(environment.kind(), EnvironmentKind::Declarative);
     environment
         .create_mutable_binding(name("letValue"), true)
@@ -93,12 +94,13 @@ fn declarative_bindings_enforce_tdz_mutability_and_deletion() {
 
 #[test]
 fn environment_chains_resolve_nearest_binding() {
-    let outer = Environment::declarative(None);
+    let context = temiya::runtime::AllocationContext::new();
+    let outer = Environment::declarative_in(&context);
     outer.create_mutable_binding(name("x"), false).unwrap();
     outer
         .initialize_binding(&name("x"), Value::Number(1.0))
         .unwrap();
-    let inner = Environment::declarative(Some(outer.clone()));
+    let inner = Environment::declarative(outer.clone());
     inner.create_mutable_binding(name("x"), false).unwrap();
     inner
         .initialize_binding(&name("x"), Value::Number(2.0))
@@ -376,14 +378,15 @@ fn function_environment_tracks_this_function_and_new_target() {
 
 #[test]
 fn module_import_bindings_are_live_and_immutable() {
-    let exporting = Environment::module(None);
+    let context = temiya::runtime::AllocationContext::new();
+    let exporting = Environment::module_in(&context);
     exporting
         .create_mutable_binding(name("exported"), false)
         .unwrap();
     exporting
         .initialize_binding(&name("exported"), Value::Number(1.0))
         .unwrap();
-    let importing = Environment::module(None);
+    let importing = Environment::module_in(&context);
     importing
         .create_import_binding(name("local"), exporting.clone(), name("exported"))
         .unwrap();
@@ -415,7 +418,8 @@ fn module_import_bindings_are_live_and_immutable() {
 
 #[test]
 fn record_specific_operations_reject_wrong_environment_kinds() {
-    let declarative = Environment::declarative(None);
+    let context = temiya::runtime::AllocationContext::new();
+    let declarative = Environment::declarative_in(&context);
     assert_eq!(
         declarative.global_this_value().unwrap_err().kind(),
         RuntimeErrorKind::TypeError

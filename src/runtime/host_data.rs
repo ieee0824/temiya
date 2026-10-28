@@ -189,10 +189,20 @@ impl JsonParseBuiltin {
         } else {
             None
         };
-        let value = from_json(
-            parsed,
-            prototypes.as_ref().map(|(object, array)| (object, array)),
-        )?;
+        let value = from_json(parsed, &|length| {
+            let (object_prototype, array_prototype) = prototypes
+                .as_ref()
+                .expect("JSON containers initialize their prototypes");
+            if let Some(length) = length {
+                let object = ArrayObject::new_for(array_prototype, length)?.object();
+                object.initialize_prototype(Some(array_prototype.clone()));
+                Ok(object)
+            } else {
+                let object = Object::new_for(object_prototype);
+                object.initialize_prototype(Some(object_prototype.clone()));
+                Ok(object)
+            }
+        })?;
         let Some(Value::Object(reviver)) = arguments
             .get(1)
             .filter(|value| matches!(value, Value::Object(object) if object.is_callable()))
@@ -215,15 +225,26 @@ pub type JsonTransform<'a> = dyn FnMut(&str, Value) -> RuntimeResult<Value> + 'a
 impl Json {
     /// Parses JSON and optionally walks it bottom-up with a reviver.
     pub fn parse(
+        context: &super::AllocationContext,
         source: &JsString,
         mut reviver: Option<&mut JsonTransform<'_>>,
     ) -> RuntimeResult<Value> {
-        let value = from_json(parse_json(source)?, None)?;
-        if let Some(reviver) = reviver.as_mut() {
-            revive("", value, *reviver)
+        let value = from_json(parse_json(source)?, &|length| {
+            if let Some(length) = length {
+                ArrayObject::new(context, length).map(|array| array.object())
+            } else {
+                Ok(Object::new_in(context))
+            }
+        })?;
+        let value = if let Some(reviver) = reviver.as_mut() {
+            revive("", value, *reviver)?
         } else {
-            Ok(value)
+            value
+        };
+        if let Value::Object(object) = &value {
+            StoredObject::initial(Some(context), object)?;
         }
+        Ok(value)
     }
 
     /// Serializes a runtime Value, optionally transforming properties with a replacer.
@@ -258,7 +279,7 @@ fn parse_json(source: &JsString) -> RuntimeResult<serde_json::Value> {
 
 fn from_json(
     value: serde_json::Value,
-    prototypes: Option<(&Object, &Object)>,
+    allocate: &impl Fn(Option<u32>) -> RuntimeResult<Object>,
 ) -> RuntimeResult<Value> {
     Ok(match value {
         serde_json::Value::Null => Value::Null,
@@ -272,33 +293,21 @@ fn from_json(
         serde_json::Value::Array(values) => {
             let length = u32::try_from(values.len())
                 .map_err(|_| RuntimeError::range_error("JSON array is too large"))?;
-            let array = if let Some((_, prototype)) = prototypes {
-                let array = ArrayObject::new_for(prototype, length)?;
-                array.object().initialize_prototype(Some(prototype.clone()));
-                array
-            } else {
-                ArrayObject::initialize(Object::new(), length)?
-            };
+            let array = allocate(Some(length))?;
             for (index, value) in values.into_iter().enumerate() {
-                array.object().create_data_property(
+                array.create_data_property(
                     JsString::from(index.to_string()).into(),
-                    from_json(value, prototypes)?,
+                    from_json(value, allocate)?,
                 )?;
             }
-            Value::Object(array.object())
+            Value::Object(array)
         }
         serde_json::Value::Object(values) => {
-            let object = if let Some((prototype, _)) = prototypes {
-                let object = Object::new_for(prototype);
-                object.initialize_prototype(Some(prototype.clone()));
-                object
-            } else {
-                Object::new()
-            };
+            let object = allocate(None)?;
             for (key, value) in values {
                 object.create_data_property(
                     JsString::from(key).into(),
-                    from_json(value, prototypes)?,
+                    from_json(value, allocate)?,
                 )?;
             }
             Value::Object(object)

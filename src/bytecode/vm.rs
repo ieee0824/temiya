@@ -166,7 +166,9 @@ impl VirtualMachine {
                 }
                 Instruction::CloneLoopBindings => {
                     let frame = scopes.last_mut().expect("verified loop environment");
-                    let next = Environment::declarative(frame.environment.outer());
+                    let next = Environment::declarative(
+                        frame.environment.outer().expect("verified loop parent"),
+                    );
                     for binding in &frame.plan.bindings {
                         let value = frame
                             .environment
@@ -826,9 +828,13 @@ fn enter_scope(
         ScopeKind::Function => function
             .ok_or_else(|| RuntimeError::type_error("function scope requires a prepared frame"))?
             .clone(),
-        ScopeKind::Block => {
-            Environment::declarative(parents.last().map(|frame| frame.environment.clone()))
-        }
+        ScopeKind::Block => Environment::declarative(
+            parents
+                .last()
+                .expect("verified block parent")
+                .environment
+                .clone(),
+        ),
     };
     // Global eligibility is atomic with respect to binding/function creation.
     if plan.kind == ScopeKind::Global {

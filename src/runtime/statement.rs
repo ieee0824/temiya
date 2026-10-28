@@ -195,8 +195,7 @@ impl StatementEvaluator {
             } => {
                 if matches!(init, Some(ForInit::Variable { kind, .. }) if *kind != VariableKind::Var)
                 {
-                    let environment =
-                        Environment::declarative(Some(self.expression.environment.clone()));
+                    let environment = Environment::declarative(self.expression.environment.clone());
                     self.nested(environment).for_loop(
                         init.as_ref(),
                         test.as_ref(),
@@ -254,8 +253,7 @@ impl StatementEvaluator {
                 discriminant,
                 cases,
             } => {
-                let environment =
-                    Environment::declarative(Some(self.expression.environment.clone()));
+                let environment = Environment::declarative(self.expression.environment.clone());
                 for case in cases {
                     self.instantiate_lexical(&case.consequent, &environment)?;
                 }
@@ -316,7 +314,7 @@ impl StatementEvaluator {
         if !needs_environment {
             return self.statement_list(statements);
         }
-        let environment = Environment::declarative(Some(self.expression.environment.clone()));
+        let environment = Environment::declarative(self.expression.environment.clone());
         self.instantiate_lexical(statements, &environment)?;
         let evaluator = self.nested(environment);
         evaluator.instantiate_functions(statements)?;
@@ -417,8 +415,7 @@ impl StatementEvaluator {
                         .first()
                         .ok_or_else(|| RuntimeError::syntax_error("missing for-each binding"))?;
                     let name = binding_name(&declaration.binding)?;
-                    let environment =
-                        Environment::declarative(Some(self.expression.environment.clone()));
+                    let environment = Environment::declarative(self.expression.environment.clone());
                     if *kind == VariableKind::Const {
                         environment.create_immutable_binding(name.clone(), true)?;
                     } else {
@@ -519,7 +516,7 @@ impl StatementEvaluator {
     }
 
     fn catch(&self, handler: &CatchClause, thrown: Value) -> RuntimeResult<Completion> {
-        let environment = Environment::declarative(Some(self.expression.environment.clone()));
+        let environment = Environment::declarative(self.expression.environment.clone());
         if let Some(parameter) = &handler.param {
             let name = binding_name(parameter)?;
             environment.create_mutable_binding(name.clone(), false)?;

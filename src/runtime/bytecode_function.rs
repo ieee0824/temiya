@@ -88,7 +88,7 @@ pub(crate) fn create(
         .as_ref()
         .filter(|_| template.self_binding)
         .map(|name| {
-            let scope = Environment::declarative(Some(environment.clone()));
+            let scope = Environment::declarative(environment.clone());
             scope.create_immutable_binding(name.clone(), false)?;
             Ok::<_, RuntimeError>(scope)
         })

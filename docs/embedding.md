@@ -51,6 +51,19 @@ removal after their last strong root is dropped and the context is collected.
 TypedArray and DataView constructors continue to derive their context from
 the required buffer, preserving the shared bytes and detachment behavior.
 
+`Json::parse(context, source, reviver)` allocates its entire object/array tree
+in the supplied heap. Reviver replacements at child and root boundaries must
+also belong to that heap. `JobQueue::new(context)` has no `Default` counterpart.
+`Promise::pending(context)`, `fulfilled(context, value)`, and
+`rejected(context, error)` create fresh queues in that context; the existing
+`*_on(queue, ...)` APIs use the explicitly supplied queue.
+
+`Environment::declarative(parent)` and `Environment::module(parent)` require
+an owning parent Environment and inherit its context. Use
+`Environment::declarative_in(context)` or `Environment::module_in(context)`
+for parentless records. Object, global and function Environment factories
+derive their context from their required Object argument.
+
 Explicit JavaScript throws keep their original value in `Exception::thrown`,
 including throws that cross function or module boundaries. The handle retains
 the engine and evaluation Realm provenance. A native language error keeps its

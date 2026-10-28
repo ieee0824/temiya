@@ -221,7 +221,7 @@ impl Realm {
         let global_environment = Environment::global(global_object.clone(), global_this_value);
         let queue = runtime
             .as_ref()
-            .map_or_else(JobQueue::new, JobQueue::new_in);
+            .map_or_else(JobQueue::legacy, JobQueue::new);
         let data = RealmData {
             facade: RefCell::new(Weak::new()),
             id: next_id(&NEXT_ID, "Realm"),

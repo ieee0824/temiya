@@ -15,6 +15,11 @@ until 1.0, a minor version may contain breaking API changes.
 
 ### Changed
 
+- JSON parsing, JobQueue, and standalone Promise Rust factories require an
+  allocation context; JobQueue no longer implements `Default`.
+- Declarative and module Environment child factories require a parent;
+  parentless records use `declarative_in` / `module_in` with a context.
+
 - Map, Set, WeakMap, WeakSet, Array, ArrayBuffer, String, Number, BigInt, Date,
   and RegExp Rust constructors require
   an explicit allocation context; collection `Default` implementations are removed.

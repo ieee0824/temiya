@@ -379,12 +379,22 @@ impl Environment {
         }
         self.set_mutable_binding(name, value, strict)
     }
-    /// Creates a declarative environment record.
+    /// Creates a declarative environment record in its required parent's context.
     #[must_use]
-    pub fn declarative(outer: Option<Self>) -> Self {
+    pub fn declarative(outer: Self) -> Self {
         Self::new(
-            outer,
+            Some(outer),
             EnvironmentRecord::Declarative(DeclarativeRecord::default()),
+        )
+    }
+
+    /// Creates a parentless declarative record in an explicit context.
+    #[must_use]
+    pub fn declarative_in(context: &super::AllocationContext) -> Self {
+        Self::new_with_runtime(
+            None,
+            EnvironmentRecord::Declarative(DeclarativeRecord::default()),
+            Some(context.clone()),
         )
     }
 
@@ -502,10 +512,23 @@ impl Environment {
         environment
     }
 
-    /// Creates a module environment record.
+    /// Creates a module environment record in its required parent's context.
     #[must_use]
-    pub fn module(outer: Option<Self>) -> Self {
-        Self::new(outer, EnvironmentRecord::Module(ModuleRecord::default()))
+    pub fn module(outer: Self) -> Self {
+        Self::new(
+            Some(outer),
+            EnvironmentRecord::Module(ModuleRecord::default()),
+        )
+    }
+
+    /// Creates a parentless module record in an explicit context.
+    #[must_use]
+    pub fn module_in(context: &super::AllocationContext) -> Self {
+        Self::new_with_runtime(
+            None,
+            EnvironmentRecord::Module(ModuleRecord::default()),
+            Some(context.clone()),
+        )
     }
 
     fn new(outer: Option<Self>, record: EnvironmentRecord) -> Self {
@@ -1603,13 +1626,13 @@ mod slot_hint_tests {
             outer: None,
             record: RefCell::new(EnvironmentRecord::Declarative(DeclarativeRecord::default())),
         });
-        let first = Environment::module(Some(parent.clone()));
+        let first = Environment::module(parent.clone());
         first.create_mutable_binding("x".into(), false).unwrap();
         first
             .initialize_binding(&"x".into(), Value::Number(40.0))
             .unwrap();
         runtime.collect_migration_graph().unwrap();
-        let second = Environment::module(Some(parent.clone()));
+        let second = Environment::module(parent.clone());
         second.create_mutable_binding("y".into(), false).unwrap();
         second
             .initialize_binding(&"y".into(), Value::Number(41.0))
@@ -1642,7 +1665,8 @@ mod slot_hint_tests {
                 .unwrap()
                 .same_value(&Value::Number(40.0))
         );
-        let foreign = Environment::module(None);
+        let foreign_context = Runtime::new();
+        let foreign = Environment::module_in(&foreign_context);
         foreign.create_mutable_binding("z".into(), false).unwrap();
         foreign
             .initialize_binding(&"z".into(), Value::Number(0.0))
@@ -1735,7 +1759,7 @@ mod slot_hint_tests {
             .initialize_binding(&"answer".into(), Value::Number(42.0))
             .unwrap();
         let handle = outer.handle().unwrap();
-        let child = Environment::declarative(Some(outer.clone()));
+        let child = Environment::declarative(outer.clone());
         let clone = child.clone();
         assert_eq!(runtime.diagnostics().rooted, 2);
         assert_eq!(child.outer(), Some(outer.clone()));

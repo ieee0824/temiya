@@ -7,8 +7,9 @@ use temiya::{
 };
 
 fn run(source: &str) -> Result<Completion, temiya::runtime::RuntimeError> {
-    let realm = Realm::ordinary();
-    let environment = Environment::declarative(Some(realm.global_environment()));
+    let context = temiya::runtime::AllocationContext::new();
+    let realm = Realm::ordinary_in(&context);
+    let environment = Environment::declarative(realm.global_environment());
     StatementEvaluator::with_environments(
         realm,
         environment.clone(),
@@ -96,14 +97,15 @@ fn async_abrupt_completion_rejects_instead_of_escaping_call() {
 
 #[test]
 fn public_promise_api_exposes_pending_and_settled_states() {
-    let pending = Promise::pending().unwrap();
+    let context = temiya::runtime::AllocationContext::new();
+    let pending = Promise::pending(&context).unwrap();
     assert_eq!(pending.state(), PromiseState::Pending);
     assert_eq!(
         pending.await_result().unwrap_err().kind(),
         RuntimeErrorKind::InternalError
     );
 
-    let fulfilled = Promise::fulfilled(Value::Number(7.0)).unwrap();
+    let fulfilled = Promise::fulfilled(&context, Value::Number(7.0)).unwrap();
     assert_eq!(fulfilled.state(), PromiseState::Fulfilled);
     assert!(
         fulfilled
@@ -111,4 +113,34 @@ fn public_promise_api_exposes_pending_and_settled_states() {
             .unwrap()
             .same_value(&Value::Number(7.0))
     );
+    let reason = temiya::runtime::Object::new_in(&context);
+    reason
+        .create_data_property("self".into(), Value::Object(reason.clone()))
+        .unwrap();
+    let rejected = Promise::rejected(
+        &context,
+        temiya::runtime::RuntimeError::thrown(Value::Object(reason.clone())),
+    )
+    .unwrap();
+    context.collect_garbage().unwrap();
+    let error = rejected.await_result().unwrap_err();
+    assert!(
+        error
+            .thrown_value()
+            .unwrap()
+            .same_value(&Value::Object(reason.clone()))
+    );
+    drop((pending, fulfilled, rejected, reason));
+    assert_eq!(context.collect_garbage().unwrap().retained, 1);
+    let Value::Object(reason) = error.thrown_value().unwrap() else {
+        panic!("object rejection")
+    };
+    assert!(
+        reason
+            .get(&"self".into())
+            .unwrap()
+            .same_value(error.thrown_value().unwrap())
+    );
+    drop(error);
+    assert_eq!(context.collect_garbage().unwrap().retained, 0);
 }

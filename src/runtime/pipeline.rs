@@ -197,7 +197,7 @@ impl std::fmt::Debug for SourceTextModule {
 impl SourceTextModule {
     fn new(specifier: JsString, realm: Realm, program: Program) -> RuntimeResult<Self> {
         static NEXT_ID: AtomicU64 = AtomicU64::new(1);
-        let environment = Environment::module(Some(realm.global_environment()));
+        let environment = Environment::module(realm.global_environment());
         let data = ModuleData {
             facade: RefCell::new(Weak::new()),
             id: NEXT_ID.fetch_add(1, Ordering::Relaxed),

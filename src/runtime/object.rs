@@ -1871,6 +1871,29 @@ impl Object {
         if self.0.state.borrow().proxy.is_some() {
             return super::proxy::set(self, key, value, receiver);
         }
+        // An own writable data property shadows every prototype. With the same
+        // ordinary receiver, Set changes only its value; no descriptor needs to
+        // be loaded into rooted facades and then rebuilt by DefineOwnProperty.
+        if matches!(&receiver, Value::Object(receiver) if self.0.same_object(&receiver.0)) {
+            let mut state = self.0.state.borrow_mut();
+            if !state.array
+                && state.lazy_function_prototype.is_none()
+                && state.string_data.is_none()
+                && state.view.is_none()
+                && state.buffer.is_none()
+            {
+                if let Some(index) = state.properties.iter().position(|entry| entry.key == *key) {
+                    if state.properties[index].descriptor.writable() == Some(true) {
+                        // Check heap ownership and record the strong edge before
+                        // changing the value. This performs no JS call or GC.
+                        let stored = StoredValue::store(self, &value)?;
+                        state.properties[index].descriptor.set_value(stored);
+                        state.last_property.set(index);
+                        return Ok(true);
+                    }
+                }
+            }
+        }
         let descriptor = self.get_own_property(key);
         let Some(descriptor) = descriptor else {
             if let Some(prototype) = self.prototype() {

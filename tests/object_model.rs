@@ -311,6 +311,82 @@ fn ordinary_objects_reject_forbidden_writes_and_deletes() {
 }
 
 #[test]
+fn existing_data_writes_preserve_flags_heap_ownership_and_traced_edges() {
+    let context = temiya::runtime::AllocationContext::new();
+    let object = Object::new_in(&context);
+    let old = Object::new_in(&context);
+    object
+        .define_own_property(
+            key("slot"),
+            PropertyDescriptor::data(Value::Object(old), true, false, false),
+        )
+        .unwrap();
+    object.prevent_extensions();
+    let child = Object::new_in(&context);
+    child
+        .create_data_property(key("answer"), Value::Number(42.0))
+        .unwrap();
+    assert!(object.set(&key("slot"), Value::Object(child)).unwrap());
+    let collected = context.collect_garbage().unwrap();
+    assert_eq!(collected.retained, 2);
+    assert_eq!(collected.reclaimed, 1);
+    let descriptor = object.get_own_property(&key("slot")).unwrap();
+    assert_eq!(descriptor.writable, Some(true));
+    assert_eq!(descriptor.enumerable, Some(false));
+    assert_eq!(descriptor.configurable, Some(false));
+    let Value::Object(child) = descriptor.value.unwrap() else {
+        panic!("stored child lost");
+    };
+    assert_same(child.get(&key("answer")).unwrap(), Value::Number(42.0));
+    let foreign_context = temiya::runtime::AllocationContext::new();
+    let foreign = Object::new_in(&foreign_context);
+    assert!(object.set(&key("slot"), Value::Object(foreign)).is_err());
+    assert_same(object.get(&key("slot")).unwrap(), Value::Object(child));
+    assert!(object.set(&key("slot"), Value::Number(-0.0)).unwrap());
+    assert_same(object.get(&key("slot")).unwrap(), Value::Number(-0.0));
+    let collected = context.collect_garbage().unwrap();
+    assert_eq!(collected.retained, 1);
+    assert_eq!(collected.reclaimed, 1);
+}
+
+#[test]
+fn existing_data_writes_to_another_receiver_leave_the_base_unchanged() {
+    let context = temiya::runtime::AllocationContext::new();
+    let base = Object::new_in(&context);
+    let receiver = Object::new_in(&context);
+    base.create_data_property(key("slot"), Value::Number(1.0))
+        .unwrap();
+    receiver
+        .define_own_property(
+            key("slot"),
+            PropertyDescriptor::data(Value::Number(2.0), false, true, true),
+        )
+        .unwrap();
+    assert!(
+        !base
+            .set_with_receiver(
+                &key("slot"),
+                Value::Number(3.0),
+                Value::Object(receiver.clone())
+            )
+            .unwrap()
+    );
+    assert_same(base.get(&key("slot")).unwrap(), Value::Number(1.0));
+    assert_same(receiver.get(&key("slot")).unwrap(), Value::Number(2.0));
+    assert!(receiver.delete(&key("slot")));
+    assert!(
+        base.set_with_receiver(
+            &key("slot"),
+            Value::Number(3.0),
+            Value::Object(receiver.clone())
+        )
+        .unwrap()
+    );
+    assert_same(base.get(&key("slot")).unwrap(), Value::Number(1.0));
+    assert_same(receiver.get(&key("slot")).unwrap(), Value::Number(3.0));
+}
+
+#[test]
 fn own_property_keys_follow_ecmascript_order() {
     let allocation_context = temiya::runtime::AllocationContext::new();
     let object = Object::new_in(&allocation_context);

@@ -1,4 +1,4 @@
-name: Omoikane benchmark measurements
+name: Intel 6973 cold replication, original suite and arithmetic profile
 
 on:
   workflow_dispatch:
@@ -32,11 +32,11 @@ concurrency:
 jobs:
   measure:
     if: github.event_name == 'workflow_dispatch' || github.event.label.name == 'benchmark-omoikane'
-    name: Record comparisons, copy ${{ matrix.copy }} (speed gates separate)
+    name: Record matched Intel, copy ${{ matrix.copy }} (speed gates separate)
     strategy:
       fail-fast: false
       matrix:
-        copy: ${{ fromJSON(inputs.two_runners && '[1,2]' || '[1]') }}
+        copy: [1, 2, 3, 4]
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     defaults:
@@ -45,8 +45,8 @@ jobs:
         shell: bash
     env:
       CARGO_BUILD_JOBS: 2
-      INCLUDE_CONTROLS: ${{ inputs.include_controls || false }}
-      REQUIRED_CPU_MODEL: ${{ inputs.required_cpu_model || '' }}
+      INCLUDE_CONTROLS: 'true'
+      REQUIRED_CPU_MODEL: '6973P-C'
     steps:
       - name: Check out measured revision
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -66,6 +66,15 @@ jobs:
           fs.writeFileSync(path.join(process.env.RUNNER_TEMP,'comparison-output/hardware-availability.json'),JSON.stringify({required_cpu_model:required,observed_cpu_models:models,target_available:matches,qualification:matches?'Requested hardware available; actual measurement results still required':'Requested hardware unavailable; no speed or correctness pass'},null,2)+'\n');
           fs.appendFileSync(process.env.GITHUB_OUTPUT,`matches=${matches}\n`);
           JS
+      - name: Prepare instruction tools only on requested hardware
+        if: steps.hardware.outputs.matches == 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes valgrind
+          mkdir -p "$RUNNER_TEMP/comparison-output/profile"
+          valgrind --version > "$RUNNER_TEMP/comparison-output/profile/valgrind.txt"
+          lscpu > "$RUNNER_TEMP/comparison-output/profile/machine.txt"
+          ldd --version > "$RUNNER_TEMP/comparison-output/profile/libc.txt"
       - name: Check out baseline revision
         if: steps.hardware.outputs.matches == 'true'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -133,6 +142,51 @@ jobs:
         run: |
           node scripts/build-omoikane-worker.mjs "$GITHUB_WORKSPACE/omoikane" "$RUNNER_TEMP/omoikane-worker-build" "$RUNNER_TEMP/omoikane-worker-target"
           cp "$RUNNER_TEMP/omoikane-worker-build/build-info.json" "$RUNNER_TEMP/comparison-output/boa-build-info.json"
+      - name: Record current build metadata
+        if: steps.hardware.outputs.matches == 'true'
+        run: |
+          node <<'JS'
+          const fs=require('node:fs'),path=require('node:path');
+          const dir=path.join(process.env.RUNNER_TEMP,'comparison-output');
+          const info=JSON.parse(fs.readFileSync(path.join(dir,'same-binary-build-info.json')));
+          delete info.qualification;
+          fs.writeFileSync(path.join(dir,'current-build-info.json'),JSON.stringify(info,null,2)+'\n');
+          JS
+      - name: Measure exact fresh pattern input and all three real workers
+        if: steps.hardware.outputs.matches == 'true'
+        run: |
+          node scripts/measure-regexp-cold-diagnostic.mjs "$RUNNER_TEMP/comparison-output/current-build-info.json" "$RUNNER_TEMP/comparison-output/baseline-build-info.json" "$RUNNER_TEMP/comparison-output/boa-build-info.json" > "$RUNNER_TEMP/comparison-output/cold.json" 2> "$RUNNER_TEMP/comparison-output/cold.progress"
+      - name: Measure identical executable control and actual Boa again
+        if: steps.hardware.outputs.matches == 'true'
+        run: |
+          node scripts/measure-regexp-cold-diagnostic.mjs "$RUNNER_TEMP/comparison-output/current-build-info.json" "$RUNNER_TEMP/comparison-output/current-build-info.json" "$RUNNER_TEMP/comparison-output/boa-build-info.json" > "$RUNNER_TEMP/comparison-output/cold-same-binary.json" 2> "$RUNNER_TEMP/comparison-output/cold-same-binary.progress"
+      - name: Repeat complete current-main candidate and Boa cold cohorts
+        if: steps.hardware.outputs.matches == 'true'
+        run: node scripts/measure-regexp-cold-diagnostic.mjs "$RUNNER_TEMP/comparison-output/current-build-info.json" "$RUNNER_TEMP/comparison-output/baseline-build-info.json" "$RUNNER_TEMP/comparison-output/boa-build-info.json" > "$RUNNER_TEMP/comparison-output/cold-replication.json" 2> "$RUNNER_TEMP/comparison-output/cold-replication.progress"
+      - name: Summarize correctness and speed gates separately
+        if: always()
+        run: |
+          node <<'JS'
+          const fs=require('node:fs'),path=require('node:path'),dir=path.join(process.env.RUNNER_TEMP,'comparison-output');
+          for(const name of ['cold','cold-same-binary']){try{const r=JSON.parse(fs.readFileSync(path.join(dir,name+'.json')));fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,name+': checked outputs='+r.all_workloads_valid+', all three actual Boa speed comparisons='+r.all_cold_comparisons_faster_than_actual_boa+'\n');}catch{fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,name+': no complete report; unavailable hardware, errors or skipped measurement are not a speed pass.\n');}}
+          JS
+      - name: Retain early cold observations before macro regressions
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: intel6973-key-eq-early-${{ github.run_id }}-${{ github.run_attempt }}-copy-${{ matrix.copy }}
+          path: ${{ runner.temp }}/comparison-output
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Validate and measure warm authored RegExp inputs
+        if: steps.hardware.outputs.matches == 'true'
+        run: |
+          node scripts/check-regexp-workloads.mjs
+          node scripts/extract-regexp-workloads.mjs "$RUNNER_TEMP/regexp-workloads"
+          export TEMIYA_REVISION="$(cat "$RUNNER_TEMP/comparison-output/measured-revision.txt")"
+          node scripts/compare-omoikane-workloads.mjs --regexp --temiya-baseline "$RUNNER_TEMP/regexp-workloads" "$RUNNER_TEMP/temiya-current-target/release/examples/measure_workload" "$RUNNER_TEMP/comparison-output/baseline-build-info.json" 15 3 > "$RUNNER_TEMP/comparison-output/regexp-beforeafter.json" 2> "$RUNNER_TEMP/comparison-output/regexp-beforeafter.progress"
+          node scripts/compare-omoikane-workloads.mjs --regexp "$RUNNER_TEMP/regexp-workloads" "$RUNNER_TEMP/temiya-current-target/release/examples/measure_workload" "$RUNNER_TEMP/comparison-output/boa-build-info.json" 15 3 > "$RUNNER_TEMP/comparison-output/regexp-boa.json" 2> "$RUNNER_TEMP/comparison-output/regexp-boa.progress"
       - name: Extract original eleven workloads
         if: steps.hardware.outputs.matches == 'true'
         run: |
@@ -162,36 +216,65 @@ jobs:
           export TEMIYA_REVISION="$(cat "$RUNNER_TEMP/comparison-output/measured-revision.txt")"
           export BENCH_NOTES='SAME EXECUTABLE CONTROL: identical source and SHA for both labels. Full original11/15samples/3pairs protocol diagnoses process/environment variability; any faster/slower outcome is not a source change.'
           node scripts/compare-omoikane-workloads.mjs --temiya-baseline "$RUNNER_TEMP/omoikane-workloads" "$RUNNER_TEMP/temiya-current-target/release/examples/measure_workload" "$RUNNER_TEMP/comparison-output/same-binary-build-info.json" 15 3 > "$RUNNER_TEMP/comparison-output/same-binary-control.json" 2> "$RUNNER_TEMP/comparison-output/same-binary-control.progress"
-      - name: Summarize validity and speed gates separately
-        if: always()
+      - name: Build both optimized diagnostic workers with line tables
+        if: steps.hardware.outputs.matches == 'true'
         run: |
+          CARGO_PROFILE_RELEASE_DEBUG=1 RUSTFLAGS="-C dwarf-version=4" CARGO_TARGET_DIR="$RUNNER_TEMP/profile-current-target" cargo build --locked --release --no-default-features --example measure_workload
+          CARGO_PROFILE_RELEASE_DEBUG=1 RUSTFLAGS="-C dwarf-version=4" CARGO_TARGET_DIR="$RUNNER_TEMP/profile-baseline-target" cargo build --manifest-path "$GITHUB_WORKSPACE/temiya-baseline/Cargo.toml" --locked --release --no-default-features --example measure_workload
+      - name: Extract exact original arithmetic and independent integer oracle
+        if: steps.hardware.outputs.matches == 'true'
+        run: |
+          node scripts/extract-omoikane-workloads.mjs "$GITHUB_WORKSPACE/omoikane" "$RUNNER_TEMP/comparison-output/profile/workloads"
           node <<'JS'
-          const fs = require('node:fs');
-          const path = require('node:path');
-          const lines = ['## Measurement results', '', 'A successful job records correct benchmark outputs; it does not mean Temiya is faster.', ''];
-          const availability = JSON.parse(fs.readFileSync(path.join(process.env.RUNNER_TEMP,'comparison-output/hardware-availability.json')));
-          if (!availability.target_available) {
-            fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,'Requested CPU unavailable. Measurements were not run and do not count as a correctness or speed pass.\n');
-            process.exit(0);
+          const fs=require("node:fs"),path=require("node:path"),crypto=require("node:crypto"),cp=require("node:child_process");
+          const root=process.env.RUNNER_TEMP,out=path.join(root,"comparison-output/profile"),ws=process.env.GITHUB_WORKSPACE;
+          const hash=b=>crypto.createHash("sha256").update(b).digest("hex");
+          const manifest=JSON.parse(fs.readFileSync(path.join(out,"workloads/manifest.json")));
+          const bytes=fs.readFileSync(path.join(out,"workloads/arith.json")),input=JSON.parse(bytes),entry=manifest.workloads.find(w=>w.name==="arith");
+          let answer=0n;for(let i=0n;i<2000000n;i++)answer=(answer+i*3n)%1000003n;
+          if(manifest.revision!=="007556adccb8fb4329236932ca8175f8e8d119d2"||manifest.fixture_version!==2||
+             manifest.fixture_sha256!=="177eb80ae73d1081eb620f747b4703e2a9f2731e0255bb60131b73b7dcac6464"||
+             input.iterations!==2000000||input.expected!==64||answer!==64n||
+             input.name!=="arith"||entry.setup_sha256!==hash(input.setup)||entry.invocation_sha256!==hash(input.invocation))throw Error("original arithmetic contract changed");
+          fs.writeFileSync(path.join(out,"arith-input.json"),bytes);
+          const workers={};
+          for(const label of ["baseline","current"]){
+            const checkout=path.join(ws,label==="current"?"temiya":"temiya-baseline"),executable=path.join(root,"profile-"+label+"-target/release/examples/measure_workload");
+            workers[label]={revision:cp.execFileSync("git",["-c","safe.directory="+checkout,"-C",checkout,"rev-parse","HEAD"],{encoding:"utf8"}).trim(),
+              executable_sha256:hash(fs.readFileSync(executable)),profile:"release",features:[],release_debug:1,rustflags:"-C dwarf-version=4"};
           }
-          const names = ['beforeafter','boa',...(process.env.INCLUDE_CONTROLS === 'true' ? ['baseline-boa','same-binary-control'] : [])];
-          for (const name of names) {
-            try {
-              const r = JSON.parse(fs.readFileSync(path.join(process.env.RUNNER_TEMP, 'comparison-output', `${name}.json`)));
-              const field = name.endsWith('boa') ? 'all_eleven_workloads_faster_beyond_threshold' : 'all_eleven_workloads_after_faster_beyond_threshold';
-              lines.push(`- ${name}: correct outputs = ${r.all_workloads_valid}; all-eleven speed gate = ${r[field]}`);
-              if (name === 'same-binary-control') lines.push('  Identical executable control; faster/slower labels are variability observations, not a code improvement.');
-            } catch {
-              lines.push(`- ${name}: no complete measurement report; inspect logs and artifacts.`);
-            }
+          fs.writeFileSync(path.join(out,"provenance.json"),JSON.stringify({
+            qualifier:"INSTRUCTION DIAGNOSTIC ONLY; not native elapsed-speed qualification",
+            rustc:cp.execFileSync("rustc",["-Vv"],{encoding:"utf8"}).trim(),
+            workers,input_sha256:hash(bytes),setup_sha256:hash(input.setup),invocation_sha256:hash(input.invocation),
+            iterations:2000000,independent_expected:Number(answer),
+            scope:"Whole process including startup/setup and two complete original arithmetic passes (one checked warmup, one checked sample). Instruction references are not hardware cycles or CPU-specific elapsed shares."
+          },null,2)+"\n");
+          JS
+      - name: Profile complete original input on both actual workers
+        if: steps.hardware.outputs.matches == 'true'
+        run: |
+          for label in baseline current; do
+            valgrind --tool=callgrind --dump-instr=yes --collect-jumps=yes --callgrind-out-file="$RUNNER_TEMP/comparison-output/profile/$label-callgrind.out" "$RUNNER_TEMP/profile-$label-target/release/examples/measure_workload" "$RUNNER_TEMP/comparison-output/profile/arith-input.json" 1 > "$RUNNER_TEMP/comparison-output/profile/$label-worker-output.json" 2> "$RUNNER_TEMP/comparison-output/profile/$label-valgrind.log"
+            callgrind_annotate --inclusive=no --auto=yes "$RUNNER_TEMP/comparison-output/profile/$label-callgrind.out" > "$RUNNER_TEMP/comparison-output/profile/$label-exclusive.txt"
+            callgrind_annotate --inclusive=yes --tree=both --auto=yes "$RUNNER_TEMP/comparison-output/profile/$label-callgrind.out" > "$RUNNER_TEMP/comparison-output/profile/$label-inclusive.txt"
+          done
+          node <<'JS'
+          const fs=require("node:fs"),path=require("node:path");
+          const out=path.join(process.env.RUNNER_TEMP,"comparison-output/profile");
+          for(const label of ["baseline","current"]){
+            const m=JSON.parse(fs.readFileSync(path.join(out,label+"-worker-output.json")));
+            if(m.expected!==64||m.validated_passes!==2||m.samples_ns.length!==1||
+               m.setup_backend!=="Bytecode"||m.invocation_backend!=="Bytecode"||m.profile!=="release")throw Error("instrumented result/backend mismatch "+label);
           }
-          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, lines.join('\n') + '\n');
+          fs.writeFileSync(path.join(out,"verification.json"),JSON.stringify({checked_results:4,expected:64,
+            original_iterations:2000000,qualification:"Two validated instrumented passes per worker; no elapsed-speed gate"},null,2)+"\n");
           JS
       - name: Retain raw observations and provenance
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: omoikane-comparison-${{ github.run_id }}-${{ github.run_attempt }}${{ inputs.two_runners && format('-copy-{0}', matrix.copy) || '' }}
+          name: intel6973-key-eq-final-${{ github.run_id }}-${{ github.run_attempt }}-copy-${{ matrix.copy }}
           path: ${{ runner.temp }}/comparison-output
           if-no-files-found: error
           retention-days: 30

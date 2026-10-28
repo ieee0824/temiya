@@ -1,0 +1,77 @@
+{
+  "recorded_at": "2026-10-28T17:01:31.445Z",
+  "measured_revision": "380471df0c3ccc461e05882261de9720b971fe5a",
+  "worker": {
+    "name": "Temiya",
+    "engine": "Temiya",
+    "mode": "Auto Script",
+    "revision": "380471df0c3ccc461e05882261de9720b971fe5a",
+    "executable": "/tmp/temiya-named-object-frozen-worker",
+    "executable_sha256": "3404850249a36888699bfe07af5b4ac55a748392af08528f7186b414a268ff89",
+    "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)\nbinary: rustc\ncommit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67\ncommit-date: 2026-10-13\nhost: aarch64-unknown-linux-gnu\nrelease: 1.99.1\nLLVM version: 23.1.1",
+    "features": [],
+    "profile": "release",
+    "mode_probe": {
+      "architecture": "aarch64",
+      "engine": "Temiya",
+      "expected": 42,
+      "invocation_backend": "Bytecode",
+      "mode": "Auto Script",
+      "profile": "release",
+      "samples_ns": [
+        2541
+      ],
+      "sandbox": null,
+      "scope": "parse+evaluate invocation; function setup excluded",
+      "setup_backend": "Bytecode",
+      "setup_ns": 19417,
+      "startup_ns": 233331,
+      "validated_passes": 2,
+      "warmup_ns": 37333
+    }
+  },
+  "source_git_objects": {
+    "src": "edf254c544a1d89eb0338355d5a4953d8b7f8e02",
+    "Cargo.toml": "f863e0d9af0b72db8c8fdf59a244a7e9cbd56dae",
+    "Cargo.lock": "e0e7f6ac7e4abfa3c12c3af30d305bbb87af50fc",
+    "examples": "ffdda6d7c05676adbd99a47b9866e6f25b911e69"
+  },
+  "files": {
+    "beforeafter.json": "f3816135eb50436be227bfed6e76b0ebf67c44697edece046e962bf4e3c71b19",
+    "boa.json": "856498f7f4ac0f89343c51447cb55f32ce2e9f26e2195668ce4ea576e4edcf7a"
+  },
+  "independent_statistics": [
+    {
+      "verified_at": "2026-10-28T16:55:26.672Z",
+      "reports": [
+        {
+          "file": "/tmp/temiya-named-object-beforeafter-cpu0.json",
+          "sha256": "f3816135eb50436be227bfed6e76b0ebf67c44697edece046e962bf4e3c71b19",
+          "runs": 66,
+          "checked_values": 1056,
+          "comparisons": 33,
+          "outcomes": {
+            "within noise threshold": 29,
+            "after faster beyond threshold": 4
+          }
+        }
+      ]
+    },
+    {
+      "verified_at": "2026-10-28T17:00:35.578Z",
+      "reports": [
+        {
+          "file": "/tmp/temiya-named-object-boa-cpu0.json",
+          "sha256": "856498f7f4ac0f89343c51447cb55f32ce2e9f26e2195668ce4ea576e4edcf7a",
+          "runs": 66,
+          "checked_values": 1056,
+          "comparisons": 33,
+          "outcomes": {
+            "Temiya faster beyond threshold": 33
+          }
+        }
+      ]
+    }
+  ],
+  "qualification": "Local first allowed guest CPU0 only. Before/after: 4 faster, 29 noise, 0 slower; object allocation improves all3pairs18–21%. Actual Boa: all33faster. No retrospective Intel arithmetic pass or qualification of later source."
+}

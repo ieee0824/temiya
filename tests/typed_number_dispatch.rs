@@ -123,7 +123,7 @@ fn numeric_binding_reads_preserve_bits_and_observe_captured_updates() {
             let script = engine
                 .compile(
                     &realm,
-                    "function pass(value){let local=value;return local;}pass(input);",
+                    "function pass(value){let local=0;local=value;return local;}pass(input);",
                 )
                 .unwrap();
             let value = engine.evaluate(&script).unwrap();

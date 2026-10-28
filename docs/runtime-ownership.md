@@ -66,6 +66,12 @@ correct benchmark values alone do not establish them. The full Miri gate is
 partitioned from Miri's actual test listing, executes each assigned test exactly,
 and requires every shard to pass; plan validation alone is not a Miri pass.
 
+The [completed51d security record](../benchmarks/runtime-gc/ci-51d.json) verifies
+all119 distinct library tests executed exactly once with zero skipped tests,
+all eight shards and the aggregate passing, plus audit and ASan success.
+It qualifies that source only; later optimization candidates require their own
+checks rather than treating this earlier success as a current-source pass.
+
 ### Hosted follow-up at revision51d9abf
 
 [Run40723916807](https://github.com/ieee0824/temiya/actions/runs/40723916807)
@@ -569,6 +575,18 @@ prototype supplies the allocation context; the unpublished record traces the
 edge at the allocation safepoint even after its last public facade is consumed.
 This removes the temporary global-object facade lookup and post-allocation
 prototype write/barrier without changing prototype identity or initializer order.
+
+The named-key candidate380471d removes runtime conversion of noncomputed String
+property names. Its [local CPU0 records](../benchmarks/runtime-gc/experiments/named-keys-380)
+show all three object-allocation comparisons18–21% shorter than the traced
+predecessor and all33 actual-Boa comparisons faster beyond the original gate.
+These results do not resolve the earlier Intel arithmetic qualification failure.
+
+Initialized mutable Number bindings can replace an existing Number leaf by
+copying its bits directly. TDZ and mutability checks still precede this path;
+every change involving a different value kind retains the ordinary stored-value
+conversion and managed-edge checks. Signed zero and NaN payloads must survive
+both reads and assignments through the public AST and bytecode APIs.
 
 Verified numeric-return calls resolve a captured Environment only when a guarded
 captured binding is actually read. Parameter-only calls need no Realm or

@@ -207,10 +207,10 @@ impl Runtime {
         drop(retired);
         Ok(stats)
     }
-    pub(super) fn record_object_edge<T: Trace>(
+    pub(super) fn record_object_edge<T: Trace, U: Trace>(
         &self,
         owner: Handle<T>,
-        target: Handle<ManagedObject>,
+        target: Handle<U>,
     ) -> super::RuntimeResult<()> {
         self.0
             .heap

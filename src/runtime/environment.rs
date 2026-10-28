@@ -82,17 +82,30 @@ pub(super) enum StoredEnvironment {
     Managed(Handle<ManagedEnvironment>),
 }
 impl StoredEnvironment {
-    // Initial edges are installed before the new, young owner is allocated.
-    fn initial(runtime: Option<&Runtime>, value: &Environment) -> RuntimeResult<Self> {
+    fn check_context(runtime: Option<&Runtime>, value: &Environment) -> RuntimeResult<()> {
         match (runtime, value.runtime()) {
-            (None, None) => Ok(Self::Legacy(value.clone())),
-            (Some(left), Some(right)) if left.same_heap(right) => {
-                Ok(Self::Managed(value.handle().expect("managed environment")))
-            }
+            (None, None) => Ok(()),
+            (Some(left), Some(right)) if left.same_heap(right) => Ok(()),
             _ => Err(RuntimeError::type_error(
                 "environment belongs to a different allocation context",
             )),
         }
+    }
+    pub(super) fn store(owner: &impl StoredOwner, value: &Environment) -> RuntimeResult<Self> {
+        let stored = Self::initial(owner.runtime(), value)?;
+        if let (Some(runtime), Self::Managed(target)) = (owner.runtime(), &stored) {
+            runtime
+                .record_object_edge(owner.handle().expect("managed environment owner"), *target)?;
+        }
+        Ok(stored)
+    }
+    // Initial edges are installed before the new, young owner is allocated.
+    fn initial(runtime: Option<&Runtime>, value: &Environment) -> RuntimeResult<Self> {
+        Self::check_context(runtime, value)?;
+        Ok(match value.handle() {
+            Some(handle) => Self::Managed(handle),
+            None => Self::Legacy(value.clone()),
+        })
     }
     pub(super) fn load(&self, owner: &impl StoredOwner) -> RuntimeResult<Environment> {
         match (self, owner.runtime()) {
@@ -158,11 +171,6 @@ impl Trace for EnvironmentData {
                 object(value, tracer);
             }
         }
-        fn environment(value: &Environment, tracer: &mut Tracer<'_>) {
-            if let Some(handle) = value.handle() {
-                tracer.mark(handle);
-            }
-        }
         fn bindings(record: &DeclarativeRecord, tracer: &mut Tracer<'_>) {
             for binding in &record.bindings {
                 if let Some(v) = &binding.value {
@@ -194,7 +202,7 @@ impl Trace for EnvironmentData {
             EnvironmentRecord::Module(record) => {
                 bindings(&record.declarative_record, tracer);
                 for import in &record.imports {
-                    environment(&import.target_environment, tracer);
+                    import.target_environment.trace(tracer);
                 }
             }
         }
@@ -244,7 +252,7 @@ struct ModuleRecord {
 #[derive(Clone)]
 struct ImportBinding {
     local_name: JsString,
-    target_environment: Environment,
+    target_environment: StoredEnvironment,
     target_name: JsString,
 }
 
@@ -709,6 +717,7 @@ impl Environment {
         if let Some(binding) = imported {
             return binding
                 .target_environment
+                .load(self)?
                 .get_binding_value(&binding.target_name, true);
         }
         let record = self.0.record.borrow();
@@ -787,6 +796,7 @@ impl Environment {
         target_environment: Self,
         target_name: JsString,
     ) -> RuntimeResult<()> {
+        StoredEnvironment::check_context(self.runtime(), &target_environment)?;
         if !target_environment.has_binding(&target_name)? {
             return Err(reference_error(
                 &target_name,
@@ -809,7 +819,7 @@ impl Environment {
         }
         record.imports.push(ImportBinding {
             local_name,
-            target_environment,
+            target_environment: StoredEnvironment::store(self, &target_environment)?,
             target_name,
         });
         Ok(())
@@ -1172,7 +1182,7 @@ impl DeclarativeRecord {
         if binding.value.is_some() {
             return Err(RuntimeError::type_error("binding is already initialized"));
         }
-        binding.value = Some(StoredValue::store(owner, &value)?);
+        binding.value = Some(StoredValue::store_owned(owner, value)?);
         Ok(())
     }
 
@@ -1236,7 +1246,7 @@ impl Binding {
             return Err(reference_error(&self.name, "is in the temporal dead zone"));
         }
         if self.mutable {
-            self.value = Some(StoredValue::store(owner, &value)?);
+            self.value = Some(StoredValue::store_owned(owner, value)?);
             Ok(())
         } else if strict || self.strict {
             Err(RuntimeError::type_error(
@@ -1329,6 +1339,68 @@ fn reference_error(name: &JsString, detail: &str) -> RuntimeError {
 #[cfg(test)]
 mod slot_hint_tests {
     use super::*;
+    #[test]
+    fn managed_module_import_cycles_keep_live_bindings_without_internal_roots() {
+        let runtime = Runtime::new();
+        let parent = runtime.allocate_environment(EnvironmentData {
+            facade: RefCell::new(Weak::new()),
+            outer: None,
+            record: RefCell::new(EnvironmentRecord::Declarative(DeclarativeRecord::default())),
+        });
+        let first = Environment::module(Some(parent.clone()));
+        first.create_mutable_binding("x".into(), false).unwrap();
+        first
+            .initialize_binding(&"x".into(), Value::Number(40.0))
+            .unwrap();
+        runtime.collect_migration_graph().unwrap();
+        let second = Environment::module(Some(parent.clone()));
+        second.create_mutable_binding("y".into(), false).unwrap();
+        second
+            .initialize_binding(&"y".into(), Value::Number(41.0))
+            .unwrap();
+        let second_handle = second.handle().unwrap();
+        first
+            .create_import_binding("alias".into(), second.clone(), "y".into())
+            .unwrap();
+        second
+            .create_import_binding("back".into(), first.clone(), "x".into())
+            .unwrap();
+        drop(parent);
+        drop(second);
+        assert_eq!(runtime.diagnostics().rooted, 1);
+        runtime.verify_migration_barriers().unwrap();
+        assert_eq!(runtime.collect_migration_graph().unwrap().retained, 3);
+        let second = runtime.root_environment(second_handle).unwrap();
+        second
+            .set_mutable_binding(&"y".into(), Value::Number(42.0), true)
+            .unwrap();
+        assert!(
+            first
+                .get_binding_value(&"alias".into(), true)
+                .unwrap()
+                .same_value(&Value::Number(42.0))
+        );
+        assert!(
+            second
+                .get_binding_value(&"back".into(), true)
+                .unwrap()
+                .same_value(&Value::Number(40.0))
+        );
+        let foreign = Environment::module(None);
+        foreign.create_mutable_binding("z".into(), false).unwrap();
+        foreign
+            .initialize_binding(&"z".into(), Value::Number(0.0))
+            .unwrap();
+        assert!(
+            first
+                .create_import_binding("invalid".into(), foreign, "z".into())
+                .is_err()
+        );
+        assert!(!first.has_binding(&"invalid".into()).unwrap());
+        drop(second);
+        drop(first);
+        assert_eq!(runtime.collect_migration_graph().unwrap().reclaimed, 3);
+    }
     #[test]
     fn managed_bindings_trace_objects_and_release_replaced_cycles() {
         let runtime = Runtime::new();

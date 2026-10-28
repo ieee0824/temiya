@@ -82,6 +82,20 @@ pub(super) enum StoredValue {
     Object(StoredObject),
 }
 impl StoredValue {
+    // Owned binding writes move leaf payloads instead of cloning strings/BigInts.
+    // A managed owner keeps Runtime alive while the incoming facade is released.
+    pub(super) fn store_owned(owner: &impl StoredOwner, value: Value) -> RuntimeResult<Self> {
+        Ok(match value {
+            Value::Undefined => Self::Undefined,
+            Value::Null => Self::Null,
+            Value::Boolean(v) => Self::Boolean(v),
+            Value::Number(v) => Self::Number(v),
+            Value::String(v) => Self::String(v),
+            Value::Symbol(v) => Self::Symbol(v),
+            Value::BigInt(v) => Self::BigInt(v),
+            Value::Object(v) => Self::Object(StoredObject::store(owner, &v)?),
+        })
+    }
     pub(super) fn store(owner: &impl StoredOwner, value: &Value) -> RuntimeResult<Self> {
         Ok(match value {
             Value::Undefined => Self::Undefined,

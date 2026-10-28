@@ -32,8 +32,9 @@ same-binary controls have33 noise and32 noise/1 slower respectively. Both main
 comparisons retain9 faster/17 noise/7 slower. The
 [full raw reports and controls](../benchmarks/runtime-gc/experiments/primitive-prototypes-6c3/hosted-general) retain all observations,
 including slower comparisons and variability. This is a bounded qualification
-on these hosts, not universal absence of regressions. The16-shard full library
-Miri run remains pending. Snapshot6b1's CI/ASan failed an existing policy
+on these hosts, not universal absence of regressions. The [current full library Miri proof](../benchmarks/runtime-gc/experiments/primitive-prototypes-6c3/ci/full-miri16.json)
+qualifies119 distinct exact executions,0 ignored, all16 shards/aggregate plus
+ASan/audit success at head4b256bd in run40773845352. Snapshot6b1's CI/ASan failed an existing policy
 test that still expected8 shards; head4b256bd changes that expectation to16
 without changing runtime/examples/Cargo/runner source. Its current CI40773845349
 passes all four jobs, with660 passed/21 ignored in each x64 stable/MSRV run

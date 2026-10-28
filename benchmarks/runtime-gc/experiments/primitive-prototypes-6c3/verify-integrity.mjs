@@ -24,6 +24,8 @@ for(const [name,expected]of Object.entries(provenance.files)){
 }
 const ci=read('ci/audit.json');
 assert.equal(hash(gunzipSync(fs.readFileSync(directory+'ci/current.log.gz'))),ci.raw_sha256,'decompressed native CI log');
+const miri=read('ci/full-miri16.json');
+assert.equal(hash(gunzipSync(fs.readFileSync(directory+'ci/full-miri16.log.gz'))),miri.full_log_sha256,'decompressed complete Miri log');
 const profile=read('runtime-profile-audited-info.json');
 assert.equal(hash(fs.readFileSync(directory+'runtime-profile-audited.json')),profile.raw_sha256,'profile raw');
 assert.equal(hash(fs.readFileSync(directory+'runtime-profile-audited.log')),profile.log_sha256,'profile log');

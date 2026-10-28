@@ -28,7 +28,9 @@ on each of AMD EPYC9V45 and AMD EPYC7763, with every report validating66 workers
 and1056 values. Main comparisons retain7 slower decisions per host; same-binary
 controls retain33 noise and32 noise/1 slower. These are bounded host results,
 not an application-wide claim or a revision of the local32/1 observation.
-Current-source full library Miri remains pending. Earlier-source hosted,
+Current-source full library Miri qualifies119 distinct exact tests,0 ignored,
+all16 shards/aggregate/ASan/audit successful at source4b256bd (run40773845352).
+The complete log, API status and independent verifier output are in ci/. Earlier-source hosted,
 component, async and full-Miri results retain their original source labels.
 
 statistics-verifier.mjs independently recomputes medians, MAD, original-input
@@ -37,8 +39,8 @@ hashes and source object identities bind these observations to the source.
 
 The source/compiler/machine-bound actual Engine collection profile and all
 fifteen issue criteria are mapped in acceptance-follow-up.json and
-phase-acceptance-map.json. Those records retain the remaining full-Miri and
-merge gates; implementation evidence alone is not a completion claim.
+phase-acceptance-map.json. Those records retain the remaining actual merge/integration gate; verified
+implementation evidence alone is not an already-merged claim.
 
 Run `node benchmarks/runtime-gc/experiments/primitive-prototypes-6c3/verify-integrity.mjs`
 from the checkout to verify the complete byte inventory and raw/compressed log

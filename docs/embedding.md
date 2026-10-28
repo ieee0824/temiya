@@ -53,3 +53,15 @@ Null cleanup succeeds, while stale, wrong-type, and double-freed handles return
 reentrant unary number callback with `temiya_realm_define_number_function`;
 callback failures become JavaScript exceptions. `scripts/check-c-abi` compiles
 the public header/example and compares exported symbols with the ABI allowlist.
+
+### Canonical module resolution
+
+`Engine::load_module_with_resolver` adds a separate referrer-aware identity
+resolver and source loader. The resolver receives `None` for the root, then the
+canonical importing module name and original `ast::ModuleRequest` for each
+static dependency. It returns the canonical cache/source name; import attributes
+remain part of identity. Hosts should reject unsupported attributes and validate
+specifiers before accessing files. Both callbacks are panic-isolated and handles
+retain the existing engine/Realm checks. The original `load_module` callback and
+per-specifier behavior remain unchanged. The [CLI](cli.md) uses this API for
+nested relative imports and canonical file caching in one graph.

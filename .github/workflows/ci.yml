@@ -87,6 +87,10 @@ jobs:
           node scripts/check-numeric-allocations.mjs target/numeric-allocations.json
       - name: Fetch pinned Test262 regression corpus
         run: scripts/test262
+      - name: Run original Test262 cases through the shell
+        env:
+          TEST262_DIR: target/test262
+        run: cargo +${{ matrix.toolchain }} test --locked --test cli pinned_test262_through_actual_shell --all-features -- --ignored --nocapture
       - name: Run original var-binding resolution regression
         env:
           TEST262_DIR: target/test262

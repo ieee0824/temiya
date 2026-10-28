@@ -507,12 +507,14 @@ impl SourceTextModule {
 }
 
 type ResolveCallback = dyn Fn(&ModuleRequest) -> RuntimeResult<String>;
+type NormalizeCallback = dyn Fn(Option<&JsString>, &ModuleRequest) -> RuntimeResult<JsString>;
 
 /// Host-controlled module graph loader with per-specifier caching.
 #[derive(Clone)]
 pub struct ModuleGraph {
     realm: Realm,
     resolve: Rc<ResolveCallback>,
+    normalize: Option<Rc<NormalizeCallback>>,
     modules: Rc<RefCell<Vec<(ModuleKey, SourceTextModule)>>>,
 }
 
@@ -534,7 +536,24 @@ impl ModuleGraph {
         Self {
             realm,
             resolve: Rc::new(resolve),
+            normalize: None,
             modules: Rc::new(RefCell::new(Vec::new())),
+        }
+    }
+
+    /// Creates a graph with referrer-aware canonical module identities.
+    ///
+    /// Normalization runs before the cache lookup. The source callback receives
+    /// the canonical specifier; dependency records retain the original request.
+    /// Import attributes remain part of the cache key.
+    pub fn with_resolver(
+        realm: Realm,
+        normalize: impl Fn(Option<&JsString>, &ModuleRequest) -> RuntimeResult<JsString> + 'static,
+        source: impl Fn(&ModuleRequest) -> RuntimeResult<String> + 'static,
+    ) -> Self {
+        Self {
+            normalize: Some(Rc::new(normalize)),
+            ..Self::new(realm, source)
         }
     }
 
@@ -546,10 +565,24 @@ impl ModuleGraph {
             specifier: specifier.code_units().to_vec(),
             attributes: Vec::new(),
         };
-        self.load_request(&request)
+        self.load_request(&request, None)
     }
 
-    fn load_request(&self, request: &ModuleRequest) -> RuntimeResult<SourceTextModule> {
+    fn load_request(
+        &self,
+        request: &ModuleRequest,
+        referrer: Option<&JsString>,
+    ) -> RuntimeResult<SourceTextModule> {
+        let normalized;
+        let request = if let Some(normalize) = &self.normalize {
+            normalized = ModuleRequest {
+                specifier: normalize(referrer, request)?.code_units().to_vec(),
+                ..request.clone()
+            };
+            &normalized
+        } else {
+            request
+        };
         let specifier = JsString::from_code_units(request.specifier.clone());
         let key = ModuleKey::from_request(request);
         if let Some(module) = self
@@ -562,14 +595,20 @@ impl ModuleGraph {
             return Ok(module);
         }
         let source = (self.resolve)(request)?;
-        let program =
-            parse_module(&source).map_err(|error| RuntimeError::syntax_error(error.to_string()))?;
+        let program = parse_module(&source).map_err(|error| {
+            let message = if self.normalize.is_some() {
+                format!("{}: {error}", specifier.to_string_lossy())
+            } else {
+                error.to_string()
+            };
+            RuntimeError::syntax_error(message)
+        })?;
         let module = SourceTextModule::new(specifier.clone(), self.realm.clone(), program.clone());
         self.modules.borrow_mut().push((key, module.clone()));
         let mut dependencies = Vec::new();
         for request in program.module_requests() {
             dependencies.push(Dependency {
-                module: self.load_request(&request)?,
+                module: self.load_request(&request, Some(&specifier))?,
                 request,
             });
         }

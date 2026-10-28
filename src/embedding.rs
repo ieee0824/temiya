@@ -980,6 +980,7 @@ mod managed_allocation_tests {
                 "var calledArray=Array({answer:42});calledArray[0].answer;",
                 "var arrayIter=[{answer:42}].values();arrayIter.next().value.answer;",
                 "var proxyValue=new Proxy({answer:42},{});proxyValue.answer;",
+                "var revocable=Proxy.revocable({answer:42},{});var beforeRevoke=revocable.proxy.answer;revocable.revoke();revocable.revoke();beforeRevoke;",
                 "var proxyCall=new Proxy(function(x){return x+2;},{});proxyCall(40);",
                 "function ProxyBox(x){this.answer=x;}var proxyCtor=new Proxy(ProxyBox,{});(new proxyCtor(42)).answer;",
                 "var proxyTrap=new Proxy(function(){return 0;},{apply:function(target,receiver,args){return args[0]+2;}});proxyTrap(40);",
@@ -1002,6 +1003,16 @@ mod managed_allocation_tests {
                     "{backend:?} {source}"
                 );
             }
+            let revoked_access = engine.compile(&realm, "revocable.proxy.answer;").unwrap();
+            assert_eq!(
+                engine.evaluate(&revoked_access).unwrap_err().kind(),
+                ExceptionKind::TypeError
+            );
+            let construct_revoke = engine.compile(&realm, "new revocable.revoke();").unwrap();
+            assert_eq!(
+                engine.evaluate(&construct_revoke).unwrap_err().kind(),
+                ExceptionKind::TypeError
+            );
         }
     }
 

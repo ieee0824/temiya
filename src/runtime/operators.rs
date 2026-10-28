@@ -248,11 +248,13 @@ fn has_instance(
         } else if !constructor.is_callable() {
             return Ok(false);
         }
-        let bound = constructor.0.state.borrow().bound.clone();
+        let bound = constructor.0.state.borrow().managed_callable.clone();
         if let Some(bound) = bound {
-            constructor = bound.target.load(&constructor)?;
-            ordinary = false;
-            continue;
+            if let Some(target) = bound.bound_target(&constructor)? {
+                constructor = target;
+                ordinary = false;
+                continue;
+            }
         }
         let Value::Object(mut object) = left else {
             return Ok(false);

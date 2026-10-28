@@ -43,18 +43,10 @@ fn install_proxy(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {
             let proxy = ProxyObject::try_new(target, handler)?;
             let revocable = Object::new_for(&prototype);
             revocable.create_data_property("proxy".into(), Value::Object(proxy.object()))?;
-            revocable.create_data_property(
-                "revoke".into(),
-                Value::Object(super::native_function::create(
-                    &prototype,
-                    "",
-                    0,
-                    move |_, _| {
-                        proxy.revoke();
-                        Ok(Value::Undefined)
-                    },
-                )?),
-            )?;
+            let revoke =
+                super::native_function::create(&prototype, "", 0, |_, _| Ok(Value::Undefined))?;
+            revoke.initialize_proxy_revoker(&proxy.object())?;
+            revocable.create_data_property("revoke".into(), Value::Object(revoke))?;
             Ok(Value::Object(revocable))
         },
     )

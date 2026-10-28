@@ -235,6 +235,46 @@ mod stored_graph_tests {
     use super::*;
     use crate::runtime::{PropertyDescriptor, Value};
     #[test]
+    fn proxy_revoker_retains_its_cycle_until_called_or_unrooted() {
+        for call in [false, true] {
+            let runtime = Runtime::new();
+            let target = Object::new_in(&runtime);
+            let handler = Object::new_in(&runtime);
+            let proxy =
+                crate::runtime::ProxyObject::try_new(target.clone(), handler.clone()).unwrap();
+            let revoke = Object::new_in(&runtime);
+            revoke.initialize_proxy_revoker(&proxy.object()).unwrap();
+            target
+                .create_data_property("back".into(), Value::Object(revoke.clone()))
+                .unwrap();
+            let weak = [
+                target.downgrade(),
+                handler.downgrade(),
+                proxy.object().downgrade(),
+            ];
+            drop(target);
+            drop(handler);
+            drop(proxy);
+            assert_eq!(runtime.diagnostics().rooted, 1);
+            assert_eq!(runtime.collect_migration_graph().unwrap().retained, 4);
+            assert!(revoke.is_callable());
+            assert!(!revoke.is_constructor());
+            if call {
+                for _ in 0..2 {
+                    assert!(matches!(
+                        revoke.call(Value::Null, &[]).unwrap(),
+                        Value::Undefined
+                    ));
+                }
+                assert_eq!(runtime.collect_migration_graph().unwrap().reclaimed, 3);
+                assert!(weak.iter().all(|object| object.upgrade().is_none()));
+            }
+            drop(revoke);
+            assert_eq!(runtime.collect_migration_graph().unwrap().retained, 0);
+            assert!(weak.iter().all(|object| object.upgrade().is_none()));
+        }
+    }
+    #[test]
     fn proxy_cycles_are_traced_and_revocation_releases_target_and_handler() {
         for revoke in [false, true] {
             let runtime = Runtime::new();

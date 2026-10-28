@@ -12,6 +12,9 @@ pub(super) struct ProxySlot {
     pub(super) constructor: bool,
 }
 impl ProxySlot {
+    pub(super) fn revoke(&mut self) {
+        self.pair = None;
+    }
     pub(super) fn target(&self, owner: &Object) -> RuntimeResult<Object> {
         self.pair
             .as_ref()
@@ -67,7 +70,7 @@ impl ProxyObject {
     /// Revokes this Proxy. Every later internal operation fails with TypeError.
     pub fn revoke(&self) {
         if let Some(slot) = &mut self.0.0.state.borrow_mut().proxy {
-            slot.pair = None;
+            slot.revoke();
         }
     }
 }

@@ -298,6 +298,71 @@ pub(super) struct BoundFunction {
     constructor: bool,
 }
 
+pub(super) enum ManagedCallable {
+    Bound(BoundFunction),
+    ProxyRevoker(std::cell::RefCell<Option<StoredObject>>),
+}
+
+impl ManagedCallable {
+    pub(super) fn bound_target(&self, owner: &Object) -> RuntimeResult<Option<Object>> {
+        match self {
+            Self::Bound(bound) => bound.target.load(owner).map(Some),
+            Self::ProxyRevoker(_) => Ok(None),
+        }
+    }
+    fn is_constructor(&self) -> bool {
+        matches!(self, Self::Bound(bound) if bound.constructor)
+    }
+    fn call(&self, owner: &Object, arguments: &[Value]) -> RuntimeResult<Value> {
+        match self {
+            Self::Bound(bound) => {
+                let target = bound.target.load(owner)?;
+                let this_value = bound.this_value.load(owner)?;
+                let arguments = bound.arguments(owner, arguments)?;
+                target.call(this_value, &arguments)
+            }
+            Self::ProxyRevoker(slot) => {
+                let proxy = slot.borrow_mut().take();
+                if let Some(proxy) = proxy {
+                    let proxy = proxy.load(owner)?;
+                    if let Some(slot) = &mut proxy.0.state.borrow_mut().proxy {
+                        slot.revoke();
+                    }
+                }
+                Ok(Value::Undefined)
+            }
+        }
+    }
+    fn construct(
+        &self,
+        owner: &Object,
+        arguments: &[Value],
+        new_target: Object,
+    ) -> RuntimeResult<Object> {
+        let Self::Bound(bound) = self else {
+            return Err(RuntimeError::type_error("object is not a constructor"));
+        };
+        let target = bound.target.load(owner)?;
+        let arguments = bound.arguments(owner, arguments)?;
+        let new_target = if new_target == *owner {
+            target.clone()
+        } else {
+            new_target
+        };
+        target.construct(&arguments, new_target)
+    }
+    fn trace(&self, tracer: &mut crate::gc::Tracer<'_>) {
+        match self {
+            Self::Bound(bound) => bound.trace(tracer),
+            Self::ProxyRevoker(slot) => {
+                if let Some(proxy) = &*slot.borrow() {
+                    proxy.trace(tracer);
+                }
+            }
+        }
+    }
+}
+
 impl BoundFunction {
     fn arguments(&self, owner: &Object, suffix: &[Value]) -> RuntimeResult<Vec<Value>> {
         let mut arguments = Vec::with_capacity(self.arguments.len() + suffix.len());
@@ -332,7 +397,7 @@ pub(super) struct ObjectState {
     // read, so deleting/reordering properties never returns a stale descriptor.
     last_property: Cell<usize>,
     callable: Option<NativeCall>,
-    pub(super) bound: Option<Rc<BoundFunction>>,
+    pub(super) managed_callable: Option<Rc<ManagedCallable>>,
     construct: Option<NativeConstruct>,
     // The own data property already exists. Only its initial object value is
     // deferred until an operation observes or redefines that descriptor.
@@ -376,8 +441,17 @@ impl Object {
                 .collect::<RuntimeResult<_>>()?,
             constructor: target.is_constructor(),
         };
-        object.0.state.borrow_mut().bound = Some(Rc::new(bound));
+        object.0.state.borrow_mut().managed_callable = Some(Rc::new(ManagedCallable::Bound(bound)));
         Ok(object)
+    }
+    pub(super) fn initialize_proxy_revoker(&self, proxy: &Object) -> RuntimeResult<()> {
+        let proxy = StoredObject::store(self, proxy)?;
+        let mut state = self.0.state.borrow_mut();
+        state.callable = None;
+        state.managed_callable = Some(Rc::new(ManagedCallable::ProxyRevoker(
+            std::cell::RefCell::new(Some(proxy)),
+        )));
+        Ok(())
     }
     pub(crate) fn own_element_value(&self, index: u32) -> Option<Value> {
         let state = self.0.state.borrow();
@@ -602,7 +676,7 @@ impl Object {
     pub fn is_callable(&self) -> bool {
         let state = self.0.state.borrow();
         state.callable.is_some()
-            || state.bound.is_some()
+            || state.managed_callable.is_some()
             || state.proxy.as_ref().is_some_and(|proxy| proxy.callable)
     }
 
@@ -615,7 +689,7 @@ impl Object {
             let state = self.0.state.borrow();
             (
                 state.callable.clone(),
-                state.bound.clone(),
+                state.managed_callable.clone(),
                 state.proxy.as_ref().is_some_and(|proxy| proxy.callable),
             )
         };
@@ -638,10 +712,7 @@ impl Object {
         let result = if proxy {
             super::proxy::apply_slot(self, this_value, arguments)
         } else if let Some(bound) = bound {
-            let target = bound.target.load(self)?;
-            let this_value = bound.this_value.load(self)?;
-            let arguments = bound.arguments(self, arguments)?;
-            target.call(this_value, &arguments)
+            bound.call(self, arguments)
         } else {
             callback.expect("validated callable")(this_value, arguments)
         };
@@ -662,7 +733,10 @@ impl Object {
     pub fn is_constructor(&self) -> bool {
         let state = self.0.state.borrow();
         state.construct.is_some()
-            || state.bound.as_ref().is_some_and(|bound| bound.constructor)
+            || state
+                .managed_callable
+                .as_ref()
+                .is_some_and(|bound| bound.is_constructor())
             || state.proxy.as_ref().is_some_and(|proxy| proxy.constructor)
     }
 
@@ -673,11 +747,14 @@ impl Object {
             let state = self.0.state.borrow();
             (
                 state.construct.clone(),
-                state.bound.clone(),
+                state.managed_callable.clone(),
                 state.proxy.as_ref().is_some_and(|proxy| proxy.constructor),
             )
         };
-        if callback.is_none() && !bound.as_ref().is_some_and(|bound| bound.constructor) && !proxy {
+        if callback.is_none()
+            && !bound.as_ref().is_some_and(|bound| bound.is_constructor())
+            && !proxy
+        {
             return Err(RuntimeError::type_error(
                 "object does not have a [[Construct]] internal method",
             ));
@@ -694,14 +771,7 @@ impl Object {
         let result = if proxy {
             super::proxy::construct_slot(self, arguments, new_target)
         } else if let Some(bound) = bound {
-            let target = bound.target.load(self)?;
-            let arguments = bound.arguments(self, arguments)?;
-            let new_target = if new_target == *self {
-                target.clone()
-            } else {
-                new_target
-            };
-            target.construct(&arguments, new_target)
+            bound.construct(self, arguments, new_target)
         } else {
             callback.expect("validated constructor")(arguments, new_target)
         };
@@ -1526,7 +1596,7 @@ impl super::ObjectData {
         if let Some(parent) = &state.lazy_function_prototype {
             parent.trace(tracer);
         }
-        if let Some(bound) = &state.bound {
+        if let Some(bound) = &state.managed_callable {
             bound.trace(tracer);
         }
         if let Some(iterator) = &state.iterator {

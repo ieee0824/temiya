@@ -325,6 +325,7 @@ pub(super) struct BoundFunction {
 }
 
 pub(super) enum ManagedCallable {
+    ObjectFactory(super::intrinsics::ObjectFactory),
     JsonParse(super::host_data::JsonParseBuiltin),
     Date(super::host_data::DateFactory),
     Factory(CapturedFactory),
@@ -339,6 +340,7 @@ pub(super) enum ManagedCallable {
 impl ManagedCallable {
     pub(super) fn bound_target(&self, owner: &Object) -> RuntimeResult<Option<Object>> {
         match self {
+            Self::ObjectFactory(_) => Ok(None),
             Self::Bound(bound) => bound.target.load(owner).map(Some),
             Self::ProxyRevoker(_) => Ok(None),
             Self::Ast(_) => Ok(None),
@@ -358,6 +360,7 @@ impl ManagedCallable {
     }
     fn is_constructor(&self) -> bool {
         match self {
+            Self::ObjectFactory(_) => true,
             Self::Bound(bound) => bound.constructor,
             Self::Ast(closure) => closure.is_constructor(),
             Self::Bytecode(closure) => closure.is_constructor(),
@@ -371,6 +374,7 @@ impl ManagedCallable {
     }
     fn call(&self, owner: &Object, this: Value, arguments: &[Value]) -> RuntimeResult<Value> {
         match self {
+            Self::ObjectFactory(factory) => factory.create(owner, arguments).map(Value::Object),
             Self::JsonParse(builtin) => builtin.call(owner, arguments),
             Self::Date(factory) => factory.call(),
             Self::Factory(factory) => {
@@ -420,6 +424,9 @@ impl ManagedCallable {
         arguments: &[Value],
         new_target: Object,
     ) -> RuntimeResult<Object> {
+        if let Self::ObjectFactory(factory) = self {
+            return factory.create(owner, arguments);
+        }
         if let Self::Date(factory) = self {
             return factory.construct(owner, arguments);
         }
@@ -450,6 +457,7 @@ impl ManagedCallable {
     }
     fn trace(&self, tracer: &mut crate::gc::Tracer<'_>) {
         match self {
+            Self::ObjectFactory(factory) => factory.trace(tracer),
             Self::Ast(closure) => closure.trace(tracer),
             Self::Bytecode(closure) => closure.trace(tracer),
             Self::CapturedObject(call) => call.object.trace(tracer),

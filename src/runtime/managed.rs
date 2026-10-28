@@ -271,6 +271,70 @@ impl Runtime {
 mod tests {
     use super::*;
     #[test]
+    fn managed_object_factory_boxes_in_context_and_reclaims_prototype_cycles() {
+        use crate::runtime::{Value, intrinsics::ObjectFactory, object::ManagedCallable};
+        let runtime = Runtime::new();
+        let constructor = Object::new_in(&runtime);
+        runtime.collect_migration_graph().unwrap();
+        let prototypes = std::array::from_fn(|_| Object::new_in(&runtime));
+        constructor.set_managed_callable(ManagedCallable::ObjectFactory(
+            ObjectFactory::new(&constructor, &prototypes).unwrap(),
+        ));
+        for prototype in &prototypes {
+            prototype
+                .create_data_property("constructor".into(), Value::Object(constructor.clone()))
+                .unwrap();
+        }
+        runtime.verify_migration_barriers().unwrap();
+        let weak = constructor.downgrade();
+        let original = Object::new_in(&runtime);
+        assert!(
+            constructor
+                .call(Value::Undefined, &[Value::Object(original.clone())])
+                .unwrap()
+                .same_value(&Value::Object(original.clone()))
+        );
+        assert_eq!(
+            constructor
+                .construct(&[Value::Object(original.clone())], constructor.clone())
+                .unwrap(),
+            original
+        );
+        drop(original);
+        for (value, index) in [
+            (Value::Undefined, 0),
+            (Value::Null, 0),
+            (Value::Number(42.0), 1),
+            (Value::String("abc".into()), 2),
+            (Value::Boolean(true), 3),
+        ] {
+            let Value::Object(boxed) = constructor
+                .call(Value::Undefined, std::slice::from_ref(&value))
+                .unwrap()
+            else {
+                panic!("object result")
+            };
+            assert_eq!(boxed.prototype(), Some(prototypes[index].clone()));
+            let constructed = constructor
+                .construct(&[value], constructor.clone())
+                .unwrap();
+            assert_eq!(constructed.prototype(), boxed.prototype());
+        }
+        let escaped = constructor
+            .construct(&[Value::Number(42.0)], constructor.clone())
+            .unwrap();
+        drop(prototypes);
+        drop(constructor);
+        runtime.collect_migration_graph().unwrap();
+        assert!(weak.upgrade().is_some());
+        assert!(
+            matches!(escaped.get(&"constructor".into()).unwrap(), Value::Object(object) if object.is_callable())
+        );
+        drop(escaped);
+        assert_eq!(runtime.collect_migration_graph().unwrap().retained, 0);
+        assert!(weak.upgrade().is_none());
+    }
+    #[test]
     fn managed_intrinsic_registry_snapshots_own_roots_but_the_realm_table_does_not() {
         use crate::runtime::{IntrinsicId, Realm, stored::StoredOwner};
         let runtime = Runtime::new();

@@ -271,6 +271,36 @@ impl Runtime {
 mod tests {
     use super::*;
     #[test]
+    fn managed_intrinsic_registry_snapshots_own_roots_but_the_realm_table_does_not() {
+        use crate::runtime::{IntrinsicId, Realm, stored::StoredOwner};
+        let runtime = Runtime::new();
+        let realm = Realm::ordinary_in(&runtime);
+        let realm_handle = realm.handle().unwrap();
+        let reflect = realm.intrinsic(IntrinsicId::Reflect);
+        let reflect_handle = reflect.0.handle().unwrap();
+        let weak = reflect.downgrade();
+        drop(reflect);
+        assert_eq!(runtime.0.heap.borrow().root_count(reflect_handle), 0);
+        runtime.collect_migration_graph().unwrap();
+        assert!(weak.upgrade().is_some());
+        let registry = realm.intrinsics();
+        let clone = registry.clone();
+        assert_eq!(runtime.0.heap.borrow().root_count(reflect_handle), 1);
+        drop(realm);
+        runtime.collect_migration_graph().unwrap();
+        assert!(runtime.0.heap.borrow().with(realm_handle, |_| ()).is_none());
+        assert_eq!(
+            registry.get(IntrinsicId::Reflect),
+            clone.get(IntrinsicId::Reflect)
+        );
+        drop(registry);
+        runtime.collect_migration_graph().unwrap();
+        assert!(weak.upgrade().is_some());
+        drop(clone);
+        runtime.collect_migration_graph().unwrap();
+        assert!(weak.upgrade().is_none());
+    }
+    #[test]
     fn managed_realm_clones_share_a_root_and_trace_the_global_records() {
         use crate::runtime::{Realm, Value, stored::StoredOwner};
         let runtime = Runtime::new();

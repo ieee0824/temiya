@@ -251,3 +251,26 @@ TEST262_DIR=target/test262 cargo test --locked --test function_allocation \
 This is eight passing variants, not full Function conformance. Function name
 inference, restricted properties, broader metadata and full prototype-chain
 coverage remain tracked separately (#202, #210).
+
+## Pending 0.2 API migration
+
+The coordinated tracing migration changes `Realm::intrinsics()` from a borrowed
+registry to an owning `IntrinsicRegistry` snapshot. The snapshot and its clones
+keep their intrinsic objects alive independently of the Realm. The Realm's
+internal table stores traced handles and does not register those objects as
+external roots.
+
+Bind the returned registry before retaining an iterator or passing a reference
+to another API:
+
+```rust,ignore
+let registry = realm.intrinsics();
+let entries = registry.iter();
+let ids: Vec<_> = entries.map(|(id, _)| id).collect();
+```
+
+Use `realm.intrinsic(id)` when only one object is needed; this avoids constructing
+a snapshot of the complete table. Object identities remain stable across
+snapshots. This change is part of the required 0.2 release, not a compatible
+0.1 patch. The tracing branch must still satisfy the coordinated graph,
+reclamation, rooting, ABI, and performance gates above before release.

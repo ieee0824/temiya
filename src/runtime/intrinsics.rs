@@ -5,6 +5,10 @@ use std::collections::BTreeMap;
 use super::{
     HostHooks, JsString, Object, PropertyDescriptor, RuntimeError, RuntimeResult, Symbol, Value,
 };
+use super::{
+    Runtime,
+    stored::{StoredObject, StoredOwner},
+};
 
 /// Identifies an intrinsic object owned by a Realm.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -209,14 +213,42 @@ impl IntrinsicId {
 #[derive(Clone, Debug)]
 pub struct IntrinsicRegistry(BTreeMap<IntrinsicId, Object>);
 
-impl IntrinsicRegistry {
+pub(super) struct StoredIntrinsicRegistry(BTreeMap<IntrinsicId, StoredObject>);
+impl StoredIntrinsicRegistry {
+    pub(super) fn initial(
+        runtime: Option<&Runtime>,
+        registry: &IntrinsicRegistry,
+    ) -> RuntimeResult<Self> {
+        registry
+            .0
+            .iter()
+            .map(|(id, object)| Ok((*id, StoredObject::initial(runtime, object)?)))
+            .collect::<RuntimeResult<BTreeMap<_, _>>>()
+            .map(Self)
+    }
+    pub(super) fn get(&self, owner: &impl StoredOwner, id: IntrinsicId) -> Object {
+        self.0
+            .get(&id)
+            .expect("complete stored intrinsic registry")
+            .load(owner)
+            .expect("live intrinsic object")
+    }
+    pub(super) fn load(&self, owner: &impl StoredOwner) -> IntrinsicRegistry {
+        IntrinsicRegistry(
+            self.0
+                .iter()
+                .map(|(id, object)| (*id, object.load(owner).expect("live intrinsic object")))
+                .collect(),
+        )
+    }
     pub(super) fn trace(&self, tracer: &mut crate::gc::Tracer<'_>) {
         for object in self.0.values() {
-            if let Some(handle) = object.0.handle() {
-                tracer.mark(handle);
-            }
+            object.trace(tracer);
         }
     }
+}
+
+impl IntrinsicRegistry {
     pub(crate) fn initialize(
         global: &Object,
         host_hooks: HostHooks,

@@ -107,7 +107,7 @@ pub(super) struct RealmData {
     global_object: StoredObject,
     global_environment: StoredEnvironment,
     job_queue: JobQueue,
-    intrinsics: IntrinsicRegistry,
+    intrinsics: super::intrinsics::StoredIntrinsicRegistry,
     well_known_symbols: WellKnownSymbols,
     host_hooks: HostHooks,
 }
@@ -191,7 +191,10 @@ impl Realm {
             global_object: StoredObject::initial(runtime.as_ref(), &global_object)?,
             global_environment: StoredEnvironment::initial(runtime.as_ref(), &global_environment)?,
             job_queue: JobQueue::new(),
-            intrinsics,
+            intrinsics: super::intrinsics::StoredIntrinsicRegistry::initial(
+                runtime.as_ref(),
+                &intrinsics,
+            )?,
             well_known_symbols,
             host_hooks,
         };
@@ -243,10 +246,11 @@ impl Realm {
         self.0.job_queue.clone()
     }
 
-    /// Returns this Realm's intrinsic registry.
+    /// Returns an owning snapshot of this Realm's intrinsic registry.
+    /// The snapshot and its clones may outlive this Realm.
     #[must_use]
-    pub fn intrinsics(&self) -> &IntrinsicRegistry {
-        &self.0.intrinsics
+    pub fn intrinsics(&self) -> IntrinsicRegistry {
+        self.0.intrinsics.load(self)
     }
 
     /// Creates a non-constructable native function with this Realm's Function.prototype.
@@ -269,7 +273,7 @@ impl Realm {
     /// Returns one intrinsic object owned by this Realm.
     #[must_use]
     pub fn intrinsic(&self, id: IntrinsicId) -> Object {
-        self.0.intrinsics.get(id)
+        self.0.intrinsics.get(self, id)
     }
 
     /// Returns one of this Realm's well-known symbols.

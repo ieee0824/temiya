@@ -282,3 +282,15 @@ conveniences panic on this error; JavaScript builtins use the fallible methods.
 Primitive keys and values remain immediate stored values. Public Map/Set
 iterators retain their owning Object and its runtime graph until they are
 dropped, including when the original collection facade has been released.
+
+Managed WeakMap entries store weak key identities and non-owning stored values.
+Their values are reported with `Tracer::ephemeron` only while the map itself is
+traced. Full collection requires both the owner and key to be reachable before
+tracing an object value; a value-to-key cycle cannot make its own key live.
+Minor collection conservatively retains old allocations, processes conditional
+edges from rooted/remembered owners, and applies the same fixed point to young
+keys and values. Insertion records barriers for both the key and object value.
+Dead entry cleanup checks generation-valid identities without creating key
+facades or root registrations. WeakSet stores only weak identities and reports
+no strong key edges. The standalone `Heap::add_ephemeron` API remains a global
+key/value association and is not used for managed WeakMap ownership.

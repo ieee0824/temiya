@@ -5,7 +5,7 @@
 
 use std::{
     any::Any,
-    cell::RefCell,
+    cell::{Cell, RefCell},
     collections::{HashMap, HashSet, VecDeque},
     fmt,
     hash::{Hash, Hasher},
@@ -101,12 +101,21 @@ impl<T: Trace> fmt::Debug for Handle<T> {
 /// A visitor used by [`Trace`] implementations to report outgoing heap edges.
 pub struct Tracer<'a> {
     visit: &'a mut dyn FnMut(RawHandle),
+    conditional: &'a mut dyn FnMut(RawHandle, RawHandle),
 }
 
 impl Tracer<'_> {
     /// Reports a typed heap edge to the collector.
     pub fn mark<T: Trace>(&mut self, handle: Handle<T>) {
         (self.visit)(handle.erase());
+    }
+
+    /// Reports an ephemeron owned by the allocation currently being traced.
+    /// The value is retained only if both that owner and the key are reachable.
+    /// This edge does not mark the key or visit the value until the key is
+    /// reachable through another path.
+    pub fn ephemeron<K: Trace, V: Trace>(&mut self, key: Handle<K>, value: Handle<V>) {
+        (self.conditional)(key.erase(), value.erase());
     }
 }
 
@@ -532,11 +541,15 @@ impl Heap {
                 slot: index,
                 generation: slot.generation,
             };
-            let mut has_young_edge = false;
+            let has_young_edge = Cell::new(false);
             value.trace(&mut Tracer {
-                visit: &mut |edge| has_young_edge |= self.is_young(edge),
+                visit: &mut |edge| has_young_edge.set(has_young_edge.get() || self.is_young(edge)),
+                conditional: &mut |key, value| {
+                    has_young_edge
+                        .set(has_young_edge.get() || self.is_young(key) || self.is_young(value))
+                },
             });
-            if has_young_edge && !self.remembered.contains(&owner) {
+            if has_young_edge.get() && !self.remembered.contains(&owner) {
                 return Err(WriteBarrierError::MissingBarrier(owner));
             }
         }
@@ -582,7 +595,10 @@ impl Heap {
             visit(raw);
             if let Some(slot) = self.raw_slot(raw) {
                 if let Some(value) = &slot.value {
-                    value.trace(&mut Tracer { visit });
+                    value.trace(&mut Tracer {
+                        visit,
+                        conditional: &mut |_, _| {},
+                    });
                 }
             }
         }
@@ -605,6 +621,7 @@ impl Heap {
         mut retire: impl FnMut(Box<dyn Allocation>),
     ) -> CollectionStats {
         let mut marked = HashSet::new();
+        let mut traced_ephemerons = Vec::new();
         let mut queue = self.roots.borrow().keys().copied().collect::<VecDeque<_>>();
         while let Some(raw) = queue.pop_front() {
             if !marked.insert(raw) {
@@ -616,11 +633,12 @@ impl Heap {
             let Some(value) = &slot.value else { continue };
             value.trace(&mut Tracer {
                 visit: &mut |edge| queue.push_back(edge),
+                conditional: &mut |key, value| traced_ephemerons.push((key, value)),
             });
         }
         loop {
             let mut added = false;
-            for &(key, value) in &self.ephemerons {
+            for &(key, value) in self.ephemerons.iter().chain(&traced_ephemerons) {
                 if marked.contains(&key) && !marked.contains(&value) {
                     queue.push_back(value);
                     added = true;
@@ -635,6 +653,7 @@ impl Heap {
                 };
                 value.trace(&mut Tracer {
                     visit: &mut |edge| queue.push_back(edge),
+                    conditional: &mut |key, value| traced_ephemerons.push((key, value)),
                 });
             }
             if !added {
@@ -679,6 +698,7 @@ impl Heap {
     /// Collects unreachable young allocations while leaving the old generation intact.
     pub fn collect_minor(&mut self) -> CollectionStats {
         let mut marked = HashSet::new();
+        let mut traced_ephemerons = Vec::new();
         let mut queue = VecDeque::new();
         let roots = self.roots.borrow().keys().copied().collect::<Vec<_>>();
         let seeds = roots
@@ -691,6 +711,7 @@ impl Heap {
                 queue.push_back(raw);
             } else if let Some(value) = self.raw_slot(raw).and_then(|slot| slot.value.as_ref()) {
                 value.trace(&mut Tracer {
+                    conditional: &mut |key, value| traced_ephemerons.push((key, value)),
                     visit: &mut |edge| {
                         if self.is_young(edge) {
                             queue.push_back(edge);
@@ -707,6 +728,7 @@ impl Heap {
                 continue;
             };
             value.trace(&mut Tracer {
+                conditional: &mut |key, value| traced_ephemerons.push((key, value)),
                 visit: &mut |edge| {
                     if self.is_young(edge) {
                         queue.push_back(edge);
@@ -716,7 +738,7 @@ impl Heap {
         }
         loop {
             let mut added = false;
-            for &(key, value) in &self.ephemerons {
+            for &(key, value) in self.ephemerons.iter().chain(&traced_ephemerons) {
                 let key_reachable = self
                     .raw_slot(key)
                     .is_some_and(|slot| slot.old || marked.contains(&key));
@@ -733,6 +755,7 @@ impl Heap {
                     continue;
                 };
                 value.trace(&mut Tracer {
+                    conditional: &mut |key, value| traced_ephemerons.push((key, value)),
                     visit: &mut |edge| {
                         if self.is_young(edge) {
                             queue.push_back(edge);
@@ -827,15 +850,25 @@ impl Heap {
                 slot: index,
                 generation: slot.generation,
             };
-            let mut dangling = None;
+            let dangling = Cell::new(None);
             value.trace(&mut Tracer {
                 visit: &mut |edge| {
-                    if dangling.is_none() && self.raw_slot(edge).is_none() {
-                        dangling = Some(edge);
+                    if dangling.get().is_none() && self.raw_slot(edge).is_none() {
+                        dangling.set(Some(edge));
+                    }
+                },
+                conditional: &mut |key, value| {
+                    // A dead weak key may leave a stale entry until its owner's
+                    // next cleanup. A live key must still have a live value.
+                    if dangling.get().is_none()
+                        && self.raw_slot(key).is_some()
+                        && self.raw_slot(value).is_none()
+                    {
+                        dangling.set(Some(value));
                     }
                 },
             });
-            if let Some(edge) = dangling {
+            if let Some(edge) = dangling.get() {
                 return Err(HeapVerificationError::DanglingEdge { owner, edge });
             }
         }

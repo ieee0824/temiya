@@ -364,6 +364,7 @@ impl Object {
 }
 
 impl WeakObject {
+    #[cfg(test)]
     pub(super) fn upgrade(&self) -> Option<Object> {
         self.0.upgrade()
     }

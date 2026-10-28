@@ -82,6 +82,34 @@ pub(super) enum WeakObjectRoot {
     },
 }
 impl WeakObjectRoot {
+    pub(super) fn handle(&self) -> Option<Handle<ManagedObject>> {
+        match self {
+            Self::Managed { handle, .. } => Some(*handle),
+            Self::Legacy(_) => None,
+        }
+    }
+
+    pub(super) fn is_live(&self) -> bool {
+        match self {
+            Self::Legacy(weak) => weak.strong_count() > 0,
+            Self::Managed { runtime, handle } => runtime
+                .upgrade()
+                .is_some_and(|runtime| runtime.heap.borrow().with(*handle, |_| ()).is_some()),
+        }
+    }
+
+    pub(super) fn matches(&self, object: &Object) -> bool {
+        match (self, &object.0) {
+            (Self::Legacy(weak), ObjectReference::Legacy(data)) => {
+                weak.as_ptr() == Rc::as_ptr(data)
+            }
+            (Self::Managed { handle, .. }, ObjectReference::Managed(root)) => {
+                *handle == root.root.handle()
+            }
+            _ => false,
+        }
+    }
+
     pub(super) fn new(object: &Object) -> Self {
         match &object.0 {
             ObjectReference::Legacy(data) => Self::Legacy(Rc::downgrade(data)),
@@ -92,6 +120,7 @@ impl WeakObjectRoot {
         }
     }
 
+    #[cfg(test)]
     pub(super) fn upgrade(&self) -> Option<Object> {
         match self {
             Self::Legacy(weak) => weak

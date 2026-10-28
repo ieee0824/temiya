@@ -11,7 +11,7 @@ type MapEntries = Vec<Option<(StoredValue, StoredValue)>>;
 type SetEntries = Vec<Option<StoredValue>>;
 pub(super) type MapSlot = Rc<RefCell<MapEntries>>;
 pub(super) type SetSlot = Rc<RefCell<SetEntries>>;
-pub(super) type WeakMapSlot = Rc<RefCell<Vec<(WeakObject, Value)>>>;
+pub(super) type WeakMapSlot = Rc<RefCell<Vec<(WeakObject, StoredValue)>>>;
 pub(super) type WeakSetSlot = Rc<RefCell<Vec<WeakObject>>>;
 
 /// An insertion-ordered Map using SameValueZero key equality.
@@ -302,7 +302,12 @@ impl WeakMapObject {
     /// Creates an empty WeakMap.
     #[must_use]
     pub fn new() -> Self {
-        let object = Object::new();
+        Self::from_empty(Object::new())
+    }
+    pub(super) fn new_for(context: &Object) -> Self {
+        Self::from_empty(Object::new_for(context))
+    }
+    fn from_empty(object: Object) -> Self {
         object.0.state.borrow_mut().weak_map_data = Some(Rc::new(RefCell::new(Vec::new())));
         Self(object)
     }
@@ -322,13 +327,16 @@ impl WeakMapObject {
         let Value::Object(key) = key else {
             return Err(RuntimeError::type_error("WeakMap key must be an object"));
         };
+        StoredObject::check_context(&self.0, key)?;
+        if let Value::Object(object) = &value {
+            StoredObject::check_context(&self.0, object)?;
+        }
+        let _ = StoredObject::store(&self.0, key)?;
+        let value = StoredValue::store_owned(&self.0, value)?;
         self.cleanup();
         let slot = self.slot();
         let mut entries = slot.borrow_mut();
-        if let Some((_, existing)) = entries
-            .iter_mut()
-            .find(|(weak, _)| weak.upgrade().as_ref() == Some(key))
-        {
+        if let Some((_, existing)) = entries.iter_mut().find(|(weak, _)| weak.0.matches(key)) {
             *existing = value;
         } else {
             entries.push((key.downgrade(), value));
@@ -342,8 +350,10 @@ impl WeakMapObject {
         self.slot()
             .borrow()
             .iter()
-            .find(|(weak, _)| weak.upgrade().as_ref() == Some(key))
-            .map_or(Value::Undefined, |(_, value)| value.clone())
+            .find(|(weak, _)| weak.0.matches(key))
+            .map_or(Value::Undefined, |(_, value)| {
+                value.load(&self.0).expect("live WeakMap value")
+            })
     }
     /// Returns the live entry count for diagnostics and GC tests.
     #[must_use]
@@ -352,9 +362,7 @@ impl WeakMapObject {
         self.slot().borrow().len()
     }
     fn cleanup(&self) {
-        self.slot()
-            .borrow_mut()
-            .retain(|(key, _)| key.upgrade().is_some());
+        self.slot().borrow_mut().retain(|(key, _)| key.0.is_live());
     }
     fn slot(&self) -> WeakMapSlot {
         self.0
@@ -379,7 +387,12 @@ impl WeakSetObject {
     /// Creates an empty WeakSet.
     #[must_use]
     pub fn new() -> Self {
-        let object = Object::new();
+        Self::from_empty(Object::new())
+    }
+    pub(super) fn new_for(context: &Object) -> Self {
+        Self::from_empty(Object::new_for(context))
+    }
+    fn from_empty(object: Object) -> Self {
         object.0.state.borrow_mut().weak_set_data = Some(Rc::new(RefCell::new(Vec::new())));
         Self(object)
     }
@@ -399,6 +412,7 @@ impl WeakSetObject {
         let Value::Object(object) = value else {
             return Err(RuntimeError::type_error("WeakSet value must be an object"));
         };
+        StoredObject::check_context(&self.0, object)?;
         self.cleanup();
         if !self.has(object) {
             self.slot().borrow_mut().push(object.downgrade());
@@ -412,7 +426,7 @@ impl WeakSetObject {
         self.slot()
             .borrow()
             .iter()
-            .any(|weak| weak.upgrade().as_ref() == Some(value))
+            .any(|weak| weak.0.matches(value))
     }
     /// Returns the live key count for diagnostics and GC tests.
     #[must_use]
@@ -421,9 +435,7 @@ impl WeakSetObject {
         self.slot().borrow().len()
     }
     fn cleanup(&self) {
-        self.slot()
-            .borrow_mut()
-            .retain(|key| key.upgrade().is_some());
+        self.slot().borrow_mut().retain(|key| key.0.is_live());
     }
     fn slot(&self) -> WeakSetSlot {
         self.0
@@ -454,6 +466,115 @@ fn normalize_zero(value: Value) -> Value {
 mod managed_tests {
     use super::*;
     use crate::runtime::Runtime;
+
+    #[test]
+    fn managed_weak_maps_require_both_owner_and_key_without_bootstrapping_cycles() {
+        for drop_owner in [true, false] {
+            let runtime = Runtime::new();
+            let context = Object::new_in(&runtime);
+            let map = WeakMapObject::new_for(&context);
+            drop(context);
+            let key = Object::new_in(&runtime);
+            runtime.collect_migration_graph().unwrap();
+            let value = Object::new_in(&runtime);
+            value
+                .create_data_property("key".into(), Value::Object(key.clone()))
+                .unwrap();
+            map.set(&Value::Object(key.clone()), Value::Object(value.clone()))
+                .unwrap();
+            runtime.verify_migration_barriers().unwrap();
+            let weak = [key.downgrade(), value.downgrade()];
+            drop(value);
+            assert_eq!(runtime.diagnostics().rooted, 2);
+            assert_eq!(runtime.collect_migration_graph().unwrap().retained, 3);
+            assert!(matches!(map.get(&key), Value::Object(_)));
+            if drop_owner {
+                drop(map);
+                assert_eq!(runtime.collect_migration_graph().unwrap().retained, 1);
+                assert!(weak[0].upgrade().is_some());
+                assert!(weak[1].upgrade().is_none());
+                drop(key);
+            } else {
+                drop(key);
+                assert_eq!(runtime.collect_migration_graph().unwrap().retained, 1);
+                assert!(weak.iter().all(|weak| weak.upgrade().is_none()));
+                assert_eq!(map.live_len(), 0);
+                drop(map);
+            }
+            assert_eq!(runtime.collect_migration_graph().unwrap().retained, 0);
+        }
+    }
+
+    #[test]
+    fn managed_weak_map_chains_reach_a_fixed_point_and_weak_sets_do_not_root_keys() {
+        let runtime = Runtime::new();
+        let context = Object::new_in(&runtime);
+        let first = WeakMapObject::new_for(&context);
+        let second = WeakMapObject::new_for(&context);
+        let set = WeakSetObject::new_for(&context);
+        drop(context);
+        let key = Object::new_in(&runtime);
+        let next_key = Object::new_in(&runtime);
+        let value = Object::new_in(&runtime);
+        value
+            .create_data_property("key".into(), Value::Object(key.clone()))
+            .unwrap();
+        value
+            .create_data_property("answer".into(), Value::Number(42.0))
+            .unwrap();
+        first
+            .set(&Value::Object(key.clone()), Value::Object(next_key.clone()))
+            .unwrap();
+        second
+            .set(
+                &Value::Object(next_key.clone()),
+                Value::Object(value.clone()),
+            )
+            .unwrap();
+        set.add(&Value::Object(next_key.clone())).unwrap();
+        drop((next_key, value));
+        assert_eq!(runtime.collect_migration_graph().unwrap().retained, 6);
+        let Value::Object(next_key) = first.get(&key) else {
+            panic!("live next key")
+        };
+        assert!(set.has(&next_key));
+        let Value::Object(value) = second.get(&next_key) else {
+            panic!("live value")
+        };
+        assert!(
+            value
+                .get(&"answer".into())
+                .unwrap()
+                .same_value(&Value::Number(42.0))
+        );
+        drop((key, next_key, value));
+        assert_eq!(runtime.collect_migration_graph().unwrap().retained, 3);
+        assert_eq!(first.live_len(), 0);
+        assert_eq!(second.live_len(), 0);
+        assert_eq!(set.live_len(), 0);
+        let foreign_runtime = Runtime::new();
+        let foreign = Object::new_in(&foreign_runtime);
+        let key = Object::new_in(&runtime);
+        first
+            .set(&Value::Object(key.clone()), Value::Number(42.0))
+            .unwrap();
+        assert!(
+            first
+                .set(&Value::Object(key.clone()), Value::Object(foreign.clone()))
+                .is_err()
+        );
+        assert!(
+            first
+                .set(&Value::Object(foreign.clone()), Value::Number(1.0))
+                .is_err()
+        );
+        assert!(set.add(&Value::Object(foreign)).is_err());
+        assert!(first.get(&key).same_value(&Value::Number(42.0)));
+        assert_eq!(first.live_len(), 1);
+        assert_eq!(set.live_len(), 0);
+        drop((first, second, set, key));
+        assert_eq!(runtime.collect_migration_graph().unwrap().retained, 0);
+    }
 
     #[test]
     fn managed_collection_cycles_remain_live_through_public_iterators() {

@@ -172,12 +172,16 @@ fn install_collections(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {
 
     let weak_map = intrinsics.get(IntrinsicId::WeakMap);
     let weak_map_prototype = intrinsics.get(IntrinsicId::WeakMapPrototype);
-    weak_map.clear_native_call();
-    weak_map.set_native_construct(move |_, _| {
-        let object = WeakMapObject::new().object();
-        object.set_prototype(Some(weak_map_prototype.clone()));
-        Ok(object)
-    });
+    weak_map.set_captured_factory(
+        &weak_map_prototype,
+        None,
+        None,
+        Some(|prototype, _, _, _| {
+            let object = WeakMapObject::new_for(prototype).object();
+            object.initialize_prototype(Some(prototype.clone()));
+            Ok(object)
+        }),
+    )?;
     let weak_map_prototype = intrinsics.get(IntrinsicId::WeakMapPrototype);
     method(
         intrinsics,
@@ -206,12 +210,16 @@ fn install_collections(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {
 
     let weak_set = intrinsics.get(IntrinsicId::WeakSet);
     let weak_set_prototype = intrinsics.get(IntrinsicId::WeakSetPrototype);
-    weak_set.clear_native_call();
-    weak_set.set_native_construct(move |_, _| {
-        let object = WeakSetObject::new().object();
-        object.set_prototype(Some(weak_set_prototype.clone()));
-        Ok(object)
-    });
+    weak_set.set_captured_factory(
+        &weak_set_prototype,
+        None,
+        None,
+        Some(|prototype, _, _, _| {
+            let object = WeakSetObject::new_for(prototype).object();
+            object.initialize_prototype(Some(prototype.clone()));
+            Ok(object)
+        }),
+    )?;
     let weak_set_prototype = intrinsics.get(IntrinsicId::WeakSetPrototype);
     method(
         intrinsics,
@@ -222,6 +230,19 @@ fn install_collections(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {
             let set = weak_set_receiver(this)?;
             set.add(&value_arg(arguments.first()))?;
             Ok(Value::Object(set.object()))
+        },
+    )?;
+    method(
+        intrinsics,
+        &weak_set_prototype,
+        "has",
+        1,
+        |this, arguments| {
+            let set = weak_set_receiver(this)?;
+            Ok(Value::Boolean(match arguments.first() {
+                Some(Value::Object(value)) => set.has(value),
+                _ => false,
+            }))
         },
     )
 }

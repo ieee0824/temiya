@@ -778,11 +778,9 @@ fn install_object(
                 let key =
                     super::coercion::primitive(&value_arg(arguments.first()), &to_primitive, true)?
                         .to_property_key()?;
-                let object = property_source(this)?;
-                let descriptor = object.try_get_own_property(&key)?;
-                Ok(Value::Boolean(descriptor.is_some_and(|descriptor| {
-                    !enumerable || descriptor.enumerable == Some(true)
-                })))
+                Ok(Value::Boolean(
+                    own_property_enumerable(this, &key)?.is_some_and(|flag| !enumerable || flag),
+                ))
             },
         )?;
     }
@@ -945,13 +943,12 @@ fn own_keys_array(
     arguments: &[Value],
     symbols: Option<bool>,
 ) -> RuntimeResult<Value> {
-    let source = if symbols.is_some() {
-        property_source(value_arg(arguments.first()))?
+    let keys = if symbols.is_some() {
+        own_keys(value_arg(arguments.first()))?
     } else {
-        object_arg(arguments.first(), "Reflect.ownKeys target")?
+        object_arg(arguments.first(), "Reflect.ownKeys target")?.try_own_property_keys()?
     };
-    let values = source
-        .try_own_property_keys()?
+    let values = keys
         .into_iter()
         .filter_map(|key| match key {
             PropertyKey::String(value) if symbols != Some(true) => Some(Value::String(value)),
@@ -1127,14 +1124,39 @@ fn number_argument(value: Option<&Value>, key: &PropertyKey) -> RuntimeResult<f6
 
 // Primitive wrapper identity/prototype cannot be observed by an own-descriptor
 // query; only string wrappers contribute own properties.
-fn property_source(value: Value) -> RuntimeResult<Object> {
+fn own_keys(value: Value) -> RuntimeResult<Vec<PropertyKey>> {
     match value {
-        Value::Object(object) => Ok(object),
-        Value::String(value) => Ok(super::StringObject::new(value).object()),
+        Value::Object(object) => object.try_own_property_keys(),
+        Value::String(value) => Ok((0..value.len())
+            .map(|index| JsString::from(index.to_string()).into())
+            .chain(std::iter::once("length".into()))
+            .collect()),
         Value::Null | Value::Undefined => {
             Err(RuntimeError::type_error("cannot inspect null or undefined"))
         }
-        _ => Ok(Object::new()),
+        _ => Ok(Vec::new()),
+    }
+}
+
+fn own_property_enumerable(value: Value, key: &PropertyKey) -> RuntimeResult<Option<bool>> {
+    match value {
+        Value::Object(object) => Ok(object
+            .try_get_own_property(key)?
+            .map(|descriptor| descriptor.enumerable == Some(true))),
+        Value::String(value) => {
+            if matches!(key, PropertyKey::String(name) if name.code_units() == [108, 101, 110, 103, 116, 104])
+            {
+                return Ok(Some(false));
+            }
+            Ok(key
+                .array_index()
+                .filter(|index| (*index as usize) < value.len())
+                .map(|_| true))
+        }
+        Value::Null | Value::Undefined => {
+            Err(RuntimeError::type_error("cannot inspect null or undefined"))
+        }
+        _ => Ok(None),
     }
 }
 
@@ -1190,5 +1212,56 @@ mod descriptor_list_tests {
             .unwrap();
         assert!(define_properties(&target, &descriptors).is_err());
         assert!(target.own_property_keys().is_empty());
+    }
+}
+
+#[cfg(test)]
+mod primitive_query_tests {
+    use super::*;
+    use crate::runtime::Runtime;
+
+    #[test]
+    fn primitive_own_property_checks_allocate_no_wrapper_objects() {
+        let runtime = Runtime::new();
+        let realm = super::super::Realm::ordinary_in(&runtime);
+        let prototype = realm.intrinsic(IntrinsicId::ObjectPrototype);
+        let Value::Object(has) = prototype.get(&"hasOwnProperty".into()).unwrap() else {
+            panic!("method")
+        };
+        let Value::Object(enumerable) = prototype.get(&"propertyIsEnumerable".into()).unwrap()
+        else {
+            panic!("method")
+        };
+        let length = [Value::String("length".into())];
+        let index = [Value::String("1".into())];
+        let before = runtime.diagnostics();
+        for _ in 0..100 {
+            assert!(
+                has.call(Value::String("𝄞".into()), &length)
+                    .unwrap()
+                    .same_value(&Value::Boolean(true))
+            );
+            assert!(
+                enumerable
+                    .call(Value::String("𝄞".into()), &length)
+                    .unwrap()
+                    .same_value(&Value::Boolean(false))
+            );
+            assert!(
+                enumerable
+                    .call(Value::String("𝄞".into()), &index)
+                    .unwrap()
+                    .same_value(&Value::Boolean(true))
+            );
+            assert!(
+                has.call(Value::Number(42.0), &index)
+                    .unwrap()
+                    .same_value(&Value::Boolean(false))
+            );
+        }
+        assert_eq!(runtime.diagnostics().live, before.live);
+        assert_eq!(runtime.diagnostics().rooted, before.rooted);
+        drop((has, enumerable, prototype, realm));
+        assert_eq!(runtime.collect_migration_graph().unwrap().retained, 0);
     }
 }

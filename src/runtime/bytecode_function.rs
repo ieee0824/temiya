@@ -200,32 +200,8 @@ impl Closure {
 }
 
 fn boxed_this(realm: &Realm, value: Value) -> RuntimeResult<Value> {
-    let (object, prototype) = match value {
-        Value::Object(_) => return Ok(value),
-        Value::String(value) => (
-            super::StringObject::new_for(&realm.global_object(), value).object(),
-            IntrinsicId::StringPrototype,
-        ),
-        Value::Number(value) => (
-            super::NumberObject::new_for(&realm.global_object(), value).object(),
-            IntrinsicId::NumberPrototype,
-        ),
-        Value::BigInt(value) => (
-            super::BigIntObject::new_for(&realm.global_object(), value).object(),
-            IntrinsicId::BigIntPrototype,
-        ),
-        value @ Value::Boolean(_) | value @ Value::Symbol(_) => {
-            let prototype = if matches!(value, Value::Boolean(_)) {
-                IntrinsicId::BooleanPrototype
-            } else {
-                IntrinsicId::SymbolPrototype
-            };
-            let object = Object::new_for(&realm.global_object());
-            object.0.state.borrow_mut().primitive_data = Some(value);
-            (object, prototype)
-        }
-        Value::Undefined | Value::Null => return realm.global_environment().global_this_value(),
-    };
-    object.set_prototype(Some(realm.intrinsic(prototype)));
-    Ok(Value::Object(object))
+    match value {
+        Value::Object(_) => Ok(value),
+        value => super::function::box_primitive(realm, value).map(Value::Object),
+    }
 }

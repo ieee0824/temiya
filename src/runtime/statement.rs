@@ -274,21 +274,7 @@ impl StatementEvaluator {
                             "with value cannot be null or undefined",
                         ));
                     }
-                    Value::String(string) => {
-                        let object = super::Object::new();
-                        object.create_data_property(
-                            PropertyKey::from("length"),
-                            Value::Number(string.len() as f64),
-                        )?;
-                        for (index, unit) in string.code_units().iter().enumerate() {
-                            object.create_data_property(
-                                PropertyKey::String(JsString::from(index.to_string())),
-                                Value::String(JsString::from_code_units(vec![*unit])),
-                            )?;
-                        }
-                        object
-                    }
-                    _ => super::Object::new(),
+                    primitive => super::function::box_primitive(&self.expression.realm, primitive)?,
                 };
                 let environment = Environment::object(
                     object,

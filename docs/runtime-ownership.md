@@ -385,3 +385,18 @@ evaluation creates Promise functions with the known source Realm metadata.
 Parsing moves the Program into its record after collecting requests, avoiding
 the prior full AST clone. Existing linking/evaluation and module-namespace
 conformance limitations remain separate from this ownership migration.
+
+Primitive boxing now shares one context-aware wrapper allocator between the
+Object constructor, AST/VM sloppy-this binding, and with statements. It selects
+only the required intrinsic prototype and initializes actual String/Number/
+BigInt or Boolean/Symbol wrapper slots; AST this binding no longer exposes a
+synthetic [[PrimitiveValue]] property. Null/undefined sloppy-this binding uses
+the Realm's chosen global-this value, matching the VM and host Realm contract.
+With still rejects null/undefined before boxing.
+
+Read-only own-key/own-enumerability queries on primitives do not allocate
+wrapper Objects. Strings report UTF-16 indices and nonenumerable length; other
+non-null primitives have no own properties. Object queries retain their fallible
+Proxy operations. Property-key conversion still precedes null receiver errors.
+This removes the remaining contextless temporary boxing in these execution
+paths, without adding a root registration per primitive property check.

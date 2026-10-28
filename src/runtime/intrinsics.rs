@@ -514,22 +514,23 @@ impl ObjectFactory {
             Value::BigInt(_) => 5,
         };
         let prototype = self.prototypes[index].load(owner)?;
-        let object = match value {
-            Value::Number(value) => super::NumberObject::new_for(&prototype, *value).object(),
-            Value::String(value) => {
-                super::StringObject::new_for(&prototype, value.clone()).object()
-            }
-            Value::BigInt(value) => {
-                super::BigIntObject::new_for(&prototype, value.clone()).object()
-            }
-            Value::Boolean(_) | Value::Symbol(_) => {
-                let object = Object::new_for(&prototype);
-                object.0.state.borrow_mut().primitive_data = Some(value.clone());
-                object
-            }
-            _ => Object::new_for(&prototype),
-        };
-        object.initialize_prototype(Some(prototype));
-        Ok(object)
+        Ok(boxed_value(&prototype, value.clone()))
     }
+}
+
+pub(super) fn boxed_value(prototype: &Object, value: Value) -> Object {
+    let object = match value {
+        Value::Number(value) => super::NumberObject::new_for(prototype, value).object(),
+        Value::String(value) => super::StringObject::new_for(prototype, value).object(),
+        Value::BigInt(value) => super::BigIntObject::new_for(prototype, value).object(),
+        value @ Value::Boolean(_) | value @ Value::Symbol(_) => {
+            let object = Object::new_for(prototype);
+            object.0.state.borrow_mut().primitive_data = Some(value);
+            object
+        }
+        Value::Object(object) => return object,
+        _ => Object::new_for(prototype),
+    };
+    object.initialize_prototype(Some(prototype.clone()));
+    object
 }

@@ -286,14 +286,26 @@ fn construct_function(
 
 pub(super) fn ordinary_this(realm: &Realm, value: Value) -> RuntimeResult<Value> {
     match value {
-        Value::Undefined | Value::Null => Ok(Value::Object(realm.global_object())),
+        Value::Undefined | Value::Null => realm.global_environment().global_this_value(),
         Value::Object(_) => Ok(value),
-        primitive => {
-            let object = Object::new_for(&realm.global_object());
-            object.create_data_property("[[PrimitiveValue]]".into(), primitive)?;
-            Ok(Value::Object(object))
-        }
+        primitive => box_primitive(realm, primitive).map(Value::Object),
     }
+}
+
+pub(super) fn box_primitive(realm: &Realm, value: Value) -> RuntimeResult<Object> {
+    use super::IntrinsicId;
+    let id = match &value {
+        Value::Object(object) => return Ok(object.clone()),
+        Value::Undefined | Value::Null => {
+            return Err(RuntimeError::type_error("cannot box null or undefined"));
+        }
+        Value::Number(_) => IntrinsicId::NumberPrototype,
+        Value::String(_) => IntrinsicId::StringPrototype,
+        Value::Boolean(_) => IntrinsicId::BooleanPrototype,
+        Value::Symbol(_) => IntrinsicId::SymbolPrototype,
+        Value::BigInt(_) => IntrinsicId::BigIntPrototype,
+    };
+    Ok(super::intrinsics::boxed_value(&realm.intrinsic(id), value))
 }
 
 pub(super) fn bind_arguments(
@@ -373,5 +385,46 @@ fn bind_parameter(environment: &Environment, binding: &Expr, value: Value) -> Ru
     } else {
         environment.create_mutable_binding(name.clone(), false)?;
         environment.initialize_binding(&name, value)
+    }
+}
+
+#[cfg(test)]
+mod primitive_this_tests {
+    use super::*;
+    use crate::{
+        bytecode::{BytecodeCompiler, VirtualMachine},
+        runtime::{Runtime, ScriptRecord},
+    };
+
+    #[test]
+    fn ast_and_vm_use_the_realms_custom_global_this_value() {
+        for bytecode in [false, true] {
+            let runtime = Runtime::new();
+            let global = Object::new_in(&runtime);
+            let receiver = Object::new_in(&runtime);
+            receiver
+                .create_data_property("answer".into(), Value::Number(42.0))
+                .unwrap();
+            let realm = Realm::try_new(global.clone(), Value::Object(receiver.clone())).unwrap();
+            drop(receiver);
+            let source = "function read(){return this.answer;}read();";
+            let completion = if bytecode {
+                VirtualMachine::execute_in_realm(
+                    &BytecodeCompiler::compile(source).unwrap(),
+                    &realm,
+                )
+                .unwrap()
+            } else {
+                ScriptRecord::parse(realm.clone(), source)
+                    .unwrap()
+                    .evaluate()
+                    .unwrap()
+            };
+            assert!(
+                matches!(completion, Completion::Normal(Some(Value::Number(value))) if value == 42.0)
+            );
+            drop((global, realm));
+            assert_eq!(runtime.collect_migration_graph().unwrap().retained, 0);
+        }
     }
 }

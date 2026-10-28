@@ -979,6 +979,10 @@ mod managed_allocation_tests {
                 "var constructedArray=new Array({answer:42});constructedArray[0].answer;",
                 "Object.prototype.valueOf.call(42).valueOf();",
                 "Object(42).valueOf();",
+                "(function(){return this.valueOf();}).call(42);",
+                "if(!(function(){return Object.prototype.hasOwnProperty.call(this,'[[PrimitiveValue]]');}).call(42)){42;}else{0;}",
+                "if((function(){return this.length;}).call('𝄞')===2&&Object.getPrototypeOf((function(){return this;}).call(42n))===BigInt.prototype&&Object.getPrototypeOf((function(){return this;}).call(true))===Boolean.prototype){42;}else{0;}",
+                "var primitiveNames=Object.getOwnPropertyNames('𝄞');if(primitiveNames.length===3&&primitiveNames[0]==='0'&&primitiveNames[1]==='1'&&primitiveNames[2]==='length'&&Object.getOwnPropertySymbols('𝄞').length===0&&Object.getOwnPropertyNames(42).length===0&&Object.prototype.hasOwnProperty.call('𝄞','length')&&Object.prototype.propertyIsEnumerable.call('𝄞','1')&&!Object.prototype.propertyIsEnumerable.call('𝄞','length')&&!Object.prototype.hasOwnProperty.call('𝄞','01')&&!Object.prototype.hasOwnProperty.call(42,'valueOf')){42;}else{0;}",
                 "if(BigInt(42)===42n&&Object.getPrototypeOf(new Boolean())===Boolean.prototype&&Object.getPrototypeOf(new Error())===Error.prototype){42;}else{0;}",
                 "var revocableMetadata=Proxy.revocable({},{});if(Object.getPrototypeOf(revocableMetadata)===Object.prototype&&Object.getPrototypeOf(revocableMetadata.revoke)===Function.prototype&&Proxy.revocable.name==='revocable'&&Proxy.revocable.length===2&&revocableMetadata.revoke.length===0){42;}else{0;}",
                 "var managedWeakKey={};var managedWeakMap=new WeakMap();managedWeakMap.set(managedWeakKey,{answer:42});var managedWeakSet=new WeakSet();managedWeakSet.add(managedWeakKey);if(managedWeakSet.has(managedWeakKey)&&Object.getPrototypeOf(managedWeakMap)===WeakMap.prototype&&Object.getPrototypeOf(managedWeakSet)===WeakSet.prototype){managedWeakMap.get(managedWeakKey).answer;}else{0;}",
@@ -1076,6 +1080,38 @@ mod managed_allocation_tests {
                         .same_value(&Value::String("b".into()))
                 );
             }
+        }
+    }
+
+    #[test]
+    fn managed_with_boxes_primitives_in_the_current_realm() {
+        let mut engine = Engine::builder().script_backend(ScriptBackend::Ast).build();
+        engine.managed_allocation = true;
+        let realm = engine.create_realm();
+        for source in [
+            "var withAnswer=0;with('𝄞'){withAnswer=length+40;}withAnswer;",
+            "var withAnswer=0;with(42){withAnswer=valueOf();}withAnswer;",
+            "var withAnswer=0;with(42n){if(valueOf()===42n){withAnswer=42;}}withAnswer;",
+            "var withAnswer=0;with(true){if(Object.getPrototypeOf(valueOf())===Boolean.prototype){withAnswer=42;}}withAnswer;",
+        ] {
+            let script = engine.compile(&realm, source).unwrap();
+            assert!(
+                engine
+                    .evaluate(&script)
+                    .unwrap()
+                    .value()
+                    .same_value(&Value::Number(42.0)),
+                "{source}"
+            );
+            engine.runtime.verify_migration_barriers().unwrap();
+            engine.runtime.collect_migration_graph().unwrap();
+        }
+        for source in ["with(null){}", "with(undefined){}"] {
+            let script = engine.compile(&realm, source).unwrap();
+            assert_eq!(
+                engine.evaluate(&script).unwrap_err().kind(),
+                ExceptionKind::TypeError
+            );
         }
     }
 

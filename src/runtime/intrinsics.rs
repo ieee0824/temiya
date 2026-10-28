@@ -282,19 +282,26 @@ impl IntrinsicRegistry {
                     ObjectFactory::new(&constructor, &prototypes)?,
                 ));
                 constructor
+            } else if id == IntrinsicId::BigInt {
+                // BigInt is call-only; numeric installation replaces this
+                // capture-free body without a constructor payload to hide it.
+                Object::native_function_for(global, |_, _| Ok(Value::Undefined))
             } else if let Some((prototype_id, _)) = id.pair() {
                 let prototype = objects.get(&prototype_id).cloned().ok_or_else(|| {
                     RuntimeError::internal_error("intrinsic prototype was not allocated")
                 })?;
-                Object::native_callable_constructor_for(
-                    global,
-                    |_, _| Ok(Value::Undefined),
-                    move |_, _| {
-                        let instance = Object::new_for(&prototype);
-                        instance.set_prototype(Some(prototype.clone()));
+                let constructor = Object::new_for(global);
+                constructor.set_captured_factory(
+                    &prototype,
+                    None,
+                    Some((false, |_, _, _, _| Ok(Value::Undefined))),
+                    Some(|prototype, _, _, _| {
+                        let instance = Object::new_for(prototype);
+                        instance.initialize_prototype(Some(prototype.clone()));
                         Ok(instance)
-                    },
-                )
+                    }),
+                )?;
+                constructor
             } else if id == IntrinsicId::Proxy {
                 Object::native_constructor_for(global, |_, new_target| {
                     Ok(Object::new_for(&new_target))

@@ -31,25 +31,15 @@ fn install_proxy(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {
         let handler = object_arg(arguments.get(1), "Proxy handler")?;
         Ok(ProxyObject::try_new(target, handler)?.object())
     });
-    let prototype = intrinsics.get(IntrinsicId::FunctionPrototype);
-    method(
-        intrinsics,
-        &constructor,
-        "revocable",
-        2,
-        move |_, arguments| {
-            let target = object_arg(arguments.first(), "Proxy target")?;
-            let handler = object_arg(arguments.get(1), "Proxy handler")?;
-            let proxy = ProxyObject::try_new(target, handler)?;
-            let revocable = Object::new_for(&prototype);
-            revocable.create_data_property("proxy".into(), Value::Object(proxy.object()))?;
-            let revoke =
-                super::native_function::create(&prototype, "", 0, |_, _| Ok(Value::Undefined))?;
-            revoke.initialize_proxy_revoker(&proxy.object())?;
-            revocable.create_data_property("revoke".into(), Value::Object(revoke))?;
-            Ok(Value::Object(revocable))
-        },
-    )
+    let revocable = super::proxy::ProxyRevocable::create(
+        &intrinsics.get(IntrinsicId::FunctionPrototype),
+        &intrinsics.get(IntrinsicId::ObjectPrototype),
+    )?;
+    constructor.define_own_property(
+        "revocable".into(),
+        PropertyDescriptor::data(Value::Object(revocable), true, false, true),
+    )?;
+    Ok(())
 }
 
 fn install_date_json(intrinsics: &IntrinsicRegistry, host: HostHooks) -> RuntimeResult<()> {

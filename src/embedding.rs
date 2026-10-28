@@ -979,6 +979,8 @@ mod managed_allocation_tests {
                 "var constructedArray=new Array({answer:42});constructedArray[0].answer;",
                 "Object.prototype.valueOf.call(42).valueOf();",
                 "Object(42).valueOf();",
+                "if(BigInt(42)===42n&&Object.getPrototypeOf(new Boolean())===Boolean.prototype&&Object.getPrototypeOf(new Error())===Error.prototype){42;}else{0;}",
+                "var revocableMetadata=Proxy.revocable({},{});if(Object.getPrototypeOf(revocableMetadata)===Object.prototype&&Object.getPrototypeOf(revocableMetadata.revoke)===Function.prototype&&Proxy.revocable.name==='revocable'&&Proxy.revocable.length===2&&revocableMetadata.revoke.length===0){42;}else{0;}",
                 "var managedWeakKey={};var managedWeakMap=new WeakMap();managedWeakMap.set(managedWeakKey,{answer:42});var managedWeakSet=new WeakSet();managedWeakSet.add(managedWeakKey);if(managedWeakSet.has(managedWeakKey)&&Object.getPrototypeOf(managedWeakMap)===WeakMap.prototype&&Object.getPrototypeOf(managedWeakSet)===WeakSet.prototype){managedWeakMap.get(managedWeakKey).answer;}else{0;}",
                 "var managedMap=new Map();var managedKey={answer:20};managedMap.set(managedKey,{answer:42});var managedSet=new Set();managedSet.add(managedKey);if(managedMap.has(managedKey)&&managedSet.has(managedKey)&&Object.getPrototypeOf(managedMap)===Map.prototype&&Object.getPrototypeOf(managedSet)===Set.prototype){managedMap.get(managedKey).answer;}else{0;}",
                 "var keySource={answer:42};keySource[Symbol.iterator]=1;var names=Object.getOwnPropertyNames(keySource);var symbols=Object.getOwnPropertySymbols(keySource);var keys=Reflect.ownKeys(keySource);if(Array.isArray(names)&&Array.isArray(symbols)&&Array.isArray(keys)&&Object.getPrototypeOf(names)===Array.prototype&&names[0]==='answer'&&symbols[0]===Symbol.iterator&&keys.length===2){42;}else{0;}",
@@ -1038,6 +1040,11 @@ mod managed_allocation_tests {
             let construct_revoke = engine.compile(&realm, "new revocable.revoke();").unwrap();
             assert_eq!(
                 engine.evaluate(&construct_revoke).unwrap_err().kind(),
+                ExceptionKind::TypeError
+            );
+            let construct_bigint = engine.compile(&realm, "new BigInt(42);").unwrap();
+            assert_eq!(
+                engine.evaluate(&construct_bigint).unwrap_err().kind(),
                 ExceptionKind::TypeError
             );
             let symbol_string = engine

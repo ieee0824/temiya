@@ -5,6 +5,68 @@ use super::{
     Value, is_compatible_property_descriptor,
 };
 
+pub(super) struct ProxyRevocable {
+    function_prototype: super::stored::StoredObject,
+    object_prototype: super::stored::StoredObject,
+}
+
+impl ProxyRevocable {
+    pub(super) fn create(
+        function_prototype: &Object,
+        object_prototype: &Object,
+    ) -> RuntimeResult<Object> {
+        use super::{object::ManagedCallable, stored::StoredObject};
+        let capture = Self {
+            function_prototype: StoredObject::initial(
+                function_prototype.0.runtime(),
+                function_prototype,
+            )?,
+            object_prototype: StoredObject::initial(
+                function_prototype.0.runtime(),
+                object_prototype,
+            )?,
+        };
+        Ok(Object::managed_function_with_metadata(
+            function_prototype,
+            "revocable",
+            2,
+            ManagedCallable::ProxyRevocable(capture),
+        ))
+    }
+
+    pub(super) fn trace(&self, tracer: &mut crate::gc::Tracer<'_>) {
+        self.function_prototype.trace(tracer);
+        self.object_prototype.trace(tracer);
+    }
+
+    pub(super) fn call(&self, owner: &Object, arguments: &[Value]) -> RuntimeResult<Value> {
+        use super::{object::ManagedCallable, stored::StoredObject};
+        let Some(Value::Object(target)) = arguments.first() else {
+            return Err(RuntimeError::type_error("Proxy target must be an object"));
+        };
+        let Some(Value::Object(handler)) = arguments.get(1) else {
+            return Err(RuntimeError::type_error("Proxy handler must be an object"));
+        };
+        let proxy = ProxyObject::try_new(target.clone(), handler.clone())?.object();
+        let function_prototype = self.function_prototype.load(owner)?;
+        let object_prototype = self.object_prototype.load(owner)?;
+        let result = Object::new_for(&object_prototype);
+        result.initialize_prototype(Some(object_prototype));
+        result.create_data_property("proxy".into(), Value::Object(proxy.clone()))?;
+        let revoke = Object::managed_function_with_metadata(
+            &function_prototype,
+            "",
+            0,
+            ManagedCallable::ProxyRevoker(std::cell::RefCell::new(Some(StoredObject::initial(
+                function_prototype.0.runtime(),
+                &proxy,
+            )?))),
+        );
+        result.create_data_property("revoke".into(), Value::Object(revoke))?;
+        Ok(Value::Object(result))
+    }
+}
+
 #[derive(Clone)]
 pub(super) struct ProxySlot {
     pair: Option<(super::stored::StoredObject, super::stored::StoredObject)>,

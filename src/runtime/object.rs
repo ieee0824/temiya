@@ -335,6 +335,7 @@ pub(super) struct BoundFunction {
 }
 
 pub(super) enum ManagedCallable {
+    ProxyRevocable(super::proxy::ProxyRevocable),
     ObjectFactory(super::intrinsics::ObjectFactory),
     JsonParse(super::host_data::JsonParseBuiltin),
     Date(super::host_data::DateFactory),
@@ -350,6 +351,7 @@ pub(super) enum ManagedCallable {
 impl ManagedCallable {
     pub(super) fn bound_target(&self, owner: &Object) -> RuntimeResult<Option<Object>> {
         match self {
+            Self::ProxyRevocable(_) => Ok(None),
             Self::ObjectFactory(_) => Ok(None),
             Self::Bound(bound) => bound.target.load(owner).map(Some),
             Self::ProxyRevoker(_) => Ok(None),
@@ -370,6 +372,7 @@ impl ManagedCallable {
     }
     fn is_constructor(&self) -> bool {
         match self {
+            Self::ProxyRevocable(_) => false,
             Self::ObjectFactory(_) => true,
             Self::Bound(bound) => bound.constructor,
             Self::Ast(closure) => closure.is_constructor(),
@@ -384,6 +387,7 @@ impl ManagedCallable {
     }
     fn call(&self, owner: &Object, this: Value, arguments: &[Value]) -> RuntimeResult<Value> {
         match self {
+            Self::ProxyRevocable(factory) => factory.call(owner, arguments),
             Self::ObjectFactory(factory) => factory.create(owner, arguments).map(Value::Object),
             Self::JsonParse(builtin) => builtin.call(owner, arguments),
             Self::Date(factory) => factory.call(),
@@ -467,6 +471,7 @@ impl ManagedCallable {
     }
     fn trace(&self, tracer: &mut crate::gc::Tracer<'_>) {
         match self {
+            Self::ProxyRevocable(factory) => factory.trace(tracer),
             Self::ObjectFactory(factory) => factory.trace(tracer),
             Self::Ast(closure) => closure.trace(tracer),
             Self::Bytecode(closure) => closure.trace(tracer),
@@ -594,6 +599,7 @@ impl Object {
         object.0.state.borrow_mut().managed_callable = Some(Rc::new(ManagedCallable::Bound(bound)));
         Ok(object)
     }
+    #[cfg(test)]
     pub(super) fn initialize_proxy_revoker(&self, proxy: &Object) -> RuntimeResult<()> {
         let proxy = StoredObject::store(self, proxy)?;
         let mut state = self.0.state.borrow_mut();
@@ -747,16 +753,6 @@ impl Object {
     ) -> Self {
         let object = Self::new_for(context);
         object.set_native_construct(callback);
-        object
-    }
-
-    pub(super) fn native_callable_constructor_for(
-        context: &Object,
-        call: impl Fn(Value, &[Value]) -> RuntimeResult<Value> + 'static,
-        construct: impl Fn(&[Value], Object) -> RuntimeResult<Object> + 'static,
-    ) -> Self {
-        let object = Self::native_function_for(context, call);
-        object.set_native_construct(construct);
         object
     }
 

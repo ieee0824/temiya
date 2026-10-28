@@ -765,6 +765,72 @@ mod stored_graph_tests {
         assert!(weak.iter().all(|object| object.upgrade().is_none()));
     }
     #[test]
+    fn proxy_revocable_factory_traces_prototypes_and_releases_revoked_graphs() {
+        let runtime = Runtime::new();
+        let function_prototype = Object::new_in(&runtime);
+        let object_prototype = Object::new_in(&runtime);
+        let factory =
+            crate::runtime::proxy::ProxyRevocable::create(&function_prototype, &object_prototype)
+                .unwrap();
+        for prototype in [&function_prototype, &object_prototype] {
+            prototype
+                .create_data_property("back".into(), Value::Object(factory.clone()))
+                .unwrap();
+        }
+        let weak = [function_prototype.downgrade(), object_prototype.downgrade()];
+        drop(function_prototype);
+        drop(object_prototype);
+        assert_eq!(runtime.diagnostics().rooted, 1);
+        assert_eq!(runtime.collect_migration_graph().unwrap().retained, 3);
+        let foreign = Object::new();
+        assert!(crate::runtime::proxy::ProxyRevocable::create(&factory, &foreign).is_err());
+        assert_eq!(runtime.diagnostics().live, 3);
+        let target = Object::new_in(&runtime);
+        target
+            .create_data_property("answer".into(), Value::Number(42.0))
+            .unwrap();
+        let handler = Object::new_in(&runtime);
+        let Value::Object(result) = factory
+            .call(
+                Value::Undefined,
+                &[
+                    Value::Object(target.clone()),
+                    Value::Object(handler.clone()),
+                ],
+            )
+            .unwrap()
+        else {
+            panic!("result")
+        };
+        assert_eq!(result.prototype(), weak[1].upgrade());
+        let Value::Object(revoke) = result.get(&"revoke".into()).unwrap() else {
+            panic!("revoker")
+        };
+        assert_eq!(revoke.prototype(), weak[0].upgrade());
+        assert!(
+            revoke
+                .get(&"name".into())
+                .unwrap()
+                .same_value(&Value::String("".into()))
+        );
+        let weak_proxy = match result.get(&"proxy".into()).unwrap() {
+            Value::Object(proxy) => proxy.downgrade(),
+            _ => panic!("proxy"),
+        };
+        drop((target, handler, factory, result));
+        runtime.verify_migration_barriers().unwrap();
+        assert_eq!(runtime.collect_migration_graph().unwrap().retained, 7);
+        assert!(!revoke.is_constructor());
+        revoke.call(Value::Null, &[]).unwrap();
+        revoke.call(Value::Null, &[]).unwrap();
+        assert_eq!(runtime.collect_migration_graph().unwrap().retained, 4);
+        assert!(weak_proxy.upgrade().is_none());
+        drop(revoke);
+        assert_eq!(runtime.collect_migration_graph().unwrap().retained, 0);
+        assert!(weak.iter().all(|prototype| prototype.upgrade().is_none()));
+    }
+
+    #[test]
     fn proxy_revoker_retains_its_cycle_until_called_or_unrooted() {
         for call in [false, true] {
             let runtime = Runtime::new();

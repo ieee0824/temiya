@@ -154,6 +154,9 @@ impl Trace for RealmData {
 }
 
 impl Realm {
+    pub(crate) fn enter_object_root_region(&self) -> Option<super::managed::ObjectRootRegion> {
+        self.runtime()?.enter_object_root_region()
+    }
     /// Materializes a catchable exception without invoking a potentially
     /// replaced global constructor. Internal failures remain Rust errors.
     pub(crate) fn exception_value(&self, error: &RuntimeError) -> RuntimeResult<Value> {

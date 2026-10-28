@@ -55,6 +55,7 @@ impl VirtualMachine {
         realm: Option<&Realm>,
         function: Option<&Environment>,
     ) -> RuntimeResult<Completion> {
+        let _object_roots = realm.and_then(Realm::enter_object_root_region);
         let body = bytecode.bytecode();
         let mut scopes: Vec<ScopeFrame<'_>> = vec![];
         let mut references: Vec<Reference> = vec![];

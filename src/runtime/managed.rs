@@ -23,6 +23,24 @@ pub(super) struct RuntimeData {
     collecting: Cell<bool>,
     allocation_interval: Cell<usize>,
     allocation_remaining: Cell<usize>,
+    active_objects: RefCell<Weak<RefCell<Vec<Object>>>>,
+}
+
+const ACTIVE_OBJECTS: usize = 8;
+
+// This is an external activation region, never a payload stored in the heap.
+// Nested VM calls share the outer region. Its bounded facade cache is cleared
+// before every collection, so cached facades cannot keep a dead JS graph live.
+pub(crate) struct ObjectRootRegion {
+    runtime: Runtime,
+    objects: Rc<RefCell<Vec<Object>>>,
+}
+impl Drop for ObjectRootRegion {
+    fn drop(&mut self) {
+        let mut active = self.runtime.0.active_objects.borrow_mut();
+        debug_assert_eq!(active.as_ptr(), Rc::as_ptr(&self.objects));
+        *active = Weak::new();
+    }
 }
 
 pub(super) struct ManagedObject {
@@ -136,6 +154,41 @@ impl WeakObjectRoot {
 }
 
 impl Runtime {
+    pub(crate) fn enter_object_root_region(&self) -> Option<ObjectRootRegion> {
+        let mut active = self.0.active_objects.borrow_mut();
+        if active.upgrade().is_some() {
+            return None;
+        }
+        let objects = Rc::new(RefCell::new(Vec::with_capacity(ACTIVE_OBJECTS)));
+        *active = Rc::downgrade(&objects);
+        Some(ObjectRootRegion {
+            runtime: self.clone(),
+            objects,
+        })
+    }
+    fn remember_active_object(&self, object: &Object) {
+        let Some(active) = self.0.active_objects.borrow().upgrade() else {
+            return;
+        };
+        let mut objects = active.borrow_mut();
+        if objects.last().is_some_and(|last| last == object) {
+            return;
+        }
+        if let Some(index) = objects.iter().position(|cached| cached == object) {
+            let cached = objects.remove(index);
+            objects.push(cached);
+        } else {
+            if objects.len() == ACTIVE_OBJECTS {
+                objects.remove(0);
+            }
+            objects.push(object.clone());
+        }
+    }
+    fn clear_active_objects(&self) {
+        if let Some(active) = self.0.active_objects.borrow().upgrade() {
+            active.borrow_mut().clear();
+        }
+    }
     fn allocation_safepoint(&self, incoming: &impl Trace) {
         let interval = self.0.allocation_interval.get();
         if interval == usize::MAX || self.0.collecting.get() {
@@ -154,6 +207,7 @@ impl Runtime {
             }
         }
         let _reset = Reset(&self.0.collecting);
+        self.clear_active_objects();
         let (_, retired) = self.0.heap.borrow_mut().collect_retiring_with(incoming);
         // A destructor may allocate/evaluate. Nested allocations skip collection
         // until this collection's retired payloads have all been released.
@@ -338,6 +392,7 @@ impl Runtime {
             collecting: Cell::new(false),
             allocation_interval: Cell::new(4096),
             allocation_remaining: Cell::new(4096),
+            active_objects: RefCell::new(Weak::new()),
         }))
     }
     pub(super) fn allocate_object(&self, data: ObjectData) -> Object {
@@ -357,7 +412,9 @@ impl Runtime {
         let heap = self.0.heap.borrow();
         let data = heap.with(handle, |object| object.data.clone())?;
         if let Some(facade) = data.facade.borrow().upgrade() {
-            return Some(Object(ObjectReference::Managed(facade)));
+            let object = Object(ObjectReference::Managed(facade));
+            self.remember_active_object(&object);
+            return Some(object);
         }
         let root = heap.root(handle)?;
         drop(heap);
@@ -367,7 +424,9 @@ impl Runtime {
             runtime: self.clone(),
         });
         *data.facade.borrow_mut() = Rc::downgrade(&facade);
-        Some(Object(ObjectReference::Managed(facade)))
+        let object = Object(ObjectReference::Managed(facade));
+        self.remember_active_object(&object);
+        Some(object)
     }
     #[cfg(test)]
     pub(crate) fn collect_migration_graph(
@@ -389,6 +448,7 @@ impl Runtime {
             }
         }
         let _reset = Reset(&self.0.collecting);
+        self.clear_active_objects();
         let (stats, retired) = self.0.heap.borrow_mut().collect_retiring();
         // Host Drop may reenter evaluation/allocation after slot retirement.
         // The Heap borrow is gone and old generations cannot be resurrected.
@@ -422,6 +482,67 @@ impl Runtime {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn activation_facades_are_bounded_and_do_not_retain_dead_graphs_at_collection() {
+        let runtime = Runtime::new();
+        runtime.set_allocation_collection_interval(usize::MAX);
+        let region = runtime.enter_object_root_region().unwrap();
+        assert!(runtime.enter_object_root_region().is_none());
+        let mut weak = Vec::new();
+        for _ in 0..32 {
+            let object = Object::new_in(&runtime);
+            weak.push(object.downgrade());
+            let revived = runtime.root_object(object.0.handle().unwrap()).unwrap();
+            assert_eq!(object, revived);
+        }
+        assert_eq!(runtime.diagnostics().rooted, ACTIVE_OBJECTS);
+        assert_eq!(runtime.collect_garbage().unwrap().retained, 0);
+        assert!(weak.iter().all(|object| object.upgrade().is_none()));
+
+        let object = Object::new_in(&runtime);
+        object
+            .create_data_property("answer".into(), super::super::Value::Number(42.0))
+            .unwrap();
+        let live_clone = runtime.root_object(object.0.handle().unwrap()).unwrap();
+        drop(object);
+        assert_eq!(runtime.collect_garbage().unwrap().retained, 1);
+        assert!(
+            live_clone
+                .get(&"answer".into())
+                .unwrap()
+                .same_value(&super::super::Value::Number(42.0))
+        );
+        drop(live_clone);
+        drop(region);
+        assert_eq!(runtime.diagnostics().rooted, 0);
+        assert_eq!(runtime.collect_garbage().unwrap().retained, 0);
+        assert!(runtime.enter_object_root_region().is_some());
+    }
+
+    #[test]
+    fn activation_facades_clear_at_allocation_gc_and_unwind() {
+        let runtime = Runtime::new();
+        runtime.set_allocation_collection_interval(usize::MAX);
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _region = runtime.enter_object_root_region().unwrap();
+            let object = Object::new_in(&runtime);
+            let weak = object.downgrade();
+            let revived = runtime.root_object(object.0.handle().unwrap()).unwrap();
+            drop((object, revived));
+            assert_eq!(runtime.diagnostics().rooted, 1);
+            runtime.set_allocation_collection_interval(1);
+            let incoming = Object::new_in(&runtime);
+            assert!(weak.upgrade().is_none());
+            let revived = runtime.root_object(incoming.0.handle().unwrap()).unwrap();
+            drop((incoming, revived));
+            assert_eq!(runtime.diagnostics().rooted, 1);
+            panic!("unwind an active root region");
+        }));
+        assert!(result.is_err());
+        assert_eq!(runtime.diagnostics().rooted, 0);
+        assert_eq!(runtime.collect_garbage().unwrap().retained, 0);
+        assert!(runtime.enter_object_root_region().is_some());
+    }
     #[test]
     fn allocation_collection_retires_host_payloads_before_reentrant_allocation() {
         use crate::runtime::Value;

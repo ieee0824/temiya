@@ -429,6 +429,23 @@ paths, without adding a root registration per primitive property check.
 
 ## Allocation safepoint audit on the tracing branch
 
+### Bounded activation facade region
+
+The outermost VM run owns an external region with at most eight recently used
+Object facades. Nested runs in the same Runtime share it. This reuses facade
+allocations and root registrations for repeated reads of a stable receiver;
+it does not store owning roots in managed records. Runtime holds only a Weak
+reference to the region. Normal return, errors, and Rust unwind drop the region.
+
+Both explicit collection and allocation collection clear this region before
+tracing. Cached facades therefore cannot keep an otherwise dead key, cycle,
+callback, or Realm alive through collection. Active operands, References,
+function frames and the incoming unpublished record retain their existing
+independent roots/traced edges. A bounded cache also avoids retaining a growing
+history of allocated objects between collection points. Tests cover cache bounds,
+slot retirement under allocation collection, explicit collection while a clone
+remains live, nested region sharing and unwind cleanup.
+
 All five managed allocation families (Object, Environment, Realm, JobQueue,
 SourceTextModule) now collect before allocation through a Runtime safepoint.
 The configured production interval remains disabled during migration. Tests set

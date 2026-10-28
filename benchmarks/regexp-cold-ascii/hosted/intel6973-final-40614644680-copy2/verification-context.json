@@ -1,0 +1,19 @@
+{
+  "run": 40614644680,
+  "artifact": 12786030499,
+  "job": 122574173632,
+  "measured_source": "64d0835599864e483514b85eb3a1e132f5d46ebf",
+  "production_equivalent_main": "51049b9fae74be8c567a4754548409b811e0df69",
+  "compared_paths": [
+    "src",
+    "tests",
+    "examples",
+    "Cargo.toml",
+    "Cargo.lock"
+  ],
+  "production_diff_empty": true,
+  "run_conclusion": "failure",
+  "profile_obtained": false,
+  "reason": "Independent BigInt oracle mistakenly initialized accumulator to 0, yielding 63; original workload starts at 1 and yields 64. Native reports completed before diagnostic failure. Full failed step preserved.",
+  "correction": "87c64d3cf73999393cddcbb114d0a1075a54db2b; independent oracle initial accumulator changed to 1, validated against exact failed-run input; input, engine and speed thresholds unchanged."
+}

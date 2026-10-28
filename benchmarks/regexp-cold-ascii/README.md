@@ -138,3 +138,9 @@ report remains unchanged. This additional controlled evidence resolves the
 cold uncertainty without changing source/input/counts/thresholds. Same-host
 original macros and actual arithmetic profiles continue; early profile/
 contains tools/hardware metadata only, not a completed arithmetic profile.
+
+## Additional matched Intel final artifact (40614644680)
+
+The complete copy-2 artifact is retained in `hosted/intel6973-final-40614644680-copy2`, including nested original inputs and the failed diagnostic log. Production paths match merged main `51049b9`. The native original-eleven comparison against actual pinned Boa passed all 33 decisions; arithmetic ratios were 0.868631 / 0.582859 / 0.884288. The baseline comparison has 3 improvements, 29 within threshold, and one slower object-alloc pair (1.111916). The same-executable control has 2 improvements, 29 within threshold, and 2 slower pairs. These observations remain unchanged; this wave does not establish that every workload is unchanged against baseline, nor attribute variability to an engine change. Warm RegExp comparisons pass all 9 decisions against both baseline and Boa.
+
+The job failed only after native measurements, during the independent arithmetic oracle check: its accumulator mistakenly started at 0 instead of the original workload's 1. It returned 63 and stopped before Callgrind execution. No actual Intel arithmetic profile was obtained; issue #510 remains open. Profile-branch correction `87c64d3` initializes the oracle to 1 and was checked against the exact retained input (2,000,000 iterations, expected 64). Neither the workload nor the speed threshold changed.

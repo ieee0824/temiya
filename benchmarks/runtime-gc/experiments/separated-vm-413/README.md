@@ -12,8 +12,10 @@ unchanged max(10%, three times summed relative MAD) improvement gate. Time
 ratios range0.396–0.803 against the pinned application's actual modified Boa
 through JsRuntime/Sandbox. Independent recomputation is in `provenance.json`.
 This result is bounded to the recorded machine and conditions. Hosted results
-and all119 current-source library Miri tests are still pending; earlier-source
-passes do not establish their completion.
+are still pending. The unfinished413 full Miri run was later cancelled when
+the measured efd candidate superseded it; see `security-superseded-reason.json`.
+Its partial successes are not a full119 pass. Earlier-source passes do not
+establish completion for a later implementation.
 
 `beforeafter.json` retains the comparison with c74: three faster,28 noise,
 two slower. Closure takes0.781–0.793 times the old duration in all three pairs.

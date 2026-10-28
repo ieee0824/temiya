@@ -10,6 +10,30 @@ baseline observations below describe the starting point, not the current branch.
 
 ## Measured runtime integration
 
+The later runtime source `efd0de57abca28fb00807f78e386bf94ef09f4b2`
+records its own [original-eleven comparison and checks](../benchmarks/runtime-gc/experiments/own-write-efd).
+On local ARM64 guest CPU0, all66 workers/1056 warmup and sample values are
+correct and all33 comparisons pass the unchanged10%/MAD gate against the
+actual pinned omoikane modified Boa. Time ratios range0.391–0.718. Both frozen
+release workers use the same compiler; agent threads use guest CPUs1–3, and no
+local build/test/profiler overlaps competitive timing. This is not host
+physical-core isolation or evidence for arbitrary machines/applications.
+
+The direct ordinary-property update removes repeated descriptor revival and
+reconstruction only when the receiver is the same object and its existing own
+data descriptor is writable. Heap ownership checks and strong-edge barriers
+precede mutation; descriptor flags remain unchanged. Proxy/accessor, different
+receivers, arrays, string/view/buffer objects and pending function prototypes
+retain the generic path. Public integration tests cover cross-heap rejection
+without mutation, live child edges across collection, replaced-child reclamation,
+descriptor flags and different receivers, including two exact strict Miri tests.
+The before/after comparison against413 records4 faster,29 noise,0 slower
+decisions; all three prop-mono pairs take0.698–0.754 times the old duration.
+This bounded result does not establish universal absence of regressions.
+
+The following earlier records retain their original source identities and
+unfavorable outcomes; they are not substituted for current-source qualification.
+
 The runtime source at `4ca6287ce18e5e8baaf11f465ed923eca6496565` passes the
 [original eleven-workload comparison](../benchmarks/runtime-gc/boa-comparison.json)
 against omoikane's actual modified Boa through its public JsRuntime embedding.

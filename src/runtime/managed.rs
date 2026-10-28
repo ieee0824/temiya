@@ -222,6 +222,10 @@ impl Runtime {
         Rc::ptr_eq(&self.0, &other.0)
     }
     #[cfg(test)]
+    pub(crate) fn verify_migration_barriers(&self) -> Result<(), crate::gc::WriteBarrierError> {
+        self.0.heap.borrow().verify_write_barriers()
+    }
+    #[cfg(test)]
     pub(crate) fn diagnostics(&self) -> crate::gc::HeapDiagnostics {
         self.0.heap.borrow().diagnostics()
     }

@@ -1,6 +1,9 @@
 //! Lexical environments and ECMAScript environment records.
 
-use super::{Runtime, stored::StoredOwner};
+use super::{
+    Runtime,
+    stored::{StoredOwner, StoredValue},
+};
 use crate::gc::{Handle, Root, Trace, Tracer};
 use std::cell::RefCell;
 use std::fmt;
@@ -163,7 +166,7 @@ impl Trace for EnvironmentData {
         fn bindings(record: &DeclarativeRecord, tracer: &mut Tracer<'_>) {
             for binding in &record.bindings {
                 if let Some(v) = &binding.value {
-                    value(v, tracer);
+                    v.trace(tracer);
                 }
             }
         }
@@ -205,7 +208,7 @@ struct DeclarativeRecord {
 
 struct Binding {
     name: JsString,
-    value: Option<Value>,
+    value: Option<StoredValue>,
     mutable: bool,
     strict: bool,
     deletable: bool,
@@ -276,12 +279,12 @@ impl Environment {
             return Ok(None);
         };
         let binding = &mut record.bindings[index];
-        let Some(Value::Number(old)) = &binding.value else {
+        let Some(StoredValue::Number(old)) = &binding.value else {
             return Ok(None);
         };
         let old = *old;
         let new = if increment { old + 1.0 } else { old - 1.0 };
-        binding.write(Value::Number(new), strict)?;
+        binding.write(self, Value::Number(new), strict)?;
         Ok(Some((old, new)))
     }
 
@@ -314,7 +317,7 @@ impl Environment {
         if !binding.mutable {
             return None;
         }
-        let Some(Value::String(string)) = &mut binding.value else {
+        let Some(StoredValue::String(string)) = &mut binding.value else {
             return None;
         };
         string.append_owned(suffix);
@@ -349,7 +352,7 @@ impl Environment {
                     .get(index)
                     .filter(|binding| binding.name == *name)
                 {
-                    return binding.read();
+                    return binding.read(self);
                 }
             }
         }
@@ -372,7 +375,7 @@ impl Environment {
                     .get_mut(index)
                     .filter(|binding| binding.name == *name)
                 {
-                    return binding.write(value, strict);
+                    return binding.write(self, value, strict);
                 }
             }
         }
@@ -450,9 +453,14 @@ impl Environment {
         arguments: &[Value],
         capacity: usize,
     ) -> Self {
+        let environment = Self::function(outer, function_object, new_target, this_status);
         let mut bindings: Vec<Binding> = Vec::with_capacity(capacity.max(parameters.len()));
         for (index, name) in parameters.iter().enumerate() {
-            let value = arguments.get(index).cloned().unwrap_or(Value::Undefined);
+            let value = StoredValue::store(
+                &environment,
+                arguments.get(index).unwrap_or(&Value::Undefined),
+            )
+            .expect("parameter allocation context");
             if let Some(binding) = bindings.iter_mut().find(|binding| binding.name == *name) {
                 // Sloppy duplicate parameters retain the last supplied value,
                 // including undefined when that occurrence has no argument.
@@ -467,17 +475,14 @@ impl Environment {
                 });
             }
         }
-        Self::new(
-            outer,
-            EnvironmentRecord::Function(FunctionRecord {
-                declarative_record: DeclarativeRecord { bindings },
-                this_status,
-                this_value: (this_status == ThisBindingStatus::Initialized)
-                    .then_some(Value::Undefined),
-                function_object,
-                new_target,
-            }),
-        )
+        {
+            let mut record = environment.0.record.borrow_mut();
+            let EnvironmentRecord::Function(record) = &mut *record else {
+                unreachable!()
+            };
+            record.declarative_record.bindings = bindings;
+        }
+        environment
     }
 
     /// Creates a module environment record.
@@ -621,11 +626,13 @@ impl Environment {
         }
         let mut record = self.0.record.borrow_mut();
         match &mut *record {
-            EnvironmentRecord::Declarative(record) => record.initialize(name, value),
+            EnvironmentRecord::Declarative(record) => record.initialize(self, name, value),
             EnvironmentRecord::Object(_) => unreachable!(),
-            EnvironmentRecord::Global(record) => record.declarative_record.initialize(name, value),
+            EnvironmentRecord::Global(record) => {
+                record.declarative_record.initialize(self, name, value)
+            }
             EnvironmentRecord::Function(record) => {
-                record.declarative_record.initialize(name, value)
+                record.declarative_record.initialize(self, name, value)
             }
             EnvironmentRecord::Module(record) => {
                 if record
@@ -637,7 +644,7 @@ impl Environment {
                         "cannot initialize an import binding",
                     ))
                 } else {
-                    record.declarative_record.initialize(name, value)
+                    record.declarative_record.initialize(self, name, value)
                 }
             }
         }
@@ -655,17 +662,17 @@ impl Environment {
         }
         let mut record = self.0.record.borrow_mut();
         match &mut *record {
-            EnvironmentRecord::Declarative(record) => record.set(name, value, strict),
+            EnvironmentRecord::Declarative(record) => record.set(self, name, value, strict),
             EnvironmentRecord::Object(_) => unreachable!(),
             EnvironmentRecord::Global(record) => {
                 if record.declarative_record.has_binding(name) {
-                    record.declarative_record.set(name, value, strict)
+                    record.declarative_record.set(self, name, value, strict)
                 } else {
                     unreachable!()
                 }
             }
             EnvironmentRecord::Function(record) => {
-                record.declarative_record.set(name, value, strict)
+                record.declarative_record.set(self, name, value, strict)
             }
             EnvironmentRecord::Module(record) => {
                 if record
@@ -677,7 +684,7 @@ impl Environment {
                         "cannot assign to an import binding",
                     ))
                 } else {
-                    record.declarative_record.set(name, value, strict)
+                    record.declarative_record.set(self, name, value, strict)
                 }
             }
         }
@@ -706,17 +713,17 @@ impl Environment {
         }
         let record = self.0.record.borrow();
         match &*record {
-            EnvironmentRecord::Declarative(record) => record.get(name),
+            EnvironmentRecord::Declarative(record) => record.get(self, name),
             EnvironmentRecord::Object(_) => unreachable!(),
             EnvironmentRecord::Global(record) => {
                 if record.declarative_record.has_binding(name) {
-                    record.declarative_record.get(name)
+                    record.declarative_record.get(self, name)
                 } else {
                     unreachable!()
                 }
             }
-            EnvironmentRecord::Function(record) => record.declarative_record.get(name),
-            EnvironmentRecord::Module(record) => record.declarative_record.get(name),
+            EnvironmentRecord::Function(record) => record.declarative_record.get(self, name),
+            EnvironmentRecord::Module(record) => record.declarative_record.get(self, name),
         }
     }
 
@@ -1155,25 +1162,36 @@ impl DeclarativeRecord {
         Ok(())
     }
 
-    fn initialize(&mut self, name: &JsString, value: Value) -> RuntimeResult<()> {
+    fn initialize(
+        &mut self,
+        owner: &Environment,
+        name: &JsString,
+        value: Value,
+    ) -> RuntimeResult<()> {
         let binding = self.binding_mut(name)?;
         if binding.value.is_some() {
             return Err(RuntimeError::type_error("binding is already initialized"));
         }
-        binding.value = Some(value);
+        binding.value = Some(StoredValue::store(owner, &value)?);
         Ok(())
     }
 
-    fn set(&mut self, name: &JsString, value: Value, strict: bool) -> RuntimeResult<()> {
-        self.binding_mut(name)?.write(value, strict)
+    fn set(
+        &mut self,
+        owner: &Environment,
+        name: &JsString,
+        value: Value,
+        strict: bool,
+    ) -> RuntimeResult<()> {
+        self.binding_mut(name)?.write(owner, value, strict)
     }
 
-    fn get(&self, name: &JsString) -> RuntimeResult<Value> {
+    fn get(&self, owner: &Environment, name: &JsString) -> RuntimeResult<Value> {
         self.bindings
             .iter()
             .find(|binding| binding.name == *name)
             .ok_or_else(|| reference_error(name, "is not defined"))?
-            .read()
+            .read(owner)
     }
 
     fn delete(&mut self, name: &JsString) -> bool {
@@ -1200,24 +1218,25 @@ impl DeclarativeRecord {
 }
 
 impl Binding {
-    fn read(&self) -> RuntimeResult<Value> {
+    fn read(&self, owner: &Environment) -> RuntimeResult<Value> {
         // Copy immutable primitive bits without dispatching the full Value
         // clone. Name checks and record borrowing still occur in the caller;
         // an uninitialized binding continues through the TDZ error below.
-        if let Some(Value::Number(value)) = &self.value {
+        if let Some(StoredValue::Number(value)) = &self.value {
             return Ok(Value::Number(*value));
         }
         self.value
-            .clone()
-            .ok_or_else(|| reference_error(&self.name, "is in the temporal dead zone"))
+            .as_ref()
+            .ok_or_else(|| reference_error(&self.name, "is in the temporal dead zone"))?
+            .load(owner)
     }
 
-    fn write(&mut self, value: Value, strict: bool) -> RuntimeResult<()> {
+    fn write(&mut self, owner: &Environment, value: Value, strict: bool) -> RuntimeResult<()> {
         if self.value.is_none() {
             return Err(reference_error(&self.name, "is in the temporal dead zone"));
         }
         if self.mutable {
-            self.value = Some(value);
+            self.value = Some(StoredValue::store(owner, &value)?);
             Ok(())
         } else if strict || self.strict {
             Err(RuntimeError::type_error(
@@ -1310,6 +1329,69 @@ fn reference_error(name: &JsString, detail: &str) -> RuntimeError {
 #[cfg(test)]
 mod slot_hint_tests {
     use super::*;
+    #[test]
+    fn managed_bindings_trace_objects_and_release_replaced_cycles() {
+        let runtime = Runtime::new();
+        let environment = runtime.allocate_environment(EnvironmentData {
+            facade: RefCell::new(Weak::new()),
+            outer: None,
+            record: RefCell::new(EnvironmentRecord::Declarative(DeclarativeRecord::default())),
+        });
+        let key = JsString::from("object");
+        environment
+            .create_mutable_binding(key.clone(), false)
+            .unwrap();
+        assert!(environment.get_binding_value(&key, true).is_err());
+        environment
+            .initialize_binding(&key, Value::Undefined)
+            .unwrap();
+        runtime.collect_migration_graph().unwrap();
+        let object = Object::new_in(&runtime);
+        object
+            .create_data_property("self".into(), Value::Object(object.clone()))
+            .unwrap();
+        let weak = object.downgrade();
+        environment
+            .set_mutable_binding(&key, Value::Object(object.clone()), true)
+            .unwrap();
+        drop(object);
+        assert_eq!(runtime.diagnostics().rooted, 1);
+        runtime.verify_migration_barriers().unwrap();
+        assert_eq!(runtime.collect_migration_graph().unwrap().retained, 2);
+        let Value::Object(loaded) = environment.get_binding_value(&key, true).unwrap() else {
+            panic!("object binding");
+        };
+        assert!(
+            loaded
+                .get(&"self".into())
+                .unwrap()
+                .same_value(&Value::Object(loaded.clone()))
+        );
+        drop(loaded);
+        let foreign = Object::new_in(&Runtime::new());
+        assert!(
+            environment
+                .set_mutable_binding(&key, Value::Object(foreign), true)
+                .is_err()
+        );
+        assert!(matches!(
+            environment.get_binding_value(&key, true).unwrap(),
+            Value::Object(_)
+        ));
+        environment
+            .set_mutable_binding(&key, Value::Number(-0.0), true)
+            .unwrap();
+        assert!(
+            environment
+                .get_binding_value(&key, true)
+                .unwrap()
+                .same_value(&Value::Number(-0.0))
+        );
+        assert_eq!(runtime.collect_migration_graph().unwrap().reclaimed, 1);
+        assert!(weak.upgrade().is_none());
+        drop(environment);
+        assert_eq!(runtime.collect_migration_graph().unwrap().reclaimed, 1);
+    }
     #[test]
     fn managed_outer_environment_is_traced_without_an_internal_root() {
         let runtime = Runtime::new();

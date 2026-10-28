@@ -42,12 +42,10 @@ pub(super) struct JobQueueData {
     draining: bool,
     unhandled_hook: Option<UnhandledHook>,
 }
-pub(super) struct ManagedJobQueue {
-    pub(super) data: Rc<RefCell<JobQueueData>>,
-}
-impl Trace for ManagedJobQueue {
+pub(super) type ManagedJobQueue = RefCell<JobQueueData>;
+impl Trace for RefCell<JobQueueData> {
     fn trace(&self, tracer: &mut Tracer<'_>) {
-        let data = self.data.borrow();
+        let data = self.borrow();
         for job in data.jobs.iter().chain(&data.active) {
             job.trace(tracer);
         }

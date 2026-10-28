@@ -38,9 +38,7 @@ pub(super) struct RealmRoot {
     pub(super) data: Rc<RealmData>,
     pub(super) runtime: Runtime,
 }
-pub(super) struct ManagedRealm {
-    pub(super) data: Rc<RealmData>,
-}
+pub(super) type ManagedRealm = RealmData;
 
 #[derive(Clone)]
 pub(super) struct StoredRealm(pub(super) Handle<ManagedRealm>);
@@ -77,11 +75,6 @@ impl StoredRealm {
     }
     pub(super) fn trace(&self, tracer: &mut Tracer<'_>) {
         tracer.mark(self.0);
-    }
-}
-impl Trace for ManagedRealm {
-    fn trace(&self, tracer: &mut Tracer<'_>) {
-        self.data.trace(tracer);
     }
 }
 impl StoredOwner for Realm {

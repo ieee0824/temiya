@@ -43,12 +43,10 @@ impl Drop for ObjectRootRegion {
     }
 }
 
-pub(super) struct ManagedObject {
-    data: Rc<ObjectData>,
-}
-impl Trace for ManagedObject {
+pub(super) type ManagedObject = ObjectData;
+impl Trace for ObjectData {
     fn trace(&self, tracer: &mut Tracer<'_>) {
-        self.data.trace_object_edges(tracer);
+        self.trace_object_edges(tracer);
     }
 }
 
@@ -184,11 +182,10 @@ impl Runtime {
         &self,
         data: super::pipeline::ModuleData,
     ) -> super::SourceTextModule {
-        use super::pipeline::{ManagedModule, ModuleReference, ModuleRoot};
+        use super::pipeline::{ModuleReference, ModuleRoot};
         let data = Rc::new(data);
-        let incoming = ManagedModule { data: data.clone() };
-        self.allocation_safepoint(&incoming);
-        let root = self.0.heap.borrow_mut().allocate(incoming);
+        self.allocation_safepoint(data.as_ref());
+        let root = self.0.heap.borrow_mut().allocate_shared(data.clone());
         let facade = Rc::new(ModuleRoot {
             root,
             data: data.clone(),
@@ -203,7 +200,7 @@ impl Runtime {
     ) -> Option<super::SourceTextModule> {
         use super::pipeline::{ModuleReference, ModuleRoot};
         let heap = self.0.heap.borrow();
-        let data = heap.with(handle, |module| module.data.clone())?;
+        let data = heap.shared(handle)?;
         if let Some(facade) = data.facade.borrow().upgrade() {
             return Some(super::SourceTextModule(ModuleReference(facade)));
         }
@@ -221,11 +218,10 @@ impl Runtime {
         &self,
         data: super::job_queue::JobQueueData,
     ) -> super::JobQueue {
-        use super::job_queue::{JobQueueReference, JobQueueRoot, ManagedJobQueue};
+        use super::job_queue::{JobQueueReference, JobQueueRoot};
         let data = Rc::new(RefCell::new(data));
-        let incoming = ManagedJobQueue { data: data.clone() };
-        self.allocation_safepoint(&incoming);
-        let root = self.0.heap.borrow_mut().allocate(incoming);
+        self.allocation_safepoint(data.as_ref());
+        let root = self.0.heap.borrow_mut().allocate_shared(data.clone());
         let facade = Rc::new(JobQueueRoot {
             root,
             data: data.clone(),
@@ -241,7 +237,7 @@ impl Runtime {
     ) -> Option<super::JobQueue> {
         use super::job_queue::{JobQueueReference, JobQueueRoot};
         let heap = self.0.heap.borrow();
-        let data = heap.with(handle, |queue| queue.data.clone())?;
+        let data = heap.shared(handle)?;
         if let Some(facade) = data.borrow().facade.upgrade() {
             return Some(super::JobQueue(JobQueueReference(facade)));
         }
@@ -276,7 +272,7 @@ impl Runtime {
     ) -> Option<super::Realm> {
         use super::execution::{RealmReference, RealmRoot};
         let heap = self.0.heap.borrow();
-        let data = heap.with(handle, |realm| realm.data.clone())?;
+        let data = heap.shared(handle)?;
         if let Some(facade) = data.facade.borrow().upgrade() {
             return Some(super::Realm(RealmReference(facade)));
         }
@@ -291,11 +287,10 @@ impl Runtime {
         Some(super::Realm(RealmReference(facade)))
     }
     pub(super) fn allocate_realm(&self, data: super::execution::RealmData) -> super::Realm {
-        use super::execution::{ManagedRealm, RealmReference, RealmRoot};
+        use super::execution::{RealmReference, RealmRoot};
         let data = Rc::new(data);
-        let incoming = ManagedRealm { data: data.clone() };
-        self.allocation_safepoint(&incoming);
-        let root = self.0.heap.borrow_mut().allocate(incoming);
+        self.allocation_safepoint(data.as_ref());
+        let root = self.0.heap.borrow_mut().allocate_shared(data.clone());
         let facade = Rc::new(RealmRoot {
             root,
             data: data.clone(),
@@ -310,7 +305,7 @@ impl Runtime {
     ) -> Option<super::Environment> {
         use super::environment::{EnvironmentReference, EnvironmentRoot};
         let heap = self.0.heap.borrow();
-        let data = heap.with(handle, |environment| environment.data.clone())?;
+        let data = heap.shared(handle)?;
         if let Some(facade) = data.facade.borrow().upgrade() {
             return Some(super::Environment(EnvironmentReference(facade)));
         }
@@ -328,11 +323,10 @@ impl Runtime {
         &self,
         data: super::environment::EnvironmentData,
     ) -> super::Environment {
-        use super::environment::{EnvironmentReference, EnvironmentRoot, ManagedEnvironment};
+        use super::environment::{EnvironmentReference, EnvironmentRoot};
         let data = Rc::new(data);
-        let incoming = ManagedEnvironment { data: data.clone() };
-        self.allocation_safepoint(&incoming);
-        let root = self.0.heap.borrow_mut().allocate(incoming);
+        self.allocation_safepoint(data.as_ref());
+        let root = self.0.heap.borrow_mut().allocate_shared(data.clone());
         let facade = Rc::new(EnvironmentRoot {
             root,
             data: data.clone(),
@@ -357,9 +351,8 @@ impl Runtime {
     }
     pub(super) fn allocate_object(&self, data: ObjectData) -> Object {
         let data = Rc::new(data);
-        let incoming = ManagedObject { data: data.clone() };
-        self.allocation_safepoint(&incoming);
-        let root = self.0.heap.borrow_mut().allocate(incoming);
+        self.allocation_safepoint(data.as_ref());
+        let root = self.0.heap.borrow_mut().allocate_shared(data.clone());
         let facade = Rc::new(ObjectRoot {
             root,
             data: data.clone(),
@@ -370,7 +363,7 @@ impl Runtime {
     }
     pub(super) fn root_object(&self, handle: Handle<ManagedObject>) -> Option<Object> {
         let heap = self.0.heap.borrow();
-        let data = heap.with(handle, |object| object.data.clone())?;
+        let data = heap.shared(handle)?;
         if let Some(facade) = data.facade.borrow().upgrade() {
             let object = Object(ObjectReference(facade));
             self.remember_active_object(&object);
@@ -962,12 +955,7 @@ mod stored_graph_tests {
                         .0
                         .heap
                         .borrow()
-                        .with(*handle, |object| object
-                            .data
-                            .facade
-                            .borrow()
-                            .upgrade()
-                            .is_none())
+                        .with(*handle, |object| object.facade.borrow().upgrade().is_none())
                         .unwrap()
                 );
                 if arguments.is_empty() {

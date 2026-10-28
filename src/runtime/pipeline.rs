@@ -100,12 +100,10 @@ pub(super) struct ModuleRoot {
     pub(super) data: Rc<ModuleData>,
     pub(super) runtime: Runtime,
 }
-pub(super) struct ManagedModule {
-    pub(super) data: Rc<ModuleData>,
-}
-impl Trace for ManagedModule {
+pub(super) type ManagedModule = ModuleData;
+impl Trace for ModuleData {
     fn trace(&self, tracer: &mut Tracer<'_>) {
-        let data = &self.data;
+        let data = self;
         data.realm.trace(tracer);
         data.environment.trace(tracer);
         for dependency in data.dependencies.borrow().iter() {

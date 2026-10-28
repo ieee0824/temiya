@@ -264,6 +264,13 @@ unpublished records participate in tracing before collection. Retired records
 are destroyed outside the heap borrow, so host destructors can reenter runtime
 allocation without resurrecting retired generations.
 
+Each managed record is allocated once in shared storage used by its heap slot
+and rooted facades. The heap keeps no separately allocated registration wrapper.
+This shared storage does not determine liveness: only registered roots and
+traced handles do. Slots are invalidated before retired storage is released.
+Mutable access to shared records uses their explicit interior-mutable fields;
+the standalone Heap's owned allocations retain scoped mutable access.
+
 `Engine::allocation_context()` exposes the explicit context for host object and
 native-function factories. A cloned context may outlive the Engine and request
 collection through `AllocationContext::collect_garbage`. Contextless Object and

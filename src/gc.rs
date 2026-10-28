@@ -131,11 +131,12 @@ pub trait Trace: Any {
 trait Allocation: Trace {
     fn as_any(&self) -> &dyn Any;
     fn as_any_mut(&mut self) -> &mut dyn Any;
+    fn into_any_rc(self: Rc<Self>) -> Rc<dyn Any>;
 }
 
 // Runtime retirement releases the outer RefCell borrow before dropping host
 // payloads. Standalone collection keeps its immediate-drop behavior.
-pub(crate) struct RetiredAllocations(Vec<Box<dyn Allocation>>);
+pub(crate) struct RetiredAllocations(Vec<AllocationPayload>);
 
 impl Drop for RetiredAllocations {
     fn drop(&mut self) {
@@ -151,11 +152,46 @@ impl<T: Trace> Allocation for T {
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
     }
+
+    fn into_any_rc(self: Rc<Self>) -> Rc<dyn Any> {
+        self
+    }
+}
+
+// Runtime facades and their heap slot share the same record allocation. Rc is
+// only storage here: liveness is decided exclusively by tracing registered
+// roots and handles, never by inspecting Rust reference counts.
+enum AllocationPayload {
+    Owned(Box<dyn Allocation>),
+    Shared(Rc<dyn Allocation>),
+}
+impl Trace for AllocationPayload {
+    fn trace(&self, tracer: &mut Tracer<'_>) {
+        self.allocation().trace(tracer);
+    }
+}
+impl AllocationPayload {
+    fn allocation(&self) -> &dyn Allocation {
+        match self {
+            Self::Owned(value) => value.as_ref(),
+            Self::Shared(value) => value.as_ref(),
+        }
+    }
+    fn as_any(&self) -> &dyn Any {
+        self.allocation().as_any()
+    }
+    fn as_any_mut(&mut self) -> Option<&mut dyn Any> {
+        match self {
+            Self::Owned(value) => Some(value.as_any_mut()),
+            // Shared records mutate only their explicit interior-mutable fields.
+            Self::Shared(_) => None,
+        }
+    }
 }
 
 struct Slot {
     generation: u64,
-    value: Option<Box<dyn Allocation>>,
+    value: Option<AllocationPayload>,
     old: bool,
 }
 
@@ -481,6 +517,18 @@ impl Heap {
 
     /// Allocates and roots a value, collecting first when configured limits require it.
     pub fn try_allocate<T: Trace>(&mut self, value: T) -> Result<Root<T>, OutOfMemory> {
+        self.try_allocate_payload(AllocationPayload::Owned(Box::new(value)))
+    }
+
+    pub(crate) fn allocate_shared<T: Trace>(&mut self, value: Rc<T>) -> Root<T> {
+        self.try_allocate_payload(AllocationPayload::Shared(value))
+            .expect("garbage-collected heap allocation failed")
+    }
+
+    fn try_allocate_payload<T: Trace>(
+        &mut self,
+        value: AllocationPayload,
+    ) -> Result<Root<T>, OutOfMemory> {
         if self.allocations_since_collection >= self.options.allocation_threshold {
             self.collect_with_retire(drop, Some(&value));
         }
@@ -518,7 +566,7 @@ impl Heap {
             },
             marker: PhantomData,
         };
-        self.slots[slot_index].value = Some(Box::new(value));
+        self.slots[slot_index].value = Some(value);
         self.slots[slot_index].old = false;
         self.allocations_since_collection += 1;
         self.peak_live = self.peak_live.max(self.live_allocations());
@@ -550,6 +598,13 @@ impl Heap {
             .map(use_value)
     }
 
+    pub(crate) fn shared<T: Trace>(&self, handle: Handle<T>) -> Option<Rc<T>> {
+        match self.slot(handle)?.value.as_ref()? {
+            AllocationPayload::Shared(value) => value.clone().into_any_rc().downcast().ok(),
+            AllocationPayload::Owned(_) => None,
+        }
+    }
+
     /// Provides scoped mutable access if the handle is live and has the expected type.
     pub fn with_mut<T: Trace, R>(
         &mut self,
@@ -557,7 +612,7 @@ impl Heap {
         use_value: impl FnOnce(&mut T) -> R,
     ) -> Option<R> {
         self.slot_mut(handle)
-            .and_then(|slot| slot.value.as_mut()?.as_any_mut().downcast_mut::<T>())
+            .and_then(|slot| slot.value.as_mut()?.as_any_mut()?.downcast_mut::<T>())
             .map(use_value)
     }
 
@@ -709,7 +764,7 @@ impl Heap {
 
     fn collect_with_retire(
         &mut self,
-        mut retire: impl FnMut(Box<dyn Allocation>),
+        mut retire: impl FnMut(AllocationPayload),
         incoming: Option<&dyn Trace>,
     ) -> CollectionStats {
         let mut marked = HashSet::new();
@@ -1008,4 +1063,118 @@ impl Default for Heap {
 
 fn register_root(roots: &RootCounts, handle: RawHandle) {
     roots.borrow_mut().register(handle);
+}
+
+#[cfg(test)]
+mod shared_record_tests {
+    use super::*;
+
+    struct Record {
+        child: Cell<Option<Handle<Record>>>,
+        drops: Rc<Cell<usize>>,
+    }
+    impl Trace for Record {
+        fn trace(&self, tracer: &mut Tracer<'_>) {
+            if let Some(child) = self.child.get() {
+                tracer.mark(child);
+            }
+        }
+    }
+    impl Drop for Record {
+        fn drop(&mut self) {
+            self.drops.set(self.drops.get() + 1);
+        }
+    }
+    fn record(drops: &Rc<Cell<usize>>) -> Record {
+        Record {
+            child: Cell::new(None),
+            drops: drops.clone(),
+        }
+    }
+
+    #[test]
+    fn shared_identity_typed_access_and_retirement_do_not_use_rc_liveness() {
+        let drops = Rc::new(Cell::new(0));
+        let mut heap = Heap::new();
+        let data = Rc::new(record(&drops));
+        let root = heap.allocate_shared(data.clone());
+        let handle = root.handle();
+        assert!(Rc::ptr_eq(&data, &heap.shared(handle).unwrap()));
+        assert_eq!(heap.with(handle, |value| value.child.get()), Some(None));
+        assert!(heap.with_mut(handle, |_| ()).is_none());
+        assert!(Heap::new().shared(handle).is_none());
+        let wrong_type = Handle::<AllocationPayload> {
+            raw: handle.raw,
+            marker: PhantomData,
+        };
+        assert!(heap.shared(wrong_type).is_none());
+        let clone = root.clone();
+        drop(root);
+        assert_eq!(heap.collect().reclaimed, 0);
+        drop(clone);
+        // An Rc alone is not a registered root. Retirement invalidates the slot
+        // even if Rust temporarily still holds this record's storage.
+        assert_eq!(heap.collect().reclaimed, 1);
+        assert!(heap.shared(handle).is_none());
+        assert_eq!(drops.get(), 0);
+        drop(data);
+        assert_eq!(drops.get(), 1);
+        let replacement = heap.allocate_shared(Rc::new(record(&drops)));
+        assert_eq!(replacement.handle().raw.slot, handle.raw.slot);
+        assert_ne!(replacement.handle().raw.generation, handle.raw.generation);
+        assert!(heap.shared(handle).is_none());
+        drop(replacement);
+        let (stats, retired) = heap.collect_retiring();
+        assert_eq!(stats.reclaimed, 1);
+        assert_eq!(drops.get(), 1);
+        drop(retired);
+        assert_eq!(drops.get(), 2);
+    }
+
+    #[test]
+    fn incoming_shared_records_protect_owned_edges_at_threshold_and_capacity() {
+        let drops = Rc::new(Cell::new(0));
+        let mut heap = Heap::with_options(HeapOptions {
+            allocation_threshold: 0,
+            max_allocations: Some(2),
+        });
+        let child = heap.allocate(record(&drops));
+        let child_handle = child.handle();
+        let incoming = Rc::new(record(&drops));
+        incoming.child.set(Some(child_handle));
+        drop(child);
+        let parent = heap.allocate_shared(incoming);
+        assert!(heap.with(child_handle, |_| ()).is_some());
+        assert!(heap.shared(child_handle).is_none());
+        assert!(heap.try_allocate(record(&drops)).is_err());
+        assert_eq!(drops.get(), 1); // Only the rejected allocation was dropped.
+        heap.with_mut(child_handle, |value| value.child.set(Some(parent.handle())))
+            .unwrap();
+        assert_eq!(heap.collect().reclaimed, 0);
+        drop(parent);
+        assert_eq!(heap.collect().reclaimed, 2);
+        assert_eq!(drops.get(), 3);
+    }
+
+    #[test]
+    fn shared_records_participate_in_generational_barriers() {
+        let drops = Rc::new(Cell::new(0));
+        let mut heap = Heap::new();
+        let data = Rc::new(record(&drops));
+        let parent = heap.allocate_shared(data.clone());
+        heap.collect();
+        let child = heap.allocate(record(&drops));
+        let child_handle = child.handle();
+        heap.write_barrier(parent.handle(), child_handle).unwrap();
+        data.child.set(Some(child_handle));
+        drop(child);
+        assert_eq!(heap.collect_minor().reclaimed, 0);
+        assert!(heap.with(child_handle, |_| ()).is_some());
+        data.child.set(None);
+        assert_eq!(heap.collect().reclaimed, 1);
+        drop(data);
+        drop(parent);
+        assert_eq!(heap.collect().reclaimed, 1);
+        assert_eq!(drops.get(), 2);
+    }
 }

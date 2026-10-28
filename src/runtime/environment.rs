@@ -72,9 +72,7 @@ pub(super) struct EnvironmentRoot {
     pub(super) data: Rc<EnvironmentData>,
     pub(super) runtime: Runtime,
 }
-pub(super) struct ManagedEnvironment {
-    pub(super) data: Rc<EnvironmentData>,
-}
+pub(super) type ManagedEnvironment = EnvironmentData;
 
 #[derive(Clone)]
 pub(super) struct StoredEnvironment(pub(super) Handle<ManagedEnvironment>);
@@ -109,11 +107,6 @@ impl StoredEnvironment {
     }
     pub(super) fn trace(&self, tracer: &mut Tracer<'_>) {
         tracer.mark(self.0);
-    }
-}
-impl Trace for ManagedEnvironment {
-    fn trace(&self, tracer: &mut Tracer<'_>) {
-        self.data.trace(tracer);
     }
 }
 impl StoredOwner for Environment {

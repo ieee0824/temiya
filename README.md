@@ -60,8 +60,10 @@ which does not reclaim reference cycles. The Test262 tooling records corpus
 metadata but does not yet establish whole-engine conformance. The default API
 passes the fixed original-eleven omoikane Boa comparison on the recorded x64
 and ARM64 machines; see [results and scope](docs/auto-backend-integration.md).
-Broader application performance, async/RegExp/GC suites and SpiderMonkey
-comparisons remain unverified.
+Separate async, RegExp, component and pinned SpiderMonkey results are recorded
+in the [benchmark coverage matrix](docs/benchmark-suite-coverage.md). Engine
+cycle reclamation, broader application performance and SpiderMonkey superiority
+remain unverified.
 
 An initial lexer is available as `temiya::lexer::tokenize`; its supported subset
 and next steps are documented in [docs/lexer.md](docs/lexer.md).

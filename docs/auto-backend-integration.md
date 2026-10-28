@@ -67,5 +67,6 @@ no runtime, worker or comparison implementation; final-head CI is rerun.
 
 This is a result for the original eleven workloads on these machines, not a
 whole-application or every-program speed claim. Earlier experimental regressions
-remain recorded. #427, #291/#292, async/RegExp/GC/SpiderMonkey comparisons and
-outstanding original-suite/compatibility work remain open.
+remain recorded. The [coverage matrix](benchmark-suite-coverage.md) links later
+source-specific async/RegExp/phase/SpiderMonkey evidence and the remaining
+Engine collection and application/compatibility limits under #427.

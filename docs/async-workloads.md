@@ -65,6 +65,7 @@ collection or missing job was substituted for actual execution.
 [actual positive/negative adapter checks](../benchmarks/async-checkpoint/worker-checks.json)
 and [provenance](../benchmarks/async-checkpoint/provenance.json) retain the result.
 These three inputs do not cover pending-await suspension or the full Promise API,
-and establish no application-wide advantage. The separate Intel arithmetic
-shortfall (#510), dedicated parse/startup/objects/RegExp/GC groups and remaining
-SpiderMonkey checks remain work under #427.
+and establish no application-wide advantage. Later source stages preserve
+six-faster/three-noise results as well. The [coverage matrix](benchmark-suite-coverage.md)
+records subsequent Intel completion and phase groups while keeping missing
+Engine collection and authored SpiderMonkey comparisons explicit.

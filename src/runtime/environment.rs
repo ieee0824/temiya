@@ -100,7 +100,7 @@ impl StoredEnvironment {
         Ok(stored)
     }
     // Initial edges are installed before the new, young owner is allocated.
-    fn initial(runtime: Option<&Runtime>, value: &Environment) -> RuntimeResult<Self> {
+    pub(super) fn initial(runtime: Option<&Runtime>, value: &Environment) -> RuntimeResult<Self> {
         Self::check_context(runtime, value)?;
         Ok(match value.handle() {
             Some(handle) => Self::Managed(handle),

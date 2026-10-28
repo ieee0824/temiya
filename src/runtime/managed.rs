@@ -103,6 +103,22 @@ impl WeakObjectRoot {
 }
 
 impl Runtime {
+    pub(super) fn allocate_realm(&self, data: super::execution::RealmData) -> super::Realm {
+        use super::execution::{ManagedRealm, RealmReference, RealmRoot};
+        let data = Rc::new(data);
+        let root = self
+            .0
+            .heap
+            .borrow_mut()
+            .allocate(ManagedRealm { data: data.clone() });
+        let facade = Rc::new(RealmRoot {
+            root,
+            data: data.clone(),
+            runtime: self.clone(),
+        });
+        *data.facade.borrow_mut() = Rc::downgrade(&facade);
+        super::Realm(RealmReference::Managed(facade))
+    }
     pub(super) fn root_environment(
         &self,
         handle: Handle<super::environment::ManagedEnvironment>,
@@ -234,6 +250,43 @@ impl Runtime {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn managed_realm_clones_share_a_root_and_trace_the_global_records() {
+        use crate::runtime::{Realm, Value, stored::StoredOwner};
+        let runtime = Runtime::new();
+        let global = Object::new_in(&runtime);
+        let global_handle = global.0.handle().unwrap();
+        let realm = Realm::try_new(global.clone(), Value::Object(global.clone())).unwrap();
+        let handle = realm.handle().unwrap();
+        let clone = realm.clone();
+        assert_eq!(realm, clone);
+        assert_eq!(runtime.0.heap.borrow().root_count(handle), 1);
+        drop(global);
+        assert_eq!(runtime.0.heap.borrow().root_count(global_handle), 0);
+        runtime.collect_migration_graph().unwrap();
+        let global = clone.global_object();
+        assert_eq!(global.0.handle(), Some(global_handle));
+        assert_eq!(
+            clone.global_environment().binding_object(),
+            Some(global.clone())
+        );
+        drop(global);
+        drop(realm);
+        runtime.collect_migration_graph().unwrap();
+        assert_eq!(runtime.0.heap.borrow().root_count(handle), 1);
+        drop(clone);
+        runtime.collect_migration_graph().unwrap();
+        assert!(runtime.0.heap.borrow().with(handle, |_| ()).is_none());
+    }
+    #[test]
+    fn managed_realm_rejects_foreign_global_this_before_initializing_intrinsics() {
+        use crate::runtime::{Realm, Value};
+        let runtime = Runtime::new();
+        let global = Object::new_in(&runtime);
+        let foreign = Object::new_in(&Runtime::new());
+        assert!(Realm::try_new(global.clone(), Value::Object(foreign)).is_err());
+        assert!(global.own_property_keys().is_empty());
+    }
     #[test]
     fn typed_non_object_owners_store_and_trace_object_edges_with_barriers() {
         use crate::runtime::stored::{StoredOwner, StoredValue};

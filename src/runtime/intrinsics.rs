@@ -210,6 +210,13 @@ impl IntrinsicId {
 pub struct IntrinsicRegistry(BTreeMap<IntrinsicId, Object>);
 
 impl IntrinsicRegistry {
+    pub(super) fn trace(&self, tracer: &mut crate::gc::Tracer<'_>) {
+        for object in self.0.values() {
+            if let Some(handle) = object.0.handle() {
+                tracer.mark(handle);
+            }
+        }
+    }
     pub(crate) fn initialize(
         global: &Object,
         host_hooks: HostHooks,

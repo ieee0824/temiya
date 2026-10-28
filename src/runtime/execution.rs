@@ -1,8 +1,15 @@
 //! Realm ownership and execution-context stack management.
 
+use super::{
+    Runtime,
+    environment::StoredEnvironment,
+    stored::{StoredObject, StoredOwner},
+};
+use crate::gc::{Handle, Root, Trace, Tracer};
 use std::fmt;
-use std::rc::Rc;
+use std::rc::{Rc, Weak};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::{cell::RefCell, ops::Deref};
 
 use crate::ast::Program;
 
@@ -13,16 +20,69 @@ use super::{
 
 /// An ECMAScript Realm with its global object and Global Environment Record.
 #[derive(Clone)]
-pub struct Realm(Rc<RealmData>);
+pub struct Realm(pub(super) RealmReference);
 
-struct RealmData {
+#[derive(Clone)]
+pub(super) enum RealmReference {
+    Legacy(Rc<RealmData>),
+    Managed(Rc<RealmRoot>),
+}
+impl Deref for RealmReference {
+    type Target = RealmData;
+    fn deref(&self) -> &Self::Target {
+        match self {
+            Self::Legacy(data) => data,
+            Self::Managed(root) => &root.data,
+        }
+    }
+}
+pub(super) struct RealmRoot {
+    pub(super) root: Root<ManagedRealm>,
+    pub(super) data: Rc<RealmData>,
+    pub(super) runtime: Runtime,
+}
+pub(super) struct ManagedRealm {
+    pub(super) data: Rc<RealmData>,
+}
+impl Trace for ManagedRealm {
+    fn trace(&self, tracer: &mut Tracer<'_>) {
+        self.data.trace(tracer);
+    }
+}
+impl StoredOwner for Realm {
+    type Allocation = ManagedRealm;
+    fn runtime(&self) -> Option<&Runtime> {
+        match &self.0 {
+            RealmReference::Legacy(_) => None,
+            RealmReference::Managed(root) => Some(&root.runtime),
+        }
+    }
+    fn handle(&self) -> Option<Handle<ManagedRealm>> {
+        match &self.0 {
+            RealmReference::Legacy(_) => None,
+            RealmReference::Managed(root) => Some(root.root.handle()),
+        }
+    }
+}
+
+pub(super) struct RealmData {
+    pub(super) facade: RefCell<Weak<RealmRoot>>,
     id: u64,
-    global_object: Object,
-    global_environment: Environment,
+    global_object: StoredObject,
+    global_environment: StoredEnvironment,
     job_queue: JobQueue,
     intrinsics: IntrinsicRegistry,
     well_known_symbols: WellKnownSymbols,
     host_hooks: HostHooks,
+}
+
+impl Trace for RealmData {
+    fn trace(&self, tracer: &mut Tracer<'_>) {
+        self.global_object.trace(tracer);
+        self.global_environment.trace(tracer);
+        self.intrinsics.trace(tracer);
+        // Job payloads still own active public roots during this migration.
+    }
 }
 
 impl Realm {
@@ -80,20 +140,29 @@ impl Realm {
         global_this_value: Value,
         host_hooks: HostHooks,
     ) -> RuntimeResult<Self> {
+        if let Value::Object(value) = &global_this_value {
+            StoredObject::check_context(&global_object, value)?;
+        }
         static NEXT_ID: AtomicU64 = AtomicU64::new(1);
         let well_known_symbols = WellKnownSymbols::initialize();
         let intrinsics =
             IntrinsicRegistry::initialize(&global_object, host_hooks.clone(), &well_known_symbols)?;
         let global_environment = Environment::global(global_object.clone(), global_this_value);
-        Ok(Self(Rc::new(RealmData {
+        let runtime = global_object.0.runtime().cloned();
+        let data = RealmData {
+            facade: RefCell::new(Weak::new()),
             id: next_id(&NEXT_ID, "Realm"),
-            global_object,
-            global_environment,
+            global_object: StoredObject::initial(runtime.as_ref(), &global_object)?,
+            global_environment: StoredEnvironment::initial(runtime.as_ref(), &global_environment)?,
             job_queue: JobQueue::new(),
             intrinsics,
             well_known_symbols,
             host_hooks,
-        })))
+        };
+        Ok(match runtime {
+            Some(runtime) => runtime.allocate_realm(data),
+            None => Self(RealmReference::Legacy(Rc::new(data))),
+        })
     }
 
     /// Creates a Realm whose global-this value is its fresh global object.
@@ -117,13 +186,19 @@ impl Realm {
     /// Returns the Realm's global object.
     #[must_use]
     pub fn global_object(&self) -> Object {
-        self.0.global_object.clone()
+        self.0
+            .global_object
+            .load(self)
+            .expect("live Realm global object")
     }
 
     /// Returns the Realm's Global Environment Record.
     #[must_use]
     pub fn global_environment(&self) -> Environment {
-        self.0.global_environment.clone()
+        self.0
+            .global_environment
+            .load(self)
+            .expect("live Realm global environment")
     }
 
     /// Returns the Realm's Promise Job Queue.
@@ -176,7 +251,7 @@ impl Realm {
 
 impl PartialEq for Realm {
     fn eq(&self, other: &Self) -> bool {
-        Rc::ptr_eq(&self.0, &other.0)
+        std::ptr::eq(&*self.0, &*other.0)
     }
 }
 

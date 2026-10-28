@@ -453,6 +453,64 @@ mod stored_graph_tests {
     use super::*;
     use crate::runtime::{PropertyDescriptor, Value};
     #[test]
+    fn declared_native_object_captures_are_traced_without_hidden_roots() {
+        let runtime = Runtime::new();
+        let prototype = Object::new_in(&runtime);
+        let capture = Object::new_in(&runtime);
+        capture
+            .create_data_property("answer".into(), Value::Number(42.0))
+            .unwrap();
+        let function = Object::native_function_with_object_capture(
+            &prototype,
+            "captured",
+            0,
+            &capture,
+            Some("answer".into()),
+            |capture, key, _, _| capture.get(key.expect("capture key")),
+        )
+        .unwrap();
+        capture
+            .create_data_property("back".into(), Value::Object(function.clone()))
+            .unwrap();
+        let weak = [
+            prototype.downgrade(),
+            capture.downgrade(),
+            function.downgrade(),
+        ];
+        drop(prototype);
+        drop(capture);
+        assert_eq!(runtime.diagnostics().rooted, 1);
+        assert_eq!(runtime.collect_migration_graph().unwrap().retained, 3);
+        assert!(
+            function
+                .call(Value::Undefined, &[])
+                .unwrap()
+                .same_value(&Value::Number(42.0))
+        );
+        assert_eq!(
+            function.own_property_keys(),
+            vec!["name".into(), "length".into()]
+        );
+        assert!(!function.is_constructor());
+        let foreign = Object::new_in(&Runtime::new());
+        let before = runtime.diagnostics().live;
+        assert!(
+            Object::native_function_with_object_capture(
+                &function,
+                "invalid",
+                0,
+                &foreign,
+                None,
+                |_, _, _, _| Ok(Value::Undefined)
+            )
+            .is_err()
+        );
+        assert_eq!(runtime.diagnostics().live, before);
+        drop(function);
+        assert_eq!(runtime.collect_migration_graph().unwrap().reclaimed, 3);
+        assert!(weak.iter().all(|object| object.upgrade().is_none()));
+    }
+    #[test]
     fn proxy_revoker_retains_its_cycle_until_called_or_unrooted() {
         for call in [false, true] {
             let runtime = Runtime::new();

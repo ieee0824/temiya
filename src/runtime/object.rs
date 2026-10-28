@@ -291,6 +291,14 @@ fn callable_or_undefined(value: Value, name: &str) -> RuntimeResult<Option<Objec
 type NativeCall = Rc<dyn Fn(Value, &[Value]) -> RuntimeResult<Value>>;
 type NativeConstruct = Rc<dyn Fn(&[Value], Object) -> RuntimeResult<Object>>;
 
+pub(super) type CapturedObjectCallback =
+    fn(&Object, Option<&PropertyKey>, Value, &[Value]) -> RuntimeResult<Value>;
+pub(super) struct CapturedObjectCall {
+    object: StoredObject,
+    key: Option<PropertyKey>,
+    callback: CapturedObjectCallback,
+}
+
 pub(super) struct BoundFunction {
     pub(super) target: StoredObject,
     this_value: StoredValue,
@@ -299,6 +307,7 @@ pub(super) struct BoundFunction {
 }
 
 pub(super) enum ManagedCallable {
+    CapturedObject(CapturedObjectCall),
     Bytecode(super::bytecode_function::StoredClosure),
     Ast(super::function::StoredFunctionClosure),
     Bound(BoundFunction),
@@ -312,6 +321,7 @@ impl ManagedCallable {
             Self::ProxyRevoker(_) => Ok(None),
             Self::Ast(_) => Ok(None),
             Self::Bytecode(_) => Ok(None),
+            Self::CapturedObject(_) => Ok(None),
         }
     }
     fn is_constructor(&self) -> bool {
@@ -320,10 +330,15 @@ impl ManagedCallable {
             Self::Ast(closure) => closure.is_constructor(),
             Self::Bytecode(closure) => closure.is_constructor(),
             Self::ProxyRevoker(_) => false,
+            Self::CapturedObject(_) => false,
         }
     }
     fn call(&self, owner: &Object, this: Value, arguments: &[Value]) -> RuntimeResult<Value> {
         match self {
+            Self::CapturedObject(call) => {
+                let object = call.object.load(owner)?;
+                (call.callback)(&object, call.key.as_ref(), this, arguments)
+            }
             Self::Ast(closure) => closure.call(owner, this, arguments),
             Self::Bytecode(closure) => closure.call(owner, this, arguments),
             Self::Bound(bound) => {
@@ -372,6 +387,7 @@ impl ManagedCallable {
         match self {
             Self::Ast(closure) => closure.trace(tracer),
             Self::Bytecode(closure) => closure.trace(tracer),
+            Self::CapturedObject(call) => call.object.trace(tracer),
             Self::Bound(bound) => bound.trace(tracer),
             Self::ProxyRevoker(slot) => {
                 if let Some(proxy) = &*slot.borrow() {
@@ -635,6 +651,38 @@ impl Object {
         length: u32,
         callback: impl Fn(Value, &[Value]) -> RuntimeResult<Value> + 'static,
     ) -> Self {
+        Self::function_with_metadata(prototype, name, length, Some(Rc::new(callback)), None)
+    }
+
+    pub(super) fn native_function_with_object_capture(
+        prototype: &Object,
+        name: &str,
+        length: u32,
+        capture: &Object,
+        key: Option<PropertyKey>,
+        callback: CapturedObjectCallback,
+    ) -> RuntimeResult<Self> {
+        let call = CapturedObjectCall {
+            object: StoredObject::initial(prototype.0.runtime(), capture)?,
+            key,
+            callback,
+        };
+        Ok(Self::function_with_metadata(
+            prototype,
+            name,
+            length,
+            None,
+            Some(Rc::new(ManagedCallable::CapturedObject(call))),
+        ))
+    }
+
+    fn function_with_metadata(
+        prototype: &Object,
+        name: &str,
+        length: u32,
+        callable: Option<NativeCall>,
+        managed: Option<Rc<ManagedCallable>>,
+    ) -> Self {
         // This fresh ordinary object has no existing descriptors, exotic hooks,
         // or observable identity. Seed complete properties in insertion order
         // without descriptor validation or a Vec growth allocation for four
@@ -642,9 +690,10 @@ impl Object {
         let object = prototype.0.runtime().map_or_else(Self::new, Self::new_in);
         {
             let mut state = object.0.state.borrow_mut();
+            state.callable = callable;
+            state.managed_callable = managed;
             state.prototype =
                 Some(StoredObject::store(&object, prototype).expect("native prototype context"));
-            state.callable = Some(Rc::new(callback));
             state.properties = vec![
                 PropertyEntry {
                     key: "name".into(),

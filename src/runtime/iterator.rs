@@ -125,16 +125,32 @@ pub(super) fn install(
             PropertyDescriptor::data(Value::String(tag.into()), false, false, true),
         )?;
     }
-    let result_prototype = object.clone();
     let to_primitive: PropertyKey = symbols.get(WellKnownSymbol::ToPrimitive).into();
     let length_key = to_primitive.clone();
-    method(&array_iterator, &function, "next", 0, move |this, _| {
-        array_next(this, &length_key, &result_prototype)
-    })?;
-    let result_prototype = object;
-    method(&string_iterator, &function, "next", 0, move |this, _| {
-        string_next(this, &result_prototype)
-    })?;
+    let next = Object::native_function_with_object_capture(
+        &function,
+        "next",
+        0,
+        &object,
+        Some(length_key),
+        |prototype, key, this, _| array_next(this, key.expect("iterator primitive key"), prototype),
+    )?;
+    array_iterator.define_own_property(
+        "next".into(),
+        PropertyDescriptor::data(Value::Object(next), true, false, true),
+    )?;
+    let next = Object::native_function_with_object_capture(
+        &function,
+        "next",
+        0,
+        &object,
+        None,
+        |prototype, _, this, _| string_next(this, prototype),
+    )?;
+    string_iterator.define_own_property(
+        "next".into(),
+        PropertyDescriptor::data(Value::Object(next), true, false, true),
+    )?;
     let array = intrinsics.get(IntrinsicId::ArrayPrototype);
     // Borrow the same ToObject implementation as other generic Array methods.
     let boxing = super::array_methods::iterator_boxing(intrinsics, symbols);

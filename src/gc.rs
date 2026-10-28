@@ -844,10 +844,10 @@ impl Heap {
     /// Returns the number of allocations currently present in the heap.
     #[must_use]
     pub fn live_allocations(&self) -> usize {
-        self.slots
-            .iter()
-            .filter(|slot| slot.value.is_some())
-            .count()
+        // Every vacant slot appears exactly once in the free list. This is
+        // also called on each allocation to update peak_live; scanning all
+        // slots here makes allocation cost grow with the heap high-water mark.
+        self.slots.len() - self.free.len()
     }
 
     /// Returns current and cumulative heap statistics without triggering collection.

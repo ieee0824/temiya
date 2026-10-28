@@ -10,45 +10,54 @@ baseline observations below describe the starting point, not the current branch.
 
 ## Measured runtime integration
 
-The runtime source at `fb6a3ed0edea27a23196bd956dabd066cde8f6ee` passes the
+The runtime source at `4ca6287ce18e5e8baaf11f465ed923eca6496565` passes the
 [original eleven-workload comparison](../benchmarks/runtime-gc/boa-comparison.json)
 against omoikane's actual modified Boa through its public JsRuntime embedding.
 The comparison pins omoikane to `007556adccb8fb4329236932ca8175f8e8d119d2`, uses
 the original bodies, setup identities, counts and numeric oracles, and keeps
 the same 512 MiB / 180-second process watchdog. Each case uses 15 samples in
-three alternating process pairs on local Linux ARM64, with the same Rust compiler
-and release profile. All 66 worker runs return the correct result. Every pair
+three alternating process pairs on local Linux ARM64 guest CPU0, with the same
+Rust compiler, release profile and inherited guest CPU affinity for both workers.
+All 66 worker runs return the correct result. Every pair
 passes the existing noise gate: improvement greater than both 10% and three
 times the sum of relative median absolute deviations. Temiya's observed maximum
-process high-water mark is 9052 KiB.
+process high-water mark is 9076 KiB.
 
 [Source verification](../benchmarks/runtime-gc/source-verification.json) records
-the identical source-tree objects and byte-for-byte identical rebuilt worker
-after optional facade-cache experiments were removed. The accompanying
+the qualified source-tree objects and identical built/frozen worker. The
 [strict public probe](../benchmarks/runtime-gc/ownership-probe.json) releases all
-seven fixtures and verifies that both original and cloned handles remain usable.
+seven fixtures while preserving retained original and cloned handles.
+
+The [unaffined comparison](../benchmarks/runtime-gc/experiments/4ca-unaffined-boa.json)
+returned correct values but failed speed qualification: one prop-mono process
+measured about 0.54 seconds rather than about 0.40 seconds in the other pairs.
+The source of this process bimodality is not established. The controlled run
+selects guest CPU0, the first allowed CPU, without a per-core speed search; it
+does not pin host physical cores. Input bodies/counts, resource limits, oracles
+and the existing noise gate are unchanged. No sample or pair was discarded.
+The passing performance claim is limited to this controlled CPU0 condition.
 
 The separate [main regression control](../benchmarks/runtime-gc/main-comparison.json)
 compares the same candidate with frozen main `2d503cc`. Tracing introduces a
-material throughput cost: several cases take 12–46% longer than main, despite
+material throughput cost: several cases take 11–34% longer than main, despite
 remaining faster than the pinned Boa. This is not a regression-free result.
-Function call is faster than main; string concatenation and prototype-method
+Function call and prototype-method are faster than main; string-concatenation
 differences remain within the comparison's noise threshold. The table gives
 the range of process-pair median time ratios; smaller is faster.
 
 | Workload | Temiya / omoikane Boa | Traced runtime / main |
 | --- | --- | --- |
-| arith | 0.64–0.65× | 1.12–1.20× |
-| prop-mono | 0.75–0.79× | 1.33–1.41× |
-| prop-mega | 0.58–0.60× | 1.42–1.46× |
-| call | 0.41–0.54× | 0.72–0.73× |
-| closure-alloc | 0.85–0.87× | 1.29–1.39× |
-| object-alloc | 0.78–0.81× | 1.36–1.38× |
-| string-concat | 0.41–0.42× | 1.05–1.06× |
-| array | 0.64–0.65× | 1.31–1.33× |
-| primitive-string-property | 0.51–0.52× | 1.09–1.15× |
-| primitive-string-method | 0.67–0.69× | 1.21–1.36× |
-| proto-method | 0.57–0.63× | 0.94–0.95× |
+| arith | 0.64–0.64× | 1.14–1.16× |
+| prop-mono | 0.76–0.81× | 1.32–1.34× |
+| prop-mega | 0.53–0.54× | 1.24–1.31× |
+| call | 0.41–0.41× | 0.64–0.65× |
+| closure-alloc | 0.82–0.86× | 1.30–1.33× |
+| object-alloc | 0.77–0.79× | 1.29–1.32× |
+| string-concat | 0.39–0.42× | 1.01–1.07× |
+| array | 0.63–0.64× | 1.31–1.32× |
+| primitive-string-property | 0.52–0.52× | 1.13–1.13× |
+| primitive-string-method | 0.67–0.68× | 1.11–1.26× |
+| proto-method | 0.53–0.54× | 0.88–0.89× |
 
 These are eleven microbenchmarks on one machine, not whole-application
 compatibility, arbitrary JavaScript superiority, or a SpiderMonkey result.

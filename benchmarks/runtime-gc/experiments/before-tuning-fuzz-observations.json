@@ -1,0 +1,45 @@
+{
+  "recorded_at": "2026-10-28T13:31:22.376Z",
+  "runtime_source_revision": "fb6a3ed0edea27a23196bd956dabd066cde8f6ee",
+  "toolchain": "nightly-2026-10-20",
+  "cargo_fuzz": "0.13.2",
+  "scope": "two bounded mutational fuzz runs; not exhaustive conformance or memory-safety proof",
+  "runs": [
+    {
+      "target": "gc_interpreter",
+      "exit_code": 0,
+      "executions": 55355,
+      "elapsed_seconds": 61,
+      "seed": 858134978,
+      "rss_mb_reported_peak": 438,
+      "artifacts": 0,
+      "log_sha256": "4c205bff69a7a92169fc1613294565f6b4b94a6c3ce5d53d01ded1bb4e528e79",
+      "configuration": {
+        "max_total_time": 60,
+        "rss_limit_mb": 2048,
+        "timeout_seconds": 5,
+        "sanitizer": "address (cargo-fuzz default)",
+        "input_limit": "target executes at most 4096 input transitions",
+        "corpus": "copies of checked corpus and promoted regressions; generated cases kept outside repository"
+      }
+    },
+    {
+      "target": "lexer_parser",
+      "exit_code": 0,
+      "executions": 460476,
+      "elapsed_seconds": 61,
+      "seed": 2753417805,
+      "rss_mb_reported_peak": 673,
+      "artifacts": 0,
+      "log_sha256": "01bf789a5c255b5b992f61042592a21faa2b404e9d244e546f29297a94e83f6d",
+      "configuration": {
+        "max_total_time": 60,
+        "rss_limit_mb": 2048,
+        "timeout_seconds": 5,
+        "sanitizer": "address (cargo-fuzz default)",
+        "input_limit": "libFuzzer default maximum input length; lexer/parser target validates arbitrary valid UTF-8 inputs",
+        "corpus": "copies of checked corpus and promoted regressions; generated cases kept outside repository"
+      }
+    }
+  ]
+}

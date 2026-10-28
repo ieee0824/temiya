@@ -1,15 +1,24 @@
 {
-  "recorded_at": "2026-10-28T13:19:31.263Z",
-  "qualified_source_revision": "fb6a3ed0edea27a23196bd956dabd066cde8f6ee",
-  "reproduced_source_revision": "b5d0d98967b3e802413dbed7693492f99993862c",
-  "identical_git_objects": {
-    "src": "61ded24c54bf8bd152eba7528da2612ef28de121",
+  "recorded_at": "2026-10-28T16:04:24.808Z",
+  "qualified_source_revision": "4ca6287ce18e5e8baaf11f465ed923eca6496565",
+  "source_git_objects": {
+    "src": "783b056ae2fd5f317b1686355e3153752ab82863",
     "Cargo.toml": "f863e0d9af0b72db8c8fdf59a244a7e9cbd56dae",
     "Cargo.lock": "e0e7f6ac7e4abfa3c12c3af30d305bbb87af50fc",
     "examples": "ffdda6d7c05676adbd99a47b9866e6f25b911e69"
   },
-  "qualified_and_rebuilt_worker_sha256": "e6a99cecee83c5cb044e9963ba96f03cfc961129e9f503255ae316bcc4007a49",
+  "qualified_and_built_worker_sha256": "1d698f118405d27b66110ba3c7cc081765584b0657b9b6f2d70557afe49c9a12",
   "binary_identical": true,
+  "qualified_comparison": {
+    "samples": 15,
+    "pairs": 3,
+    "worker_runs": 66,
+    "comparisons": 33,
+    "all_valid": true,
+    "all_beyond_existing_noise_threshold": true,
+    "cpu_affinity": "0",
+    "scope": "Runner affinity inherited by both workers; guest CPUs only, not host physical-core placement"
+  },
   "ownership_probe": {
     "exit_code": 0,
     "cases": 7,
@@ -17,61 +26,38 @@
     "scope": "public Engine; globals removed, scripts/Realm/Engine and both value handles dropped"
   },
   "all_features": {
-    "passed": 642,
-    "ignored": 20,
+    "passed": 650,
+    "ignored": 21,
     "suites": 86,
-    "source_revision": "fb6a3ed0edea27a23196bd956dabd066cde8f6ee"
+    "source_revision": "4ca6287ce18e5e8baaf11f465ed923eca6496565"
   },
-  "local_miri": {
-    "passed": 3,
-    "ignored": 0,
-    "selection": "gc::shared_record_tests",
-    "toolchain": "nightly-2026-10-20",
+  "profile": {
+    "file": "runtime-profile.json",
+    "timing_instrumentation": true,
+    "competitive_acceptance": false
+  },
+  "thread_confinement": {
+    "file": "thread-confinement.json",
+    "positive_controls": 2,
+    "rejected_send_sync_probes": 26
+  },
+  "miri": {
+    "full_library_pass": false,
+    "actual_library_test_count": 119,
+    "local_targeted_passes": [
+      "shared records (3; earlier equivalent allocation implementation)",
+      "injected Engine clock (1)",
+      "collector host-panic/reuse boundary (1)",
+      "activation collection/unwind (2)",
+      "unpublished prototype (1)",
+      "numeric return lifetime (1)"
+    ],
     "flags": [
       "-Zmiri-strict-provenance",
       "-Zmiri-symbolic-alignment-check"
     ],
-    "full_library_pass": false
-  },
-  "miri_shard_plan": {
-    "available": 116,
-    "assigned": 116,
-    "unique": 116,
-    "shards": [
-      {
-        "shard": 0,
-        "tests": 15
-      },
-      {
-        "shard": 1,
-        "tests": 15
-      },
-      {
-        "shard": 2,
-        "tests": 15
-      },
-      {
-        "shard": 3,
-        "tests": 15
-      },
-      {
-        "shard": 4,
-        "tests": 14
-      },
-      {
-        "shard": 5,
-        "tests": 14
-      },
-      {
-        "shard": 6,
-        "tests": 14
-      },
-      {
-        "shard": 7,
-        "tests": 14
-      }
-    ],
-    "qualification": "actual Miri listing partition validated; does not execute every test"
+    "clock_isolation": "kept enabled; test injects HostHooks",
+    "prior_full_run": "13ab45f: seven shards passed; shard7 stopped at unsupported REALTIME clock before remaining tests; not counted as a complete pass"
   },
   "target_audit": {
     "observed_head": "e989a76ab44bf0dbc95a75f839dce53b3263df71",
@@ -86,14 +72,14 @@
     "scope": "Timings use the measured pinned embedding. Matching engine trees do not measure the newer application embedding."
   },
   "limitations": [
-    "one local Linux ARM64 machine",
+    "one local Linux ARM64 guest CPU0; host physical-core placement is uncontrolled",
     "eleven original workloads only",
+    "an unaffined run has one prop-mono pair within noise, retained in experiments/4ca-unaffined-boa.json; source of process bimodality not established",
     "material throughput regressions versus main retained in main-comparison.json"
   ],
-  "verification_snapshot_scope": "Local observations at recorded_at; final required CI state is on PR522. Pending items below describe this snapshot, not a completed final audit.",
   "pending_at_recording": [
-    "full Miri",
-    "final CI",
-    "fuzz (recorded separately in fuzz-observations.json)"
+    "latest HEAD full Miri",
+    "latest HEAD stable/MSRV/ASan/C ABI CI",
+    "acceptance-condition and remote-merge audit"
   ]
 }

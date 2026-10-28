@@ -486,6 +486,21 @@ impl Runtime {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn unpublished_prototype_edge_protects_the_last_root_at_allocation() {
+        let runtime = Runtime::new();
+        runtime.set_allocation_collection_interval(0);
+        let prototype = Object::new_in(&runtime);
+        let weak = prototype.downgrade();
+        let identity = prototype.identity();
+        let object = Object::new_with_prototype(prototype);
+        assert_eq!(object.prototype().unwrap().identity(), identity);
+        assert!(weak.upgrade().is_some());
+        assert_eq!(runtime.collect_garbage().unwrap().retained, 2);
+        drop(object);
+        assert_eq!(runtime.collect_garbage().unwrap().retained, 0);
+        assert!(weak.upgrade().is_none());
+    }
     #[cfg(not(miri))]
     #[test]
     fn fresh_values_reuse_their_first_registration_until_the_next_collection() {

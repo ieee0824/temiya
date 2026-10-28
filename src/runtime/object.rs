@@ -636,6 +636,19 @@ pub(super) fn ordinary_state() -> ObjectState {
 }
 
 impl Object {
+    pub(super) fn new_with_prototype(prototype: Self) -> Self {
+        let runtime = prototype.allocation_context().clone();
+        let mut data = super::ObjectData::ordinary();
+        data.state.get_mut().prototype = Some(
+            StoredObject::initial(Some(&runtime), &prototype)
+                .expect("prototype supplies the new object's allocation context"),
+        );
+        // The unpublished record itself protects this edge at the allocation
+        // safepoint, including when this was the prototype's last public root.
+        drop(prototype);
+        runtime.allocate_object(data)
+    }
+
     /// Creates a native callback that can allocate in its owner's context.
     /// The context is borrowed for each call and is not captured by the payload.
     pub fn native_function_with_context(

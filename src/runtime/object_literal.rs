@@ -5,9 +5,7 @@ use super::{
 };
 
 pub(crate) fn create(realm: &Realm) -> Object {
-    let object = Object::new_for(&realm.global_object());
-    object.initialize_prototype(Some(realm.intrinsic(IntrinsicId::ObjectPrototype)));
-    object
+    Object::new_with_prototype(realm.intrinsic(IntrinsicId::ObjectPrototype))
 }
 
 pub(crate) fn property_key(realm: &Realm, value: Value) -> RuntimeResult<PropertyKey> {

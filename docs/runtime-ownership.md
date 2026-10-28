@@ -530,6 +530,12 @@ so passing a new value through stored form does not destroy and immediately
 recreate its first root registration. The capacity includes room for a container
 and a small polymorphic receiver set. Neither rule changes the clearing protocol.
 
+Object literals prepare their initial prototype edge before allocation. The
+prototype supplies the allocation context; the unpublished record traces the
+edge at the allocation safepoint even after its last public facade is consumed.
+This removes the temporary global-object facade lookup and post-allocation
+prototype write/barrier without changing prototype identity or initializer order.
+
 Both explicit collection and allocation collection clear this region before
 tracing. Cached facades therefore cannot keep an otherwise dead key, cycle,
 callback, or Realm alive through collection. Active operands, References,

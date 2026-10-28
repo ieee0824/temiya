@@ -10,6 +10,20 @@ baseline observations below describe the starting point, not the current branch.
 
 ## Measured runtime integration
 
+Runtime source `8727ebcc4d809a126aadd9a59c2f993ca7a0c6dd` adds direct ordinary
+own-data reads, including named String-object properties while retaining the
+generic path for virtual length/indices, accessors and proxies. Its
+[separate measurements](../benchmarks/runtime-gc/experiments/own-read-872)
+return all66 correct workers/1056 checked values and qualify all33 actual-Boa
+comparisons on local ARM64 guest CPU0, with time ratios0.356–0.739. Its
+before/after comparisons againstefd are all within threshold: nominal shorter
+times are not treated as a qualified improvement. Native658 tests, selected
+fixed Test262, Clippy and three exact public integration Miri tests pass;
+latest-source hosted and full library Miri checks are still separate gates.
+The authored async comparison has2 faster and7 noise decisions, so it does
+not qualify all three async workloads. Full application and SpiderMonkey
+superiority remain unproved.
+
 The later runtime source `efd0de57abca28fb00807f78e386bf94ef09f4b2`
 records its own [original-eleven comparison and checks](../benchmarks/runtime-gc/experiments/own-write-efd).
 On local ARM64 guest CPU0, all66 workers/1056 warmup and sample values are
@@ -95,6 +109,11 @@ all119 distinct library tests executed exactly once with zero skipped tests,
 all eight shards and the aggregate passing, plus audit and ASan success.
 It qualifies that source only; later optimization candidates require their own
 checks rather than treating this earlier success as a current-source pass.
+
+The later [completedefd record](../benchmarks/runtime-gc/ci-efd.json) likewise
+independently verifies119 distinct exact library Miri executions with zero
+ignored tests, all eight shards and aggregate, plus ASan and dependency audit.
+It proves that source only; the direct-read runtime has its own validation.
 
 ### Hosted follow-up at revision51d9abf
 

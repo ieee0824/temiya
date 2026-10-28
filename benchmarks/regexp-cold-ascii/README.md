@@ -18,7 +18,7 @@ files, not portable executable locations.
 
 | Evidence | Production source | Cold speed acceptance | Original-eleven and warm regressions |
 | --- | --- | --- | --- |
-| Thirteen local candidates | Per-directory build metadata | Latest 6702d00 passes all three; earlier local candidates do not | Latest source has 529 native passes; hosted final-source regressions remain pending |
+| Fourteen local candidates | Per-directory build metadata | Earlier6702d00 passes locally; the current key-equality variant is locally too noisy | Current key-equality source has529 native passes and64 selected RegExp passes |
 | initial-x64-copy1/2, run 40597703258 | 7e75280 | Both AMD cohorts pass, including repetitions | These early results do not qualify later source |
 | final-x64-copy1/2, run 40598960611 | a8a824d | Both cohorts miss the all-three gate | Both complete; original candidate/Boa and baseline/Boa each 33 faster, before/after and identical-binary each 33 within noise; warm/Boa 9 faster per host |
 | final-arm64-copy2, run 40599864531 | a8a824d | All initial Boa decisions within noise | Complete; original and warm results match x64 copy 1's categories |
@@ -66,7 +66,7 @@ cold and macro statistics, fixed oracles, checked counts and decisions.
 A valid report with a false speed gate remains false. For a single cold report,
 run node benchmarks/regexp-cold-ascii/verify-cold-report.mjs PATH.
 
-The inventory covers 370 files, 45 cold reports and 29 macro reports. Macro
+The inventory covers 445 files, 54 cold reports and 29 macro reports. Macro
 coverage is 1434 workers, 22944 checked results and 717 decisions. This is an
 archive verification, not a new timing experiment, binary rebuild, whole-app
 throughput claim, full-conformance claim or hard process-RSS bound. Compressed
@@ -84,3 +84,20 @@ controls are within noise. The overall ARM64 speed condition is not met,
 and same-source macro comparisons remain running. No threshold is relaxed.
 The earlier UTF-16-key instruction profile is retained in profile-utf16-keys/;
 its instrumentation results are not speed qualification.
+
+The inline-key-equality variant a6c90bd passes 529 native
+tests and final Clippy, but its local Boa comparisons are all within noise
+(thresholds0.505–0.606); no speed claim is inferred. Its complete production
+and incremental patches, initial Clippy failure and final logs are retained.
+Run40606126274 completes cold qualification on two ARM64 and two x64
+runners: all24 initial/repeated Boa decisions are faster, all12 current-main
+decisions faster, and all12 identical-executable controls within noise.
+It is now adopted into the PR (cherry-pick c39ae5d), pending final-source
+warm/original-eleven regression measurements and full CI/security. profile-ordinary-borrow/ retains the exact-input profile
+of6702d00 (run40605668444), 298590277 instruction references, never timing
+acceptance. All three instrumented source snapshots remain separately named.
+
+reference-head-audit.json records that observed omoikane main97d5b3f is13
+commits ahead of the timing pin, with identical engine subtree and root
+Cargo manifests/lock. Host bindings and DOM bootstrap changed; historical
+timing is not relabeled as measurement of that newer application revision.

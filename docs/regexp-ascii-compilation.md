@@ -114,3 +114,17 @@ copy 2 has repeat 0.900208 within noise. Both x64 cohorts pass all initial and
 repeat decisions; all identical-executable controls are within noise. The
 unchanged all-three criterion is not satisfied across the measured ARM64
 cohorts. Same-source macro regressions continue; these misses remain recorded.
+
+Variant a6c90bd (adopted by cherry-pick c39ae5d) keeps the exact inline UTF-16
+buffer comparison at call sites and outlines shared/mixed-storage equality.
+Shared identity shortcuts and content equality are unchanged, as are hashing
+and ordering. Full native release/all-feature tests have 529 passes; selected
+RegExp Test262 separately has 64 passes, and final Clippy passes.
+
+Run 40606126274 completes cold qualification on two ARM64 and two x64 runners:
+all 24 initial/repeated actual-Boa decisions are faster (ratios 0.812–0.881),
+all 12 current-main comparisons are faster, and all 12 identical-executable
+controls are within noise. The earlier local noisy report and every prior
+ARM64 miss remain archived. Full same-source qualification run 40607319755
+adds cold reconfirmation, warm/original-eleven regressions and controls on four
+runners. Those results and latest CI/security remain necessary before merge.

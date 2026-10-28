@@ -77,6 +77,10 @@ jobs:
         run: |
           cargo +${{ matrix.toolchain }} build --locked --release --example measure_workload
           node scripts/check-workload-workers.mjs target/release/examples/measure_workload
+      - name: Verify checked component worker contracts
+        run: |
+          cargo +${{ matrix.toolchain }} build --locked --release --no-default-features --example measure_components
+          node scripts/check-component-workers.mjs target/release/examples/measure_components
       - name: Verify runtime string allocation budgets
         run: |
           cargo +${{ matrix.toolchain }} run --locked --release --example string_allocation_probe > target/string-allocations.json

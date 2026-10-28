@@ -579,3 +579,13 @@ bounded matcher reuse, the complete rejected configurations, and separate warm
 and cold/unique measurements. Warm-suite ARM64 wins do not remove the recorded
 cold-construction gap against actual Boa (#516). Two independent x64 cohorts
 confirm the warm-suite wins; all negative control observations are retained.
+
+## Checked component phase groups
+
+The [component suite](component-benchmarks.md) separately measures public parser,
+Engine compile/startup, JavaScript object operations and standalone collector
+graph lifecycles. It records three rotated serial rounds of15 checked samples,
+source/compiler/binary/machine provenance and an independent Engine retention
+probe. Standalone Heap results never override an unreclaimed Engine ownership
+probe or establish JavaScript/application GC performance. Original-eleven and
+authored async/RegExp cross-engine comparisons retain their existing boundaries.

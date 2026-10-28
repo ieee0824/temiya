@@ -875,43 +875,32 @@ impl Environment {
 
     /// Tests whether a non-configurable own global property restricts declarations.
     pub fn has_restricted_global_property(&self, name: &JsString) -> RuntimeResult<bool> {
-        self.with_global(|record| {
-            Ok(record
-                .object_record
-                .binding_object
-                .get_own_property(&string_key(name))
-                .is_some_and(|descriptor| descriptor.configurable == Some(false)))
-        })
+        let object = self.global_binding_object()?;
+        Ok(object
+            .try_get_own_property(&string_key(name))?
+            .is_some_and(|descriptor| descriptor.configurable == Some(false)))
     }
 
     /// Implements `CanDeclareGlobalVar`.
     pub fn can_declare_global_var(&self, name: &JsString) -> RuntimeResult<bool> {
-        self.with_global(|record| {
-            if record
-                .object_record
-                .binding_object
-                .get_own_property(&string_key(name))
-                .is_some()
-            {
-                Ok(true)
-            } else {
-                Ok(record.object_record.binding_object.is_extensible())
-            }
-        })
+        let object = self.global_binding_object()?;
+        if object.try_get_own_property(&string_key(name))?.is_some() {
+            Ok(true)
+        } else {
+            object.try_is_extensible()
+        }
     }
 
     /// Implements `CanDeclareGlobalFunction`.
     pub fn can_declare_global_function(&self, name: &JsString) -> RuntimeResult<bool> {
-        self.with_global(|record| {
-            let object = &record.object_record.binding_object;
-            let Some(descriptor) = object.get_own_property(&string_key(name)) else {
-                return Ok(object.is_extensible());
-            };
-            Ok(descriptor.configurable == Some(true)
-                || (descriptor.is_data_descriptor()
-                    && descriptor.writable == Some(true)
-                    && descriptor.enumerable == Some(true)))
-        })
+        let object = self.global_binding_object()?;
+        let Some(descriptor) = object.try_get_own_property(&string_key(name))? else {
+            return object.try_is_extensible();
+        };
+        Ok(descriptor.configurable == Some(true)
+            || (descriptor.is_data_descriptor()
+                && descriptor.writable == Some(true)
+                && descriptor.enumerable == Some(true)))
     }
 
     /// Tests whether a global lexical declaration can be created without conflict.
@@ -926,22 +915,22 @@ impl Environment {
                 "global var declaration conflicts with a lexical declaration",
             ));
         }
+        let object = self.global_binding_object()?;
+        let has_own = object.try_get_own_property(&string_key(&name))?.is_some();
+        let extensible = object.try_is_extensible()?;
+        if !has_own && extensible {
+            define_or_error(
+                &object,
+                string_key(&name),
+                PropertyDescriptor::data(Value::Undefined, true, true, deletable),
+            )?;
+        }
+        if !has_own && !extensible {
+            return Err(RuntimeError::type_error(
+                "global object cannot accept a new var binding",
+            ));
+        }
         self.with_global_mut(|record| {
-            let object = &record.object_record.binding_object;
-            let has_own = object.get_own_property(&string_key(&name)).is_some();
-            let extensible = object.is_extensible();
-            if !has_own && extensible {
-                define_or_error(
-                    object,
-                    string_key(&name),
-                    PropertyDescriptor::data(Value::Undefined, true, true, deletable),
-                )?;
-            }
-            if !has_own && !extensible {
-                return Err(RuntimeError::type_error(
-                    "global object cannot accept a new var binding",
-                ));
-            }
             if extensible && !record.var_declared_names.contains(&name) {
                 record.var_declared_names.push(name);
             }
@@ -966,27 +955,27 @@ impl Environment {
                 "global function declaration is not permitted",
             ));
         }
-        self.with_global_mut(|record| {
-            let object = &record.object_record.binding_object;
-            let key = string_key(&name);
-            let descriptor = match object.get_own_property(&key) {
-                None => PropertyDescriptor::data(value.clone(), true, true, deletable),
-                Some(existing) if existing.configurable == Some(true) => {
-                    PropertyDescriptor::data(value.clone(), true, true, deletable)
-                }
-                Some(_) => PropertyDescriptor {
-                    value: Some(value.clone()),
-                    writable: Some(true),
-                    enumerable: Some(true),
-                    ..PropertyDescriptor::default()
-                },
-            };
-            define_or_error(object, key.clone(), descriptor)?;
-            if !object.set(&key, value)? {
-                return Err(RuntimeError::type_error(
-                    "global function binding could not be assigned",
-                ));
+        let object = self.global_binding_object()?;
+        let key = string_key(&name);
+        let descriptor = match object.try_get_own_property(&key)? {
+            None => PropertyDescriptor::data(value.clone(), true, true, deletable),
+            Some(existing) if existing.configurable == Some(true) => {
+                PropertyDescriptor::data(value.clone(), true, true, deletable)
             }
+            Some(_) => PropertyDescriptor {
+                value: Some(value.clone()),
+                writable: Some(true),
+                enumerable: Some(true),
+                ..PropertyDescriptor::default()
+            },
+        };
+        define_or_error(&object, key.clone(), descriptor)?;
+        if !object.set(&key, value)? {
+            return Err(RuntimeError::type_error(
+                "global function binding could not be assigned",
+            ));
+        }
+        self.with_global_mut(|record| {
             if !record.var_declared_names.contains(&name) {
                 record.var_declared_names.push(name);
             }
@@ -1089,6 +1078,10 @@ impl Environment {
             }
             _ => None,
         }
+    }
+
+    fn global_binding_object(&self) -> RuntimeResult<Object> {
+        self.with_global(|record| Ok(record.object_record.binding_object.clone()))
     }
 
     fn with_global<T>(
@@ -1361,6 +1354,79 @@ fn reference_error(name: &JsString, detail: &str) -> RuntimeError {
 #[cfg(test)]
 mod slot_hint_tests {
     use super::*;
+    #[test]
+    fn managed_global_declarations_release_borrows_before_proxy_reentry_and_gc() {
+        let runtime = Runtime::new();
+        let target = Object::new_in(&runtime);
+        let handler = Object::new_in(&runtime);
+        let trap = Object::new_in(&runtime);
+        let slot = Rc::new(RefCell::new(None::<Environment>));
+        let callback_slot = slot.clone();
+        let callback_runtime = runtime.clone();
+        let calls = Rc::new(std::cell::Cell::new(0));
+        let callback_calls = calls.clone();
+        trap.set_native_call(move |_, _| {
+            callback_runtime.collect_migration_graph().unwrap();
+            let environment = callback_slot.borrow().clone().unwrap();
+            let count = callback_calls.get() + 1;
+            callback_calls.set(count);
+            environment.create_mutable_binding(format!("nested{count}").into(), false)?;
+            Ok(Value::Undefined)
+        });
+        handler
+            .create_data_property(
+                "getOwnPropertyDescriptor".into(),
+                Value::Object(trap.clone()),
+            )
+            .unwrap();
+        let proxy = crate::runtime::ProxyObject::try_new(target.clone(), handler).unwrap();
+        let environment = Environment::global(proxy.object(), Value::Object(proxy.object()));
+        *slot.borrow_mut() = Some(environment.clone());
+        environment
+            .create_global_var_binding("variable".into(), true)
+            .unwrap();
+        environment
+            .create_global_function_binding("function".into(), Value::Number(42.0), true)
+            .unwrap();
+        assert!(environment.has_var_declaration(&"variable".into()).unwrap());
+        assert!(environment.has_var_declaration(&"function".into()).unwrap());
+        assert!(
+            target
+                .get(&"function".into())
+                .unwrap()
+                .same_value(&Value::Number(42.0))
+        );
+        assert!(calls.get() >= 2);
+        let marker = Object::new_in(&runtime);
+        let thrown = marker.clone();
+        trap.set_native_call(move |_, _| Err(RuntimeError::thrown(Value::Object(thrown.clone()))));
+        for result in [
+            environment
+                .has_restricted_global_property(&"abrupt".into())
+                .map(|_| ()),
+            environment
+                .can_declare_global_var(&"abrupt".into())
+                .map(|_| ()),
+            environment
+                .can_declare_global_function(&"abrupt".into())
+                .map(|_| ()),
+            environment.create_global_var_binding("abrupt".into(), true),
+            environment.create_global_function_binding("abrupt".into(), Value::Number(0.0), true),
+        ] {
+            assert!(
+                result
+                    .unwrap_err()
+                    .thrown_value()
+                    .unwrap()
+                    .same_value(&Value::Object(marker.clone()))
+            );
+        }
+        assert!(!environment.has_var_declaration(&"abrupt".into()).unwrap());
+        assert!(target.get_own_property(&"abrupt".into()).is_none());
+        // Ordinary host captures explicitly release their external roots.
+        trap.clear_native_call();
+        slot.borrow_mut().take();
+    }
     #[test]
     fn managed_function_records_trace_this_function_and_new_target() {
         let runtime = Runtime::new();

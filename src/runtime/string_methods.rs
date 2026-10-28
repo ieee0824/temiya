@@ -23,26 +23,32 @@ pub(super) fn install(
     let function_prototype = intrinsics.get(IntrinsicId::FunctionPrototype);
     let constructor = intrinsics.get(IntrinsicId::String);
     let to_primitive: PropertyKey = symbols.get(WellKnownSymbol::ToPrimitive).into();
-    let call_key = to_primitive.clone();
-    constructor.set_native_call(move |_, args| {
-        // String(symbol) alone permits SymbolDescriptiveString. A Symbol
-        // returned by an object's coercion still throws, as does construction.
-        if let Some(Value::Symbol(symbol)) = args.first() {
-            let mut units = JsString::from("Symbol(").code_units().to_vec();
-            if let Some(description) = symbol.description() {
-                units.extend_from_slice(description.code_units());
+    constructor.set_captured_factory(
+        &prototype,
+        Some(to_primitive),
+        Some((false, |_, key, _, args| {
+            // String(symbol) alone permits SymbolDescriptiveString. A Symbol
+            // returned by an object's coercion still throws, as does construction.
+            if let Some(Value::Symbol(symbol)) = args.first() {
+                let mut units = JsString::from("Symbol(").code_units().to_vec();
+                if let Some(description) = symbol.description() {
+                    units.extend_from_slice(description.code_units());
+                }
+                units.push(u16::from(b')'));
+                return Ok(Value::String(JsString::from_code_units(units)));
             }
-            units.push(u16::from(b')'));
-            return Ok(Value::String(JsString::from_code_units(units)));
-        }
-        constructor_string(args, &call_key).map(Value::String)
-    });
-    let instance_prototype = prototype.clone();
-    constructor.set_native_construct(move |args, _| {
-        let object = super::StringObject::new(constructor_string(args, &to_primitive)?).object();
-        object.set_prototype(Some(instance_prototype.clone()));
-        Ok(object)
-    });
+            constructor_string(args, key.expect("String primitive key")).map(Value::String)
+        })),
+        Some(|prototype, key, args, _| {
+            let object = super::StringObject::new_for(
+                prototype,
+                constructor_string(args, key.expect("String primitive key"))?,
+            )
+            .object();
+            object.initialize_prototype(Some(prototype.clone()));
+            Ok(object)
+        }),
+    )?;
     for name in ["toString", "valueOf"] {
         method(
             &prototype,

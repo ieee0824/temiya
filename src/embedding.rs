@@ -979,6 +979,9 @@ mod managed_allocation_tests {
                 "var constructedArray=new Array({answer:42});constructedArray[0].answer;",
                 "Object.prototype.valueOf.call(42).valueOf();",
                 "(new Number(42)).valueOf();",
+                "if((new String('💡')).valueOf()==='💡' && String(Symbol.iterator).slice(0,7)==='Symbol('){42;}else{0;}",
+                "var buffer=new ArrayBuffer(8);var byteView=new TypedArray(buffer,1,4);var dataView=new DataView(buffer,2,2);if(ArrayBuffer.isView(byteView)&&ArrayBuffer.isView(dataView)&&Object.getPrototypeOf(byteView)===TypedArray.prototype&&Object.getPrototypeOf(dataView)===DataView.prototype){42;}else{0;}",
+                "if(ArrayBuffer.isView(new TypedArray(8))){42;}else{0;}",
                 "Number(42);",
                 "var numberValues=Array.prototype.values.call(42);if(numberValues.next().done){42;}else{0;}",
                 "var textValues=Array.prototype.values.call('💡');if(textValues.next().value==='\\uD83D' && textValues.next().value==='\\uDCA1' && textValues.next().done){42;}else{0;}",
@@ -1019,6 +1022,13 @@ mod managed_allocation_tests {
             let construct_revoke = engine.compile(&realm, "new revocable.revoke();").unwrap();
             assert_eq!(
                 engine.evaluate(&construct_revoke).unwrap_err().kind(),
+                ExceptionKind::TypeError
+            );
+            let symbol_string = engine
+                .compile(&realm, "new String(Symbol.iterator);")
+                .unwrap();
+            assert_eq!(
+                engine.evaluate(&symbol_string).unwrap_err().kind(),
                 ExceptionKind::TypeError
             );
         }

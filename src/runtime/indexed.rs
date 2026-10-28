@@ -107,10 +107,18 @@ pub struct ArrayBuffer(Object);
 impl ArrayBuffer {
     /// Allocates a zero-filled buffer.
     pub fn new(byte_length: usize) -> RuntimeResult<Self> {
+        Self::allocate(None, byte_length)
+    }
+
+    pub(crate) fn new_for(context: &Object, byte_length: usize) -> RuntimeResult<Self> {
+        Self::allocate(Some(context), byte_length)
+    }
+
+    fn allocate(context: Option<&Object>, byte_length: usize) -> RuntimeResult<Self> {
         if byte_length > 100_000_000 {
             return Err(RuntimeError::range_error("ArrayBuffer is too large"));
         }
-        let object = Object::new();
+        let object = context.map_or_else(Object::new, Object::new_for);
         object.0.state.borrow_mut().buffer =
             Some(Rc::new(RefCell::new(Some(vec![0; byte_length]))));
         Ok(Self(object))
@@ -165,7 +173,7 @@ impl TypedArray {
     /// Creates a Uint8 view, checking offset and length against the buffer.
     pub fn new(buffer: &ArrayBuffer, byte_offset: usize, length: usize) -> RuntimeResult<Self> {
         checked_range(buffer, byte_offset, length)?;
-        let object = Object::new();
+        let object = Object::new_for(&buffer.0);
         object.0.state.borrow_mut().view = Some(ViewSlot {
             buffer: buffer.slot(),
             byte_offset,
@@ -223,7 +231,7 @@ impl TypedArray {
         if begin > end || end > view.byte_length {
             return Err(RuntimeError::range_error("subarray range is invalid"));
         }
-        let buffer_object = Object::new();
+        let buffer_object = Object::new_for(&self.0);
         buffer_object.0.state.borrow_mut().buffer = Some(view.buffer.clone());
         Self::new(
             &ArrayBuffer(buffer_object),
@@ -299,4 +307,43 @@ fn checked_range(buffer: &ArrayBuffer, offset: usize, length: usize) -> RuntimeR
 
 fn detached() -> RuntimeError {
     RuntimeError::type_error("ArrayBuffer is detached")
+}
+
+#[cfg(test)]
+mod managed_tests {
+    use super::*;
+
+    #[test]
+    fn managed_views_share_storage_after_buffer_collection_and_detachment() {
+        let runtime = crate::runtime::Runtime::new();
+        let context = Object::new_in(&runtime);
+        let buffer = ArrayBuffer::new_for(&context, 8).unwrap();
+        let weak_buffer = buffer.object().downgrade();
+        let view = TypedArray::new(&buffer, 1, 4).unwrap();
+        let data = DataView::new(&buffer, 1, 4).unwrap();
+        view.set(0, 42).unwrap();
+        assert_eq!(data.get_uint8(0).unwrap(), 42);
+        drop(buffer);
+        drop(context);
+        runtime.collect_migration_graph().unwrap();
+        assert!(weak_buffer.upgrade().is_none());
+        assert_eq!(data.get_uint8(0).unwrap(), 42);
+        data.set_uint8(0, 43).unwrap();
+        assert!(view.get(0).unwrap().same_value(&Value::Number(43.0)));
+        let slice = view.subarray(0, 2).unwrap();
+        assert!(slice.object().0.runtime().unwrap().same_heap(&runtime));
+        slice.set(1, 44).unwrap();
+        assert!(view.get(1).unwrap().same_value(&Value::Number(44.0)));
+        runtime.collect_migration_graph().unwrap();
+        let backing = view.bytes().unwrap().buffer;
+        backing.borrow_mut().take();
+        assert!(view.get(0).is_err());
+        assert!(slice.get(0).is_err());
+        assert!(data.get_uint8(0).is_err());
+        drop(backing);
+        drop(view);
+        drop(data);
+        drop(slice);
+        assert_eq!(runtime.collect_migration_graph().unwrap().retained, 0);
+    }
 }

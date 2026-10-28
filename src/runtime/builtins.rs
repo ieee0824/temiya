@@ -537,14 +537,19 @@ fn install_indexed(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {
 
     let array_buffer = intrinsics.get(IntrinsicId::ArrayBuffer);
     let buffer_prototype = intrinsics.get(IntrinsicId::ArrayBufferPrototype);
-    array_buffer.set_native_construct(move |arguments, _| {
-        let length = length_argument(arguments.first())?;
-        let buffer = ArrayBuffer::new(length)?;
-        buffer
-            .object()
-            .set_prototype(Some(buffer_prototype.clone()));
-        Ok(buffer.object())
-    });
+    array_buffer.set_captured_factory(
+        &buffer_prototype,
+        None,
+        Some((false, |_, _, _, _| Ok(Value::Undefined))),
+        Some(|prototype, _, arguments, _| {
+            let length = length_argument(arguments.first())?;
+            let buffer = ArrayBuffer::new_for(prototype, length)?;
+            buffer
+                .object()
+                .initialize_prototype(Some(prototype.clone()));
+            Ok(buffer.object())
+        }),
+    )?;
     method(intrinsics, &array_buffer, "isView", 1, |_, arguments| {
         Ok(Value::Boolean(
             matches!(arguments.first(), Some(Value::Object(object)) if TypedArray::from_object(object.clone()).is_some()),
@@ -553,50 +558,59 @@ fn install_indexed(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {
 
     let typed_array = intrinsics.get(IntrinsicId::TypedArray);
     let typed_prototype = intrinsics.get(IntrinsicId::TypedArrayPrototype);
-    typed_array.set_native_construct(move |arguments, _| {
-        let view = match arguments.first() {
-            Some(Value::Object(object)) => {
-                let buffer = ArrayBuffer::from_object(object.clone()).ok_or_else(|| {
-                    RuntimeError::type_error("TypedArray requires an ArrayBuffer or length")
-                })?;
-                let offset = length_argument(arguments.get(1))?;
-                let length = match arguments.get(2) {
-                    Some(value) => length_argument(Some(value))?,
-                    None => buffer
-                        .byte_length()
-                        .checked_sub(offset)
-                        .ok_or_else(|| RuntimeError::range_error("view offset is out of bounds"))?,
-                };
-                TypedArray::new(&buffer, offset, length)?
-            }
-            value => {
-                let buffer = ArrayBuffer::new(length_argument(value)?)?;
-                TypedArray::new(&buffer, 0, buffer.byte_length())?
-            }
-        };
-        view.object().set_prototype(Some(typed_prototype.clone()));
-        Ok(view.object())
-    });
+    typed_array.set_captured_factory(
+        &typed_prototype,
+        None,
+        Some((false, |_, _, _, _| Ok(Value::Undefined))),
+        Some(|prototype, _, arguments, _| {
+            let view = match arguments.first() {
+                Some(Value::Object(object)) => {
+                    let buffer = ArrayBuffer::from_object(object.clone()).ok_or_else(|| {
+                        RuntimeError::type_error("TypedArray requires an ArrayBuffer or length")
+                    })?;
+                    let offset = length_argument(arguments.get(1))?;
+                    let length = match arguments.get(2) {
+                        Some(value) => length_argument(Some(value))?,
+                        None => buffer.byte_length().checked_sub(offset).ok_or_else(|| {
+                            RuntimeError::range_error("view offset is out of bounds")
+                        })?,
+                    };
+                    TypedArray::new(&buffer, offset, length)?
+                }
+                value => {
+                    let buffer = ArrayBuffer::new_for(prototype, length_argument(value)?)?;
+                    TypedArray::new(&buffer, 0, buffer.byte_length())?
+                }
+            };
+            view.object().initialize_prototype(Some(prototype.clone()));
+            Ok(view.object())
+        }),
+    )?;
 
     let data_view = intrinsics.get(IntrinsicId::DataView);
     let data_prototype = intrinsics.get(IntrinsicId::DataViewPrototype);
-    data_view.set_native_construct(move |arguments, _| {
-        let buffer = object_arg(arguments.first(), "DataView buffer")?;
-        let buffer = ArrayBuffer::from_object(buffer)
-            .ok_or_else(|| RuntimeError::type_error("DataView requires an ArrayBuffer"))?;
-        let offset = length_argument(arguments.get(1))?;
-        let length = match arguments.get(2) {
-            Some(value) => length_argument(Some(value))?,
-            None => buffer
-                .byte_length()
-                .checked_sub(offset)
-                .ok_or_else(|| RuntimeError::range_error("view offset is out of bounds"))?,
-        };
-        let view = DataView::new(&buffer, offset, length)?;
-        let object = view.object();
-        object.set_prototype(Some(data_prototype.clone()));
-        Ok(object)
-    });
+    data_view.set_captured_factory(
+        &data_prototype,
+        None,
+        Some((false, |_, _, _, _| Ok(Value::Undefined))),
+        Some(|prototype, _, arguments, _| {
+            let buffer = object_arg(arguments.first(), "DataView buffer")?;
+            let buffer = ArrayBuffer::from_object(buffer)
+                .ok_or_else(|| RuntimeError::type_error("DataView requires an ArrayBuffer"))?;
+            let offset = length_argument(arguments.get(1))?;
+            let length = match arguments.get(2) {
+                Some(value) => length_argument(Some(value))?,
+                None => buffer
+                    .byte_length()
+                    .checked_sub(offset)
+                    .ok_or_else(|| RuntimeError::range_error("view offset is out of bounds"))?,
+            };
+            let view = DataView::new(&buffer, offset, length)?;
+            let object = view.object();
+            object.initialize_prototype(Some(prototype.clone()));
+            Ok(object)
+        }),
+    )?;
     Ok(())
 }
 

@@ -231,7 +231,7 @@ jobs:
           const hash=b=>crypto.createHash("sha256").update(b).digest("hex");
           const manifest=JSON.parse(fs.readFileSync(path.join(out,"workloads/manifest.json")));
           const bytes=fs.readFileSync(path.join(out,"workloads/arith.json")),input=JSON.parse(bytes),entry=manifest.workloads.find(w=>w.name==="arith");
-          let answer=0n;for(let i=0n;i<2000000n;i++)answer=(answer+i*3n)%1000003n;
+          let answer=1n;for(let i=0n;i<2000000n;i++)answer=(answer+i*3n)%1000003n;
           if(manifest.revision!=="007556adccb8fb4329236932ca8175f8e8d119d2"||manifest.fixture_version!==2||
              manifest.fixture_sha256!=="177eb80ae73d1081eb620f747b4703e2a9f2731e0255bb60131b73b7dcac6464"||
              input.iterations!==2000000||input.expected!==64||answer!==64n||

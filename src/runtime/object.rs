@@ -835,9 +835,13 @@ impl Object {
         hint: Option<usize>,
     ) -> Option<(Value, usize)> {
         let state = self.0.state.borrow();
+        // String length and canonical indices are virtual properties; named
+        // ordinary data properties can use the same checked lookup as objects.
         if state.proxy.is_some()
             || state.lazy_function_prototype.is_some()
-            || state.string_data.is_some()
+            || (state.string_data.is_some()
+                && (matches!(key, PropertyKey::String(name) if name.code_units().iter().copied().eq("length".encode_utf16()))
+                    || key.array_index().is_some()))
             || (state.elements.is_some() && key.array_index().is_some())
             || state.view.is_some()
             || state.buffer.is_some()
@@ -845,6 +849,7 @@ impl Object {
             return None;
         }
         let (index, entry) = hint
+            .or(Some(state.last_property.get()))
             .and_then(|index| {
                 state
                     .properties
@@ -859,12 +864,9 @@ impl Object {
                     .enumerate()
                     .find(|(_, entry)| entry.key == *key)
             })?;
-        entry
-            .descriptor
-            .value()?
-            .load(self)
-            .ok()
-            .map(|value| (value, index))
+        let value = entry.descriptor.value()?.load(self).ok()?;
+        state.last_property.set(index);
+        Some((value, index))
     }
 
     // Only for a newly allocated ordinary bytecode function, before it is
@@ -1839,6 +1841,12 @@ impl Object {
 
     /// Implements ordinary `[[Get]]` with an explicit receiver.
     pub fn get_with_receiver(&self, key: &PropertyKey, receiver: Value) -> RuntimeResult<Value> {
+        // Ordinary own data reads ignore the receiver. Preserve the generic
+        // path for accessors, proxies and virtual/exotic properties, and revive
+        // only the current stored value rather than a complete descriptor.
+        if let Some((value, _)) = self.own_data_value_with_hint(key, None) {
+            return Ok(value);
+        }
         if self.0.state.borrow().proxy.is_some() {
             return super::proxy::get(self, key, receiver);
         }

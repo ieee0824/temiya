@@ -90,6 +90,30 @@ fn prototype_lookup_uses_original_primitive_receiver_and_canonical_indices() {
 }
 
 #[test]
+fn ordinary_string_properties_recheck_descriptors_and_preserve_virtual_keys() {
+    let source = "var boxed=new String('ab');String.prototype.extra=41;\
+        var a=boxed.extra===41;String.prototype.extra=42;var b=boxed.extra===42;\
+        Object.defineProperty(String.prototype,'extra',{get:function(){'use strict';return this;},configurable:true});\
+        var c=boxed.extra===boxed&&'ab'.extra==='ab';delete String.prototype.extra;\
+        String.prototype[9]='far';String.prototype['01']='named';\
+        boxed.extra===undefined&&a&&b&&c&&boxed.length===2&&boxed[0]==='a'&&\
+        boxed[1]==='b'&&boxed[9]==='far'&&boxed['01']==='named';";
+    for backend in [
+        temiya::embedding::ScriptBackend::Ast,
+        temiya::embedding::ScriptBackend::Bytecode,
+    ] {
+        let engine = Engine::builder().script_backend(backend).build();
+        let realm = engine.create_realm();
+        let script = engine.compile(&realm, source).unwrap();
+        assert_eq!(script.backend(), backend);
+        assert!(matches!(
+            engine.evaluate(&script).unwrap().value(),
+            Value::Boolean(true)
+        ));
+    }
+}
+
+#[test]
 fn wrappers_and_borrowed_methods_observe_real_javascript_conversions() {
     check(
         "String() === '' && new String().valueOf() === '' && String(undefined) === 'undefined' &&

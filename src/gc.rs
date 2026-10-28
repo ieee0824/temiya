@@ -29,12 +29,6 @@ pub struct Handle<T: Trace> {
 }
 
 impl<T: Trace> Handle<T> {
-    // Only an index hint for runtime metadata. A cache hit must still compare
-    // the complete heap/slot/generation identity before returning a facade.
-    pub(crate) fn slot_index(self) -> usize {
-        self.raw.slot
-    }
-
     /// Returns the collector-facing erased identity.
     #[must_use]
     pub fn erase(self) -> RawHandle {

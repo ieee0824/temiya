@@ -228,6 +228,27 @@ struct ImportBinding {
 }
 
 impl Environment {
+    /// Guard-only read: never consult Object/global/module records or invoke JS.
+    pub(crate) fn try_pure_number_binding(&self, name: &JsString) -> Option<f64> {
+        let mut current = self.clone();
+        loop {
+            {
+                let record = current.0.record.borrow();
+                let bindings = match &*record {
+                    EnvironmentRecord::Function(record) => &record.declarative_record.bindings,
+                    EnvironmentRecord::Declarative(record) => &record.bindings,
+                    _ => return None,
+                };
+                if let Some(binding) = bindings.iter().find(|binding| binding.name == *name) {
+                    return match &binding.value {
+                        Some(StoredValue::Number(number)) => Some(*number),
+                        _ => None,
+                    };
+                }
+            }
+            current = current.outer()?;
+        }
+    }
     /// Borrows the shared context that owns this environment.
     pub fn allocation_context(&self) -> &super::AllocationContext {
         self.runtime().expect("environment allocation context")

@@ -5,6 +5,7 @@ use std::{collections::VecDeque, fmt, rc::Rc};
 use crate::runtime::JsString;
 
 mod compiler;
+mod numeric_return;
 mod vm;
 pub use compiler::{BytecodeCompiler, CompileError};
 pub use vm::VirtualMachine;
@@ -508,9 +509,20 @@ pub struct VerifiedBytecode {
     max_stack: usize,
     has_backedge: bool,
     has_own_property_cache: bool,
+    numeric_return: Option<numeric_return::NumericReturnPlan>,
 }
 
 impl VerifiedBytecode {
+    pub(crate) fn try_numeric_return(
+        &self,
+        parameters: &[JsString],
+        arguments: &[crate::runtime::Value],
+        captures: &crate::runtime::Environment,
+    ) -> Option<crate::runtime::Value> {
+        self.numeric_return
+            .as_ref()?
+            .execute(parameters, arguments, captures)
+    }
     pub(crate) fn has_own_property_cache(&self) -> bool {
         self.has_own_property_cache
     }
@@ -977,11 +989,13 @@ fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
             .instructions
             .iter()
             .any(|op| matches!(op, Instruction::GetNamedProperty { .. }));
+    let numeric_return = numeric_return::NumericReturnPlan::compile(&bytecode, max_stack);
     Ok(VerifiedBytecode {
         bytecode,
         max_stack,
         has_backedge,
         has_own_property_cache,
+        numeric_return,
     })
 }
 

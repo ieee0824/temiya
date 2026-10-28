@@ -136,6 +136,15 @@ impl Closure {
         arguments: &[Value],
         new_target: Option<Object>,
     ) -> RuntimeResult<Value> {
+        if !self.template.arguments_object {
+            if let Some(value) = self.template.body.try_numeric_return(
+                &self.template.parameters,
+                arguments,
+                &self.environment,
+            ) {
+                return Ok(value);
+            }
+        }
         let this = if self.template.arrow {
             FunctionThis::Lexical
         } else {
@@ -205,5 +214,43 @@ fn boxed_this(realm: &Realm, value: Value) -> RuntimeResult<Value> {
     match value {
         Value::Object(_) => Ok(value),
         value => super::function::box_primitive(realm, value).map(Value::Object),
+    }
+}
+
+#[cfg(test)]
+mod numeric_return_tests {
+    use super::*;
+    use crate::{bytecode::BytecodeCompiler, runtime::Runtime};
+
+    #[test]
+    fn pure_numeric_calls_allocate_no_managed_frames_and_code_keeps_no_runtime_edges() {
+        let runtime = Runtime::new();
+        runtime.set_allocation_collection_interval(usize::MAX);
+        let realm = Realm::ordinary_in(&runtime);
+        let code =
+            BytecodeCompiler::compile("let make=(n)=>function(x){return x+n;};make(2);").unwrap();
+        let Completion::Normal(Some(Value::Object(function))) =
+            VirtualMachine::execute_in_realm(&code, &realm).unwrap()
+        else {
+            panic!("function")
+        };
+        runtime.collect_garbage().unwrap();
+        let before = runtime.diagnostics();
+        for value in 0..100 {
+            assert!(
+                function
+                    .call(Value::Number(-0.0), &[Value::Number(value as f64)])
+                    .unwrap()
+                    .same_value(&Value::Number(value as f64 + 2.0))
+            );
+        }
+        let after = runtime.diagnostics();
+        assert_eq!(after.live, before.live);
+        assert_eq!(after.collections, before.collections);
+        assert_eq!(after.rooted, before.rooted);
+        drop((function, realm));
+        assert_eq!(runtime.collect_garbage().unwrap().retained, 0);
+        // Keep the compiled templates/plans alive through this collection.
+        assert!(!code.bytecode().instructions.is_empty());
     }
 }

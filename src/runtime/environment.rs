@@ -1,8 +1,11 @@
 //! Lexical environments and ECMAScript environment records.
 
+use super::{Runtime, stored::StoredOwner};
+use crate::gc::{Handle, Root, Trace, Tracer};
 use std::cell::RefCell;
 use std::fmt;
-use std::rc::Rc;
+use std::ops::Deref;
+use std::rc::{Rc, Weak};
 
 use super::{
     JsString, Object, PropertyDescriptor, PropertyKey, RuntimeError, RuntimeResult, Value,
@@ -45,10 +48,90 @@ pub enum ThisBindingStatus {
 
 /// An identity-bearing lexical environment with an optional outer environment.
 #[derive(Clone)]
-pub struct Environment(Rc<EnvironmentData>);
+pub struct Environment(pub(super) EnvironmentReference);
 
-struct EnvironmentData {
-    outer: Option<Environment>,
+#[derive(Clone)]
+pub(super) enum EnvironmentReference {
+    Legacy(Rc<EnvironmentData>),
+    Managed(Rc<EnvironmentRoot>),
+}
+impl Deref for EnvironmentReference {
+    type Target = EnvironmentData;
+    fn deref(&self) -> &Self::Target {
+        match self {
+            Self::Legacy(data) => data,
+            Self::Managed(root) => &root.data,
+        }
+    }
+}
+pub(super) struct EnvironmentRoot {
+    pub(super) root: Root<ManagedEnvironment>,
+    pub(super) data: Rc<EnvironmentData>,
+    pub(super) runtime: Runtime,
+}
+pub(super) struct ManagedEnvironment {
+    pub(super) data: Rc<EnvironmentData>,
+}
+
+#[derive(Clone)]
+pub(super) enum StoredEnvironment {
+    Legacy(Environment),
+    Managed(Handle<ManagedEnvironment>),
+}
+impl StoredEnvironment {
+    // Initial edges are installed before the new, young owner is allocated.
+    fn initial(runtime: Option<&Runtime>, value: &Environment) -> RuntimeResult<Self> {
+        match (runtime, value.runtime()) {
+            (None, None) => Ok(Self::Legacy(value.clone())),
+            (Some(left), Some(right)) if left.same_heap(right) => {
+                Ok(Self::Managed(value.handle().expect("managed environment")))
+            }
+            _ => Err(RuntimeError::type_error(
+                "environment belongs to a different allocation context",
+            )),
+        }
+    }
+    pub(super) fn load(&self, owner: &impl StoredOwner) -> RuntimeResult<Environment> {
+        match (self, owner.runtime()) {
+            (Self::Legacy(value), None) => Ok(value.clone()),
+            (Self::Managed(handle), Some(runtime)) => runtime
+                .root_environment(*handle)
+                .ok_or_else(|| RuntimeError::internal_error("stale managed environment edge")),
+            _ => Err(RuntimeError::internal_error(
+                "environment allocation context mismatch",
+            )),
+        }
+    }
+    pub(super) fn trace(&self, tracer: &mut Tracer<'_>) {
+        if let Self::Managed(handle) = self {
+            tracer.mark(*handle);
+        }
+    }
+}
+impl Trace for ManagedEnvironment {
+    fn trace(&self, tracer: &mut Tracer<'_>) {
+        self.data.trace(tracer);
+    }
+}
+impl StoredOwner for Environment {
+    type Allocation = ManagedEnvironment;
+    fn runtime(&self) -> Option<&Runtime> {
+        match &self.0 {
+            EnvironmentReference::Legacy(_) => None,
+            EnvironmentReference::Managed(root) => Some(&root.runtime),
+        }
+    }
+    fn handle(&self) -> Option<Handle<ManagedEnvironment>> {
+        match &self.0 {
+            EnvironmentReference::Legacy(_) => None,
+            EnvironmentReference::Managed(root) => Some(root.root.handle()),
+        }
+    }
+}
+
+pub(super) struct EnvironmentData {
+    pub(super) facade: RefCell<Weak<EnvironmentRoot>>,
+    outer: Option<StoredEnvironment>,
     record: RefCell<EnvironmentRecord>,
 }
 
@@ -58,6 +141,61 @@ enum EnvironmentRecord {
     Global(GlobalRecord),
     Function(FunctionRecord),
     Module(ModuleRecord),
+}
+
+impl Trace for EnvironmentData {
+    fn trace(&self, tracer: &mut Tracer<'_>) {
+        fn object(value: &Object, tracer: &mut Tracer<'_>) {
+            if let Some(handle) = value.0.handle() {
+                tracer.mark(handle);
+            }
+        }
+        fn value(value: &Value, tracer: &mut Tracer<'_>) {
+            if let Value::Object(value) = value {
+                object(value, tracer);
+            }
+        }
+        fn environment(value: &Environment, tracer: &mut Tracer<'_>) {
+            if let Some(handle) = value.handle() {
+                tracer.mark(handle);
+            }
+        }
+        fn bindings(record: &DeclarativeRecord, tracer: &mut Tracer<'_>) {
+            for binding in &record.bindings {
+                if let Some(v) = &binding.value {
+                    value(v, tracer);
+                }
+            }
+        }
+        if let Some(outer) = &self.outer {
+            outer.trace(tracer);
+        }
+        match &*self.record.borrow() {
+            EnvironmentRecord::Declarative(record) => bindings(record, tracer),
+            EnvironmentRecord::Object(record) => object(&record.binding_object, tracer),
+            EnvironmentRecord::Global(record) => {
+                object(&record.object_record.binding_object, tracer);
+                bindings(&record.declarative_record, tracer);
+                value(&record.global_this_value, tracer);
+            }
+            EnvironmentRecord::Function(record) => {
+                bindings(&record.declarative_record, tracer);
+                object(&record.function_object, tracer);
+                if let Some(v) = &record.this_value {
+                    value(v, tracer);
+                }
+                if let Some(v) = &record.new_target {
+                    object(v, tracer);
+                }
+            }
+            EnvironmentRecord::Module(record) => {
+                bindings(&record.declarative_record, tracer);
+                for import in &record.imports {
+                    environment(&import.target_environment, tracer);
+                }
+            }
+        }
+    }
 }
 
 #[derive(Default)]
@@ -349,10 +487,32 @@ impl Environment {
     }
 
     fn new(outer: Option<Self>, record: EnvironmentRecord) -> Self {
-        Self(Rc::new(EnvironmentData {
-            outer,
+        let runtime = outer
+            .as_ref()
+            .and_then(StoredOwner::runtime)
+            .cloned()
+            .or_else(|| {
+                let object = match &record {
+                    EnvironmentRecord::Object(record) => Some(&record.binding_object),
+                    EnvironmentRecord::Global(record) => Some(&record.object_record.binding_object),
+                    EnvironmentRecord::Function(record) => Some(&record.function_object),
+                    _ => None,
+                };
+                object.and_then(|object| object.0.runtime()).cloned()
+            });
+        let data = EnvironmentData {
+            facade: RefCell::new(Weak::new()),
+            outer: outer
+                .as_ref()
+                .map(|outer| StoredEnvironment::initial(runtime.as_ref(), outer))
+                .transpose()
+                .expect("outer environment allocation context"),
             record: RefCell::new(record),
-        }))
+        };
+        match runtime {
+            Some(runtime) => runtime.allocate_environment(data),
+            None => Self(EnvironmentReference::Legacy(Rc::new(data))),
+        }
     }
 
     /// Returns this environment record's category.
@@ -370,7 +530,12 @@ impl Environment {
     /// Returns the outer lexical environment.
     #[must_use]
     pub fn outer(&self) -> Option<Self> {
-        self.0.outer.clone()
+        self.0
+            .outer
+            .as_ref()
+            .map(|outer| outer.load(self))
+            .transpose()
+            .expect("live outer environment")
     }
 
     /// Tests whether this record exposes a binding with the supplied name.
@@ -942,7 +1107,7 @@ impl Environment {
 
 impl PartialEq for Environment {
     fn eq(&self, other: &Self) -> bool {
-        Rc::ptr_eq(&self.0, &other.0)
+        std::ptr::eq(&*self.0, &*other.0)
     }
 }
 
@@ -1145,6 +1310,42 @@ fn reference_error(name: &JsString, detail: &str) -> RuntimeError {
 #[cfg(test)]
 mod slot_hint_tests {
     use super::*;
+    #[test]
+    fn managed_outer_environment_is_traced_without_an_internal_root() {
+        let runtime = Runtime::new();
+        let outer = runtime.allocate_environment(EnvironmentData {
+            facade: RefCell::new(Weak::new()),
+            outer: None,
+            record: RefCell::new(EnvironmentRecord::Declarative(DeclarativeRecord::default())),
+        });
+        outer
+            .create_mutable_binding("answer".into(), false)
+            .unwrap();
+        outer
+            .initialize_binding(&"answer".into(), Value::Number(42.0))
+            .unwrap();
+        let handle = outer.handle().unwrap();
+        let child = Environment::declarative(Some(outer.clone()));
+        let clone = child.clone();
+        assert_eq!(runtime.diagnostics().rooted, 2);
+        assert_eq!(child.outer(), Some(outer.clone()));
+        drop(outer);
+        assert_eq!(runtime.diagnostics().rooted, 1);
+        assert_eq!(runtime.collect_migration_graph().unwrap().retained, 2);
+        let reloaded = clone.outer().unwrap();
+        assert_eq!(reloaded.handle(), Some(handle));
+        assert!(
+            reloaded
+                .get_binding_value(&"answer".into(), true)
+                .unwrap()
+                .same_value(&Value::Number(42.0))
+        );
+        drop(reloaded);
+        drop(child);
+        assert_eq!(runtime.collect_migration_graph().unwrap().retained, 2);
+        drop(clone);
+        assert_eq!(runtime.collect_migration_graph().unwrap().reclaimed, 2);
+    }
     #[test]
     fn prepared_parameter_records_initialize_missing_and_duplicate_names() {
         let names = [

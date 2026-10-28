@@ -103,6 +103,45 @@ impl WeakObjectRoot {
 }
 
 impl Runtime {
+    pub(super) fn root_environment(
+        &self,
+        handle: Handle<super::environment::ManagedEnvironment>,
+    ) -> Option<super::Environment> {
+        use super::environment::{EnvironmentReference, EnvironmentRoot};
+        let heap = self.0.heap.borrow();
+        let data = heap.with(handle, |environment| environment.data.clone())?;
+        if let Some(facade) = data.facade.borrow().upgrade() {
+            return Some(super::Environment(EnvironmentReference::Managed(facade)));
+        }
+        let root = heap.root(handle)?;
+        drop(heap);
+        let facade = Rc::new(EnvironmentRoot {
+            root,
+            data: data.clone(),
+            runtime: self.clone(),
+        });
+        *data.facade.borrow_mut() = Rc::downgrade(&facade);
+        Some(super::Environment(EnvironmentReference::Managed(facade)))
+    }
+    pub(super) fn allocate_environment(
+        &self,
+        data: super::environment::EnvironmentData,
+    ) -> super::Environment {
+        use super::environment::{EnvironmentReference, EnvironmentRoot, ManagedEnvironment};
+        let data = Rc::new(data);
+        let root = self
+            .0
+            .heap
+            .borrow_mut()
+            .allocate(ManagedEnvironment { data: data.clone() });
+        let facade = Rc::new(EnvironmentRoot {
+            root,
+            data: data.clone(),
+            runtime: self.clone(),
+        });
+        *data.facade.borrow_mut() = Rc::downgrade(&facade);
+        super::Environment(EnvironmentReference::Managed(facade))
+    }
     pub(crate) fn new() -> Self {
         Self(Rc::new(RuntimeData {
             heap: RefCell::new(Heap::with_options(HeapOptions {

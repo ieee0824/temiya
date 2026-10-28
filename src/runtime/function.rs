@@ -46,6 +46,9 @@ pub(super) struct StoredFunctionClosure {
     home_object: Option<StoredObject>,
 }
 impl StoredFunctionClosure {
+    pub(super) fn source_realm(&self) -> &StoredRealm {
+        &self.realm
+    }
     fn load(&self, owner: &Object) -> RuntimeResult<FunctionClosure> {
         Ok(FunctionClosure {
             code: self.code.clone(),
@@ -144,8 +147,7 @@ pub(super) fn create_function(
             .transpose()?,
     };
     let constructable = closure.is_constructor();
-    function.0.state.borrow_mut().managed_callable =
-        Some(Rc::new(super::object::ManagedCallable::Ast(closure)));
+    function.set_managed_callable(super::object::ManagedCallable::Ast(closure));
     function.initialize_prototype(Some(
         evaluator
             .realm

@@ -4,6 +4,7 @@ use std::cell::Cell;
 use std::hash::{Hash, Hasher};
 use std::rc::Rc;
 
+use super::execution::StoredRealm;
 use super::stored::{StoredDescriptor, StoredObject, StoredValue};
 use super::{JsString, Object, RuntimeError, RuntimeResult, Symbol, Value};
 
@@ -191,6 +192,11 @@ impl PropertyDescriptor {
         self.fill_object(object)
     }
 
+    pub(super) fn to_object_in(&self, context: &Object) -> RuntimeResult<Object> {
+        self.validate()?;
+        self.fill_object(Object::new_for(context))
+    }
+
     fn fill_object(&self, object: Object) -> RuntimeResult<Object> {
         if let Some(value) = &self.value {
             object.create_data_property("value".into(), value.clone())?;
@@ -298,8 +304,47 @@ fn callable_or_undefined(value: Value, name: &str) -> RuntimeResult<Option<Objec
     }
 }
 
-type NativeCall = Rc<dyn Fn(Value, &[Value]) -> RuntimeResult<Value>>;
-type NativeConstruct = Rc<dyn Fn(&[Value], Object) -> RuntimeResult<Object>>;
+pub(super) trait NativeMetadata {
+    fn source(&self) -> Option<&StoredRealm>;
+    fn source_mut(&mut self) -> &mut Option<StoredRealm>;
+}
+pub(super) trait NativeCallBody: NativeMetadata {
+    fn invoke(&self, this: Value, arguments: &[Value]) -> RuntimeResult<Value>;
+}
+pub(super) trait NativeConstructBody: NativeMetadata {
+    fn invoke(&self, arguments: &[Value], new_target: Object) -> RuntimeResult<Object>;
+}
+type NativeCall = Rc<dyn NativeCallBody>;
+type NativeConstruct = Rc<dyn NativeConstructBody>;
+
+pub(super) struct FunctionPayload<T> {
+    source: Option<StoredRealm>,
+    body: T,
+}
+impl<T> std::ops::Deref for FunctionPayload<T> {
+    type Target = T;
+    fn deref(&self) -> &T {
+        &self.body
+    }
+}
+impl<T> NativeMetadata for FunctionPayload<T> {
+    fn source(&self) -> Option<&StoredRealm> {
+        self.source.as_ref()
+    }
+    fn source_mut(&mut self) -> &mut Option<StoredRealm> {
+        &mut self.source
+    }
+}
+impl<F: Fn(Value, &[Value]) -> RuntimeResult<Value>> NativeCallBody for FunctionPayload<F> {
+    fn invoke(&self, this: Value, arguments: &[Value]) -> RuntimeResult<Value> {
+        (self.body)(this, arguments)
+    }
+}
+impl<F: Fn(&[Value], Object) -> RuntimeResult<Object>> NativeConstructBody for FunctionPayload<F> {
+    fn invoke(&self, arguments: &[Value], new_target: Object) -> RuntimeResult<Object> {
+        (self.body)(arguments, new_target)
+    }
+}
 
 pub(super) type CapturedObjectCallback =
     fn(&Object, Option<&PropertyKey>, Value, &[Value]) -> RuntimeResult<Value>;
@@ -524,7 +569,7 @@ pub(super) struct ObjectState {
     // read, so deleting/reordering properties never returns a stale descriptor.
     last_property: Cell<usize>,
     callable: Option<NativeCall>,
-    pub(super) managed_callable: Option<Rc<ManagedCallable>>,
+    pub(super) managed_callable: Option<Rc<FunctionPayload<ManagedCallable>>>,
     construct: Option<NativeConstruct>,
     // The own data property already exists. Only its initial object value is
     // deferred until an operation observes or redefines that descriptor.
@@ -553,6 +598,76 @@ pub(super) fn ordinary_state() -> ObjectState {
 }
 
 impl Object {
+    pub(super) fn source_realm(&self) -> Option<StoredRealm> {
+        self.0.runtime()?;
+        let state = self.0.state.borrow();
+        if let Some(call) = &state.managed_callable {
+            return match &call.body {
+                ManagedCallable::Ast(closure) => Some(closure.source_realm().clone()),
+                ManagedCallable::Bytecode(closure) => Some(closure.source_realm().clone()),
+                _ => call.source.clone(),
+            };
+        }
+        state
+            .callable
+            .as_ref()
+            .and_then(|call| call.source().cloned())
+            .or_else(|| {
+                state
+                    .construct
+                    .as_ref()
+                    .and_then(|body| body.source().cloned())
+            })
+    }
+
+    fn bind_native_exception(
+        &self,
+        source: Option<&StoredRealm>,
+        error: RuntimeError,
+    ) -> RuntimeError {
+        if error.thrown_value().is_some() || error.kind() == super::RuntimeErrorKind::InternalError
+        {
+            return error;
+        }
+        match source {
+            Some(source) => match source.load(self) {
+                Ok(realm) => realm.bind_exception(error),
+                Err(failure) => failure,
+            },
+            None => error,
+        }
+    }
+
+    pub(super) fn initialize_native_realm(&self, realm: &super::Realm) -> RuntimeResult<()> {
+        // Legacy Rc graphs have not yet been removed. Do not create permanent
+        // owning Realm cycles in that transitional representation.
+        if self.0.runtime().is_none() {
+            return Ok(());
+        }
+        let mut state = self.0.state.borrow_mut();
+        if state.callable.is_none() && state.construct.is_none() && state.managed_callable.is_none()
+        {
+            return Ok(());
+        }
+        let source = StoredRealm::store(self, realm)?;
+        if let Some(body) = &mut state.callable {
+            *Rc::get_mut(body)
+                .ok_or_else(|| RuntimeError::internal_error("native body already active"))?
+                .source_mut() = Some(source.clone());
+        }
+        if let Some(body) = &mut state.construct {
+            *Rc::get_mut(body)
+                .ok_or_else(|| RuntimeError::internal_error("constructor body already active"))?
+                .source_mut() = Some(source.clone());
+        }
+        if let Some(body) = &mut state.managed_callable {
+            Rc::get_mut(body)
+                .ok_or_else(|| RuntimeError::internal_error("managed body already active"))?
+                .source = Some(source);
+        }
+        Ok(())
+    }
+
     pub(super) fn set_captured_factory(
         &self,
         capture: &Object,
@@ -571,6 +686,19 @@ impl Object {
     }
 
     pub(super) fn set_managed_callable(&self, callable: ManagedCallable) {
+        let source = self.source_realm();
+        let source = if matches!(
+            callable,
+            ManagedCallable::Ast(_) | ManagedCallable::Bytecode(_)
+        ) {
+            None
+        } else {
+            source
+        };
+        let callable = FunctionPayload {
+            source,
+            body: callable,
+        };
         let retired = {
             let mut state = self.0.state.borrow_mut();
             (
@@ -596,16 +724,14 @@ impl Object {
                 .collect::<RuntimeResult<_>>()?,
             constructor: target.is_constructor(),
         };
-        object.0.state.borrow_mut().managed_callable = Some(Rc::new(ManagedCallable::Bound(bound)));
+        object.set_managed_callable(ManagedCallable::Bound(bound));
         Ok(object)
     }
     #[cfg(test)]
     pub(super) fn initialize_proxy_revoker(&self, proxy: &Object) -> RuntimeResult<()> {
         let proxy = StoredObject::store(self, proxy)?;
-        let mut state = self.0.state.borrow_mut();
-        state.callable = None;
-        state.managed_callable = Some(Rc::new(ManagedCallable::ProxyRevoker(
-            std::cell::RefCell::new(Some(proxy)),
+        self.set_managed_callable(ManagedCallable::ProxyRevoker(std::cell::RefCell::new(
+            Some(proxy),
         )));
         Ok(())
     }
@@ -710,22 +836,44 @@ impl Object {
         &self,
         callback: impl Fn(Value, &[Value]) -> RuntimeResult<Value> + 'static,
     ) {
-        self.0.state.borrow_mut().callable = Some(Rc::new(callback));
+        let source = self.source_realm();
+        let retired = self
+            .0
+            .state
+            .borrow_mut()
+            .callable
+            .replace(Rc::new(FunctionPayload {
+                source,
+                body: callback,
+            }));
+        drop(retired);
     }
 
     pub(crate) fn set_native_construct(
         &self,
         callback: impl Fn(&[Value], Object) -> RuntimeResult<Object> + 'static,
     ) {
-        self.0.state.borrow_mut().construct = Some(Rc::new(callback));
+        let source = self.source_realm();
+        let retired = self
+            .0
+            .state
+            .borrow_mut()
+            .construct
+            .replace(Rc::new(FunctionPayload {
+                source,
+                body: callback,
+            }));
+        drop(retired);
     }
 
     pub(crate) fn clear_native_construct(&self) {
-        self.0.state.borrow_mut().construct = None;
+        let retired = self.0.state.borrow_mut().construct.take();
+        drop(retired);
     }
 
     pub(crate) fn clear_native_call(&self) {
-        self.0.state.borrow_mut().callable = None;
+        let retired = self.0.state.borrow_mut().callable.take();
+        drop(retired);
     }
 
     /// Allocates a callable object backed by a native Rust closure.
@@ -734,7 +882,7 @@ impl Object {
         callback: impl Fn(Value, &[Value]) -> RuntimeResult<Value> + 'static,
     ) -> Self {
         let object = Self::new();
-        object.0.state.borrow_mut().callable = Some(Rc::new(callback));
+        object.set_native_call(callback);
         object
     }
 
@@ -762,7 +910,16 @@ impl Object {
         length: u32,
         callback: impl Fn(Value, &[Value]) -> RuntimeResult<Value> + 'static,
     ) -> Self {
-        Self::function_with_metadata(prototype, name, length, Some(Rc::new(callback)), None)
+        Self::function_with_metadata(
+            prototype,
+            name,
+            length,
+            Some(Rc::new(FunctionPayload {
+                source: None,
+                body: callback,
+            })),
+            None,
+        )
     }
 
     pub(super) fn native_function_with_object_capture(
@@ -819,7 +976,7 @@ impl Object {
             name,
             length,
             None,
-            Some(Rc::new(ManagedCallable::CapturedObject(call))),
+            Some(ManagedCallable::CapturedObject(call)),
         ))
     }
 
@@ -829,21 +986,31 @@ impl Object {
         length: u32,
         callable: ManagedCallable,
     ) -> Self {
-        Self::function_with_metadata(prototype, name, length, None, Some(Rc::new(callable)))
+        Self::function_with_metadata(prototype, name, length, None, Some(callable))
     }
 
     fn function_with_metadata(
         prototype: &Object,
         name: &str,
         length: u32,
-        callable: Option<NativeCall>,
-        managed: Option<Rc<ManagedCallable>>,
+        mut callable: Option<NativeCall>,
+        managed: Option<ManagedCallable>,
     ) -> Self {
         // This fresh ordinary object has no existing descriptors, exotic hooks,
         // or observable identity. Seed complete properties in insertion order
         // without descriptor validation or a Vec growth allocation for four
         // entries when only two are needed. Later mutations use normal methods.
         let object = prototype.0.runtime().map_or_else(Self::new, Self::new_in);
+        let source = prototype.source_realm();
+        if let Some(source) = &source {
+            source.record_owner(&object).expect("native source context");
+        }
+        if let Some(callback) = &mut callable {
+            *Rc::get_mut(callback)
+                .expect("fresh native body")
+                .source_mut() = source.clone();
+        }
+        let managed = managed.map(|body| Rc::new(FunctionPayload { source, body }));
         {
             let mut state = object.0.state.borrow_mut();
             state.callable = callable;
@@ -880,7 +1047,7 @@ impl Object {
         callback: impl Fn(&[Value], Object) -> RuntimeResult<Object> + 'static,
     ) -> Self {
         let object = Self::new();
-        object.0.state.borrow_mut().construct = Some(Rc::new(callback));
+        object.set_native_construct(callback);
         object
     }
 
@@ -891,7 +1058,7 @@ impl Object {
         construct: impl Fn(&[Value], Object) -> RuntimeResult<Object> + 'static,
     ) -> Self {
         let object = Self::native_function(call);
-        object.0.state.borrow_mut().construct = Some(Rc::new(construct));
+        object.set_native_construct(construct);
         object
     }
 
@@ -942,11 +1109,23 @@ impl Object {
         let _depth = CallDepthGuard::enter()?;
         let result = if proxy {
             super::proxy::apply_slot(self, this_value, arguments)
-        } else if let Some(bound) = bound {
+        } else if let Some(bound) = &bound {
             bound.call(self, this_value, arguments)
         } else {
-            callback.expect("validated callable")(this_value, arguments)
+            callback
+                .as_ref()
+                .expect("validated callable")
+                .invoke(this_value, arguments)
         };
+        let result = result.map_err(|error| {
+            self.bind_native_exception(
+                bound
+                    .as_ref()
+                    .and_then(|body| body.source.as_ref())
+                    .or_else(|| callback.as_ref().and_then(|body| body.source())),
+                error,
+            )
+        });
         if let Err(error) = &result {
             self.check_abrupt_context(error)?;
         }
@@ -1001,11 +1180,23 @@ impl Object {
         let _depth = CallDepthGuard::enter()?;
         let result = if proxy {
             super::proxy::construct_slot(self, arguments, new_target)
-        } else if let Some(bound) = bound {
+        } else if let Some(bound) = &bound {
             bound.construct(self, arguments, new_target)
         } else {
-            callback.expect("validated constructor")(arguments, new_target)
+            callback
+                .as_ref()
+                .expect("validated constructor")
+                .invoke(arguments, new_target)
         };
+        let result = result.map_err(|error| {
+            self.bind_native_exception(
+                bound
+                    .as_ref()
+                    .and_then(|body| body.source.as_ref())
+                    .or_else(|| callback.as_ref().and_then(|body| body.source())),
+                error,
+            )
+        });
         if let Err(error) = &result {
             self.check_abrupt_context(error)?;
         }
@@ -1872,6 +2063,18 @@ impl super::ObjectData {
         }
         if let Some(bound) = &state.managed_callable {
             bound.trace(tracer);
+            if let Some(source) = &bound.source {
+                source.trace(tracer);
+            }
+        }
+        for source in [
+            state.callable.as_ref().and_then(|body| body.source()),
+            state.construct.as_ref().and_then(|body| body.source()),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            source.trace(tracer);
         }
         if let Some(iterator) = &state.iterator {
             iterator.trace(tracer);

@@ -9,7 +9,10 @@ use crate::gc::{Handle, Root, Trace, Tracer};
 use std::fmt;
 use std::rc::{Rc, Weak};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::{cell::RefCell, ops::Deref};
+use std::{
+    cell::{OnceCell, RefCell},
+    ops::Deref,
+};
 
 use crate::ast::Program;
 
@@ -45,11 +48,23 @@ pub(super) struct ManagedRealm {
     pub(super) data: Rc<RealmData>,
 }
 
+#[derive(Clone)]
 pub(super) enum StoredRealm {
     Legacy(Realm),
     Managed(Handle<ManagedRealm>),
 }
 impl StoredRealm {
+    pub(super) fn record_owner(&self, owner: &Object) -> RuntimeResult<()> {
+        match (self, owner.0.runtime()) {
+            (Self::Managed(handle), Some(runtime)) => {
+                runtime.record_object_edge(owner.0.handle().expect("managed owner"), *handle)
+            }
+            (Self::Legacy(_), None) => Ok(()),
+            _ => Err(RuntimeError::type_error(
+                "Realm allocation context mismatch",
+            )),
+        }
+    }
     pub(super) fn store(owner: &impl StoredOwner, realm: &Realm) -> RuntimeResult<Self> {
         match (owner.runtime(), realm.runtime()) {
             (None, None) => Ok(Self::Legacy(realm.clone())),
@@ -107,7 +122,7 @@ pub(super) struct RealmData {
     global_object: StoredObject,
     global_environment: StoredEnvironment,
     job_queue: JobQueue,
-    intrinsics: super::intrinsics::StoredIntrinsicRegistry,
+    intrinsics: OnceCell<super::intrinsics::StoredIntrinsicRegistry>,
     well_known_symbols: WellKnownSymbols,
     host_hooks: HostHooks,
 }
@@ -116,7 +131,9 @@ impl Trace for RealmData {
     fn trace(&self, tracer: &mut Tracer<'_>) {
         self.global_object.trace(tracer);
         self.global_environment.trace(tracer);
-        self.intrinsics.trace(tracer);
+        if let Some(intrinsics) = self.intrinsics.get() {
+            intrinsics.trace(tracer);
+        }
         // Job payloads still own active public roots during this migration.
     }
 }
@@ -181,8 +198,6 @@ impl Realm {
         }
         static NEXT_ID: AtomicU64 = AtomicU64::new(1);
         let well_known_symbols = WellKnownSymbols::initialize();
-        let intrinsics =
-            IntrinsicRegistry::initialize(&global_object, host_hooks.clone(), &well_known_symbols)?;
         let global_environment = Environment::global(global_object.clone(), global_this_value);
         let runtime = global_object.0.runtime().cloned();
         let data = RealmData {
@@ -191,17 +206,32 @@ impl Realm {
             global_object: StoredObject::initial(runtime.as_ref(), &global_object)?,
             global_environment: StoredEnvironment::initial(runtime.as_ref(), &global_environment)?,
             job_queue: JobQueue::new(),
-            intrinsics: super::intrinsics::StoredIntrinsicRegistry::initial(
-                runtime.as_ref(),
-                &intrinsics,
-            )?,
+            intrinsics: OnceCell::new(),
             well_known_symbols,
             host_hooks,
         };
-        Ok(match runtime {
+        let realm = match runtime {
             Some(runtime) => runtime.allocate_realm(data),
             None => Self(RealmReference::Legacy(Rc::new(data))),
-        })
+        };
+        let intrinsics = IntrinsicRegistry::initialize(
+            &global_object,
+            realm.0.host_hooks.clone(),
+            &realm.0.well_known_symbols,
+            &realm,
+        )?;
+        // Publish a complete table before a host global Proxy can reenter from
+        // DefineProperty traps while the global names are installed.
+        realm
+            .0
+            .intrinsics
+            .set(super::intrinsics::StoredIntrinsicRegistry::store(
+                &realm,
+                &intrinsics,
+            )?)
+            .map_err(|_| RuntimeError::internal_error("Realm intrinsics already initialized"))?;
+        intrinsics.install_globals(&global_object)?;
+        Ok(realm)
     }
 
     /// Creates a Realm whose global-this value is its fresh global object.
@@ -250,11 +280,15 @@ impl Realm {
     /// The snapshot and its clones may outlive this Realm.
     #[must_use]
     pub fn intrinsics(&self) -> IntrinsicRegistry {
-        self.0.intrinsics.load(self)
+        self.0
+            .intrinsics
+            .get()
+            .expect("initialized Realm")
+            .load(self)
     }
 
     /// Creates a non-constructable native function with this Realm's Function.prototype.
-    /// The callback is stored directly; this method does not capture the Realm.
+    /// The function retains its source Realm through a traced internal edge.
     /// Low-level Object::native_function remains Realm-independent.
     pub fn create_native_function(
         &self,
@@ -273,7 +307,11 @@ impl Realm {
     /// Returns one intrinsic object owned by this Realm.
     #[must_use]
     pub fn intrinsic(&self, id: IntrinsicId) -> Object {
-        self.0.intrinsics.get(self, id)
+        self.0
+            .intrinsics
+            .get()
+            .expect("initialized Realm")
+            .get(self, id)
     }
 
     /// Returns one of this Realm's well-known symbols.

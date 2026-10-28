@@ -286,7 +286,7 @@ pub(super) fn define_own_property(
     let Some(trap) = trap(&handler, "defineProperty")? else {
         return target.define_own_property(key, descriptor);
     };
-    let descriptor_object = descriptor.to_object()?;
+    let descriptor_object = descriptor.to_object_in(proxy)?;
     let result = trap
         .call(
             Value::Object(handler),

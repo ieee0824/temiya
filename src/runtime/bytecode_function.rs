@@ -21,6 +21,9 @@ pub(super) struct StoredClosure {
     environment: StoredEnvironment,
 }
 impl StoredClosure {
+    pub(super) fn source_realm(&self) -> &StoredRealm {
+        &self.realm
+    }
     fn load(&self, owner: &Object) -> RuntimeResult<Closure> {
         Ok(Closure {
             template: self.template.clone(),
@@ -96,8 +99,7 @@ pub(crate) fn create(
         realm: StoredRealm::store(&function, realm)?,
         environment: StoredEnvironment::store(&function, named.as_ref().unwrap_or(&environment))?,
     };
-    function.0.state.borrow_mut().managed_callable =
-        Some(Rc::new(super::object::ManagedCallable::Bytecode(closure)));
+    function.set_managed_callable(super::object::ManagedCallable::Bytecode(closure));
     function.initialize_prototype(Some(realm.intrinsic(IntrinsicId::FunctionPrototype)));
     for (name, value) in [
         ("length", Value::Number(template.parameters.len() as f64)),

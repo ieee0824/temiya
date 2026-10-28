@@ -2,12 +2,9 @@
 
 use std::collections::BTreeMap;
 
+use super::stored::{StoredObject, StoredOwner};
 use super::{
     HostHooks, JsString, Object, PropertyDescriptor, RuntimeError, RuntimeResult, Symbol, Value,
-};
-use super::{
-    Runtime,
-    stored::{StoredObject, StoredOwner},
 };
 
 /// Identifies an intrinsic object owned by a Realm.
@@ -215,14 +212,14 @@ pub struct IntrinsicRegistry(BTreeMap<IntrinsicId, Object>);
 
 pub(super) struct StoredIntrinsicRegistry(BTreeMap<IntrinsicId, StoredObject>);
 impl StoredIntrinsicRegistry {
-    pub(super) fn initial(
-        runtime: Option<&Runtime>,
+    pub(super) fn store(
+        owner: &impl StoredOwner,
         registry: &IntrinsicRegistry,
     ) -> RuntimeResult<Self> {
         registry
             .0
             .iter()
-            .map(|(id, object)| Ok((*id, StoredObject::initial(runtime, object)?)))
+            .map(|(id, object)| Ok((*id, StoredObject::store(owner, object)?)))
             .collect::<RuntimeResult<BTreeMap<_, _>>>()
             .map(Self)
     }
@@ -253,6 +250,7 @@ impl IntrinsicRegistry {
         global: &Object,
         host_hooks: HostHooks,
         symbols: &WellKnownSymbols,
+        realm: &super::Realm,
     ) -> RuntimeResult<Self> {
         let mut objects: BTreeMap<IntrinsicId, Object> = BTreeMap::new();
         for id in IntrinsicId::ALL {
@@ -309,6 +307,7 @@ impl IntrinsicRegistry {
             } else {
                 Object::new_for(global)
             };
+            object.initialize_native_realm(realm)?;
             objects.insert(id, object);
         }
         let registry = Self(objects);
@@ -332,7 +331,6 @@ impl IntrinsicRegistry {
         super::array_methods::install(&registry, symbols)?;
         super::string_methods::install(&registry, symbols)?;
         super::iterator::install(&registry, symbols)?;
-        registry.install_globals(global)?;
         Ok(registry)
     }
 
@@ -395,7 +393,7 @@ impl IntrinsicRegistry {
         Ok(())
     }
 
-    fn install_globals(&self, global: &Object) -> RuntimeResult<()> {
+    pub(super) fn install_globals(&self, global: &Object) -> RuntimeResult<()> {
         for id in IntrinsicId::ALL {
             let Some((_, name)) = id.pair() else { continue };
             define(global, name, Value::Object(self.get(id)), true, true)?;

@@ -300,6 +300,95 @@ impl Runtime {
 mod tests {
     use super::*;
     #[test]
+    fn native_functions_retain_source_realms_and_materialize_errors_there() {
+        use crate::runtime::{IntrinsicId, Realm, RuntimeError, Value};
+        let runtime = Runtime::new();
+        let source = Realm::ordinary_in(&runtime);
+        let caller = Realm::ordinary_in(&runtime);
+        let weak_global = source.global_object().downgrade();
+        let weak_error = source
+            .intrinsic(IntrinsicId::TypeErrorPrototype)
+            .downgrade();
+        let function_prototype = source.intrinsic(IntrinsicId::FunctionPrototype);
+        function_prototype.set_prototype(Some(caller.intrinsic(IntrinsicId::ObjectPrototype)));
+        let function = source
+            .create_native_function("fail", 0, |_, _| {
+                Err(RuntimeError::type_error("source error"))
+            })
+            .unwrap();
+        function.set_prototype(None);
+        drop((source, function_prototype));
+        runtime.collect_migration_graph().unwrap();
+        assert!(weak_global.upgrade().is_some());
+        let error = function.call(Value::Undefined, &[]).unwrap_err();
+        let Some(Value::Object(exception)) = error.thrown_value() else {
+            panic!("materialized error")
+        };
+        assert_eq!(exception.prototype(), weak_error.upgrade());
+        assert_ne!(
+            exception.prototype(),
+            Some(caller.intrinsic(IntrinsicId::TypeErrorPrototype))
+        );
+        drop(function);
+        runtime.collect_migration_graph().unwrap();
+        assert!(
+            weak_global.upgrade().is_some(),
+            "escaped exception retains its prototype graph"
+        );
+        drop(error);
+        runtime.collect_migration_graph().unwrap();
+        assert!(weak_global.upgrade().is_none());
+        drop(caller);
+        assert_eq!(runtime.collect_migration_graph().unwrap().retained, 0);
+    }
+
+    #[test]
+    fn realm_global_proxy_callbacks_observe_complete_tables_and_can_collect() {
+        use crate::runtime::{IntrinsicId, ProxyObject, Realm, Value};
+        let runtime = Runtime::new();
+        let target = Object::new_in(&runtime);
+        let handler = Object::new_in(&runtime);
+        let callbacks = Rc::new(Cell::new(0usize));
+        let callback_count = callbacks.clone();
+        let callback_runtime = runtime.clone();
+        let trap = Object::native_function_for(&target, move |_, args| {
+            let Value::Object(descriptor) = &args[2] else {
+                panic!("descriptor")
+            };
+            if let Value::Object(function) = descriptor.get(&"value".into())? {
+                if let Some(source) = function.source_realm() {
+                    let realm = source.load(&function)?;
+                    assert!(realm.intrinsic(IntrinsicId::Number).is_callable());
+                    assert!(realm.intrinsic(IntrinsicId::Number).is_constructor());
+                    assert!(realm.intrinsic(IntrinsicId::BigInt).is_callable());
+                    assert!(!realm.intrinsic(IntrinsicId::BigInt).is_constructor());
+                    assert_eq!(realm.intrinsics().iter().count(), IntrinsicId::ALL.len());
+                    callback_count.set(callback_count.get() + 1);
+                }
+            }
+            callback_runtime.verify_migration_barriers().unwrap();
+            callback_runtime.collect_migration_graph().unwrap();
+            let Value::Object(target) = &args[0] else {
+                panic!("target")
+            };
+            let descriptor = crate::runtime::PropertyDescriptor::from_object(descriptor)?;
+            target
+                .define_own_property(args[1].to_property_key()?, descriptor)
+                .map(Value::Boolean)
+        });
+        handler
+            .create_data_property("defineProperty".into(), Value::Object(trap.clone()))
+            .unwrap();
+        let global = ProxyObject::try_new(target.clone(), handler.clone())
+            .unwrap()
+            .object();
+        let realm = Realm::try_new(global.clone(), Value::Object(global.clone())).unwrap();
+        assert!(callbacks.get() > 10);
+        handler.try_delete(&"defineProperty".into()).unwrap();
+        drop((trap, target, handler, global, realm));
+        assert_eq!(runtime.collect_migration_graph().unwrap().retained, 0);
+    }
+    #[test]
     fn managed_object_factory_boxes_in_context_and_reclaims_prototype_cycles() {
         use crate::runtime::{Value, intrinsics::ObjectFactory, object::ManagedCallable};
         let runtime = Runtime::new();
@@ -381,7 +470,8 @@ mod tests {
         assert_eq!(runtime.0.heap.borrow().root_count(reflect_handle), 1);
         drop(realm);
         runtime.collect_migration_graph().unwrap();
-        assert!(runtime.0.heap.borrow().with(realm_handle, |_| ()).is_none());
+        assert!(runtime.0.heap.borrow().with(realm_handle, |_| ()).is_some());
+        assert_eq!(runtime.0.heap.borrow().root_count(realm_handle), 0);
         assert_eq!(
             registry.get(IntrinsicId::Reflect),
             clone.get(IntrinsicId::Reflect)
@@ -392,6 +482,7 @@ mod tests {
         drop(clone);
         runtime.collect_migration_graph().unwrap();
         assert!(weak.upgrade().is_none());
+        assert_eq!(runtime.diagnostics().live, 0);
     }
     #[test]
     fn managed_realm_clones_share_a_root_and_trace_the_global_records() {

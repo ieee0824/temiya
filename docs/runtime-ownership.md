@@ -256,9 +256,11 @@ coverage remain tracked separately (#202, #210).
 
 The coordinated tracing migration changes `Realm::intrinsics()` from a borrowed
 registry to an owning `IntrinsicRegistry` snapshot. The snapshot and its clones
-keep their intrinsic objects alive independently of the Realm. The Realm's
-internal table stores traced handles and does not register those objects as
-external roots.
+keep their intrinsic objects alive after the original Realm facade is dropped.
+Native functions retain their source Realm through a strong traced edge, so a
+snapshot containing those functions also keeps the Realm graph alive. The
+Realm's internal table stores traced handles and does not register those objects
+as external roots.
 
 Bind the returned registry before retaining an iterator or passing a reference
 to another API:
@@ -294,3 +296,23 @@ Dead entry cleanup checks generation-valid identities without creating key
 facades or root registrations. WeakSet stores only weak identities and reports
 no strong key edges. The standalone `Heap::add_ephemeron` API remains a global
 key/value association and is not used for managed WeakMap ownership.
+
+Managed Realm construction allocates the Realm and its Global Environment
+before building intrinsics. Each startup callable receives a source Realm edge;
+later native/typed builtins inherit it from Function.prototype's internal
+metadata, independently of mutable JavaScript prototype links. A complete
+stored intrinsic table is published before installing names on a host global
+Proxy. Its DefineProperty traps can therefore inspect the source Realm and run
+collection without seeing an incomplete table. Publication records normal
+Realm-to-object write barriers.
+
+Native callback payloads hold this metadata inside their existing Rc allocation;
+call/construct trait objects keep the same pointer width and ordinary Object
+records gain no Realm field. Managed callable payloads use the same header;
+AST/VM closures keep their existing explicit Realm edge without duplicating it.
+Successful calls do not load or root a Realm. Unmaterialized native exceptions
+load the source Realm only on failure, before crossing a caller boundary.
+Escaped native functions and exceptions keep the source graph alive, and its
+cycles are reclaimed after the last external root is dropped. Transitional
+Legacy objects do not acquire native source metadata; removal of that
+representation and enabling managed allocation remain required release gates.

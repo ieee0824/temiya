@@ -1,4 +1,4 @@
-//! Realm-specific native callable allocation; no Realm is captured by the callback wrapper.
+//! Realm-specific native callable allocation with traced source Realm metadata.
 use super::{Object, RuntimeResult, Value};
 pub(super) fn create(
     prototype: &Object,

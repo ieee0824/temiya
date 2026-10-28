@@ -33,6 +33,24 @@ Opaque host callback captures are externally owned Rust values. Capturing an
 owned JavaScript handle keeps its root alive; hosts must release their own
 Rust ownership cycles. JavaScript edges stored by the runtime are traced.
 
+Collection and indexed-object constructors now require an explicit context:
+`MapObject::new(context)`, `SetObject::new(context)`,
+`WeakMapObject::new(context)`, `WeakSetObject::new(context)`,
+`ArrayObject::new(context, length)`, and `ArrayBuffer::new(context, byte_length)`.
+The same rule applies to `StringObject::new(context, value)`,
+`DateObject::new(context, milliseconds)`, `DateObject::now(context, host)`,
+`RegExp::new(context, pattern, flags)`, and `RegExp::from_literal(context, spelling)`.
+Number and BigInt wrappers use `NumberObject::new(context, value)` and
+`BigIntObject::new(context, value)`. Standalone low-level Realm users can create
+`Realm::ordinary_in(context)` to share the same heap with these objects.
+`PropertyDescriptor::to_object(context)` creates the descriptor object in that
+heap and rejects getter, setter, or value objects from another context.
+The collection types no longer implement `Default`. Use the same context for
+objects stored as keys, values, or elements. Weak keys become eligible for
+removal after their last strong root is dropped and the context is collected.
+TypedArray and DataView constructors continue to derive their context from
+the required buffer, preserving the shared bytes and detachment behavior.
+
 Explicit JavaScript throws keep their original value in `Exception::thrown`,
 including throws that cross function or module boundaries. The handle retains
 the engine and evaluation Realm provenance. A native language error keeps its

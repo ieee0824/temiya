@@ -38,7 +38,8 @@ fn property_keys_distinguish_strings_symbols_and_array_indices() {
 
 #[test]
 fn descriptor_conversion_round_trips_present_fields() {
-    let getter = Object::native_function(|_, _| Ok(Value::Number(3.0)));
+    let context = temiya::runtime::AllocationContext::new();
+    let getter = Object::native_function_in(&context, |_, _| Ok(Value::Number(3.0)));
     let descriptor = PropertyDescriptor {
         get: Some(Some(getter.clone())),
         set: Some(None),
@@ -46,7 +47,7 @@ fn descriptor_conversion_round_trips_present_fields() {
         configurable: Some(false),
         ..PropertyDescriptor::default()
     };
-    let object = descriptor.to_object().unwrap();
+    let object = descriptor.to_object(&context).unwrap();
     let converted = PropertyDescriptor::from_object(&object).unwrap();
     assert_eq!(converted.get.flatten(), Some(getter));
     assert_eq!(converted.set, Some(None));

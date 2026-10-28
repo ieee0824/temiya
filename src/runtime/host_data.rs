@@ -80,8 +80,8 @@ impl DateFactory {
 impl DateObject {
     /// Creates a Date after applying the ECMAScript TimeClip boundary.
     #[must_use]
-    pub fn new(milliseconds: f64) -> Self {
-        Self::initialize(Object::new(), milliseconds)
+    pub fn new(context: &super::AllocationContext, milliseconds: f64) -> Self {
+        Self::initialize(Object::new_in(context), milliseconds)
     }
     pub(crate) fn new_for(context: &Object, milliseconds: f64) -> Self {
         Self::initialize(Object::new_for(context), milliseconds)
@@ -99,8 +99,8 @@ impl DateObject {
     }
     /// Creates a Date using an explicit host clock.
     #[must_use]
-    pub fn now(host: &HostHooks) -> Self {
-        Self::new(host.now())
+    pub fn now(context: &super::AllocationContext, host: &HostHooks) -> Self {
+        Self::new(context, host.now())
     }
     /// Wraps an object with Date internal slots.
     #[must_use]
@@ -277,7 +277,7 @@ fn from_json(
                 array.object().initialize_prototype(Some(prototype.clone()));
                 array
             } else {
-                ArrayObject::new(length)?
+                ArrayObject::initialize(Object::new(), length)?
             };
             for (index, value) in values.into_iter().enumerate() {
                 array.object().create_data_property(

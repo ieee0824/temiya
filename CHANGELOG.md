@@ -15,6 +15,10 @@ until 1.0, a minor version may contain breaking API changes.
 
 ### Changed
 
+- Map, Set, WeakMap, WeakSet, Array, ArrayBuffer, String, Number, BigInt, Date,
+  and RegExp Rust constructors require
+  an explicit allocation context; collection `Default` implementations are removed.
+
 - The 0.2 Rust boundary rejects host objects from a different allocation context.
   Contextless low-level constructors remain legacy during migration; use the
   Engine's allocation context when supplying objects to its APIs.

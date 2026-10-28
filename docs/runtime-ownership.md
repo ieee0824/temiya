@@ -271,6 +271,15 @@ factories and representations is still required before the coordinated migration
 is considered complete. The version is now 0.2.0 for these Rust API changes;
 this does not publish a release or change the opaque C ABI version.
 
+Public collection, indexed, primitive-wrapper, Date and RegExp constructors now
+require an explicit `AllocationContext`; collection `Default` implementations
+have been removed. Descriptor materialization also requires the context.
+`Realm::ordinary_in` is public for low-level callers sharing that heap.
+The private `new_for` paths still inherit the required object's context during
+the remaining Realm/Object migration. Contextless JSON parsing, Object/native
+factories, standalone Environment/Realm and JobQueue/Promise factories remain
+to be ported; the Legacy storage variants have not yet been eliminated.
+
 The coordinated tracing migration changes `Realm::intrinsics()` from a borrowed
 registry to an owning `IntrinsicRegistry` snapshot. The snapshot and its clones
 keep their intrinsic objects alive after the original Realm facade is dropped.

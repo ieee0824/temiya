@@ -311,20 +311,28 @@ pub struct RegExp(Object);
 
 impl RegExp {
     /// Compiles a pattern and its flags.
-    pub fn new(pattern: JsString, flags: &str) -> RuntimeResult<Self> {
-        Self::allocate(None, pattern, flags)
+    pub fn new(
+        context: &super::AllocationContext,
+        pattern: JsString,
+        flags: &str,
+    ) -> RuntimeResult<Self> {
+        Self::allocate(|| Object::new_in(context), pattern, flags)
     }
 
     pub(crate) fn new_for(context: &Object, pattern: JsString, flags: &str) -> RuntimeResult<Self> {
-        Self::allocate(Some(context), pattern, flags)
+        Self::allocate(|| Object::new_for(context), pattern, flags)
     }
 
-    fn allocate(context: Option<&Object>, pattern: JsString, flags: &str) -> RuntimeResult<Self> {
+    fn allocate(
+        make_object: impl FnOnce() -> Object,
+        pattern: JsString,
+        flags: &str,
+    ) -> RuntimeResult<Self> {
         let flags = RegExpFlags::parse(flags)?;
         let matcher = compile_matcher(&pattern, flags)?;
         let captures = RefCell::new(matcher.create_captures());
         let scratch = RefCell::new(matcher.create_scratch());
-        let object = context.map_or_else(Object::new, Object::new_for);
+        let object = make_object();
         object.0.state.borrow_mut().regexp = Some(RegExpSlot(Rc::new(RegExpData {
             source: pattern,
             flags,
@@ -337,21 +345,21 @@ impl RegExp {
     }
 
     /// Parses an original literal spelling such as `/a+/gu`.
-    pub fn from_literal(spelling: &str) -> RuntimeResult<Self> {
-        Self::literal_in(None, spelling)
+    pub fn from_literal(context: &super::AllocationContext, spelling: &str) -> RuntimeResult<Self> {
+        Self::literal_in(|| Object::new_in(context), spelling)
     }
 
     pub(crate) fn from_literal_for(context: &Object, spelling: &str) -> RuntimeResult<Self> {
-        Self::literal_in(Some(context), spelling)
+        Self::literal_in(|| Object::new_for(context), spelling)
     }
 
-    fn literal_in(context: Option<&Object>, spelling: &str) -> RuntimeResult<Self> {
+    fn literal_in(make_object: impl FnOnce() -> Object, spelling: &str) -> RuntimeResult<Self> {
         let end = spelling
             .rfind('/')
             .filter(|index| *index > 0)
             .ok_or_else(|| RuntimeError::syntax_error("invalid RegExp literal"))?;
         Self::allocate(
-            context,
+            make_object,
             JsString::from(spelling[1..end].to_owned()),
             &spelling[end + 1..],
         )
@@ -539,8 +547,8 @@ pub struct StringObject(Object);
 impl StringObject {
     /// Boxes a string value.
     #[must_use]
-    pub fn new(value: JsString) -> Self {
-        let object = Object::new();
+    pub fn new(context: &super::AllocationContext, value: JsString) -> Self {
+        let object = Object::new_in(context);
         object.0.state.borrow_mut().string_data = Some(value);
         Self(object)
     }
@@ -688,9 +696,10 @@ mod cache_tests {
     #[test]
     #[cfg(not(miri))]
     fn compiled_size_budget_evicts_before_the_entry_limit() {
+        let context = super::super::AllocationContext::new();
         MATCHERS.with(|cache| *cache.borrow_mut() = MatcherCache::default());
         for i in 0..32 {
-            RegExp::new(JsString::from(format!("a{{16384}}suffix{i}")), "").unwrap();
+            RegExp::new(&context, JsString::from(format!("a{{16384}}suffix{i}")), "").unwrap();
             MATCHERS.with(|cache| {
                 let cache = cache.borrow();
                 assert!(cache.bytes <= MATCHER_CACHE_BYTES);
@@ -710,13 +719,14 @@ mod cache_tests {
 
     #[test]
     fn unique_patterns_evict_without_changing_live_objects() {
+        let context = super::super::AllocationContext::new();
         MATCHERS.with(|cache| *cache.borrow_mut() = MatcherCache::default());
-        let original = RegExp::new(JsString::from("(?<keep>a+)"), "g").unwrap();
+        let original = RegExp::new(&context, JsString::from("(?<keep>a+)"), "g").unwrap();
         let input = JsString::from("aa aa");
         original.exec(&input).unwrap().unwrap();
         for i in 0..MATCHER_CACHE_ENTRIES * 2 {
             let pattern = format!("prefix{i}([a-z]+)");
-            let regexp = RegExp::new(JsString::from(pattern), "").unwrap();
+            let regexp = RegExp::new(&context, JsString::from(pattern), "").unwrap();
             assert!(
                 regexp
                     .exec(&JsString::from(format!("prefix{i}word")))
@@ -742,7 +752,7 @@ mod cache_tests {
         let matched = original.exec(&input).unwrap().unwrap();
         assert_eq!(matched.index, 3);
         assert_eq!(matched.named_captures[0].1, Some(JsString::from("aa")));
-        let rebuilt = RegExp::new(JsString::from("(?<keep>a+)"), "g").unwrap();
+        let rebuilt = RegExp::new(&context, JsString::from("(?<keep>a+)"), "g").unwrap();
         assert_eq!(rebuilt.last_index(), 0);
         assert_eq!(rebuilt.exec(&input).unwrap().unwrap().index, 0);
     }

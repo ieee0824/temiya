@@ -19,15 +19,15 @@ pub struct ArrayObject(Object);
 
 impl ArrayObject {
     /// Creates an empty Array with the requested length; indices initially remain holes.
-    pub fn new(length: u32) -> RuntimeResult<Self> {
-        Self::initialize(Object::new(), length)
+    pub fn new(context: &super::AllocationContext, length: u32) -> RuntimeResult<Self> {
+        Self::initialize(Object::new_in(context), length)
     }
 
     pub(crate) fn new_for(context: &Object, length: u32) -> RuntimeResult<Self> {
         Self::initialize(Object::new_for(context), length)
     }
 
-    fn initialize(object: Object, length: u32) -> RuntimeResult<Self> {
+    pub(super) fn initialize(object: Object, length: u32) -> RuntimeResult<Self> {
         object.0.state.borrow_mut().array = true;
         object.0.state.borrow_mut().elements = Some(Box::default());
         object.define_own_property(
@@ -106,19 +106,19 @@ pub struct ArrayBuffer(Object);
 
 impl ArrayBuffer {
     /// Allocates a zero-filled buffer.
-    pub fn new(byte_length: usize) -> RuntimeResult<Self> {
-        Self::allocate(None, byte_length)
+    pub fn new(context: &super::AllocationContext, byte_length: usize) -> RuntimeResult<Self> {
+        Self::allocate(|| Object::new_in(context), byte_length)
     }
 
     pub(crate) fn new_for(context: &Object, byte_length: usize) -> RuntimeResult<Self> {
-        Self::allocate(Some(context), byte_length)
+        Self::allocate(|| Object::new_for(context), byte_length)
     }
 
-    fn allocate(context: Option<&Object>, byte_length: usize) -> RuntimeResult<Self> {
+    fn allocate(make_object: impl FnOnce() -> Object, byte_length: usize) -> RuntimeResult<Self> {
         if byte_length > 100_000_000 {
             return Err(RuntimeError::range_error("ArrayBuffer is too large"));
         }
-        let object = context.map_or_else(Object::new, Object::new_for);
+        let object = make_object();
         object.0.state.borrow_mut().buffer =
             Some(Rc::new(RefCell::new(Some(vec![0; byte_length]))));
         Ok(Self(object))

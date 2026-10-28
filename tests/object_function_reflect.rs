@@ -113,11 +113,12 @@ fn call_apply_and_bind_preserve_receiver_and_argument_order() {
 
 #[test]
 fn reflect_operations_return_booleans_and_include_symbol_keys() {
-    let realm = Realm::ordinary();
+    let context = temiya::runtime::AllocationContext::new();
+    let realm = Realm::ordinary_in(&context);
     let reflect = realm.intrinsic(IntrinsicId::Reflect);
-    let target = Object::new();
+    let target = Object::new_in(&context);
     let descriptor = PropertyDescriptor::data(Value::Number(1.0), true, true, true)
-        .to_object()
+        .to_object(&context)
         .unwrap();
     let defined = method(&reflect, "defineProperty")
         .call(

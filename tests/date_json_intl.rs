@@ -7,17 +7,18 @@ use temiya::runtime::{
 
 #[test]
 fn date_clips_boundaries_and_formats_iso_utc() {
+    let context = temiya::runtime::AllocationContext::new();
     assert_eq!(
-        DateObject::new(0.0).to_iso_string().unwrap(),
+        DateObject::new(&context, 0.0).to_iso_string().unwrap(),
         JsString::from("1970-01-01T00:00:00.000Z")
     );
     assert_eq!(
-        DateObject::new(-1.0).to_iso_string().unwrap(),
+        DateObject::new(&context, -1.0).to_iso_string().unwrap(),
         JsString::from("1969-12-31T23:59:59.999Z")
     );
-    assert!(DateObject::new(8.64e15).to_iso_string().is_ok());
+    assert!(DateObject::new(&context, 8.64e15).to_iso_string().is_ok());
     assert_eq!(
-        DateObject::new(8.64e15 + 1.0)
+        DateObject::new(&context, 8.64e15 + 1.0)
             .to_iso_string()
             .unwrap_err()
             .kind(),
@@ -86,7 +87,8 @@ fn json_round_trip_reviver_and_replacer_observe_property_order() {
 
 #[test]
 fn json_arrays_map_unsupported_values_to_null_and_reject_cycles() {
-    let array = ArrayObject::new(3).unwrap();
+    let context = temiya::runtime::AllocationContext::new();
+    let array = ArrayObject::new(&context, 3).unwrap();
     array
         .object()
         .create_data_property("1".into(), Value::Number(f64::NAN))
@@ -99,7 +101,7 @@ fn json_arrays_map_unsupported_values_to_null_and_reject_cycles() {
         Json::stringify(Value::Object(array.object()), None).unwrap(),
         Some(JsString::from("[null,null,null]"))
     );
-    let cyclic = Object::new();
+    let cyclic = Object::new_in(&context);
     cyclic
         .create_data_property("self".into(), Value::Object(cyclic.clone()))
         .unwrap();

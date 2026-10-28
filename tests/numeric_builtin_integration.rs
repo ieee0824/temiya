@@ -31,6 +31,7 @@ fn engine_exposes_bigint_wrappers_radices_and_safe_integer_boundaries() {
 
 #[test]
 fn bigint_radix_brand_checks_and_abrupt_order_are_observable() {
+    let context = temiya::runtime::AllocationContext::new();
     for source in [
         "let log=''; let radix={valueOf(){log+='R';return 16;}}; let caught=false; try {BigInt.prototype.toString.call({},radix);} catch(e){caught=true;} caught && log==='';",
         "let marker={}; let caught=false; try {(1n).toString({valueOf(){throw marker;}});} catch(e){caught=e===marker;} caught;",
@@ -38,7 +39,7 @@ fn bigint_radix_brand_checks_and_abrupt_order_are_observable() {
     ] {
         assert!(matches!(evaluate(source), Value::Boolean(true)), "{source}");
     }
-    let realm = Realm::ordinary();
+    let realm = Realm::ordinary_in(&context);
     let prototype = realm.intrinsic(IntrinsicId::BigIntPrototype);
     let Value::Object(to_string) = prototype.get(&"toString".into()).unwrap() else {
         panic!()
@@ -46,15 +47,15 @@ fn bigint_radix_brand_checks_and_abrupt_order_are_observable() {
     let Value::Object(value_of) = prototype.get(&"valueOf".into()).unwrap() else {
         panic!()
     };
-    let inherited = Object::new();
+    let inherited = Object::new_in(&context);
     inherited.set_prototype(Some(prototype.clone()));
-    let wrapped = temiya::runtime::BigIntObject::new(42.into()).object();
-    let proxy = temiya::runtime::ProxyObject::new(wrapped, Object::new()).object();
+    let wrapped = temiya::runtime::BigIntObject::new(&context, 42.into()).object();
+    let proxy = temiya::runtime::ProxyObject::new(wrapped, Object::new_in(&context)).object();
     for receiver in [
         Value::Undefined,
         Value::Null,
         Value::Number(1.0),
-        Value::Object(Object::new()),
+        Value::Object(Object::new_in(&context)),
         Value::Object(inherited),
         Value::Object(proxy),
         Value::Object(prototype),

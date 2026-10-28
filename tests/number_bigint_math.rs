@@ -13,7 +13,8 @@ fn method(holder: &temiya::runtime::Object, name: &str) -> temiya::runtime::Obje
 
 #[test]
 fn number_constructor_predicates_and_wrapper_preserve_edges() {
-    let realm = Realm::ordinary();
+    let context = temiya::runtime::AllocationContext::new();
+    let realm = Realm::ordinary_in(&context);
     let number = realm.intrinsic(IntrinsicId::Number);
     assert!(matches!(
         number.call(Value::Undefined, &[]).unwrap(),
@@ -22,7 +23,7 @@ fn number_constructor_predicates_and_wrapper_preserve_edges() {
     let boxed = number
         .construct(&[Value::Number(-0.0)], number.clone())
         .unwrap();
-    let wrapper = NumberObject::new(-0.0);
+    let wrapper = NumberObject::new(&context, -0.0);
     assert!(wrapper.value().is_sign_negative());
     let value = method(&realm.intrinsic(IntrinsicId::NumberPrototype), "valueOf")
         .call(Value::Object(boxed), &[])

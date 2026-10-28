@@ -180,9 +180,9 @@ impl PropertyDescriptor {
     }
 
     /// Converts a descriptor record to the ordinary object form used by Reflect APIs.
-    pub fn to_object(&self) -> RuntimeResult<Object> {
+    pub fn to_object(&self, context: &super::AllocationContext) -> RuntimeResult<Object> {
         self.validate()?;
-        self.fill_object(Object::new())
+        self.fill_object(Object::new_in(context))
     }
 
     pub(super) fn to_object_for(&self, prototype: &Object) -> RuntimeResult<Object> {
@@ -2223,7 +2223,10 @@ mod own_data_hint_tests {
 
     #[test]
     fn direct_array_push_preserves_complete_element_descriptors_and_guard_fallback() {
-        let array = crate::runtime::ArrayObject::new(3).unwrap().object();
+        let context = crate::runtime::AllocationContext::new();
+        let array = crate::runtime::ArrayObject::new(&context, 3)
+            .unwrap()
+            .object();
         assert_eq!(
             array.try_push_array_values(3, &[Value::Number(42.0)]),
             Some(4)
@@ -2235,7 +2238,7 @@ mod own_data_hint_tests {
         assert!(descriptor.value.unwrap().same_value(&Value::Number(42.0)));
         assert_eq!(array.array_length(), 4);
         assert_eq!(array.try_push_array_values(3, &[Value::Number(99.0)]), None);
-        let prototype = Object::new();
+        let prototype = Object::new_in(&context);
         prototype
             .create_data_property("4".into(), Value::Number(1.0))
             .unwrap();
@@ -2247,7 +2250,10 @@ mod own_data_hint_tests {
 
     #[test]
     fn array_named_data_hints_observe_length_and_skip_indexed_storage() {
-        let array = crate::runtime::ArrayObject::new(3).unwrap().object();
+        let context = crate::runtime::AllocationContext::new();
+        let array = crate::runtime::ArrayObject::new(&context, 3)
+            .unwrap()
+            .object();
         let key: PropertyKey = "length".into();
         let (value, index) = array.own_data_value_with_hint(&key, None).unwrap();
         assert!(value.same_value(&Value::Number(3.0)));
@@ -2272,6 +2278,7 @@ mod own_data_hint_tests {
 
     #[test]
     fn own_data_hint_rechecks_keys_descriptors_and_exotic_objects() {
+        let context = crate::runtime::AllocationContext::new();
         let object = Object::new();
         let prefix: PropertyKey = "prefix".into();
         let key: PropertyKey = "x".into();
@@ -2308,7 +2315,7 @@ mod own_data_hint_tests {
         let proxy = crate::runtime::ProxyObject::new(object.clone(), Object::new()).object();
         assert!(proxy.own_data_value_with_hint(&key, None).is_none());
         assert!(proxy.get(&key).unwrap().same_value(&Value::Number(42.0)));
-        let string = crate::runtime::StringObject::new("abc".into()).object();
+        let string = crate::runtime::StringObject::new(&context, "abc".into()).object();
         assert!(
             string
                 .own_data_value_with_hint(&"length".into(), None)

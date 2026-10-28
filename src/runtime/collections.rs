@@ -21,8 +21,8 @@ pub struct MapObject(Object);
 impl MapObject {
     /// Creates an empty Map.
     #[must_use]
-    pub fn new() -> Self {
-        Self::from_empty(Object::new())
+    pub fn new(context: &super::AllocationContext) -> Self {
+        Self::from_empty(Object::new_in(context))
     }
 
     pub(super) fn new_for(context: &Object) -> Self {
@@ -141,12 +141,6 @@ impl MapObject {
     }
 }
 
-impl Default for MapObject {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 /// A live Map entry iterator.
 pub struct MapIterator {
     owner: Object,
@@ -181,8 +175,8 @@ pub struct SetObject(Object);
 impl SetObject {
     /// Creates an empty Set.
     #[must_use]
-    pub fn new() -> Self {
-        Self::from_empty(Object::new())
+    pub fn new(context: &super::AllocationContext) -> Self {
+        Self::from_empty(Object::new_in(context))
     }
 
     pub(super) fn new_for(context: &Object) -> Self {
@@ -268,12 +262,6 @@ impl SetObject {
     }
 }
 
-impl Default for SetObject {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 /// A live Set value iterator.
 pub struct SetIterator {
     owner: Object,
@@ -301,8 +289,8 @@ pub struct WeakMapObject(Object);
 impl WeakMapObject {
     /// Creates an empty WeakMap.
     #[must_use]
-    pub fn new() -> Self {
-        Self::from_empty(Object::new())
+    pub fn new(context: &super::AllocationContext) -> Self {
+        Self::from_empty(Object::new_in(context))
     }
     pub(super) fn new_for(context: &Object) -> Self {
         Self::from_empty(Object::new_for(context))
@@ -374,20 +362,14 @@ impl WeakMapObject {
             .expect("WeakMap slot")
     }
 }
-impl Default for WeakMapObject {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 /// A weak-key Set that does not keep Object values alive.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct WeakSetObject(Object);
 impl WeakSetObject {
     /// Creates an empty WeakSet.
     #[must_use]
-    pub fn new() -> Self {
-        Self::from_empty(Object::new())
+    pub fn new(context: &super::AllocationContext) -> Self {
+        Self::from_empty(Object::new_in(context))
     }
     pub(super) fn new_for(context: &Object) -> Self {
         Self::from_empty(Object::new_for(context))
@@ -447,12 +429,6 @@ impl WeakSetObject {
             .expect("WeakSet slot")
     }
 }
-impl Default for WeakSetObject {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 fn normalize_zero(value: Value) -> Value {
     if let Value::Number(number) = &value {
         if *number == 0.0 {

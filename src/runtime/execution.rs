@@ -255,7 +255,8 @@ impl Realm {
         Self::new(global_object.clone(), Value::Object(global_object))
     }
 
-    pub(crate) fn ordinary_in(runtime: &super::Runtime) -> Self {
+    /// Creates a Realm in an explicit shared allocation context.
+    pub fn ordinary_in(runtime: &super::AllocationContext) -> Self {
         let global_object = Object::new_in(runtime);
         Self::new(global_object.clone(), Value::Object(global_object))
     }

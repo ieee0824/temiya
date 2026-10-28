@@ -131,7 +131,11 @@ pub(super) fn create_function(
         } else {
             None
         };
-    let function = Object::new_for(&evaluator.realm.global_object());
+    let function = Object::new_with_prototype(
+        evaluator
+            .realm
+            .intrinsic(super::IntrinsicId::FunctionPrototype),
+    );
     let closure = StoredFunctionClosure {
         code: Rc::new(code.clone()),
         kind,
@@ -148,11 +152,6 @@ pub(super) fn create_function(
     };
     let constructable = closure.is_constructor();
     function.set_managed_callable(super::object::ManagedCallable::Ast(closure));
-    function.initialize_prototype(Some(
-        evaluator
-            .realm
-            .intrinsic(super::IntrinsicId::FunctionPrototype),
-    ));
     if let (Some(environment), Some(ExprKind::Identifier(name))) =
         (name_environment, code.name.as_ref().map(|name| &name.kind))
     {

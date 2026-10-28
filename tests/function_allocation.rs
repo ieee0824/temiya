@@ -36,6 +36,24 @@ fn reflection_before_value_read_keeps_property_order_and_nonextensibility() {
 }
 
 #[test]
+fn bytecode_function_metadata_has_standard_descriptors_before_publication() {
+    use temiya::embedding::ScriptBackend;
+    let engine = Engine::builder()
+        .script_backend(ScriptBackend::Bytecode)
+        .build();
+    let realm = engine.create_realm();
+    let script = engine.compile(&realm, "var f=function named(a,b){};var l=Object.getOwnPropertyDescriptor(f,'length');var n=Object.getOwnPropertyDescriptor(f,'name');var arrow=(x)=>x;var a=Object.getOwnPropertyDescriptor(arrow,'name');l.value===2&&!l.writable&&!l.enumerable&&l.configurable&&n.value==='named'&&!n.writable&&!n.enumerable&&n.configurable&&typeof a.value==='string'&&!a.writable&&!a.enumerable&&a.configurable&&!Object.prototype.hasOwnProperty.call(arrow,'prototype')&&Object.defineProperty(f,'name',{value:'renamed'}).name==='renamed';").unwrap();
+    assert_eq!(script.backend(), ScriptBackend::Bytecode);
+    assert!(
+        engine
+            .evaluate(&script)
+            .unwrap()
+            .value()
+            .same_value(&Value::Boolean(true))
+    );
+}
+
+#[test]
 fn prototype_redefinition_preserves_descriptor_invariants() {
     check(
         "var f = function() {}; var replacement = {};

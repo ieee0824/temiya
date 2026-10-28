@@ -1,0 +1,55 @@
+{
+  "source_revision": "c74fa92a56acc727347237ea28e870272eb6dad8",
+  "worker": {
+    "name": "Temiya",
+    "engine": "Temiya",
+    "mode": "Auto Script",
+    "revision": "c74fa92a56acc727347237ea28e870272eb6dad8",
+    "executable": "/tmp/temiya-private-scalars-frozen-worker",
+    "executable_sha256": "65652e89a675b2f6005a9a77b6ee60ea7442d822da8e3a2c7989e398bdc06e07",
+    "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)\nbinary: rustc\ncommit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67\ncommit-date: 2026-10-13\nhost: aarch64-unknown-linux-gnu\nrelease: 1.99.1\nLLVM version: 23.1.1",
+    "features": [],
+    "profile": "release",
+    "mode_probe": {
+      "architecture": "aarch64",
+      "engine": "Temiya",
+      "expected": 42,
+      "invocation_backend": "Bytecode",
+      "mode": "Auto Script",
+      "profile": "release",
+      "samples_ns": [
+        2583
+      ],
+      "sandbox": null,
+      "scope": "parse+evaluate invocation; function setup excluded",
+      "setup_backend": "Bytecode",
+      "setup_ns": 10500,
+      "startup_ns": 274042,
+      "validated_passes": 2,
+      "warmup_ns": 37958
+    }
+  },
+  "original_iterations": 300000,
+  "expected": 715003,
+  "validated_passes": 2,
+  "instruction_references": 6846460547,
+  "files": {
+    "callgrind.out.gz": {
+      "sha256": "358d1ec9fc49cc4778b3a9d8edab18b3558a619c8430fc0a07eb013568b3d7cb",
+      "uncompressed_sha256": "81505a1c150d60863b25b9c1224090b95f4efc2445fb7414a481dfb465d4454d"
+    },
+    "exclusive.txt": {
+      "sha256": "83bd9ba869a3bd78e17e02f1e45386677a5b1140e65151c90e24593c8a165008"
+    },
+    "inclusive.txt": {
+      "sha256": "4b05cbd143d117b2eac1a806f92238d716bfebe706596e21caa604a45f587d98"
+    },
+    "worker.json": {
+      "sha256": "41a131caadb169ed8d0d0ca37f848c32b080f589b694725c7dc1833c6d15bda8"
+    },
+    "valgrind.log": {
+      "sha256": "ff26b31c5160af80dc7f7dc18f0aee60c039288cc08c47a3363fb084c384ddef"
+    }
+  },
+  "qualification": "ARM64 instrumented original workload, whole process including setup/warmup/one measured pass. Instruction references are not CPU cycles, native elapsed time, or speed acceptance."
+}

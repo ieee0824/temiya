@@ -1,0 +1,88 @@
+{
+  "measured_revision": "c74fa92a56acc727347237ea28e870272eb6dad8",
+  "worker": {
+    "name": "Temiya",
+    "engine": "Temiya",
+    "mode": "Auto Script",
+    "revision": "c74fa92a56acc727347237ea28e870272eb6dad8",
+    "executable": "/tmp/temiya-private-scalars-frozen-worker",
+    "executable_sha256": "65652e89a675b2f6005a9a77b6ee60ea7442d822da8e3a2c7989e398bdc06e07",
+    "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)\nbinary: rustc\ncommit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67\ncommit-date: 2026-10-13\nhost: aarch64-unknown-linux-gnu\nrelease: 1.99.1\nLLVM version: 23.1.1",
+    "features": [],
+    "profile": "release",
+    "mode_probe": {
+      "architecture": "aarch64",
+      "engine": "Temiya",
+      "expected": 42,
+      "invocation_backend": "Bytecode",
+      "mode": "Auto Script",
+      "profile": "release",
+      "samples_ns": [
+        2583
+      ],
+      "sandbox": null,
+      "scope": "parse+evaluate invocation; function setup excluded",
+      "setup_backend": "Bytecode",
+      "setup_ns": 10500,
+      "startup_ns": 274042,
+      "validated_passes": 2,
+      "warmup_ns": 37958
+    }
+  },
+  "files": {
+    "beforeafter.json": "34423e83968367cd6e15b3510d5f733e2239a1ec7b3030924d5c2894d1292942",
+    "boa.json": "cca247855d4fc19acc42d9999a747fca675168155c99e834be07e7bd17d825ac",
+    "intel-omoikane-comparison-40738908412-1-copy-1-availability.json": "0608f8f3baf5ef555fa00c805eae344e6db92a5d8dd27efb7a941dc1135c0302",
+    "intel-omoikane-comparison-40738908412-1-copy-2-availability.json": "4f942c65f7823e236af1fda4b39899f74609666bd786634e889b793265cd717a",
+    "intel-omoikane-comparison-40741192530-1-copy-1-availability.json": "e9c9a7012a2e99871ad34b2bb0872638a03675aca9a7d9fce41dd12e6fe980c1",
+    "intel-omoikane-comparison-40741192530-1-copy-2-availability.json": "1405a176744ce9535b9f9ca8eacdf1c4719b1b05f6b7644dc9ff034453dea72b",
+    "intel-omoikane-comparison-40742113079-1-copy-1-availability.json": "0608f8f3baf5ef555fa00c805eae344e6db92a5d8dd27efb7a941dc1135c0302",
+    "intel-omoikane-comparison-40742113079-1-copy-2-availability.json": "e9c9a7012a2e99871ad34b2bb0872638a03675aca9a7d9fce41dd12e6fe980c1"
+  },
+  "independent_statistics": [
+    {
+      "verified_at": "2026-10-28T17:45:02.390Z",
+      "reports": [
+        {
+          "file": "/tmp/temiya-private-scalars-beforeafter-cpu0.json",
+          "sha256": "34423e83968367cd6e15b3510d5f733e2239a1ec7b3030924d5c2894d1292942",
+          "runs": 66,
+          "checked_values": 1056,
+          "comparisons": 33,
+          "outcomes": {
+            "after faster beyond threshold": 3,
+            "within noise threshold": 28,
+            "after slower beyond threshold": 2
+          }
+        }
+      ]
+    },
+    {
+      "verified_at": "2026-10-28T17:56:52.980Z",
+      "reports": [
+        {
+          "file": "/tmp/temiya-private-scalars-boa-cpu0.json",
+          "sha256": "cca247855d4fc19acc42d9999a747fca675168155c99e834be07e7bd17d825ac",
+          "runs": 66,
+          "checked_values": 1056,
+          "comparisons": 33,
+          "outcomes": {
+            "Temiya faster beyond threshold": 27,
+            "within noise threshold": 6
+          }
+        }
+      ]
+    }
+  ],
+  "intel_run": 40738908412,
+  "qualification": "CPU0 beforeafter: arith3faster, two slower comparisons elsewhere. ActualBoa:27faster6noise; no all-eleven pass. Both requested Intel machines unavailable; no Intel correctness or speed pass. All records retained.",
+  "intel_runs": [
+    40738908412,
+    40741192530,
+    40742113079
+  ],
+  "cancelled_dispatch": {
+    "run": 40742001811,
+    "reason": "Two workflow_dispatch requests on the same branch shared cancel-in-progress group. Moved requested-Intel dispatch to a separate branch at the identical c74 commit. Not a benchmark failure or a measurement pass."
+  }
+}

@@ -589,6 +589,15 @@ elsewhere. Its [complete before/after record](../benchmarks/runtime-gc/experimen
 is retained and the implementation is reverted. The strengthened public API
 test still checks signed zero and NaN payloads through assignment and reads.
 
+The closure-allocation instruction profile also identifies repeated fresh
+function initialization. AST and bytecode functions now prepare their internal
+Function.prototype edge before allocation, using the same incoming-edge
+protection as object literals. Fresh bytecode functions initialize their known
+length/name data descriptors directly, preserving attributes and insertion
+order and reserving space for the lazy prototype entry. These fields contain
+only Number/String leaves; ordinary subsequent property updates still use the
+validated descriptor path. This does not alter the AST name-property behavior.
+
 The private scalar-loop candidate keeps primitive local values in the active VM
 scope instead of repeatedly resolving their Function Environment bindings. It
 requires a fresh internal frame, Number arguments, mutable var bindings, a loop,

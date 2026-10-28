@@ -8,8 +8,7 @@ use std::rc::Rc;
 use crate::bytecode::{Constant, FunctionTemplate, Instruction, VirtualMachine};
 
 use super::{
-    Completion, Environment, IntrinsicId, Object, PropertyDescriptor, Realm, RuntimeError,
-    RuntimeResult, Value,
+    Completion, Environment, IntrinsicId, Object, Realm, RuntimeError, RuntimeResult, Value,
 };
 
 struct Closure {
@@ -118,26 +117,17 @@ pub(crate) fn create(
             Ok::<_, RuntimeError>(scope)
         })
         .transpose()?;
-    let function = Object::new_for(&realm.global_object());
+    let function = Object::new_with_prototype(realm.intrinsic(IntrinsicId::FunctionPrototype));
     let closure = StoredClosure {
         template: template.clone(),
         realm: StoredRealm::store(&function, realm)?,
         environment: StoredEnvironment::store(&function, named.as_ref().unwrap_or(&environment))?,
     };
     function.set_managed_callable(super::object::ManagedCallable::Bytecode(closure));
-    function.initialize_prototype(Some(realm.intrinsic(IntrinsicId::FunctionPrototype)));
-    for (name, value) in [
-        ("length", Value::Number(template.parameters.len() as f64)),
-        (
-            "name",
-            Value::String(template.name.clone().unwrap_or_default()),
-        ),
-    ] {
-        function.define_own_property(
-            name.into(),
-            PropertyDescriptor::data(value, false, false, true),
-        )?;
-    }
+    function.initialize_function_properties(
+        template.parameters.len(),
+        template.name.clone().unwrap_or_default(),
+    );
     if !template.arrow {
         function.install_lazy_function_prototype(realm.intrinsic(IntrinsicId::ObjectPrototype))?;
     }

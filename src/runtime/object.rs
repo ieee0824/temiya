@@ -867,6 +867,30 @@ impl Object {
             .map(|value| (value, index))
     }
 
+    // Only for a newly allocated ordinary bytecode function, before it is
+    // published. Both values are leaves and the standard descriptors are known.
+    pub(super) fn initialize_function_properties(&self, length: usize, name: JsString) {
+        let mut state = self.0.state.borrow_mut();
+        debug_assert!(state.properties.is_empty());
+        debug_assert!(state.proxy.is_none() && !state.array);
+        // Leave room for the default constructable function's prototype entry.
+        state.properties.reserve(3);
+        for (key, value) in [
+            ("length", StoredValue::Number(length as f64)),
+            ("name", StoredValue::String(name)),
+        ] {
+            state.properties.push(PropertyEntry {
+                key: key.into(),
+                descriptor: StoredDescriptor::Data {
+                    value,
+                    writable: false,
+                    enumerable: false,
+                    configurable: true,
+                },
+            });
+        }
+    }
+
     pub(super) fn install_lazy_function_prototype(
         &self,
         object_prototype: Object,

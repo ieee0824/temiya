@@ -24,7 +24,7 @@ impl VirtualMachine {
         {
             return Self::execute_in_realm(bytecode, &Realm::ordinary());
         }
-        Self::run(bytecode, None, None, false)
+        Self::run::<false>(bytecode, None, None)
     }
 
     /// Executes Script bytecode in a persistent host-supplied Realm.
@@ -32,7 +32,7 @@ impl VirtualMachine {
         bytecode: &VerifiedBytecode,
         realm: &Realm,
     ) -> RuntimeResult<Completion> {
-        Self::run(bytecode, Some(realm), None, false)
+        Self::run::<false>(bytecode, Some(realm), None)
     }
 
     /// Executes function-body bytecode with a caller-prepared function frame.
@@ -47,7 +47,7 @@ impl VirtualMachine {
                 "bytecode requires a function environment",
             ));
         }
-        Self::run(bytecode, Some(realm), Some(frame), false)
+        Self::run::<false>(bytecode, Some(realm), Some(frame))
     }
 
     // Only a freshly instantiated, nonescaping internal function frame may
@@ -58,18 +58,21 @@ impl VirtualMachine {
         realm: &Realm,
         frame: &Environment,
     ) -> RuntimeResult<Completion> {
-        Self::run(bytecode, Some(realm), Some(frame), true)
+        if scalar_loop_locals(bytecode) {
+            Self::run::<true>(bytecode, Some(realm), Some(frame))
+        } else {
+            Self::run::<false>(bytecode, Some(realm), Some(frame))
+        }
     }
 
-    fn run(
+    fn run<const SCALAR_LOCALS: bool>(
         bytecode: &VerifiedBytecode,
         realm: Option<&Realm>,
         function: Option<&Environment>,
-        private_frame: bool,
     ) -> RuntimeResult<Completion> {
         let _object_roots = realm.and_then(Realm::enter_object_root_region);
         let body = bytecode.bytecode();
-        let scalar_locals = private_frame && scalar_loop_locals(bytecode);
+        let mut scalar_values: Option<Box<[Value]>> = None;
         let mut scopes: Vec<ScopeFrame<'_>> = vec![];
         let mut references: Vec<Reference> = vec![];
         let mut calls: Vec<Invocation> = vec![];
@@ -181,7 +184,7 @@ impl VirtualMachine {
                         unreachable!()
                     };
                     let environment = enter_scope(plan, &scopes, (pc - 1) as u32, realm, function)?;
-                    let scalar_locals = if scalar_locals && plan.kind == ScopeKind::Function {
+                    if SCALAR_LOCALS && plan.kind == ScopeKind::Function {
                         let values = plan
                             .bindings
                             .iter()
@@ -189,14 +192,12 @@ impl VirtualMachine {
                                 environment.get_binding_value(&binding.name, plan.strict)
                             })
                             .collect::<RuntimeResult<Box<[_]>>>()?;
-                        values
+                        scalar_values = values
                             .iter()
                             .all(|value| matches!(value, Value::Number(_) | Value::Undefined))
-                            .then_some(values)
-                    } else {
-                        None
-                    };
-                    let binding_hints = (scalar_locals.is_none()
+                            .then_some(values);
+                    }
+                    let binding_hints = ((!SCALAR_LOCALS || scalar_values.is_none())
                         && bytecode.has_backedge()
                         && plan.kind == ScopeKind::Function)
                         .then(|| {
@@ -210,7 +211,6 @@ impl VirtualMachine {
                         plan,
                         environment,
                         binding_hints,
-                        scalar_locals,
                     });
                 }
                 Instruction::ExitScope => {
@@ -231,14 +231,16 @@ impl VirtualMachine {
                     frame.environment = next;
                 }
                 Instruction::LoadBinding { scope, slot } => {
-                    let frame = binding_frame(&scopes, scope);
-                    if let Some(values) = &frame.scalar_locals {
-                        stack.push(match &values[slot as usize] {
-                            Value::Number(value) => Value::Number(*value),
-                            value => value.clone(),
-                        });
-                        continue;
+                    if SCALAR_LOCALS {
+                        if let Some(values) = &scalar_values {
+                            stack.push(match &values[slot as usize] {
+                                Value::Number(value) => Value::Number(*value),
+                                value => value.clone(),
+                            });
+                            continue;
+                        }
                     }
+                    let frame = binding_frame(&scopes, scope);
                     let name = &frame.plan.bindings[slot as usize].name;
                     stack.push(match &frame.binding_hints {
                         Some(hints) => frame.environment.get_function_binding_at(
@@ -272,17 +274,19 @@ impl VirtualMachine {
                     increment,
                     prefix,
                 } => {
-                    let frame = binding_frame_mut(&mut scopes, scope);
-                    if let Some(values) = &mut frame.scalar_locals {
-                        let old = match &values[slot as usize] {
-                            Value::Number(value) => *value,
-                            value => value.to_number()?,
-                        };
-                        let new = if increment { old + 1.0 } else { old - 1.0 };
-                        values[slot as usize] = Value::Number(new);
-                        stack.push(Value::Number(if prefix { new } else { old }));
-                        continue;
+                    if SCALAR_LOCALS {
+                        if let Some(values) = &mut scalar_values {
+                            let old = match &values[slot as usize] {
+                                Value::Number(value) => *value,
+                                value => value.to_number()?,
+                            };
+                            let new = if increment { old + 1.0 } else { old - 1.0 };
+                            values[slot as usize] = Value::Number(new);
+                            stack.push(Value::Number(if prefix { new } else { old }));
+                            continue;
+                        }
                     }
+                    let frame = binding_frame(&scopes, scope);
                     let name = &frame.plan.bindings[slot as usize].name;
                     let hint = frame
                         .binding_hints
@@ -346,12 +350,14 @@ impl VirtualMachine {
                     )?;
                 }
                 Instruction::StoreBinding { scope, slot } => {
-                    let frame = binding_frame_mut(&mut scopes, scope);
                     let value = pop(&mut stack)?;
-                    if let Some(values) = &mut frame.scalar_locals {
-                        values[slot as usize] = value;
-                        continue;
+                    if SCALAR_LOCALS {
+                        if let Some(values) = &mut scalar_values {
+                            values[slot as usize] = value;
+                            continue;
+                        }
                     }
+                    let frame = binding_frame(&scopes, scope);
                     let name = &frame.plan.bindings[slot as usize].name;
                     match &frame.binding_hints {
                         Some(hints) => frame.environment.set_function_binding_at(
@@ -877,7 +883,6 @@ struct ScopeFrame<'a> {
     plan: &'a ScopeDescriptor,
     environment: Environment,
     binding_hints: Option<Box<[Option<usize>]>>,
-    scalar_locals: Option<Box<[Value]>>,
 }
 
 // Conservative whole-body proof: no captures, calls, property operations,
@@ -950,17 +955,6 @@ fn scalar_loop_locals(bytecode: &VerifiedBytecode) -> bool {
 fn binding_frame<'a, 'b>(scopes: &'a [ScopeFrame<'b>], entry: u32) -> &'a ScopeFrame<'b> {
     scopes
         .iter()
-        .rev()
-        .find(|frame| frame.entry == entry)
-        .expect("verified active binding scope")
-}
-
-fn binding_frame_mut<'a, 'b>(
-    scopes: &'a mut [ScopeFrame<'b>],
-    entry: u32,
-) -> &'a mut ScopeFrame<'b> {
-    scopes
-        .iter_mut()
         .rev()
         .find(|frame| frame.entry == entry)
         .expect("verified active binding scope")

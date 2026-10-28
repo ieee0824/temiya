@@ -593,10 +593,11 @@ The closure-allocation instruction profile also identifies repeated fresh
 function initialization. AST and bytecode functions now prepare their internal
 Function.prototype edge before allocation, using the same incoming-edge
 protection as object literals. Fresh bytecode functions initialize their known
-length/name data descriptors directly, preserving attributes and insertion
-order and reserving space for the lazy prototype entry. These fields contain
-only Number/String leaves; ordinary subsequent property updates still use the
-validated descriptor path. This does not alter the AST name-property behavior.
+length/name and lazy prototype data descriptors directly, preserving attributes
+and insertion order. The lazy prototype parent remains a validated strong edge;
+descriptor values are Number/String/undefined leaves. Ordinary subsequent
+property updates still use the validated descriptor path. This does not alter
+the AST name-property behavior.
 
 The private scalar-loop candidate keeps primitive local values in the active VM
 scope instead of repeatedly resolving their Function Environment bindings. It
@@ -612,6 +613,12 @@ arguments, coercion and lexical-binding cases keep the ordinary path. Tests use
 both public Engine backends, including duplicate/missing parameters, primitive
 updates, signed zero/NaN payloads, captured reads, object coercion, immutable
 bindings, and direct host inspection of a prepared frame after a loop.
+
+Eligibility selects a separate const-specialized VM instantiation before
+execution. The ordinary instantiation contains no scalar-cache checks in binding
+operations, and its scope frames contain no extra scalar-cache field. Eligible
+primitive locals belong to that private invocation until completion; the
+whole-body proof forbids function-scope reentry and any escaping managed value.
 
 Verified numeric-return calls resolve a captured Environment only when a guarded
 captured binding is actually read. Parameter-only calls need no Realm or

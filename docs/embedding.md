@@ -19,6 +19,12 @@ an explicit collection. Owned handles register roots, including handles kept
 after the Engine is dropped. Dropping a Realm handle alone does not promise
 immediate destruction while another owner keeps the heap alive.
 
+A panic from a retired Rust host capture becomes a host integration error during
+explicit collection, or an Engine exception when automatic collection unwinds
+Script evaluation. The collector releases its borrow before running destructors
+and resets its collection guard during unwind, allowing later evaluation and
+collection. Low-level infallible Rust allocation APIs retain Rust panic behavior.
+
 `engine.create_realm_with_host(HostHooks::new(|| 42.0))` injects the UTC
 millisecond clock used by that Realm's Date constructor and Date.now. The Realm
 uses the same engine heap and provenance checks as `create_realm`. This permits

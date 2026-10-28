@@ -386,7 +386,12 @@ impl Runtime {
             runtime: self.clone(),
         });
         *data.facade.borrow_mut() = Rc::downgrade(&facade);
-        Object(ObjectReference(facade))
+        let object = Object(ObjectReference(facade));
+        // A freshly produced value often passes through stored form before
+        // its first read. Reuse its existing registration in the same bounded
+        // activation region rather than immediately destroying and reviving it.
+        self.remember_active_object(&object);
+        object
     }
     pub(super) fn root_object(&self, handle: Handle<ManagedObject>) -> Option<Object> {
         let heap = self.0.heap.borrow();
@@ -437,7 +442,11 @@ impl Runtime {
         let (stats, retired) = self.0.heap.borrow_mut().collect_retiring();
         // Host Drop may reenter evaluation/allocation after slot retirement.
         // The Heap borrow is gone and old generations cannot be resurrected.
-        drop(retired);
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| drop(retired))).map_err(|_| {
+            super::RuntimeError::internal_error(
+                "host capture destructor panicked during collection",
+            )
+        })?;
         Ok(stats)
     }
     pub(super) fn record_object_edge<T: Trace, U: Trace>(
@@ -477,6 +486,22 @@ impl Runtime {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(not(miri))]
+    #[test]
+    fn fresh_values_reuse_their_first_registration_until_the_next_collection() {
+        let runtime = Runtime::new();
+        let _region = runtime.enter_object_root_region().unwrap();
+        let (_, before, _) = runtime.profile_snapshot();
+        let object = Object::new_in(&runtime);
+        let handle = object.0.handle().unwrap();
+        drop(object);
+        let revived = runtime.root_object(handle).unwrap();
+        let (_, after, _) = runtime.profile_snapshot();
+        assert_eq!(after[0] - before[0], 1);
+        drop(revived);
+        assert_eq!(runtime.collect_garbage().unwrap().retained, 0);
+        assert!(runtime.root_object(handle).is_none());
+    }
     #[cfg(not(miri))]
     #[test]
     fn container_and_polymorphic_receivers_reuse_warm_activation_roots() {

@@ -441,12 +441,13 @@ impl Engine {
                 "compiled script belongs to another engine",
             ));
         }
-        match match &script.bytecode {
+        let completion = catch_unwind(AssertUnwindSafe(|| match &script.bytecode {
             Some(bytecode) => VirtualMachine::execute_in_realm(bytecode, &script.script.realm()),
             None => script.script.evaluate(),
-        }
-        .map_err(|error| Exception::runtime(error, self.id, script.realm_id))?
-        {
+        }))
+        .map_err(|_| Exception::engine("Rust panic during Script evaluation"))?
+        .map_err(|error| Exception::runtime(error, self.id, script.realm_id))?;
+        match completion {
             Completion::Normal(value) => Ok(ValueHandle {
                 engine_id: self.id,
                 realm_id: script.realm_id,
@@ -2063,5 +2064,99 @@ mod runtime_workload_profile {
             .open(output)
             .unwrap();
         writeln!(file, "{}", serde_json::to_string_pretty(&report).unwrap()).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod injected_engine_host_tests {
+    use super::*;
+
+    #[test]
+    fn injected_clock_runs_without_a_wall_clock_and_keeps_date_handles_after_engine_drop() {
+        let engine = Engine::default();
+        let realm = engine.create_realm_with_host(crate::runtime::HostHooks::new(|| 42.0));
+        let check = engine
+            .compile(&realm, "Date.now()===42 && typeof Date()==='string';")
+            .unwrap();
+        assert_eq!(check.backend(), ScriptBackend::Bytecode);
+        assert!(
+            engine
+                .evaluate(&check)
+                .unwrap()
+                .value()
+                .same_value(&Value::Boolean(true))
+        );
+        let make = engine.compile(&realm, "new Date();").unwrap();
+        let date = engine.evaluate(&make).unwrap();
+        drop((check, make));
+        engine.collect_garbage().unwrap();
+        let Value::Object(object) = date.value() else {
+            panic!("Date object")
+        };
+        let Value::Object(value_of) = object.get(&"valueOf".into()).unwrap() else {
+            panic!("Date method")
+        };
+        drop((realm, engine));
+        assert!(
+            value_of
+                .call(Value::Object(object.clone()), &[])
+                .unwrap()
+                .same_value(&Value::Number(42.0))
+        );
+    }
+}
+
+#[cfg(test)]
+mod collection_panic_boundary_tests {
+    use super::*;
+    use std::cell::Cell;
+
+    struct PanickingCapture(Rc<Cell<usize>>);
+    impl Drop for PanickingCapture {
+        fn drop(&mut self) {
+            self.0.set(self.0.get() + 1);
+            panic!("host capture destructor panic");
+        }
+    }
+
+    #[test]
+    fn collector_host_drop_panics_return_errors_and_leave_engine_reusable() {
+        for automatic in [false, true] {
+            let engine = Engine::default();
+            let realm = engine.create_realm();
+            let drops = Rc::new(Cell::new(0));
+            let capture = PanickingCapture(drops.clone());
+            let object = Object::native_function_in(engine.allocation_context(), move |_, _| {
+                let _retain = &capture;
+                Ok(Value::Undefined)
+            });
+            object
+                .create_data_property("self".into(), Value::Object(object.clone()))
+                .unwrap();
+            drop(object);
+            if automatic {
+                let script = engine.compile(&realm, "({answer:42});").unwrap();
+                engine.runtime.set_allocation_collection_interval(0);
+                assert_eq!(
+                    engine.evaluate(&script).unwrap_err().kind(),
+                    ExceptionKind::Engine
+                );
+            } else {
+                let EmbedError::Host(error) = engine.collect_garbage().unwrap_err() else {
+                    panic!("host error")
+                };
+                assert_eq!(error.kind(), RuntimeErrorKind::InternalError);
+            }
+            assert_eq!(drops.get(), 1);
+            engine.collect_garbage().unwrap();
+            let script = engine.compile(&realm, "40+2;").unwrap();
+            assert!(
+                engine
+                    .evaluate(&script)
+                    .unwrap()
+                    .value()
+                    .same_value(&Value::Number(42.0))
+            );
+        }
     }
 }

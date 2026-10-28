@@ -57,6 +57,28 @@ correct benchmark values alone do not establish them. The full Miri gate is
 partitioned from Miri's actual test listing, executes each assigned test exactly,
 and requires every shard to pass; plan validation alone is not a Miri pass.
 
+### Separate allocation, root and pause observations
+
+`embedding::runtime_workload_profile::original_eleven_runtime_allocation_root_and_collection_profile`
+is an opt-in release test over the same pinned eleven inputs. Set
+`TEMIYA_PROFILE_WORKLOADS` to the extracted fixture directory and
+`TEMIYA_PROFILE_OUTPUT` to a new output path, then run
+`cargo test --locked --release --lib embedding::runtime_workload_profile::original_eleven_runtime_allocation_root_and_collection_profile -- --ignored --exact`.
+The test checks every result and records managed allocations, cumulative Root
+registration/removal calls, peak live cells, current/peak distinct roots,
+automatic collection count/time, explicit collection time, and the remaining
+evaluation wall time. All roots are then released and live cells must reach
+zero with balanced registration/removal counts.
+
+These counters and pause timers compile only under `cfg(all(test, not(miri)))`.
+They are absent from normal library builds, the competitive timing worker and
+Miri. The instrumented single-pass timing is diagnostic, not speed acceptance;
+its root counts refer to actual Heap Root registrations, not facade clones
+sharing an existing registration. Collection pause time includes cache clearing,
+sweep, retired host destruction and any destructor reentry. Peak counters include
+Realm/bootstrap setup. Allocation counts cover managed cells, not Rust backing
+allocations. Competitive measurements remain separate and uninstrumented.
+
 ## Evidence and acceptance probe
 
 The fixed omoikane closure-allocation workload creates 300,000 ordinary
@@ -502,6 +524,11 @@ Object facades. Nested runs in the same Runtime share it. This reuses facade
 allocations and root registrations for repeated reads of a stable receiver;
 it does not store owning roots in managed records. Runtime holds only a Weak
 reference to the region. Normal return, errors, and Rust unwind drop the region.
+
+Fresh Object facades enter this same bounded region immediately after allocation,
+so passing a new value through stored form does not destroy and immediately
+recreate its first root registration. The capacity includes room for a container
+and a small polymorphic receiver set. Neither rule changes the clearing protocol.
 
 Both explicit collection and allocation collection clear this region before
 tracing. Cached facades therefore cannot keep an otherwise dead key, cycle,

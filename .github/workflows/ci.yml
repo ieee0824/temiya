@@ -47,6 +47,8 @@ jobs:
         run: node scripts/check-regexp-workloads.mjs
       - name: Verify retained fresh RegExp evidence
         run: node benchmarks/regexp-cold-ascii/verify-integrity.mjs
+      - name: Verify original arithmetic Intel instruction evidence
+        run: node benchmarks/intel-arithmetic/verify.mjs
       - name: Run Clippy
         run: cargo +stable clippy --locked --all-targets --all-features -- -D warnings
 

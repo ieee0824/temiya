@@ -168,7 +168,7 @@ impl Closure {
             let this = if self.template.strict {
                 this
             } else if matches!(this, Value::Undefined | Value::Null) {
-                self.realm.global_environment().global_this_value()?
+                self.realm.global_this_value()?
             } else {
                 boxed_this(&self.realm, this)?
             };

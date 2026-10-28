@@ -286,7 +286,7 @@ fn construct_function(
 
 pub(super) fn ordinary_this(realm: &Realm, value: Value) -> RuntimeResult<Value> {
     match value {
-        Value::Undefined | Value::Null => realm.global_environment().global_this_value(),
+        Value::Undefined | Value::Null => realm.global_this_value(),
         Value::Object(_) => Ok(value),
         primitive => box_primitive(realm, primitive).map(Value::Object),
     }
@@ -400,6 +400,7 @@ mod primitive_this_tests {
     fn ast_and_vm_use_the_realms_custom_global_this_value() {
         for bytecode in [false, true] {
             let runtime = Runtime::new();
+            runtime.set_allocation_collection_interval(1);
             let global = Object::new_in(&runtime);
             let receiver = Object::new_in(&runtime);
             receiver
@@ -407,6 +408,7 @@ mod primitive_this_tests {
                 .unwrap();
             let realm = Realm::try_new(global.clone(), Value::Object(receiver.clone())).unwrap();
             drop(receiver);
+            runtime.collect_garbage().unwrap();
             let source = "function read(){return this.answer;}read();";
             let completion = if bytecode {
                 VirtualMachine::execute_in_realm(

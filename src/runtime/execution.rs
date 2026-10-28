@@ -3,7 +3,7 @@
 use super::{
     Runtime,
     environment::StoredEnvironment,
-    stored::{StoredObject, StoredOwner},
+    stored::{StoredObject, StoredOwner, StoredValue},
 };
 use crate::gc::{Handle, Root, Trace, Tracer};
 use std::fmt;
@@ -132,6 +132,9 @@ pub(super) struct RealmData {
     id: u64,
     global_object: StoredObject,
     global_environment: StoredEnvironment,
+    // The Global Environment's chosen this value is immutable. Keep the same
+    // traced value here so sloppy calls need not revive an Environment facade.
+    global_this_value: StoredValue,
     job_queue: super::job_queue::StoredJobQueue,
     intrinsics: OnceCell<super::intrinsics::StoredIntrinsicRegistry>,
     well_known_symbols: WellKnownSymbols,
@@ -142,6 +145,7 @@ impl Trace for RealmData {
     fn trace(&self, tracer: &mut Tracer<'_>) {
         self.global_object.trace(tracer);
         self.global_environment.trace(tracer);
+        self.global_this_value.trace(tracer);
         self.job_queue.trace(tracer);
         if let Some(intrinsics) = self.intrinsics.get() {
             intrinsics.trace(tracer);
@@ -209,8 +213,9 @@ impl Realm {
         }
         static NEXT_ID: AtomicU64 = AtomicU64::new(1);
         let well_known_symbols = WellKnownSymbols::initialize();
-        let global_environment = Environment::global(global_object.clone(), global_this_value);
         let runtime = global_object.0.runtime().cloned();
+        let stored_global_this = StoredValue::initial(runtime.as_ref(), &global_this_value)?;
+        let global_environment = Environment::global(global_object.clone(), global_this_value);
         let queue = runtime
             .as_ref()
             .map_or_else(JobQueue::new, JobQueue::new_in);
@@ -219,6 +224,7 @@ impl Realm {
             id: next_id(&NEXT_ID, "Realm"),
             global_object: StoredObject::initial(runtime.as_ref(), &global_object)?,
             global_environment: StoredEnvironment::initial(runtime.as_ref(), &global_environment)?,
+            global_this_value: stored_global_this,
             job_queue: super::job_queue::StoredJobQueue::initial(runtime.as_ref(), &queue)?,
             intrinsics: OnceCell::new(),
             well_known_symbols,
@@ -283,6 +289,10 @@ impl Realm {
             .global_environment
             .load(self)
             .expect("live Realm global environment")
+    }
+
+    pub(crate) fn global_this_value(&self) -> RuntimeResult<Value> {
+        self.0.global_this_value.load(self)
     }
 
     /// Returns the Realm's Promise Job Queue.

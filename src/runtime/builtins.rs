@@ -642,36 +642,23 @@ fn install_object(
         ("getOwnPropertySymbols", true),
     ] {
         let prototype = intrinsics.get(IntrinsicId::ArrayPrototype);
-        method(intrinsics, &constructor, name, 1, move |_, arguments| {
-            let source = property_source(value_arg(arguments.first()))?;
-            let keys: Vec<Value> = source
-                .try_own_property_keys()?
-                .into_iter()
-                .filter_map(|key| match key {
-                    PropertyKey::String(name) if !symbols => Some(Value::String(name)),
-                    PropertyKey::Symbol(symbol) if symbols => Some(Value::Symbol(symbol)),
-                    _ => None,
-                })
-                .collect();
-            let length = u32::try_from(keys.len())
-                .map_err(|_| RuntimeError::range_error("too many own property keys"))?;
-            let array = ArrayObject::new_for(&prototype, length)?.object();
-            array.initialize_prototype(Some(prototype.clone()));
-            for (index, key) in keys.into_iter().enumerate() {
-                array.create_data_property(JsString::from(index.to_string()).into(), key)?;
-            }
-            Ok(Value::Object(array))
-        })?;
+        let callback: super::object::CapturedObjectCallback = if symbols {
+            |prototype, _, _, arguments| own_keys_array(prototype, arguments, Some(true))
+        } else {
+            |prototype, _, _, arguments| own_keys_array(prototype, arguments, Some(false))
+        };
+        captured_method(intrinsics, &constructor, name, 1, &prototype, callback)?;
     }
-    method(
+    captured_method(
         intrinsics,
         &constructor,
         "create",
         2,
-        move |_, arguments| {
+        &object_prototype,
+        |context, _, _, arguments| {
             let prototype = nullable_object(arguments.first())?;
-            let object = Object::new();
-            object.set_prototype(prototype);
+            let object = Object::new_for(context);
+            object.initialize_prototype(prototype);
             match arguments.get(1) {
                 None | Some(Value::Undefined) => {}
                 Some(Value::Object(descriptors)) => define_properties(&object, descriptors)?,
@@ -697,18 +684,19 @@ fn install_object(
             Ok(Value::Object(object))
         },
     )?;
-    method(
+    captured_method(
         intrinsics,
         &constructor,
         "getOwnPropertyDescriptor",
         2,
-        |_, arguments| {
+        &intrinsics.get(IntrinsicId::ObjectPrototype),
+        |prototype, _, _, arguments| {
             let object = object_arg(arguments.first(), "Object.getOwnPropertyDescriptor target")?;
             let key = value_arg(arguments.get(1)).to_property_key()?;
             object
                 .try_get_own_property(&key)?
                 .map_or(Ok(Value::Undefined), |descriptor| {
-                    descriptor.to_object().map(Value::Object)
+                    descriptor.to_object_for(prototype).map(Value::Object)
                 })
         },
     )?;
@@ -829,18 +817,19 @@ fn install_reflect(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {
             .define_own_property(key, descriptor)
             .map(Value::Boolean)
     })?;
-    method(
+    captured_method(
         intrinsics,
         &reflect,
         "getOwnPropertyDescriptor",
         2,
-        |_, arguments| {
+        &intrinsics.get(IntrinsicId::ObjectPrototype),
+        |prototype, _, _, arguments| {
             let object = object_arg(arguments.first(), "Reflect.getOwnPropertyDescriptor target")?;
             let key = value_arg(arguments.get(1)).to_property_key()?;
             object
                 .try_get_own_property(&key)?
                 .map_or(Ok(Value::Undefined), |descriptor| {
-                    descriptor.to_object().map(Value::Object)
+                    descriptor.to_object_for(prototype).map(Value::Object)
                 })
         },
     )?;
@@ -875,18 +864,14 @@ fn install_reflect(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {
         let key = value_arg(arguments.get(1)).to_property_key()?;
         Ok(Value::Boolean(object.try_delete(&key)?))
     })?;
-    method(intrinsics, &reflect, "ownKeys", 1, |_, arguments| {
-        let object = object_arg(arguments.first(), "Reflect.ownKeys target")?;
-        let values = object
-            .try_own_property_keys()?
-            .into_iter()
-            .map(|key| match key {
-                PropertyKey::String(value) => Value::String(value),
-                PropertyKey::Symbol(value) => Value::Symbol(value),
-            })
-            .collect::<Vec<_>>();
-        array_value(values)
-    })?;
+    captured_method(
+        intrinsics,
+        &reflect,
+        "ownKeys",
+        1,
+        &intrinsics.get(IntrinsicId::ArrayPrototype),
+        |prototype, _, _, arguments| own_keys_array(prototype, arguments, None),
+    )?;
     method(intrinsics, &reflect, "getPrototypeOf", 1, |_, arguments| {
         let object = object_arg(arguments.first(), "Reflect.getPrototypeOf target")?;
         Ok(object.try_prototype()?.map_or(Value::Null, Value::Object))
@@ -911,6 +896,51 @@ fn install_reflect(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {
             Ok(Value::Boolean(object.try_prevent_extensions()?))
         },
     )
+}
+
+fn captured_method(
+    intrinsics: &IntrinsicRegistry,
+    holder: &Object,
+    name: &str,
+    length: u32,
+    capture: &Object,
+    callback: super::object::CapturedObjectCallback,
+) -> RuntimeResult<()> {
+    let function = Object::native_function_with_object_capture(
+        &intrinsics.get(IntrinsicId::FunctionPrototype),
+        name,
+        length,
+        capture,
+        None,
+        callback,
+    )?;
+    holder.define_own_property(
+        name.into(),
+        PropertyDescriptor::data(Value::Object(function), true, false, true),
+    )?;
+    Ok(())
+}
+
+fn own_keys_array(
+    prototype: &Object,
+    arguments: &[Value],
+    symbols: Option<bool>,
+) -> RuntimeResult<Value> {
+    let source = if symbols.is_some() {
+        property_source(value_arg(arguments.first()))?
+    } else {
+        object_arg(arguments.first(), "Reflect.ownKeys target")?
+    };
+    let values = source
+        .try_own_property_keys()?
+        .into_iter()
+        .filter_map(|key| match key {
+            PropertyKey::String(value) if symbols != Some(true) => Some(Value::String(value)),
+            PropertyKey::Symbol(value) if symbols != Some(false) => Some(Value::Symbol(value)),
+            _ => None,
+        })
+        .collect();
+    array_value_for(prototype, values)
 }
 
 fn method(
@@ -1038,19 +1068,6 @@ fn array_value_for(prototype: &Object, values: Vec<Value>) -> RuntimeResult<Valu
     for (index, value) in values.into_iter().enumerate() {
         array.create_data_property(JsString::from(index.to_string()).into(), value)?;
     }
-    Ok(Value::Object(array))
-}
-
-fn array_value(values: Vec<Value>) -> RuntimeResult<Value> {
-    let array = Object::new();
-    let length = values.len();
-    for (index, value) in values.into_iter().enumerate() {
-        array.create_data_property(JsString::from(index.to_string()).into(), value)?;
-    }
-    array.define_own_property(
-        "length".into(),
-        PropertyDescriptor::data(Value::Number(length as f64), true, false, false),
-    )?;
     Ok(Value::Object(array))
 }
 

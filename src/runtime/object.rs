@@ -181,7 +181,17 @@ impl PropertyDescriptor {
     /// Converts a descriptor record to the ordinary object form used by Reflect APIs.
     pub fn to_object(&self) -> RuntimeResult<Object> {
         self.validate()?;
-        let object = Object::new();
+        self.fill_object(Object::new())
+    }
+
+    pub(super) fn to_object_for(&self, prototype: &Object) -> RuntimeResult<Object> {
+        self.validate()?;
+        let object = Object::new_for(prototype);
+        object.initialize_prototype(Some(prototype.clone()));
+        self.fill_object(object)
+    }
+
+    fn fill_object(&self, object: Object) -> RuntimeResult<Object> {
         if let Some(value) = &self.value {
             object.create_data_property("value".into(), value.clone())?;
         }

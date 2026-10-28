@@ -979,6 +979,9 @@ mod managed_allocation_tests {
                 "var constructedArray=new Array({answer:42});constructedArray[0].answer;",
                 "Object.prototype.valueOf.call(42).valueOf();",
                 "Object(42).valueOf();",
+                "var keySource={answer:42};keySource[Symbol.iterator]=1;var names=Object.getOwnPropertyNames(keySource);var symbols=Object.getOwnPropertySymbols(keySource);var keys=Reflect.ownKeys(keySource);if(Array.isArray(names)&&Array.isArray(symbols)&&Array.isArray(keys)&&Object.getPrototypeOf(names)===Array.prototype&&names[0]==='answer'&&symbols[0]===Symbol.iterator&&keys.length===2){42;}else{0;}",
+                "var nullObject=Object.create(null);nullObject.answer=42;var derivedObject=Object.create(nullObject,{extra:{value:1}});if(Object.getPrototypeOf(nullObject)===null&&Object.getPrototypeOf(derivedObject)===nullObject&&derivedObject.extra===1){derivedObject.answer;}else{0;}",
+                "var descriptorSource={answer:{value:42}};var objectDescriptor=Object.getOwnPropertyDescriptor(descriptorSource,'answer');var reflectDescriptor=Reflect.getOwnPropertyDescriptor(descriptorSource,'answer');if(Object.getPrototypeOf(objectDescriptor)===Object.prototype&&Object.getPrototypeOf(reflectDescriptor)===Object.prototype&&objectDescriptor.value===reflectDescriptor.value){reflectDescriptor.value.value;}else{0;}",
                 "(new Object(42)).valueOf();",
                 "var originalObject={answer:42};if(Object(originalObject)===originalObject&&new Object(originalObject)===originalObject&&Object.getPrototypeOf(Object())===Object.prototype&&Object.getPrototypeOf(Object(null))===Object.prototype){42;}else{0;}",
                 "if(Object('abc').valueOf()==='abc'&&Object.getPrototypeOf(Object(true))===Boolean.prototype&&Object.getPrototypeOf(Object(Symbol.iterator))===Symbol.prototype&&Object(42n).valueOf()===42n){42;}else{0;}",
@@ -1064,6 +1067,55 @@ mod managed_allocation_tests {
                         .same_value(&Value::String("b".into()))
                 );
             }
+        }
+    }
+
+    #[test]
+    fn managed_object_statics_survive_proxy_and_descriptor_collection_reentry() {
+        for backend in [ScriptBackend::Ast, ScriptBackend::Bytecode] {
+            let mut engine = Engine::builder().script_backend(backend).build();
+            engine.managed_allocation = true;
+            let realm = engine.create_realm();
+            let runtime = engine.runtime.clone();
+            engine
+                .register_global_function(&realm, "forceCollection", move |context, _, _| {
+                    runtime.verify_migration_barriers().unwrap();
+                    runtime.collect_migration_graph().unwrap();
+                    Ok(context.value(Value::Undefined))
+                })
+                .unwrap();
+            let script = engine.compile(&realm, r#"
+                var staticsTarget={answer:42};
+                var staticsProxy=new Proxy(staticsTarget,{
+                    ownKeys:function(target){forceCollection();return ['answer'];},
+                    getOwnPropertyDescriptor:function(target,key){forceCollection();return {value:target[key],writable:true,enumerable:true,configurable:true};}
+                });
+                var staticsNames=Object.getOwnPropertyNames(staticsProxy);
+                var staticsKeys=Reflect.ownKeys(staticsProxy);
+                var staticsDescriptor=Object.getOwnPropertyDescriptor(staticsProxy,'answer');
+                var staticsFieldDescriptor={};
+                Object.defineProperty(staticsFieldDescriptor,'value',{
+                    get:function(){forceCollection();return 42;}
+                });
+                var staticsCreated=Object.create(null,{answer:staticsFieldDescriptor});
+                forceCollection();
+                if(staticsNames[0]==='answer'&&staticsKeys[0]==='answer'&&staticsDescriptor.value===42&&staticsCreated.answer===42){42;}else{0;}
+            "#).unwrap();
+            assert!(
+                engine
+                    .evaluate(&script)
+                    .unwrap()
+                    .value()
+                    .same_value(&Value::Number(42.0)),
+                "{backend:?}"
+            );
+            realm
+                .realm
+                .global_object()
+                .try_delete(&"forceCollection".into())
+                .unwrap();
+            engine.runtime.verify_migration_barriers().unwrap();
+            engine.runtime.collect_migration_graph().unwrap();
         }
     }
 

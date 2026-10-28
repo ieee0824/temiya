@@ -66,7 +66,7 @@ cold and macro statistics, fixed oracles, checked counts and decisions.
 A valid report with a false speed gate remains false. For a single cold report,
 run node benchmarks/regexp-cold-ascii/verify-cold-report.mjs PATH.
 
-The inventory covers 631 files, 62 cold reports and 77 macro reports. Macro
+The inventory covers 649 files, 65 cold reports and 77 macro reports. Macro
 coverage is 3834 workers, 61344 checked results and 1917 decisions. This is an
 archive verification, not a new timing experiment, binary rebuild, whole-app
 throughput claim, full-conformance claim or hard process-RSS bound. Compressed
@@ -128,3 +128,13 @@ All24 matched-Intel probes across40609718685/40610915908,
 40611651311/40611654149 and40613588449/40613591371 were unavailable.
 Their hardware files and workflow revisions are retained; no profile or
 replicated cold result is inferred from successful skipped jobs.
+
+Matched-Intel run40614644680 copy2 now provides all three predeclared cold
+reports. Both complete current-main/candidate/Boa series pass all3 Boa and
+all3 main comparisons; the identical-binary series has3 within-noise controls
+and3 Boa wins. In total27 workers/432 checked results/18 decisions pass; all9
+Boa comparisons are faster, ratios0.842679–0.899410. The earlier noisy Intel
+report remains unchanged. This additional controlled evidence resolves the
+cold uncertainty without changing source/input/counts/thresholds. Same-host
+original macros and actual arithmetic profiles continue; early profile/
+contains tools/hardware metadata only, not a completed arithmetic profile.

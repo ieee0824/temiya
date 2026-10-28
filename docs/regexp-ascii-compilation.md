@@ -144,3 +144,13 @@ not removed by the earlier successful cold cohorts. Matched-Intel replication
 and original arithmetic profiling keep the source/input/thresholds fixed.
 Initial four-probe profile and four-probe qualification requests found no
 matched hardware; those successful workflow jobs are not measurement passes.
+
+Controlled matched-Intel replication in run40614644680 copy2 completes the
+predeclared additional evidence: two full current-main/candidate/Boa series
+each pass all3 Boa comparisons and all3 main comparisons; the separate
+identical-binary series has3 within-noise controls and3 Boa wins. All27
+workers/432 checked results/18 decisions are valid, with9 Boa wins at ratios
+0.842679–0.899410. Source/input/counts/oracles/thresholds/guards are unchanged.
+The earlier noisy observation remains recorded rather than reclassified.
+The cold acceptance condition is now supported by the controlled replication;
+actual same-host arithmetic profiles remain a separate #510 requirement.

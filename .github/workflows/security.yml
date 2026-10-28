@@ -9,6 +9,7 @@ on:
       - include/**
       - src/ffi.rs
       - tests/c_abi.rs
+      - scripts/run-miri-shard.mjs
   schedule:
     - cron: '23 4 * * 1'
   workflow_dispatch:
@@ -37,10 +38,14 @@ jobs:
       - name: Reject vulnerable or unmaintained dependencies
         run: cargo +stable audit --deny warnings
 
-  miri:
-    name: Miri library tests
+  miri-shards:
+    name: Miri library tests (shard ${{ matrix.shard }})
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7]
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -53,7 +58,18 @@ jobs:
       - name: Check library tests under Miri
         env:
           MIRIFLAGS: -Zmiri-strict-provenance -Zmiri-symbolic-alignment-check
-        run: cargo +nightly-2026-10-20 miri test --lib
+        run: node scripts/run-miri-shard.mjs ${{ matrix.shard }} 8
+
+  miri:
+    name: Miri library tests
+    needs: miri-shards
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every Miri shard to pass
+        env:
+          MIRI_RESULT: ${{ needs.miri-shards.result }}
+        run: test "$MIRI_RESULT" = success
 
   address-sanitizer:
     name: AddressSanitizer integration tests

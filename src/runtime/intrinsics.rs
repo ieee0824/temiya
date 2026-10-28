@@ -218,11 +218,11 @@ impl IntrinsicRegistry {
         let mut objects: BTreeMap<IntrinsicId, Object> = BTreeMap::new();
         for id in IntrinsicId::ALL {
             let object = if id == IntrinsicId::FunctionPrototype {
-                Object::native_function(|_, _| Ok(Value::Undefined))
+                Object::native_function_for(global, |_, _| Ok(Value::Undefined))
             } else if id == IntrinsicId::ArrayPrototype {
-                super::ArrayObject::new(0)?.object()
+                super::ArrayObject::new_for(global, 0)?.object()
             } else if id == IntrinsicId::StringPrototype {
-                super::StringObject::new(super::JsString::default()).object()
+                super::StringObject::new_for(global, super::JsString::default()).object()
             } else if id == IntrinsicId::Object {
                 let prototypes = [
                     IntrinsicId::ObjectPrototype,
@@ -239,7 +239,8 @@ impl IntrinsicRegistry {
                         .clone()
                 });
                 let construct_prototypes = prototypes.clone();
-                Object::native_callable_constructor(
+                Object::native_callable_constructor_for(
+                    global,
                     move |_, arguments| {
                         object_from_value(
                             arguments.first().unwrap_or(&Value::Undefined),
@@ -258,18 +259,21 @@ impl IntrinsicRegistry {
                 let prototype = objects.get(&prototype_id).cloned().ok_or_else(|| {
                     RuntimeError::internal_error("intrinsic prototype was not allocated")
                 })?;
-                Object::native_callable_constructor(
+                Object::native_callable_constructor_for(
+                    global,
                     |_, _| Ok(Value::Undefined),
                     move |_, _| {
-                        let instance = Object::new();
+                        let instance = Object::new_for(&prototype);
                         instance.set_prototype(Some(prototype.clone()));
                         Ok(instance)
                     },
                 )
             } else if id == IntrinsicId::Proxy {
-                Object::native_constructor(|_, _| Ok(Object::new()))
+                Object::native_constructor_for(global, |_, new_target| {
+                    Ok(Object::new_for(&new_target))
+                })
             } else {
-                Object::new()
+                Object::new_for(global)
             };
             objects.insert(id, object);
         }

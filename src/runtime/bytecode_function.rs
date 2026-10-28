@@ -48,39 +48,43 @@ pub(crate) fn create(
             .map_err(|error| call_closure.realm.bind_exception(error))
     };
     let function = if closure.template.arrow {
-        Object::native_function(callback)
+        Object::native_function_for(&realm.global_object(), callback)
     } else {
         let construct_closure = closure.clone();
         let construct_slot = slot.clone();
-        Object::native_callable_constructor(callback, move |args, new_target| {
-            let function = construct_slot
-                .borrow()
-                .as_ref()
-                .and_then(WeakObject::upgrade)
-                .ok_or_else(|| {
-                    RuntimeError::internal_error("bytecode constructor not initialized")
-                })?;
-            let instance = Object::new();
-            let prototype = match new_target.get(&"prototype".into())? {
-                Value::Object(prototype) => prototype,
-                _ => construct_closure
-                    .realm
-                    .intrinsic(IntrinsicId::ObjectPrototype),
-            };
-            instance.initialize_prototype(Some(prototype));
-            let value = construct_closure
-                .call(
-                    function,
-                    Value::Object(instance.clone()),
-                    args,
-                    Some(new_target),
-                )
-                .map_err(|error| construct_closure.realm.bind_exception(error))?;
-            Ok(match value {
-                Value::Object(object) => object,
-                _ => instance,
-            })
-        })
+        Object::native_callable_constructor_for(
+            &realm.global_object(),
+            callback,
+            move |args, new_target| {
+                let function = construct_slot
+                    .borrow()
+                    .as_ref()
+                    .and_then(WeakObject::upgrade)
+                    .ok_or_else(|| {
+                        RuntimeError::internal_error("bytecode constructor not initialized")
+                    })?;
+                let instance = Object::new_for(&new_target);
+                let prototype = match new_target.get(&"prototype".into())? {
+                    Value::Object(prototype) => prototype,
+                    _ => construct_closure
+                        .realm
+                        .intrinsic(IntrinsicId::ObjectPrototype),
+                };
+                instance.initialize_prototype(Some(prototype));
+                let value = construct_closure
+                    .call(
+                        function,
+                        Value::Object(instance.clone()),
+                        args,
+                        Some(new_target),
+                    )
+                    .map_err(|error| construct_closure.realm.bind_exception(error))?;
+                Ok(match value {
+                    Value::Object(object) => object,
+                    _ => instance,
+                })
+            },
+        )
     };
     *slot.borrow_mut() = Some(function.downgrade());
     function.initialize_prototype(Some(realm.intrinsic(IntrinsicId::FunctionPrototype)));
@@ -160,7 +164,7 @@ impl Closure {
             };
             frame.bind_this_value(this)?;
             if self.template.arguments_object {
-                super::function::bind_arguments(&frame, arguments)?;
+                super::function::bind_arguments(&self.realm, &frame, arguments)?;
             }
         }
         if self.template.arguments_object {
@@ -189,15 +193,15 @@ fn boxed_this(realm: &Realm, value: Value) -> RuntimeResult<Value> {
     let (object, prototype) = match value {
         Value::Object(_) => return Ok(value),
         Value::String(value) => (
-            super::StringObject::new(value).object(),
+            super::StringObject::new_for(&realm.global_object(), value).object(),
             IntrinsicId::StringPrototype,
         ),
         Value::Number(value) => (
-            super::NumberObject::new(value).object(),
+            super::NumberObject::new_for(&realm.global_object(), value).object(),
             IntrinsicId::NumberPrototype,
         ),
         Value::BigInt(value) => (
-            super::BigIntObject::new(value).object(),
+            super::BigIntObject::new_for(&realm.global_object(), value).object(),
             IntrinsicId::BigIntPrototype,
         ),
         value @ Value::Boolean(_) | value @ Value::Symbol(_) => {
@@ -206,7 +210,7 @@ fn boxed_this(realm: &Realm, value: Value) -> RuntimeResult<Value> {
             } else {
                 IntrinsicId::SymbolPrototype
             };
-            let object = Object::new();
+            let object = Object::new_for(&realm.global_object());
             object.0.state.borrow_mut().primitive_data = Some(value);
             (object, prototype)
         }

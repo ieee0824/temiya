@@ -99,6 +99,10 @@ pub struct Engine {
     options: EngineOptions,
     host_state: Option<Box<dyn Any>>,
     backend: ScriptBackend,
+    runtime: crate::runtime::Runtime,
+    // Transitional allocation selection. Removed when all traced payload and
+    // active-root families are migrated; not an alternate execution backend.
+    managed_allocation: bool,
     thread_confined: PhantomData<Rc<()>>,
 }
 
@@ -126,6 +130,8 @@ impl Engine {
             options,
             host_state,
             backend,
+            runtime: crate::runtime::Runtime::new(),
+            managed_allocation: false,
             thread_confined: PhantomData,
         }
     }
@@ -145,7 +151,11 @@ impl Engine {
     /// Creates a fresh Realm owned by this engine.
     #[must_use]
     pub fn create_realm(&self) -> RealmHandle {
-        let realm = Realm::ordinary();
+        let realm = if self.managed_allocation {
+            Realm::ordinary_in(&self.runtime)
+        } else {
+            Realm::ordinary()
+        };
         RealmHandle {
             engine_id: self.id,
             realm_id: realm.identity(),
@@ -156,6 +166,13 @@ impl Engine {
     /// Roots a runtime value in an owned handle for a Realm.
     pub fn value(&self, realm: &RealmHandle, value: Value) -> Result<ValueHandle, EmbedError> {
         self.require_realm(realm)?;
+        if let Value::Object(object) = &value {
+            realm
+                .realm
+                .global_object()
+                .check_allocation_context(object)
+                .map_err(EmbedError::Host)?;
+        }
         Ok(ValueHandle::new(self.id, realm.realm_id, value))
     }
 
@@ -220,7 +237,7 @@ impl Engine {
         K: Into<JsString>,
     {
         self.require_realm(realm)?;
-        let object = Object::new();
+        let object = Object::new_for(&realm.realm.global_object());
         for (name, value) in properties {
             self.require_value(realm, &value)?;
             object
@@ -447,6 +464,13 @@ impl Engine {
 
     fn require_value(&self, realm: &RealmHandle, value: &ValueHandle) -> Result<(), EmbedError> {
         if value.engine_id == self.id && value.realm_id == realm.realm_id {
+            if let Value::Object(object) = &value.value {
+                realm
+                    .realm
+                    .global_object()
+                    .check_allocation_context(object)
+                    .map_err(EmbedError::Host)?;
+            }
             Ok(())
         } else {
             Err(EmbedError::EngineMismatch)
@@ -707,3 +731,328 @@ impl fmt::Display for Exception {
 }
 
 impl std::error::Error for Exception {}
+
+#[cfg(test)]
+mod managed_allocation_tests {
+    use super::*;
+    #[test]
+    fn public_engine_evaluation_uses_the_owned_heap_in_the_migration_context() {
+        let engine = Engine {
+            managed_allocation: true,
+            ..Engine::default()
+        };
+        let realm = engine.create_realm();
+        let baseline = engine.runtime.diagnostics().live;
+        assert!(
+            baseline > 0,
+            "managed Realm intrinsics must be allocated in its Runtime"
+        );
+        let script = engine
+            .compile(&realm, "var value={answer:42};value.self=value;value;")
+            .unwrap();
+        let value = engine.evaluate(&script).unwrap();
+        assert!(engine.runtime.diagnostics().live > baseline);
+        let Value::Object(object) = value.value() else {
+            panic!("object result")
+        };
+        assert!(
+            object
+                .get(&"answer".into())
+                .unwrap()
+                .same_value(&Value::Number(42.0))
+        );
+        assert!(
+            object
+                .get(&"self".into())
+                .unwrap()
+                .same_value(value.value())
+        );
+    }
+    #[test]
+    fn managed_host_boundaries_reject_foreign_objects_without_repeating_effects() {
+        use std::cell::Cell;
+        let first = Engine {
+            managed_allocation: true,
+            ..Engine::default()
+        };
+        let second = Engine {
+            managed_allocation: true,
+            ..Engine::default()
+        };
+        let realm = first.create_realm();
+        let other_realm = second.create_realm();
+        let foreign = second
+            .create_object(&other_realm, std::iter::empty::<(&str, ValueHandle)>())
+            .unwrap();
+        assert!(first.value(&realm, foreign.value().clone()).is_err());
+        let calls = Rc::new(Cell::new(0));
+        let called = calls.clone();
+        let raw = foreign.value().clone();
+        first
+            .register_global_function(&realm, "bad", move |context, _, _| {
+                called.set(called.get() + 1);
+                Ok(context.value(raw.clone()))
+            })
+            .unwrap();
+        let callback = realm.realm.global_object().get(&"bad".into()).unwrap();
+        let Value::Object(callback) = callback else {
+            panic!("callable")
+        };
+        assert!(
+            callback
+                .call(Value::Undefined, &[foreign.value().clone()])
+                .is_err()
+        );
+        assert_eq!(
+            calls.get(),
+            0,
+            "foreign arguments must be rejected before the callback"
+        );
+        let script = first.compile(&realm, "bad();").unwrap();
+        assert_eq!(
+            first.evaluate(&script).unwrap_err().kind(),
+            ExceptionKind::TypeError
+        );
+        assert_eq!(
+            calls.get(),
+            1,
+            "a failing native result must not cause a retry"
+        );
+        let caught = first
+            .compile(&realm, "try {bad();} catch(error){error.name;}")
+            .unwrap();
+        assert!(
+            first
+                .evaluate(&caught)
+                .unwrap()
+                .value()
+                .same_value(&Value::String("TypeError".into()))
+        );
+        assert_eq!(calls.get(), 2);
+    }
+
+    #[test]
+    fn retiring_a_native_capture_releases_the_heap_borrow_before_host_drop_reentry() {
+        use std::cell::Cell;
+        struct Reenter {
+            engine: Rc<Engine>,
+            realm: RealmHandle,
+            observed: Rc<Cell<bool>>,
+        }
+        impl Reenter {
+            fn keep_alive(&self) {}
+        }
+        impl Drop for Reenter {
+            fn drop(&mut self) {
+                assert!(
+                    self.engine.runtime.collect_migration_graph().is_err(),
+                    "retirement must reject recursive collection without holding the Heap borrow"
+                );
+                let script = self
+                    .engine
+                    .compile(&self.realm, "({answer:42}).answer;")
+                    .unwrap();
+                assert!(
+                    self.engine
+                        .evaluate(&script)
+                        .unwrap()
+                        .value()
+                        .same_value(&Value::Number(42.0))
+                );
+                self.observed.set(true);
+            }
+        }
+        let base = Engine {
+            managed_allocation: true,
+            ..Engine::default()
+        };
+        let engine = Rc::new(base);
+        let realm = engine.create_realm();
+        let observed = Rc::new(Cell::new(false));
+        let state = Reenter {
+            engine: engine.clone(),
+            realm: realm.clone(),
+            observed: observed.clone(),
+        };
+        engine
+            .register_global_function(&realm, "retire", move |context, _, _| {
+                state.keep_alive();
+                Ok(context.value(Value::Undefined))
+            })
+            .unwrap();
+        let Value::Object(function) = realm.realm.global_object().get(&"retire".into()).unwrap()
+        else {
+            panic!("function")
+        };
+        let weak = function.downgrade();
+        drop(function);
+        let clear = engine.compile(&realm, "delete retire;").unwrap();
+        engine.evaluate(&clear).unwrap();
+        drop(clear);
+        engine.runtime.collect_migration_graph().unwrap();
+        assert!(
+            observed.get(),
+            "host Drop must run after retirement without a Heap borrow"
+        );
+        assert!(
+            weak.upgrade().is_none(),
+            "a reused slot must not resurrect its old function handle"
+        );
+    }
+
+    #[test]
+    fn a_partial_array_literal_keeps_its_first_object_alive_during_host_reentry_and_collection() {
+        for backend in [ScriptBackend::Ast, ScriptBackend::Bytecode] {
+            let mut base = Engine::builder().script_backend(backend).build();
+            base.managed_allocation = true;
+            let engine = Rc::new(base);
+            let realm = engine.create_realm();
+            let token = Rc::new(());
+            let weak = Rc::downgrade(&token);
+            engine
+                .register_global_function(&realm, "marker", move |context, _, _| {
+                    let _ = Rc::strong_count(&token);
+                    Ok(context.value(Value::Number(42.0)))
+                })
+                .unwrap();
+            let reentrant = engine.clone();
+            let callback_realm = realm.clone();
+            engine
+                .register_global_function(&realm, "trigger", move |context, _, _| {
+                    let nested = reentrant
+                        .compile(&callback_realm, "delete marker;40+2;")
+                        .unwrap();
+                    assert!(
+                        reentrant
+                            .evaluate(&nested)
+                            .unwrap()
+                            .value()
+                            .same_value(&Value::Number(42.0))
+                    );
+                    drop(nested);
+                    reentrant.runtime.collect_migration_graph().unwrap();
+                    Ok(context.value(Value::Number(0.0)))
+                })
+                .unwrap();
+            let script = engine
+                .compile(&realm, "var result=[{probe:marker},trigger()][0];result;")
+                .unwrap();
+            assert_eq!(script.backend(), backend);
+            let value = engine.evaluate(&script).unwrap();
+            drop(script);
+            let Value::Object(object) = value.value() else {
+                panic!("object")
+            };
+            let Value::Object(callback) = object.get(&"probe".into()).unwrap() else {
+                panic!("marker retained by partial literal")
+            };
+            assert!(
+                callback
+                    .call(Value::Undefined, &[])
+                    .unwrap()
+                    .same_value(&Value::Number(42.0))
+            );
+            drop(callback);
+            assert!(weak.upgrade().is_some());
+            let clear = engine
+                .compile(&realm, "result=undefined;delete trigger;")
+                .unwrap();
+            engine.evaluate(&clear).unwrap();
+            drop(clear);
+            drop(value);
+            engine.runtime.collect_migration_graph().unwrap();
+            assert!(
+                weak.upgrade().is_none(),
+                "partial-literal roots must end with evaluation/returned-handle lifetime"
+            );
+        }
+    }
+
+    #[test]
+    fn migrated_function_allocations_execute_through_the_public_ast_and_vm_apis() {
+        for backend in [ScriptBackend::Ast, ScriptBackend::Bytecode] {
+            let mut engine = Engine::builder().script_backend(backend).build();
+            engine.managed_allocation = true;
+            let realm = engine.create_realm();
+            for source in [
+                "function sum(a,b){return a+b;}sum(20,22);",
+                "var constructedArray=new Array({answer:42});constructedArray[0].answer;",
+                "var calledArray=Array({answer:42});calledArray[0].answer;",
+                "var names=Object.getOwnPropertyNames({answer:42});if(names[0]==='answer'){42;}else{0;}",
+                "var twice=(x)=>x*2;twice(21);",
+                "function Box(x){this.value=x;}var box=new Box(42);box.value;",
+                "function outer(x){return function(y){return x+y;};}var add=outer(20);add(22);",
+                "function boundSum(a,b){return this.base+a+b;}var sumBound=boundSum.bind({base:10},20);sumBound(12);",
+                "function BoundBox(x){this.value=x;}var Bound=BoundBox.bind(null,42);var boundBox=new Bound();if(boundBox instanceof Bound && boundBox instanceof BoundBox){boundBox.value;}else{0;}",
+            ] {
+                let script = engine.compile(&realm, source).unwrap();
+                assert_eq!(script.backend(), backend);
+                assert!(
+                    engine
+                        .evaluate(&script)
+                        .unwrap()
+                        .value()
+                        .same_value(&Value::Number(42.0)),
+                    "{backend:?} {source}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn public_handle_clones_preserve_a_js_cycle_then_allow_reclamation_at_a_test_safepoint() {
+        for backend in [ScriptBackend::Ast, ScriptBackend::Bytecode] {
+            for source in [
+                "var value={probe:marker};value.self=value;delete marker;value;",
+                "var value={probe:marker};value.other={owner:value};delete marker;value;",
+                "var value=[marker];value.probe=marker;value[1]=value;delete marker;value;",
+                "var value=[marker,,null];value.probe=marker;value[3]=value;delete marker;value;",
+                "var value=[];value.probe=marker;value[1000000]=value;delete marker;value;",
+            ] {
+                let mut engine = Engine::builder().script_backend(backend).build();
+                engine.managed_allocation = true;
+                let realm = engine.create_realm();
+                let token = Rc::new(());
+                let weak = Rc::downgrade(&token);
+                engine
+                    .register_global_function(&realm, "marker", move |context, _, _| {
+                        let _ = Rc::strong_count(&token);
+                        Ok(context.value(Value::Number(42.0)))
+                    })
+                    .unwrap();
+                let script = engine.compile(&realm, source).unwrap();
+                assert_eq!(script.backend(), backend);
+                let value = engine.evaluate(&script).unwrap();
+                let cloned = value.clone();
+                drop(script);
+                let clear = engine.compile(&realm, "value=undefined;").unwrap();
+                engine.evaluate(&clear).unwrap();
+                drop(clear);
+                engine.runtime.collect_migration_graph().unwrap();
+                assert!(weak.upgrade().is_some(), "{backend:?} {source}");
+                drop(value);
+                engine.runtime.collect_migration_graph().unwrap();
+                assert!(weak.upgrade().is_some());
+                let Value::Object(object) = cloned.value() else {
+                    panic!("object result")
+                };
+                let Value::Object(callback) = object.get(&"probe".into()).unwrap() else {
+                    panic!("callback")
+                };
+                assert!(
+                    callback
+                        .call(Value::Undefined, &[])
+                        .unwrap()
+                        .same_value(&Value::Number(42.0))
+                );
+                drop(callback);
+                drop(cloned);
+                engine.runtime.collect_migration_graph().unwrap();
+                assert!(
+                    weak.upgrade().is_none(),
+                    "unrooted JS graph should release its marker: {backend:?} {source}"
+                );
+            }
+        }
+    }
+}

@@ -250,7 +250,7 @@ fn has_instance(
         }
         let bound = constructor.0.state.borrow().bound_target.clone();
         if let Some(target) = bound {
-            constructor = target;
+            constructor = target.load(&constructor)?;
             ordinary = false;
             continue;
         }

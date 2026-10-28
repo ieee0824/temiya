@@ -528,6 +528,12 @@ impl StringObject {
         Self(object)
     }
 
+    pub(crate) fn new_for(context: &Object, value: JsString) -> Self {
+        let object = Object::new_for(context);
+        object.0.state.borrow_mut().string_data = Some(value);
+        Self(object)
+    }
+
     /// Returns the underlying object.
     #[must_use]
     pub fn object(&self) -> Object {

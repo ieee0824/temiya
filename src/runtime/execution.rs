@@ -41,7 +41,7 @@ impl Realm {
             RuntimeErrorKind::RangeError => IntrinsicId::RangeErrorPrototype,
             RuntimeErrorKind::InternalError => return Err(error.clone()),
         };
-        let object = Object::new();
+        let object = Object::new_for(&self.global_object());
         object.set_prototype(Some(self.intrinsic(prototype)));
         object.define_own_property(
             "message".into(),
@@ -100,6 +100,11 @@ impl Realm {
     #[must_use]
     pub fn ordinary() -> Self {
         let global_object = Object::new();
+        Self::new(global_object.clone(), Value::Object(global_object))
+    }
+
+    pub(crate) fn ordinary_in(runtime: &super::Runtime) -> Self {
+        let global_object = Object::new_in(runtime);
         Self::new(global_object.clone(), Value::Object(global_object))
     }
 

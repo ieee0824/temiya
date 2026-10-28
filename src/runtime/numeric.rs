@@ -17,6 +17,12 @@ impl NumberObject {
         Self(object)
     }
 
+    pub(crate) fn new_for(context: &Object, value: f64) -> Self {
+        let object = Object::new_for(context);
+        object.0.state.borrow_mut().primitive_data = Some(Value::Number(value));
+        Self(object)
+    }
+
     /// Returns the underlying JavaScript object.
     #[must_use]
     pub fn object(&self) -> Object {
@@ -42,6 +48,12 @@ impl BigIntObject {
     #[must_use]
     pub fn new(value: BigInt) -> Self {
         let object = Object::new();
+        object.0.state.borrow_mut().primitive_data = Some(Value::BigInt(value));
+        Self(object)
+    }
+
+    pub(crate) fn new_for(context: &Object, value: BigInt) -> Self {
+        let object = Object::new_for(context);
         object.0.state.borrow_mut().primitive_data = Some(Value::BigInt(value));
         Self(object)
     }

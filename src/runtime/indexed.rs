@@ -20,7 +20,14 @@ pub struct ArrayObject(Object);
 impl ArrayObject {
     /// Creates an empty Array with the requested length; indices initially remain holes.
     pub fn new(length: u32) -> RuntimeResult<Self> {
-        let object = Object::new();
+        Self::initialize(Object::new(), length)
+    }
+
+    pub(crate) fn new_for(context: &Object, length: u32) -> RuntimeResult<Self> {
+        Self::initialize(Object::new_for(context), length)
+    }
+
+    fn initialize(object: Object, length: u32) -> RuntimeResult<Self> {
         object.0.state.borrow_mut().array = true;
         object.0.state.borrow_mut().elements = Some(Box::default());
         object.define_own_property(
@@ -78,7 +85,7 @@ impl ArrayObject {
             Self::from_object(object)
                 .ok_or_else(|| RuntimeError::type_error("array species did not create an Array"))?
         } else {
-            Self::new(length)?
+            Self::new_for(&self.0, length)?
         };
         for offset in 0..length {
             let source = JsString::from((start + offset).to_string()).into();

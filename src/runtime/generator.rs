@@ -169,7 +169,7 @@ pub(super) fn create_generator_object(
     );
     if !lexical {
         environment.bind_this_value(this_value.clone())?;
-        bind_arguments(&environment, arguments)?;
+        bind_arguments(&closure.realm, &environment, arguments)?;
     }
     let evaluator = ExpressionEvaluator::with_environment(
         closure.realm.clone(),

@@ -171,7 +171,7 @@ fn symbol_method(
     name: &str,
     callback: impl Fn(Value, &[Value]) -> RuntimeResult<Value> + 'static,
 ) -> RuntimeResult<()> {
-    let function = Object::native_function(callback);
+    let function = Object::native_function_for(prototype, callback);
     function.set_prototype(Some(prototype.clone()));
     function.define_own_property(
         "name".into(),

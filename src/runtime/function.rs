@@ -93,19 +93,23 @@ pub(super) fn create_function(
     let function = if constructable {
         let construct_closure = closure.clone();
         let construct_slot = slot.clone();
-        Object::native_callable_constructor(call, move |arguments, new_target| {
-            let function = construct_slot
-                .borrow()
-                .as_ref()
-                .and_then(super::WeakObject::upgrade)
-                .ok_or_else(|| {
-                    RuntimeError::internal_error("function object is not initialized")
-                })?;
-            construct_function(&construct_closure, function, arguments, new_target)
-                .map_err(|error| construct_closure.realm.bind_exception(error))
-        })
+        Object::native_callable_constructor_for(
+            &evaluator.realm.global_object(),
+            call,
+            move |arguments, new_target| {
+                let function = construct_slot
+                    .borrow()
+                    .as_ref()
+                    .and_then(super::WeakObject::upgrade)
+                    .ok_or_else(|| {
+                        RuntimeError::internal_error("function object is not initialized")
+                    })?;
+                construct_function(&construct_closure, function, arguments, new_target)
+                    .map_err(|error| construct_closure.realm.bind_exception(error))
+            },
+        )
     } else {
-        Object::native_function(call)
+        Object::native_function_for(&evaluator.realm.global_object(), call)
     };
     *slot.borrow_mut() = Some(function.downgrade());
     function.initialize_prototype(Some(
@@ -179,7 +183,7 @@ fn call_function(
         environment.bind_this_value(this_value.clone())?;
     }
     if !lexical {
-        bind_arguments(&environment, arguments)?;
+        bind_arguments(&closure.realm, &environment, arguments)?;
     }
     let evaluator = ExpressionEvaluator::with_environment(
         closure.realm.clone(),
@@ -227,7 +231,7 @@ fn construct_function(
         Value::Object(prototype) => Some(prototype),
         _ => Some(closure.realm.intrinsic(super::IntrinsicId::ObjectPrototype)),
     };
-    let instance = Object::new();
+    let instance = Object::new_for(&new_target);
     if let Some(prototype) = prototype {
         instance.initialize_prototype(Some(prototype));
     }
@@ -249,15 +253,19 @@ pub(super) fn ordinary_this(realm: &Realm, value: Value) -> RuntimeResult<Value>
         Value::Undefined | Value::Null => Ok(Value::Object(realm.global_object())),
         Value::Object(_) => Ok(value),
         primitive => {
-            let object = Object::new();
+            let object = Object::new_for(&realm.global_object());
             object.create_data_property("[[PrimitiveValue]]".into(), primitive)?;
             Ok(Value::Object(object))
         }
     }
 }
 
-pub(super) fn bind_arguments(environment: &Environment, arguments: &[Value]) -> RuntimeResult<()> {
-    let object = Object::new();
+pub(super) fn bind_arguments(
+    realm: &Realm,
+    environment: &Environment,
+    arguments: &[Value],
+) -> RuntimeResult<()> {
+    let object = Object::new_for(&realm.global_object());
     for (index, value) in arguments.iter().enumerate() {
         object.create_data_property(
             PropertyKey::String(JsString::from(index.to_string())),
@@ -280,7 +288,7 @@ pub(super) fn bind_parameters(
     for parameter in parameters {
         match &parameter.kind {
             ExprKind::Spread(binding) => {
-                let rest = Object::new();
+                let rest = Object::new_for(&evaluator.realm.global_object());
                 for (rest_index, value) in arguments[index..].iter().enumerate() {
                     rest.create_data_property(
                         PropertyKey::String(JsString::from(rest_index.to_string())),

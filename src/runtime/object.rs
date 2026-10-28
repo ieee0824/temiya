@@ -4,6 +4,7 @@ use std::cell::Cell;
 use std::hash::{Hash, Hasher};
 use std::rc::Rc;
 
+use super::stored::{StoredDescriptor, StoredObject, StoredValue};
 use super::{JsString, Object, RuntimeError, RuntimeResult, Symbol, Value};
 
 // Native callbacks and the current AST function implementation recurse through
@@ -293,25 +294,25 @@ type NativeConstruct = Rc<dyn Fn(&[Value], Object) -> RuntimeResult<Object>>;
 #[derive(Clone)]
 struct PropertyEntry {
     key: PropertyKey,
-    descriptor: PropertyDescriptor,
+    descriptor: StoredDescriptor,
 }
 
 #[derive(Default)]
 pub(super) struct ObjectState {
-    prototype: Option<Object>,
+    prototype: Option<StoredObject>,
     extensible: bool,
     properties: Vec<PropertyEntry>,
     // A position hint only. Bounds and the complete key are checked on every
     // read, so deleting/reordering properties never returns a stale descriptor.
     last_property: Cell<usize>,
     callable: Option<NativeCall>,
-    pub(super) bound_target: Option<Object>,
+    pub(super) bound_target: Option<StoredObject>,
     construct: Option<NativeConstruct>,
     // The own data property already exists. Only its initial object value is
     // deferred until an operation observes or redefines that descriptor.
-    lazy_function_prototype: Option<Object>,
+    lazy_function_prototype: Option<StoredObject>,
     pub(super) array: bool,
-    pub(super) elements: Option<Box<super::elements::Elements>>,
+    pub(super) elements: Option<Box<super::elements::Elements<StoredDescriptor>>>,
     pub(super) buffer: Option<super::indexed::BufferSlot>,
     pub(super) view: Option<super::indexed::ViewSlot>,
     pub(super) string_data: Option<JsString>,
@@ -345,9 +346,7 @@ impl Object {
             return None;
         }
         let descriptor = state.elements.as_ref()?.get(index)?;
-        descriptor
-            .is_data_descriptor()
-            .then(|| descriptor.value.clone().unwrap_or(Value::Undefined))
+        descriptor.value()?.load(self).ok()
     }
 
     // A hint identifies a position, never a cached Value or assumed shape.
@@ -382,12 +381,12 @@ impl Object {
                     .enumerate()
                     .find(|(_, entry)| entry.key == *key)
             })?;
-        entry.descriptor.is_data_descriptor().then(|| {
-            (
-                entry.descriptor.value.clone().unwrap_or(Value::Undefined),
-                index,
-            )
-        })
+        entry
+            .descriptor
+            .value()?
+            .load(self)
+            .ok()
+            .map(|value| (value, index))
     }
 
     pub(super) fn install_lazy_function_prototype(
@@ -398,7 +397,8 @@ impl Object {
             "prototype".into(),
             PropertyDescriptor::data(Value::Undefined, true, false, false),
         )?;
-        self.0.state.borrow_mut().lazy_function_prototype = Some(object_prototype);
+        self.0.state.borrow_mut().lazy_function_prototype =
+            Some(StoredObject::store(self, &object_prototype)?);
         Ok(())
     }
 
@@ -410,7 +410,8 @@ impl Object {
         let Some(parent) = self.0.state.borrow_mut().lazy_function_prototype.take() else {
             return Ok(());
         };
-        let prototype = Object::new();
+        let parent = parent.load(self)?;
+        let prototype = self.0.runtime().map_or_else(Object::new, Object::new_in);
         prototype.set_prototype(Some(parent));
         prototype.define_own_property(
             "constructor".into(),
@@ -425,7 +426,9 @@ impl Object {
             .iter_mut()
             .find(|entry| entry.key == *key)
             .expect("lazy function prototype property");
-        entry.descriptor.value = Some(Value::Object(prototype));
+        entry
+            .descriptor
+            .set_value(StoredValue::store(self, &Value::Object(prototype))?);
         Ok(())
     }
 
@@ -461,6 +464,34 @@ impl Object {
         object
     }
 
+    pub(super) fn native_function_for(
+        context: &Object,
+        callback: impl Fn(Value, &[Value]) -> RuntimeResult<Value> + 'static,
+    ) -> Self {
+        let object = Self::new_for(context);
+        object.set_native_call(callback);
+        object
+    }
+
+    pub(super) fn native_constructor_for(
+        context: &Object,
+        callback: impl Fn(&[Value], Object) -> RuntimeResult<Object> + 'static,
+    ) -> Self {
+        let object = Self::new_for(context);
+        object.set_native_construct(callback);
+        object
+    }
+
+    pub(super) fn native_callable_constructor_for(
+        context: &Object,
+        call: impl Fn(Value, &[Value]) -> RuntimeResult<Value> + 'static,
+        construct: impl Fn(&[Value], Object) -> RuntimeResult<Object> + 'static,
+    ) -> Self {
+        let object = Self::native_function_for(context, call);
+        object.set_native_construct(construct);
+        object
+    }
+
     pub(super) fn native_function_with_metadata(
         prototype: &Object,
         name: &str,
@@ -471,29 +502,30 @@ impl Object {
         // or observable identity. Seed complete properties in insertion order
         // without descriptor validation or a Vec growth allocation for four
         // entries when only two are needed. Later mutations use normal methods.
-        let object = Self::new();
+        let object = prototype.0.runtime().map_or_else(Self::new, Self::new_in);
         {
             let mut state = object.0.state.borrow_mut();
-            state.prototype = Some(prototype.clone());
+            state.prototype =
+                Some(StoredObject::store(&object, prototype).expect("native prototype context"));
             state.callable = Some(Rc::new(callback));
             state.properties = vec![
                 PropertyEntry {
                     key: "name".into(),
-                    descriptor: PropertyDescriptor::data(
-                        Value::String(name.into()),
-                        false,
-                        false,
-                        true,
-                    ),
+                    descriptor: StoredDescriptor::Data {
+                        value: StoredValue::String(name.into()),
+                        writable: false,
+                        enumerable: false,
+                        configurable: true,
+                    },
                 },
                 PropertyEntry {
                     key: "length".into(),
-                    descriptor: PropertyDescriptor::data(
-                        Value::Number(f64::from(length)),
-                        false,
-                        false,
-                        true,
-                    ),
+                    descriptor: StoredDescriptor::Data {
+                        value: StoredValue::Number(f64::from(length)),
+                        writable: false,
+                        enumerable: false,
+                        configurable: true,
+                    },
                 },
             ];
         }
@@ -535,8 +567,28 @@ impl Object {
         let callback = self.0.state.borrow().callable.clone().ok_or_else(|| {
             RuntimeError::type_error("object does not have a [[Call]] internal method")
         })?;
+        if self.0.runtime().is_some() {
+            if let Value::Object(value) = &this_value {
+                StoredObject::check_context(self, value)?;
+            }
+            for value in arguments {
+                if let Value::Object(value) = value {
+                    StoredObject::check_context(self, value)?;
+                }
+            }
+        }
         let _depth = CallDepthGuard::enter()?;
-        callback(this_value, arguments)
+        let result = callback(this_value, arguments);
+        if let Err(error) = &result {
+            self.check_abrupt_context(error)?;
+        }
+        let result = result?;
+        if self.0.runtime().is_some() {
+            if let Value::Object(value) = &result {
+                StoredObject::check_context(self, value)?;
+            }
+        }
+        Ok(result)
     }
 
     /// Returns whether this object has a `[[Construct]]` internal method.
@@ -551,15 +603,35 @@ impl Object {
         let callback = self.0.state.borrow().construct.clone().ok_or_else(|| {
             RuntimeError::type_error("object does not have a [[Construct]] internal method")
         })?;
+        if self.0.runtime().is_some() {
+            StoredObject::check_context(self, &new_target)?;
+            for value in arguments {
+                if let Value::Object(value) = value {
+                    StoredObject::check_context(self, value)?;
+                }
+            }
+        }
         let _depth = CallDepthGuard::enter()?;
-        callback(arguments, new_target)
+        let result = callback(arguments, new_target);
+        if let Err(error) = &result {
+            self.check_abrupt_context(error)?;
+        }
+        let result = result?;
+        if self.0.runtime().is_some() {
+            StoredObject::check_context(self, &result)?;
+        }
+        Ok(result)
     }
 
     /// Initializes an unexposed fresh ordinary object's prototype. Creation is
     /// not SetPrototypeOf: no cycle walk or user Proxy callbacks are required.
     pub(super) fn initialize_prototype(&self, prototype: Option<Self>) {
         debug_assert!(self.0.state.borrow().prototype.is_none());
-        self.0.state.borrow_mut().prototype = prototype;
+        self.0.state.borrow_mut().prototype = prototype
+            .as_ref()
+            .map(|value| StoredObject::store(self, value))
+            .transpose()
+            .expect("fresh prototype allocation context");
     }
 
     /// Returns this object's prototype.
@@ -573,7 +645,13 @@ impl Object {
         if self.0.state.borrow().proxy.is_some() {
             return super::proxy::get_prototype_of(self);
         }
-        Ok(self.0.state.borrow().prototype.clone())
+        self.0
+            .state
+            .borrow()
+            .prototype
+            .as_ref()
+            .map(|value| value.load(self))
+            .transpose()
     }
 
     /// Implements `[[SetPrototypeOf]]`, rejecting cycles and forbidden changes.
@@ -583,6 +661,10 @@ impl Object {
 
     /// Fallible `[[SetPrototypeOf]]`, including Proxy traps and invariants.
     pub fn try_set_prototype(&self, prototype: Option<Self>) -> RuntimeResult<bool> {
+        let stored = prototype
+            .as_ref()
+            .map(|value| StoredObject::store(self, value))
+            .transpose()?;
         if self.0.state.borrow().proxy.is_some() {
             return super::proxy::set_prototype_of(self, prototype);
         }
@@ -600,7 +682,7 @@ impl Object {
             }
             candidate = object.prototype();
         }
-        self.0.state.borrow_mut().prototype = prototype;
+        self.0.state.borrow_mut().prototype = stored;
         Ok(true)
     }
 
@@ -677,7 +759,10 @@ impl Object {
         }
         if let Some(elements) = &state.elements {
             if let Some(index) = key.array_index() {
-                return Ok(elements.get(index).cloned());
+                return elements
+                    .get(index)
+                    .map(|descriptor| descriptor.load(self))
+                    .transpose();
             }
         }
         if let Some(entry) = state
@@ -685,17 +770,19 @@ impl Object {
             .get(state.last_property.get())
             .filter(|entry| entry.key == *key)
         {
-            return Ok(Some(entry.descriptor.clone()));
+            return Ok(Some(entry.descriptor.load(self)?));
         }
         let found = state
             .properties
             .iter()
             .enumerate()
             .find(|(_, entry)| entry.key == *key);
-        Ok(found.map(|(index, entry)| {
-            state.last_property.set(index);
-            entry.descriptor.clone()
-        }))
+        found
+            .map(|(index, entry)| {
+                state.last_property.set(index);
+                entry.descriptor.load(self)
+            })
+            .transpose()
     }
 
     /// Implements `[[DefineOwnProperty]]` and descriptor compatibility rules.
@@ -705,6 +792,16 @@ impl Object {
         descriptor: PropertyDescriptor,
     ) -> RuntimeResult<bool> {
         descriptor.validate()?;
+        if let Some(Value::Object(value)) = &descriptor.value {
+            StoredObject::check_context(self, value)?;
+        }
+        for value in [&descriptor.get, &descriptor.set]
+            .into_iter()
+            .flatten()
+            .flatten()
+        {
+            StoredObject::check_context(self, value)?;
+        }
         if self.0.state.borrow().proxy.is_some() {
             return super::proxy::define_own_property(self, key, descriptor);
         }
@@ -742,20 +839,32 @@ impl Object {
         if state.array {
             if let Some(index) = key.array_index() {
                 let elements = state.elements.as_ref().expect("array elements");
+                let current = elements
+                    .get(index)
+                    .map(|value| value.load(self))
+                    .transpose()?;
                 let Some(updated) =
-                    validate_and_apply(elements.get(index), state.extensible, &descriptor)
+                    validate_and_apply(current.as_ref(), state.extensible, &descriptor)
                 else {
                     return Ok(false);
                 };
-                state.elements.as_mut().unwrap().insert(index, updated);
+                state
+                    .elements
+                    .as_mut()
+                    .unwrap()
+                    .insert(index, StoredDescriptor::store(self, &updated)?);
                 return Ok(true);
             }
         }
         let position = state.properties.iter().position(|entry| entry.key == key);
-        let current = position.map(|index| &state.properties[index].descriptor);
-        let Some(updated) = validate_and_apply(current, state.extensible, &descriptor) else {
+        let current = position
+            .map(|index| state.properties[index].descriptor.load(self))
+            .transpose()?;
+        let Some(updated) = validate_and_apply(current.as_ref(), state.extensible, &descriptor)
+        else {
             return Ok(false);
         };
+        let updated = StoredDescriptor::store(self, &updated)?;
         if let Some(position) = position {
             state.properties[position].descriptor = updated;
         } else {
@@ -790,8 +899,8 @@ impl Object {
             })?;
             let descriptor = &state.properties[slot].descriptor;
             if !descriptor.is_data_descriptor()
-                || descriptor.writable != Some(true)
-                || !matches!(&descriptor.value, Some(Value::Number(n)) if *n == f64::from(length))
+                || descriptor.writable() != Some(true)
+                || !matches!(descriptor.value(), Some(StoredValue::Number(n)) if *n == f64::from(length))
             {
                 return None;
             }
@@ -799,7 +908,15 @@ impl Object {
             if (length..end).any(|index| elements.get(index).is_some()) {
                 return None;
             }
-            (slot, state.prototype.clone())
+            (
+                slot,
+                state
+                    .prototype
+                    .as_ref()
+                    .map(|value| value.load(self))
+                    .transpose()
+                    .ok()?,
+            )
         };
         if !values.is_empty() {
             let mut depth = 0;
@@ -826,7 +943,17 @@ impl Object {
                 {
                     return None;
                 }
-                prototype = state.prototype.clone();
+                prototype = state
+                    .prototype
+                    .as_ref()
+                    .map(|value| value.load(&object))
+                    .transpose()
+                    .ok()?;
+            }
+        }
+        for value in values {
+            if let Value::Object(value) = value {
+                StoredObject::store(self, value).ok()?;
             }
         }
         let mut state = self.0.state.borrow_mut();
@@ -840,11 +967,18 @@ impl Object {
             let index = length + offset as u32;
             elements.insert(
                 index,
-                PropertyDescriptor::data(value.clone(), true, true, true),
+                StoredDescriptor::Data {
+                    value: StoredValue::store(self, value).ok()?,
+                    writable: true,
+                    enumerable: true,
+                    configurable: true,
+                },
             );
             // Maintain Array length after every inserted index, as generic
             // DefineOwnProperty does, including if host allocation unwinds.
-            properties[length_slot].descriptor.value = Some(Value::Number(f64::from(index + 1)));
+            properties[length_slot]
+                .descriptor
+                .set_value(StoredValue::Number(f64::from(index + 1)));
         }
         Some(end)
     }
@@ -862,10 +996,10 @@ impl Object {
         let entry = state.properties.iter().find(|entry| {
             matches!(&entry.key, PropertyKey::String(name) if name.code_units().iter().copied().eq("length".encode_utf16()))
         })?;
-        let Some(Value::Number(length)) = &entry.descriptor.value else {
+        let Some(StoredValue::Number(length)) = entry.descriptor.value() else {
             return None;
         };
-        Some((*length as u32, entry.descriptor.writable == Some(true)))
+        Some((*length as u32, entry.descriptor.writable() == Some(true)))
     }
 
     pub(super) fn array_length(&self) -> u32 {
@@ -897,7 +1031,9 @@ impl Object {
             .iter_mut()
             .find(|entry| entry.key == PropertyKey::from("length"))
             .expect("array length property");
-        entry.descriptor.value = Some(Value::Number(f64::from(length)));
+        entry
+            .descriptor
+            .set_value(StoredValue::Number(f64::from(length)));
     }
 
     fn define_array_length(&self, mut descriptor: PropertyDescriptor) -> RuntimeResult<bool> {
@@ -1065,7 +1201,7 @@ impl Object {
             if let Some(index) = key.array_index() {
                 if elements
                     .get(index)
-                    .is_some_and(|d| d.configurable != Some(true))
+                    .is_some_and(|d| d.configurable() != Some(true))
                 {
                     return Ok(false);
                 }
@@ -1076,7 +1212,7 @@ impl Object {
         let Some(position) = state.properties.iter().position(|entry| entry.key == *key) else {
             return Ok(true);
         };
-        if state.properties[position].descriptor.configurable != Some(true) {
+        if state.properties[position].descriptor.configurable() != Some(true) {
             return Ok(false);
         }
         state.properties.remove(position);
@@ -1285,6 +1421,29 @@ fn complete_descriptor(mut descriptor: PropertyDescriptor) -> PropertyDescriptor
     descriptor.enumerable.get_or_insert(false);
     descriptor.configurable.get_or_insert(false);
     descriptor
+}
+
+impl super::ObjectData {
+    // Allocation collection remains disabled until the remaining payloads have
+    // non-owning, typed captures and active evaluator roots.
+    pub(super) fn trace_object_edges(&self, tracer: &mut crate::gc::Tracer<'_>) {
+        let state = self.state.borrow();
+        if let Some(prototype) = &state.prototype {
+            prototype.trace(tracer);
+        }
+        if let Some(parent) = &state.lazy_function_prototype {
+            parent.trace(tracer);
+        }
+        if let Some(target) = &state.bound_target {
+            target.trace(tracer);
+        }
+        for entry in &state.properties {
+            entry.descriptor.trace(tracer);
+        }
+        if let Some(elements) = &state.elements {
+            elements.for_each(|descriptor| descriptor.trace(tracer));
+        }
+    }
 }
 
 #[cfg(test)]

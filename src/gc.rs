@@ -124,6 +124,18 @@ trait Allocation: Trace {
     fn as_any_mut(&mut self) -> &mut dyn Any;
 }
 
+// Runtime retirement releases the outer RefCell borrow before dropping host
+// payloads. Standalone collection keeps its immediate-drop behavior.
+#[cfg(test)]
+pub(crate) struct RetiredAllocations(Vec<Box<dyn Allocation>>);
+
+#[cfg(test)]
+impl Drop for RetiredAllocations {
+    fn drop(&mut self) {
+        self.0.clear();
+    }
+}
+
 impl<T: Trace> Allocation for T {
     fn as_any(&self) -> &dyn Any {
         self
@@ -578,6 +590,20 @@ impl Heap {
 
     /// Performs a complete stop-the-world mark-and-sweep collection.
     pub fn collect(&mut self) -> CollectionStats {
+        self.collect_with_retire(drop)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn collect_retiring(&mut self) -> (CollectionStats, RetiredAllocations) {
+        let mut retired = RetiredAllocations(Vec::new());
+        let stats = self.collect_with_retire(|value| retired.0.push(value));
+        (stats, retired)
+    }
+
+    fn collect_with_retire(
+        &mut self,
+        mut retire: impl FnMut(Box<dyn Allocation>),
+    ) -> CollectionStats {
         let mut marked = HashSet::new();
         let mut queue = self.roots.borrow().keys().copied().collect::<VecDeque<_>>();
         while let Some(raw) = queue.pop_front() {
@@ -630,7 +656,8 @@ impl Heap {
                 generation: slot.generation,
             };
             if slot.value.is_some() && !marked.contains(&raw) {
-                slot.value = None;
+                let value = slot.value.take().expect("occupied dead slot");
+                retire(value);
                 self.free.push(index);
                 reclaimed += 1;
             } else if slot.value.is_some() {

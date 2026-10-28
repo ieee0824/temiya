@@ -6,22 +6,43 @@ use std::collections::BTreeMap;
 
 use super::PropertyDescriptor;
 
-pub(super) enum Elements {
-    Packed(Vec<PropertyDescriptor>),
-    Holey {
-        slots: Vec<Option<PropertyDescriptor>>,
-        present: usize,
-    },
-    Sparse(BTreeMap<u32, PropertyDescriptor>),
+pub(super) trait ElementDescriptor: Clone {
+    fn configurable(&self) -> Option<bool>;
+}
+impl ElementDescriptor for PropertyDescriptor {
+    fn configurable(&self) -> Option<bool> {
+        self.configurable
+    }
+}
+impl ElementDescriptor for super::stored::StoredDescriptor {
+    fn configurable(&self) -> Option<bool> {
+        self.configurable()
+    }
 }
 
-impl Default for Elements {
+pub(super) enum Elements<D: ElementDescriptor = PropertyDescriptor> {
+    Packed(Vec<D>),
+    Holey {
+        slots: Vec<Option<D>>,
+        present: usize,
+    },
+    Sparse(BTreeMap<u32, D>),
+}
+
+impl<D: ElementDescriptor> Default for Elements<D> {
     fn default() -> Self {
         Self::Packed(Vec::new())
     }
 }
 
-impl Elements {
+impl<D: ElementDescriptor> Elements<D> {
+    pub(super) fn for_each(&self, mut visit: impl FnMut(&D)) {
+        match self {
+            Self::Packed(values) => values.iter().for_each(visit),
+            Self::Holey { slots, .. } => slots.iter().flatten().for_each(visit),
+            Self::Sparse(values) => values.values().for_each(&mut visit),
+        }
+    }
     pub(super) fn is_empty(&self) -> bool {
         match self {
             Self::Packed(slots) => slots.is_empty(),
@@ -30,7 +51,7 @@ impl Elements {
         }
     }
 
-    pub(super) fn get(&self, index: u32) -> Option<&PropertyDescriptor> {
+    pub(super) fn get(&self, index: u32) -> Option<&D> {
         match self {
             Self::Packed(slots) => slots.get(index as usize),
             Self::Holey { slots, .. } => slots.get(index as usize).and_then(Option::as_ref),
@@ -38,7 +59,7 @@ impl Elements {
         }
     }
 
-    pub(super) fn insert(&mut self, index: u32, descriptor: PropertyDescriptor) {
+    pub(super) fn insert(&mut self, index: u32, descriptor: D) {
         let position = index as usize;
         match self {
             Self::Packed(slots) if position < slots.len() => slots[position] = descriptor,
@@ -108,7 +129,7 @@ impl Elements {
         match self {
             Self::Packed(slots) => {
                 while slots.len() > length as usize {
-                    if slots.last().unwrap().configurable != Some(true) {
+                    if slots.last().unwrap().configurable() != Some(true) {
                         blocked = Some((slots.len() - 1) as u32);
                         break;
                     }
@@ -118,7 +139,7 @@ impl Elements {
             Self::Holey { slots, present } => {
                 while slots.len() > length as usize {
                     if let Some(descriptor) = slots.last().unwrap() {
-                        if descriptor.configurable != Some(true) {
+                        if descriptor.configurable() != Some(true) {
                             blocked = Some((slots.len() - 1) as u32);
                             break;
                         }
@@ -132,7 +153,7 @@ impl Elements {
                     if index < length {
                         break;
                     }
-                    if descriptor.configurable != Some(true) {
+                    if descriptor.configurable() != Some(true) {
                         blocked = Some(index);
                         break;
                     }

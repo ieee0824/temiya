@@ -582,11 +582,12 @@ show all three object-allocation comparisons18–21% shorter than the traced
 predecessor and all33 actual-Boa comparisons faster beyond the original gate.
 These results do not resolve the earlier Intel arithmetic qualification failure.
 
-Initialized mutable Number bindings can replace an existing Number leaf by
-copying its bits directly. TDZ and mutability checks still precede this path;
-every change involving a different value kind retains the ordinary stored-value
-conversion and managed-edge checks. Signed zero and NaN payloads must survive
-both reads and assignments through the public AST and bytecode APIs.
+A Number-binding storage/inlining experiment at7fa1e21 passed native and targeted
+Miri semantics but did not qualify its intended arithmetic improvement: all
+three arithmetic comparisons were within noise, with two slower comparisons
+elsewhere. Its [complete before/after record](../benchmarks/runtime-gc/experiments/number-leaf-7fa)
+is retained and the implementation is reverted. The strengthened public API
+test still checks signed zero and NaN payloads through assignment and reads.
 
 Verified numeric-return calls resolve a captured Environment only when a guarded
 captured binding is actually read. Parameter-only calls need no Realm or

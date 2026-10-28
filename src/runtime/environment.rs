@@ -1278,7 +1278,6 @@ impl DeclarativeRecord {
 }
 
 impl Binding {
-    #[inline]
     fn read(&self, owner: &Environment) -> RuntimeResult<Value> {
         // Copy immutable primitive bits without dispatching the full Value
         // clone. Name checks and record borrowing still occur in the caller;
@@ -1292,20 +1291,11 @@ impl Binding {
             .load(owner)
     }
 
-    #[inline]
     fn write(&mut self, owner: &Environment, value: Value, strict: bool) -> RuntimeResult<()> {
         if self.value.is_none() {
             return Err(reference_error(&self.name, "is in the temporal dead zone"));
         }
         if self.mutable {
-            // Replacing two Number leaves cannot change a managed edge or run
-            // user code. Preserve their bits without rebuilding StoredValue.
-            if let (Some(StoredValue::Number(current)), Value::Number(incoming)) =
-                (&mut self.value, &value)
-            {
-                *current = *incoming;
-                return Ok(());
-            }
             self.value = Some(StoredValue::store_owned(owner, value)?);
             Ok(())
         } else if strict || self.strict {

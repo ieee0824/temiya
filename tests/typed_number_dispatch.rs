@@ -123,7 +123,7 @@ fn numeric_binding_reads_preserve_bits_and_observe_captured_updates() {
             let script = engine
                 .compile(
                     &realm,
-                    "function pass(value){let local=0;local=value;return local;}pass(input);",
+                    "function pass(value){var local=0;for(var i=0;i<1;i++){local=value;}return local;}pass(input);",
                 )
                 .unwrap();
             let value = engine.evaluate(&script).unwrap();
@@ -153,6 +153,47 @@ fn numeric_binding_reads_preserve_bits_and_observe_captured_updates() {
             let script = engine.compile(&realm, source).unwrap();
             assert_eq!(engine.evaluate(&script).unwrap_err().kind(), kind);
         }
+    }
+}
+
+#[test]
+fn scalar_loops_keep_parameter_aliases_and_observable_bindings() {
+    for backend in [ScriptBackend::Ast, ScriptBackend::Bytecode] {
+        let engine = Engine::builder().script_backend(backend).build();
+        let realm = engine.create_realm();
+        for source in [
+            "function scalar(n){var s=0;for(var i=0;i<n;i++){s+=i*3;}return s;}scalar(17)===408;",
+            "function duplicate(n,n){var s=0;for(var i=0;i<n;i++){s+=i;}return s;}duplicate(100,4)===6;",
+            "function missing(n){var x=0;for(var i=0;i<2;i++){x+=n;}return x;}var result=missing();result!==result;",
+            "function updates(n){var x=-0;var y=x++;for(var i=0;i<n;i++){x++;}return 1/y===-1/0&&x===3;}updates(2);",
+            "function primitive(n){var x='2';for(var i=0;i<n;i++){x++;}return x;}primitive(2)===4;",
+            "function uninitialized(){var x;for(var i=0;i<1;i++){x++;}return x;}var uninit=uninitialized();uninit!==uninit;",
+            "function captured(){var x=0;var read=function(){return x;};for(var i=0;i<3;i++){x++;}return read();}captured()===3;",
+            "function args(n){var s=0;for(var i=0;i<2;i++){s+=arguments[0];}return s;}args(3)===6;",
+            "var hits=0;var boxed={valueOf:function(){hits++;return 3;}};function coerce(n){var s=0;for(var i=0;i<2;i++){s+=n;}return s;}coerce(boxed)===6&&hits===2;",
+            "function lexical(n){let x=0;for(var i=0;i<n;i++){x++;}return x;}lexical(3)===3;",
+        ] {
+            let script = engine.compile(&realm, source).unwrap();
+            assert_eq!(script.backend(), backend);
+            assert!(
+                engine
+                    .evaluate(&script)
+                    .unwrap()
+                    .value()
+                    .same_value(&Value::Boolean(true)),
+                "{backend:?}: {source}"
+            );
+        }
+        let script = engine
+            .compile(
+                &realm,
+                "function fixed(){const x=1;for(var i=0;i<1;i++){x=2;}return x;}fixed();",
+            )
+            .unwrap();
+        assert_eq!(
+            engine.evaluate(&script).unwrap_err().kind(),
+            temiya::embedding::ExceptionKind::TypeError
+        );
     }
 }
 

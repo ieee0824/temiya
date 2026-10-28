@@ -261,6 +261,42 @@ fn function_frame_var_block_and_outer_bindings_are_distinct() {
 }
 
 #[test]
+fn caller_prepared_scalar_loop_frames_publish_their_binding_writes() {
+    use temiya::{
+        ast::StmtKind,
+        runtime::{Environment, ThisBindingStatus},
+    };
+    let realm = Realm::ordinary();
+    let program =
+        parse_script("function f(){var n=3;var sum=0;for(var i=0;i<n;i++){sum+=i;}return sum;}")
+            .unwrap();
+    let StmtKind::FunctionDeclaration(function) = &program.body[0].kind else {
+        panic!("function")
+    };
+    let object = temiya::runtime::Object::new_in(realm.allocation_context());
+    let frame = Environment::function(
+        Some(realm.global_environment()),
+        object,
+        None,
+        ThisBindingStatus::Initialized,
+    );
+    let code = BytecodeCompiler::compile_function_body(function).unwrap();
+    assert!(matches!(
+        VirtualMachine::execute_in_function(&code, &realm, &frame).unwrap(),
+        Completion::Return(Value::Number(3.0))
+    ));
+    for name in ["sum", "i", "n"] {
+        assert!(
+            frame
+                .get_binding_value(&name.into(), true)
+                .unwrap()
+                .same_value(&Value::Number(3.0)),
+            "{name}"
+        );
+    }
+}
+
+#[test]
 fn scoped_addition_calls_real_javascript_coercion() {
     let allocation_context = temiya::runtime::AllocationContext::new();
     let realm = Realm::ordinary_in(&allocation_context);

@@ -589,6 +589,21 @@ elsewhere. Its [complete before/after record](../benchmarks/runtime-gc/experimen
 is retained and the implementation is reverted. The strengthened public API
 test still checks signed zero and NaN payloads through assignment and reads.
 
+The private scalar-loop candidate keeps primitive local values in the active VM
+scope instead of repeatedly resolving their Function Environment bindings. It
+requires a fresh internal frame, Number arguments, mutable var bindings, a loop,
+and a whole-body instruction proof excluding calls, properties, captures, outer
+name lookup, implicit arguments and lexical bindings. Initially cached values
+must be Number or undefined; the permitted instructions produce only primitive
+values. There are no hidden managed edges or rooted objects in this cache.
+
+The public `VirtualMachine::execute_in_function` path always updates the
+caller-supplied Environment. It never assumes a host frame is private. Closure,
+arguments, coercion and lexical-binding cases keep the ordinary path. Tests use
+both public Engine backends, including duplicate/missing parameters, primitive
+updates, signed zero/NaN payloads, captured reads, object coercion, immutable
+bindings, and direct host inspection of a prepared frame after a loop.
+
 Verified numeric-return calls resolve a captured Environment only when a guarded
 captured binding is actually read. Parameter-only calls need no Realm or
 Environment facade revival. The stored strong Realm/Environment edges remain

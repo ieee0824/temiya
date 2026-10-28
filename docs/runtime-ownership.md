@@ -330,3 +330,20 @@ active entries and reset draining state on success, errors, and unwinding. Jobs
 are invoked after releasing the queue's state borrow. Public host `enqueue`
 wraps the host FnOnce in one Rc allocation and retains the explicit host-root
 contract; internal Promise jobs still require conversion to typed payloads.
+
+Promise objects now own their internal state through an Object slot. Identity
+lookup reads that slot directly; there is no thread-local table retaining
+Promise objects or queues. Managed state stores fulfillment values, thrown or
+materialized error payloads, reaction callbacks/results, Function.prototype,
+and the queue through typed non-owning edges. Public Promise facades root their
+Object and queue; internal reaction records retain no public Promise facade.
+
+Promise then/resolve/reject functions use declared target captures. Reaction,
+thenable, and unhandled-rejection jobs implement TracedJob, so dequeued jobs keep
+all pending values reachable through the queue's active list. Pending reactions
+stay attached to the Promise while the observable state setter runs, before
+being published as jobs. Rejection payload identity is preserved across await,
+reaction calls, and host hooks. Cross-context writes are rejected before state
+or reaction-list mutation. These changes migrate the existing Promise/async
+implementation; they do not add Promise constructor completeness or bytecode
+support for async syntax.

@@ -1080,6 +1080,108 @@ mod managed_allocation_tests {
     }
 
     #[test]
+    fn managed_promise_reactions_execute_ast_and_vm_callbacks_across_collection() {
+        use crate::runtime::Promise;
+        for backend in [ScriptBackend::Ast, ScriptBackend::Bytecode] {
+            let mut engine = Engine::builder().script_backend(backend).build();
+            engine.managed_allocation = true;
+            let realm = engine.create_realm();
+            let runtime = engine.runtime.clone();
+            let callback_runtime = runtime.clone();
+            engine
+                .register_global_function(&realm, "collectPromise", move |context, _, _| {
+                    callback_runtime.verify_migration_barriers().unwrap();
+                    callback_runtime.collect_migration_graph().unwrap();
+                    Ok(context.value(Value::Undefined))
+                })
+                .unwrap();
+            let source = Promise::pending_on(realm.realm.job_queue()).unwrap();
+            realm
+                .realm
+                .global_object()
+                .create_data_property("sourcePromise".into(), Value::Object(source.object()))
+                .unwrap();
+            let script = engine.compile(&realm, "sourcePromise.then(function(value){collectPromise();return {answer:value.answer+22};});").unwrap();
+            assert_eq!(script.backend(), backend);
+            let handle = engine.evaluate(&script).unwrap();
+            let value = Object::new_for(&realm.realm.global_object());
+            value
+                .create_data_property("answer".into(), Value::Number(20.0))
+                .unwrap();
+            source.resolve(Value::Object(value)).unwrap();
+            realm
+                .realm
+                .global_object()
+                .set(&"sourcePromise".into(), Value::Undefined)
+                .unwrap();
+            drop((source, script));
+            runtime.collect_migration_graph().unwrap();
+            assert_eq!(engine.drain_jobs(&realm).unwrap(), 1);
+            let Value::Object(object) = handle.value() else {
+                panic!("derived Promise")
+            };
+            let promise = Promise::from_object(object.clone()).unwrap();
+            let Value::Object(result) = promise.await_result().unwrap() else {
+                panic!("result")
+            };
+            assert!(
+                result
+                    .get(&"answer".into())
+                    .unwrap()
+                    .same_value(&Value::Number(42.0))
+            );
+            let weak = object.downgrade();
+            realm
+                .realm
+                .global_object()
+                .try_delete(&"collectPromise".into())
+                .unwrap();
+            drop((result, promise, realm, engine));
+            runtime.collect_migration_graph().unwrap();
+            assert!(weak.upgrade().is_some());
+            drop(handle);
+            assert_eq!(runtime.collect_migration_graph().unwrap().retained, 0);
+            assert!(weak.upgrade().is_none());
+        }
+    }
+
+    #[test]
+    fn managed_async_results_keep_values_and_rejections_in_promise_slots() {
+        use crate::runtime::Promise;
+        let mut engine = Engine::builder().script_backend(ScriptBackend::Ast).build();
+        engine.managed_allocation = true;
+        let realm = engine.create_realm();
+        for source in [
+            "(async function(){return {answer:42};})();",
+            "(async function(){throw {answer:42};})();",
+        ] {
+            let script = engine.compile(&realm, source).unwrap();
+            let handle = engine.evaluate(&script).unwrap();
+            engine.runtime.verify_migration_barriers().unwrap();
+            engine.runtime.collect_migration_graph().unwrap();
+            let Value::Object(object) = handle.value() else {
+                panic!("async Promise")
+            };
+            let promise = Promise::from_object(object.clone()).unwrap();
+            let outcome = promise.await_result();
+            let value = match &outcome {
+                Ok(value) => value,
+                Err(error) => error.thrown_value().unwrap(),
+            };
+            let Value::Object(value) = value else {
+                panic!("payload")
+            };
+            assert!(
+                value
+                    .get(&"answer".into())
+                    .unwrap()
+                    .same_value(&Value::Number(42.0))
+            );
+            engine.drain_jobs(&realm).unwrap();
+        }
+    }
+
+    #[test]
     fn managed_object_statics_survive_proxy_and_descriptor_collection_reentry() {
         for backend in [ScriptBackend::Ast, ScriptBackend::Bytecode] {
             let mut engine = Engine::builder().script_backend(backend).build();

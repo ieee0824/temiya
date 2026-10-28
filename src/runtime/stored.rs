@@ -6,6 +6,41 @@ use super::{
 use crate::gc::{Handle, Trace, Tracer};
 use num_bigint::BigInt;
 
+#[derive(Clone)]
+pub(super) struct StoredRuntimeError {
+    kind: super::RuntimeErrorKind,
+    message: String,
+    thrown: Option<StoredValue>,
+}
+impl StoredRuntimeError {
+    pub(super) fn store(owner: &impl StoredOwner, error: RuntimeError) -> RuntimeResult<Self> {
+        Ok(Self {
+            kind: error.kind,
+            message: error.message,
+            thrown: error
+                .thrown
+                .map(|value| StoredValue::store_owned(owner, *value))
+                .transpose()?,
+        })
+    }
+    pub(super) fn load(&self, owner: &impl StoredOwner) -> RuntimeResult<RuntimeError> {
+        Ok(RuntimeError {
+            kind: self.kind,
+            message: self.message.clone(),
+            thrown: self
+                .thrown
+                .as_ref()
+                .map(|value| value.load(owner).map(Box::new))
+                .transpose()?,
+        })
+    }
+    pub(super) fn trace(&self, tracer: &mut Tracer<'_>) {
+        if let Some(value) = &self.thrown {
+            value.trace(tracer);
+        }
+    }
+}
+
 // An active facade supplies context; stored records never own this facade.
 // Typed owner handles let environments/realms use the same barrier protocol.
 pub(super) trait StoredOwner {

@@ -104,6 +104,13 @@ pub(super) enum StoredJobQueue {
     Managed(Handle<ManagedJobQueue>),
 }
 impl StoredJobQueue {
+    pub(super) fn store(owner: &impl StoredOwner, queue: &JobQueue) -> RuntimeResult<Self> {
+        let stored = Self::initial(owner.runtime(), queue)?;
+        if let (Self::Managed(target), Some(runtime)) = (&stored, owner.runtime()) {
+            runtime.record_object_edge(owner.handle().expect("managed owner"), *target)?;
+        }
+        Ok(stored)
+    }
     pub(super) fn initial(runtime: Option<&Runtime>, queue: &JobQueue) -> RuntimeResult<Self> {
         match (runtime, queue.runtime()) {
             (None, None) => Ok(Self::Legacy(queue.clone())),

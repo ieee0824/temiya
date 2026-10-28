@@ -13,7 +13,7 @@ results from different hosts or source stages cannot be pooled into a win.
 | async | Actual scheduling, job drain and completion, independent numeric/rejection oracles; [checkpoint suite](async-workloads.md), [later source stages](typed-number-dispatch.md) | Some later reports have three noise decisions; pending-await/full Promise compatibility and application superiority are unproved |
 | RegExp | Actual JS construction/global exec/Unicode captures, [warm cache suite](regexp-compilation-cache.md) and [fresh unique patterns](regexp-ascii-compilation.md) | Conservative parser fallback remains; these fixed tests are not complete ECMAScript RegExp conformance |
 | GC component | Real standalone tracing `Heap` with rooted/unrooted cycles, weak handles, minor barrier and actual destructor counts; [components](component-benchmarks.md) | These native graph lifecycles are not JavaScript Engine collection or GC pauses |
-| Engine GC | Shared tracing heap, public `Engine::collect_garbage`, allocation safepoints and live-root/reclamation tests; all seven strict [ownership fixtures](runtime-ownership.md) release. The [original-eleven diagnostic profile](../benchmarks/runtime-gc/runtime-profile.json) separates allocations, root activity, peak live cells, collection pauses and remaining evaluation time | The diagnostic profile is one instrumented local ARM64 pass, not repeated cross-engine GC timing. Earlier component-host probes describe the pre-migration source; generational/incremental runtime collection and arbitrary application GC performance remain unproved |
+| Engine GC | Shared tracing heap, public `Engine::collect_garbage`, allocation safepoints and live-root/reclamation tests; all seven strict [ownership fixtures](runtime-ownership.md) release. The [original-eleven diagnostic profile](../benchmarks/runtime-gc/runtime-profile.json) separates allocations, root activity, peak live cells, collection pauses and remaining evaluation time | The diagnostic profile is one instrumented local ARM64 pass, not repeated cross-engine GC timing. The new source6c3 component cohort on ARM64/x64 passes all seven actual-Engine reclamation fixtures; the older main cohort describes the pre-migration source; generational/incremental runtime collection and arbitrary application GC performance remain unproved |
 | CLI integration | Actual binary file/-e/stdin, shared Script globals, canonical module graphs, output/errors/jobs and pinned Test262; [shell](cli.md) | No dynamic import, package/event loop or new collector feature is implied |
 | SpiderMonkey reference | Fixed native shell, disabled-tier and default-settings original-eleven [comparisons](spidermonkey-workloads.md), real adapter checks, including the traced-runtime follow-up | Both measured source stages lost all66 pair decisions. Authored phase/async/RegExp/GC shell comparisons remain incomplete; neither comparison establishes arbitrary application performance |
 
@@ -29,9 +29,11 @@ warmup/sample outcomes across local ARM64, hosted ARM64 and hosted x64. Its
 native cases are correct, but its pre-migration Engine probes fail reclamation;
 those records are preserved. The migration branch separately passes strict
 reclamation and records integrated Engine collection in the profile above.
-Its competitive uninstrumented original-eleven comparison qualifies against
-actual Boa under the documented guest-CPU0 condition, with an unqualified
-unaffined run and material regressions against main retained alongside it.
+Earlier competitive source stages qualified the uninstrumented original-eleven
+comparison against actual Boa under the documented guest-CPU0 condition. The
+latest source6c3 cohort records32 faster/1 noise decisions and does not qualify
+all33; its hosted follow-up remains pending. Unqualified/unaffined runs and
+material regressions against main are retained alongside these observations.
 These newer results do not retroactively change the historical component
 cohort or establish cross-engine GC pause superiority. #427's remaining phase,
 comparison and integration requirements need their own completion audit.

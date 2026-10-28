@@ -185,3 +185,83 @@ fn host_jobs_are_fifo_and_panics_become_exceptions() {
     assert_eq!(error.kind(), ExceptionKind::Engine);
     assert_eq!(error.message(), "host job panicked");
 }
+
+#[test]
+fn canonical_module_resolution_receives_referrers_and_caches_aliases() {
+    let engine = Engine::default();
+    let realm = engine.create_realm();
+    let requests = Rc::new(RefCell::new(Vec::new()));
+    let observed = requests.clone();
+    let loads = Rc::new(RefCell::new(Vec::new()));
+    let loaded = loads.clone();
+    let module = engine.load_module_with_resolver(
+        &realm, "entry",
+        move |referrer, request| {
+            let name=String::from_utf16(&request.specifier).unwrap();
+            observed.borrow_mut().push((referrer.map(str::to_owned),name.clone()));
+            Ok(match name.as_str() { "entry" => "/entry", "first"|"alias" => "/dep", _ => return Err(temiya::embedding::HostError::reference_error("missing")) }.to_owned())
+        },
+        move |name| {
+            loaded.borrow_mut().push(name.to_owned());
+            match name {
+                "/entry" => Ok("import {n} from 'first'; import {n as again} from 'alias'; if(n!==42 || again!==42) throw 1;".into()),
+                "/dep" => Ok("export const n=42;".into()),
+                _ => Err(temiya::embedding::HostError::reference_error("missing source")),
+            }
+        },
+    ).unwrap();
+    engine.evaluate_module(&module).unwrap();
+    assert_eq!(*loads.borrow(), ["/entry", "/dep"]);
+    assert_eq!(
+        *requests.borrow(),
+        [
+            (None, "entry".into()),
+            (Some("/entry".into()), "first".into()),
+            (Some("/entry".into()), "alias".into())
+        ]
+    );
+}
+
+#[test]
+fn canonical_module_callbacks_isolate_panics_errors_and_foreign_realms() {
+    use temiya::embedding::HostError;
+    let engine = Engine::default();
+    let realm = engine.create_realm();
+    let normalize_panic = engine.load_module_with_resolver(
+        &realm,
+        "entry",
+        |_, _| -> Result<String, HostError> { panic!("resolve") },
+        |_| Ok(String::new()),
+    );
+    assert!(matches!(normalize_panic, Err(EmbedError::Host(_))));
+    let source_panic = engine.load_module_with_resolver(
+        &realm,
+        "entry",
+        |_, _| Ok("canonical".into()),
+        |_| -> Result<String, HostError> { panic!("source") },
+    );
+    assert!(matches!(source_panic, Err(EmbedError::Host(_))));
+    assert!(matches!(
+        engine.load_module_with_resolver(
+            &Engine::default().create_realm(),
+            "entry",
+            |_, _| panic!("must not resolve"),
+            |_| panic!("must not load")
+        ),
+        Err(EmbedError::EngineMismatch)
+    ));
+    let rejected = engine
+        .load_module_with_resolver(
+            &realm,
+            "entry",
+            |_, request| {
+                if !request.attributes.is_empty() {
+                    return Err(HostError::type_error("attributes rejected"));
+                }
+                Ok(String::from_utf16(&request.specifier).unwrap())
+            },
+            |_| Ok("import 'dep' with {type:'json'};".into()),
+        )
+        .unwrap_err();
+    assert!(rejected.to_string().contains("attributes rejected"));
+}

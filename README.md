@@ -95,6 +95,13 @@ specified in the [tiering design](docs/tiering.md).
 Versioning, reproducible artifacts, SBOMs, checksums, and attestations are
 described in the [release process](docs/releasing.md).
 
+## Command-line execution
+
+Run `cargo run --locked --bin temiya -- -e 'print(40 + 2);'`, or build the
+release `temiya` binary to execute UTF-8 files and stdin. `--module` loads a
+canonical file module graph; Script inputs share one global environment.
+See [shell modes, output, errors and verification](docs/cli.md).
+
 ## Development
 
 ```sh

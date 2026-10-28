@@ -287,6 +287,49 @@ impl Engine {
         Ok(())
     }
 
+    /// Loads a module graph with referrer-aware canonical module identities.
+    ///
+    /// `resolve` receives `None` for the root and the canonical importing
+    /// module's name for dependencies. It returns the canonical name used for
+    /// caching and for `source`. Attributes remain part of module identity;
+    /// hosts can reject unsupported attributes in `resolve`. Both callbacks are
+    /// panic-isolated. Existing [`Self::load_module`] resolution is unchanged.
+    pub fn load_module_with_resolver<R, S>(
+        &self,
+        realm: &RealmHandle,
+        specifier: &str,
+        resolve: R,
+        source: S,
+    ) -> Result<ModuleHandle, EmbedError>
+    where
+        R: Fn(Option<&str>, &crate::ast::ModuleRequest) -> Result<String, HostError> + 'static,
+        S: Fn(&str) -> Result<String, HostError> + 'static,
+    {
+        self.require_realm(realm)?;
+        let graph = ModuleGraph::with_resolver(
+            realm.realm.clone(),
+            move |referrer, request| {
+                let referrer = referrer.map(JsString::to_string_lossy);
+                catch_unwind(AssertUnwindSafe(|| resolve(referrer.as_deref(), request)))
+                    .map_err(|_| RuntimeError::internal_error("module resolver panicked"))?
+                    .map(JsString::from)
+                    .map_err(HostError::into_runtime)
+            },
+            move |request| {
+                let specifier = String::from_utf16_lossy(&request.specifier);
+                catch_unwind(AssertUnwindSafe(|| source(&specifier)))
+                    .map_err(|_| RuntimeError::internal_error("module source loader panicked"))?
+                    .map_err(HostError::into_runtime)
+            },
+        );
+        let module = graph.load(specifier).map_err(EmbedError::Host)?;
+        Ok(ModuleHandle {
+            engine_id: self.id,
+            realm_id: realm.realm_id,
+            module,
+        })
+    }
+
     /// Installs a panic-isolated callback for unhandled Promise rejections.
     pub fn register_job_error_callback<F>(
         &self,

@@ -2,7 +2,7 @@
 
 use super::{
     Runtime,
-    stored::{StoredOwner, StoredValue},
+    stored::{StoredObject, StoredOwner, StoredValue},
 };
 use crate::gc::{Handle, Root, Trace, Tracer};
 use std::cell::RefCell;
@@ -191,12 +191,12 @@ impl Trace for EnvironmentData {
             }
             EnvironmentRecord::Function(record) => {
                 bindings(&record.declarative_record, tracer);
-                object(&record.function_object, tracer);
+                record.function_object.trace(tracer);
                 if let Some(v) = &record.this_value {
-                    value(v, tracer);
+                    v.trace(tracer);
                 }
                 if let Some(v) = &record.new_target {
-                    object(v, tracer);
+                    v.trace(tracer);
                 }
             }
             EnvironmentRecord::Module(record) => {
@@ -238,9 +238,9 @@ struct GlobalRecord {
 struct FunctionRecord {
     declarative_record: DeclarativeRecord,
     this_status: ThisBindingStatus,
-    this_value: Option<Value>,
-    function_object: Object,
-    new_target: Option<Object>,
+    this_value: Option<StoredValue>,
+    function_object: StoredObject,
+    new_target: Option<StoredObject>,
 }
 
 #[derive(Default)]
@@ -439,16 +439,25 @@ impl Environment {
         new_target: Option<Object>,
         this_status: ThisBindingStatus,
     ) -> Self {
-        Self::new(
+        let runtime = function_object.0.runtime().cloned();
+        let stored_new_target = new_target
+            .as_ref()
+            .map(|value| StoredObject::initial(runtime.as_ref(), value))
+            .transpose()
+            .expect("new.target allocation context");
+        let stored_function = StoredObject::initial(runtime.as_ref(), &function_object)
+            .expect("function allocation context");
+        Self::new_with_runtime(
             outer,
             EnvironmentRecord::Function(FunctionRecord {
                 declarative_record: DeclarativeRecord::default(),
                 this_status,
                 this_value: (this_status == ThisBindingStatus::Initialized)
-                    .then_some(Value::Undefined),
-                function_object,
-                new_target,
+                    .then_some(StoredValue::Undefined),
+                function_object: stored_function,
+                new_target: stored_new_target,
             }),
+            runtime,
         )
     }
 
@@ -508,11 +517,18 @@ impl Environment {
                 let object = match &record {
                     EnvironmentRecord::Object(record) => Some(&record.binding_object),
                     EnvironmentRecord::Global(record) => Some(&record.object_record.binding_object),
-                    EnvironmentRecord::Function(record) => Some(&record.function_object),
                     _ => None,
                 };
                 object.and_then(|object| object.0.runtime()).cloned()
             });
+        Self::new_with_runtime(outer, record, runtime)
+    }
+
+    fn new_with_runtime(
+        outer: Option<Self>,
+        record: EnvironmentRecord,
+        runtime: Option<Runtime>,
+    ) -> Self {
         let data = EnvironmentData {
             facade: RefCell::new(Weak::new()),
             outer: outer
@@ -1024,7 +1040,7 @@ impl Environment {
                 }
                 ThisBindingStatus::Uninitialized => {}
             }
-            record.this_value = Some(value.clone());
+            record.this_value = Some(StoredValue::store(self, &value)?);
             record.this_status = ThisBindingStatus::Initialized;
             Ok(value)
         })
@@ -1033,7 +1049,7 @@ impl Environment {
     /// Returns a function environment's initialized `this` binding.
     pub fn get_this_binding(&self) -> RuntimeResult<Value> {
         self.with_function(|record| match record.this_status {
-            ThisBindingStatus::Initialized => Ok(record.this_value.clone().unwrap()),
+            ThisBindingStatus::Initialized => record.this_value.as_ref().unwrap().load(self),
             ThisBindingStatus::Uninitialized => Err(reference_error(
                 &JsString::from("this"),
                 "has not been initialized",
@@ -1046,12 +1062,18 @@ impl Environment {
 
     /// Returns the function object associated with a function environment.
     pub fn function_object(&self) -> RuntimeResult<Object> {
-        self.with_function(|record| Ok(record.function_object.clone()))
+        self.with_function(|record| record.function_object.load(self))
     }
 
     /// Returns the function environment's `new.target`, if present.
     pub fn new_target(&self) -> RuntimeResult<Option<Object>> {
-        self.with_function(|record| Ok(record.new_target.clone()))
+        self.with_function(|record| {
+            record
+                .new_target
+                .as_ref()
+                .map(|target| target.load(self))
+                .transpose()
+        })
     }
 
     /// Returns the current function-environment `this` binding status.
@@ -1339,6 +1361,60 @@ fn reference_error(name: &JsString, detail: &str) -> RuntimeError {
 #[cfg(test)]
 mod slot_hint_tests {
     use super::*;
+    #[test]
+    fn managed_function_records_trace_this_function_and_new_target() {
+        let runtime = Runtime::new();
+        let function = Object::new_in(&runtime);
+        let new_target = Object::new_in(&runtime);
+        let environment = Environment::function(
+            None,
+            function.clone(),
+            Some(new_target.clone()),
+            ThisBindingStatus::Uninitialized,
+        );
+        let weak_function = function.downgrade();
+        let weak_target = new_target.downgrade();
+        drop(function);
+        drop(new_target);
+        assert_eq!(runtime.diagnostics().rooted, 1);
+        assert!(environment.get_this_binding().is_err());
+        let foreign = Object::new_in(&Runtime::new());
+        assert!(environment.bind_this_value(Value::Object(foreign)).is_err());
+        assert_eq!(
+            environment.this_binding_status().unwrap(),
+            ThisBindingStatus::Uninitialized
+        );
+        runtime.collect_migration_graph().unwrap();
+        let this = Object::new_in(&runtime);
+        this.create_data_property("self".into(), Value::Object(this.clone()))
+            .unwrap();
+        let weak_this = this.downgrade();
+        environment
+            .bind_this_value(Value::Object(this.clone()))
+            .unwrap();
+        drop(this);
+        runtime.verify_migration_barriers().unwrap();
+        assert_eq!(runtime.collect_migration_graph().unwrap().retained, 4);
+        assert_eq!(
+            environment.function_object().unwrap(),
+            weak_function.upgrade().unwrap()
+        );
+        assert_eq!(environment.new_target().unwrap(), weak_target.upgrade());
+        let this = weak_this.upgrade().unwrap();
+        assert!(
+            environment
+                .get_this_binding()
+                .unwrap()
+                .same_value(&Value::Object(this.clone()))
+        );
+        assert!(environment.bind_this_value(Value::Null).is_err());
+        drop(this);
+        drop(environment);
+        assert_eq!(runtime.collect_migration_graph().unwrap().reclaimed, 4);
+        assert!(weak_function.upgrade().is_none());
+        assert!(weak_target.upgrade().is_none());
+        assert!(weak_this.upgrade().is_none());
+    }
     #[test]
     fn managed_module_import_cycles_keep_live_bindings_without_internal_roots() {
         let runtime = Runtime::new();

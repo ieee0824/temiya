@@ -30,6 +30,18 @@ pub(super) enum StoredObject {
     Managed(Handle<ManagedObject>),
 }
 impl StoredObject {
+    // For edges prepared before allocation of their new, young owner.
+    pub(super) fn initial(runtime: Option<&Runtime>, value: &Object) -> RuntimeResult<Self> {
+        match (runtime, value.0.runtime()) {
+            (None, None) => Ok(Self::Legacy(value.clone())),
+            (Some(left), Some(right)) if left.same_heap(right) => Ok(Self::Managed(
+                value.0.handle().expect("managed object handle"),
+            )),
+            _ => Err(RuntimeError::type_error(
+                "object belongs to a different allocation context",
+            )),
+        }
+    }
     pub(super) fn check_context(owner: &impl StoredOwner, value: &Object) -> RuntimeResult<()> {
         match (owner.runtime(), value.0.runtime()) {
             (None, None) => Ok(()),

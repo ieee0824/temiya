@@ -453,6 +453,66 @@ mod stored_graph_tests {
     use super::*;
     use crate::runtime::{PropertyDescriptor, Value};
     #[test]
+    fn lazy_native_captures_stay_traced_without_materializing_unused_facades() {
+        let runtime = Runtime::new();
+        let prototype = Object::new_in(&runtime);
+        let capture = Object::new_in(&runtime);
+        capture
+            .create_data_property("answer".into(), Value::Number(42.0))
+            .unwrap();
+        let function = Object::native_function_with_lazy_object_capture(
+            &prototype,
+            "lazy",
+            0,
+            &capture,
+            Some("answer".into()),
+            |owner, capture, key, _, arguments| {
+                let super::super::stored::StoredObject::Managed(handle) = capture else {
+                    panic!("managed capture");
+                };
+                let runtime = owner.0.runtime().unwrap();
+                assert!(
+                    runtime
+                        .0
+                        .heap
+                        .borrow()
+                        .with(*handle, |object| object
+                            .data
+                            .facade
+                            .borrow()
+                            .upgrade()
+                            .is_none())
+                        .unwrap()
+                );
+                if arguments.is_empty() {
+                    return Ok(Value::Null);
+                }
+                capture.load(owner)?.get(key.expect("capture key"))
+            },
+        )
+        .unwrap();
+        capture
+            .create_data_property("back".into(), Value::Object(function.clone()))
+            .unwrap();
+        let weak = capture.downgrade();
+        drop(prototype);
+        drop(capture);
+        assert_eq!(runtime.collect_migration_graph().unwrap().retained, 3);
+        assert!(matches!(
+            function.call(Value::Undefined, &[]).unwrap(),
+            Value::Null
+        ));
+        assert!(
+            function
+                .call(Value::Undefined, &[Value::Boolean(true)])
+                .unwrap()
+                .same_value(&Value::Number(42.0))
+        );
+        drop(function);
+        assert_eq!(runtime.collect_migration_graph().unwrap().retained, 0);
+        assert!(weak.upgrade().is_none());
+    }
+    #[test]
     fn declared_factories_preserve_callability_and_reclaim_constructor_cycles() {
         for callable in [false, true] {
             let runtime = Runtime::new();

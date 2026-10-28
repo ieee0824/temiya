@@ -293,10 +293,16 @@ type NativeConstruct = Rc<dyn Fn(&[Value], Object) -> RuntimeResult<Object>>;
 
 pub(super) type CapturedObjectCallback =
     fn(&Object, Option<&PropertyKey>, Value, &[Value]) -> RuntimeResult<Value>;
+pub(super) type LazyCapturedObjectCallback =
+    fn(&Object, &StoredObject, Option<&PropertyKey>, Value, &[Value]) -> RuntimeResult<Value>;
+enum CapturedObjectHandler {
+    Eager(CapturedObjectCallback),
+    Lazy(LazyCapturedObjectCallback),
+}
 pub(super) struct CapturedObjectCall {
     object: StoredObject,
     key: Option<PropertyKey>,
-    callback: CapturedObjectCallback,
+    callback: CapturedObjectHandler,
 }
 
 pub(super) type CapturedFactoryCallback =
@@ -371,10 +377,15 @@ impl ManagedCallable {
                 callback(object.as_ref(), factory.key.as_ref(), this, arguments)
             }
             Self::Array(call) => call.call(owner, this, arguments),
-            Self::CapturedObject(call) => {
-                let object = call.object.load(owner)?;
-                (call.callback)(&object, call.key.as_ref(), this, arguments)
-            }
+            Self::CapturedObject(call) => match call.callback {
+                CapturedObjectHandler::Eager(callback) => {
+                    let object = call.object.load(owner)?;
+                    callback(&object, call.key.as_ref(), this, arguments)
+                }
+                CapturedObjectHandler::Lazy(callback) => {
+                    callback(owner, &call.object, call.key.as_ref(), this, arguments)
+                }
+            },
             Self::Ast(closure) => closure.call(owner, this, arguments),
             Self::Bytecode(closure) => closure.call(owner, this, arguments),
             Self::Bound(bound) => {
@@ -732,6 +743,42 @@ impl Object {
         capture: &Object,
         key: Option<PropertyKey>,
         callback: CapturedObjectCallback,
+    ) -> RuntimeResult<Self> {
+        Self::captured_function_with_metadata(
+            prototype,
+            name,
+            length,
+            capture,
+            key,
+            CapturedObjectHandler::Eager(callback),
+        )
+    }
+
+    pub(super) fn native_function_with_lazy_object_capture(
+        prototype: &Object,
+        name: &str,
+        length: u32,
+        capture: &Object,
+        key: Option<PropertyKey>,
+        callback: LazyCapturedObjectCallback,
+    ) -> RuntimeResult<Self> {
+        Self::captured_function_with_metadata(
+            prototype,
+            name,
+            length,
+            capture,
+            key,
+            CapturedObjectHandler::Lazy(callback),
+        )
+    }
+
+    fn captured_function_with_metadata(
+        prototype: &Object,
+        name: &str,
+        length: u32,
+        capture: &Object,
+        key: Option<PropertyKey>,
+        callback: CapturedObjectHandler,
     ) -> RuntimeResult<Self> {
         let call = CapturedObjectCall {
             object: StoredObject::initial(prototype.0.runtime(), capture)?,

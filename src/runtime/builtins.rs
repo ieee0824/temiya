@@ -477,35 +477,41 @@ fn bit_count(value: Option<&Value>) -> RuntimeResult<u64> {
     Ok(value as u64)
 }
 
+fn create_regexp(arguments: &[Value], prototype: &Object) -> RuntimeResult<Object> {
+    let pattern = match arguments.first() {
+        Some(Value::Object(object)) => RegExp::from_object(object.clone()).map_or_else(
+            || value_arg(arguments.first()).to_js_string(),
+            |value| Ok(value.source()),
+        )?,
+        value => value_arg(value).to_js_string()?,
+    };
+    let flags = match arguments.get(1) {
+        None | Some(Value::Undefined) => String::new(),
+        Some(value) => value.to_js_string()?.to_string_lossy(),
+    };
+    let object = RegExp::new_for(prototype, pattern, &flags)?.object();
+    object.initialize_prototype(Some(prototype.clone()));
+    Ok(object)
+}
+
 fn install_regexp(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {
     let regexp = intrinsics.get(IntrinsicId::RegExp);
     let regexp_prototype = intrinsics.get(IntrinsicId::RegExpPrototype);
-    let create = move |arguments: &[Value]| {
-        let pattern = match arguments.first() {
-            Some(Value::Object(object)) => RegExp::from_object(object.clone()).map_or_else(
-                || value_arg(arguments.first()).to_js_string(),
-                |value| Ok(value.source()),
-            )?,
-            value => value_arg(value).to_js_string()?,
-        };
-        let flags = match arguments.get(1) {
-            None | Some(Value::Undefined) => String::new(),
-            Some(value) => value.to_js_string()?.to_string_lossy(),
-        };
-        let object = RegExp::new(pattern, &flags)?.object();
-        object.set_prototype(Some(regexp_prototype.clone()));
-        Ok(object)
-    };
-    let create = std::rc::Rc::new(create);
-    let call_create = create.clone();
-    regexp.set_native_call(move |_, arguments| call_create(arguments).map(Value::Object));
-    regexp.set_native_construct(move |arguments, _| create(arguments));
-    method(
-        intrinsics,
-        &intrinsics.get(IntrinsicId::RegExpPrototype),
+    regexp.set_captured_factory(
+        &regexp_prototype,
+        None,
+        Some((true, |prototype, _, _, arguments| {
+            create_regexp(arguments, prototype.expect("RegExp prototype")).map(Value::Object)
+        })),
+        Some(|prototype, _, arguments, _| create_regexp(arguments, prototype)),
+    )?;
+    let exec = Object::native_function_with_lazy_object_capture(
+        &intrinsics.get(IntrinsicId::FunctionPrototype),
         "exec",
         1,
-        |this, arguments| {
+        &intrinsics.get(IntrinsicId::ArrayPrototype),
+        None,
+        |owner, prototype, _, this, arguments| {
             let object = object_value(&this, "RegExp receiver")?;
             let regexp = RegExp::from_object(object)
                 .ok_or_else(|| RuntimeError::type_error("receiver is not a RegExp"))?;
@@ -513,9 +519,14 @@ fn install_regexp(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {
             let Some(values) = regexp.exec_values(&input)? else {
                 return Ok(Value::Null);
             };
-            array_value(values)
+            array_value_for(&prototype.load(owner)?, values)
         },
-    )
+    )?;
+    regexp_prototype.define_own_property(
+        "exec".into(),
+        PropertyDescriptor::data(Value::Object(exec), true, false, true),
+    )?;
+    Ok(())
 }
 
 fn install_indexed(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {
@@ -1042,6 +1053,17 @@ fn argument_list(value: Option<&Value>) -> RuntimeResult<Vec<Value>> {
         }
         _ => Err(RuntimeError::type_error("argument list must be an object")),
     }
+}
+
+fn array_value_for(prototype: &Object, values: Vec<Value>) -> RuntimeResult<Value> {
+    let length = u32::try_from(values.len())
+        .map_err(|_| RuntimeError::range_error("too many array values"))?;
+    let array = ArrayObject::new_for(prototype, length)?.object();
+    array.initialize_prototype(Some(prototype.clone()));
+    for (index, value) in values.into_iter().enumerate() {
+        array.create_data_property(JsString::from(index.to_string()).into(), value)?;
+    }
+    Ok(Value::Object(array))
 }
 
 fn array_value(values: Vec<Value>) -> RuntimeResult<Value> {

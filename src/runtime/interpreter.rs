@@ -813,10 +813,9 @@ impl ExpressionEvaluator {
     fn literal(&self, literal: &Literal) -> RuntimeResult<Value> {
         match literal {
             Literal::RegExp(spelling) => {
-                let regexp = super::RegExp::from_literal(spelling)?;
-                regexp.object().set_prototype(Some(
-                    self.realm.intrinsic(super::IntrinsicId::RegExpPrototype),
-                ));
+                let prototype = self.realm.intrinsic(super::IntrinsicId::RegExpPrototype);
+                let regexp = super::RegExp::from_literal_for(&prototype, spelling)?;
+                regexp.object().initialize_prototype(Some(prototype));
                 Ok(Value::Object(regexp.object()))
             }
             _ => literal_value(literal, self.strict),

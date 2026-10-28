@@ -312,11 +312,19 @@ pub struct RegExp(Object);
 impl RegExp {
     /// Compiles a pattern and its flags.
     pub fn new(pattern: JsString, flags: &str) -> RuntimeResult<Self> {
+        Self::allocate(None, pattern, flags)
+    }
+
+    pub(crate) fn new_for(context: &Object, pattern: JsString, flags: &str) -> RuntimeResult<Self> {
+        Self::allocate(Some(context), pattern, flags)
+    }
+
+    fn allocate(context: Option<&Object>, pattern: JsString, flags: &str) -> RuntimeResult<Self> {
         let flags = RegExpFlags::parse(flags)?;
         let matcher = compile_matcher(&pattern, flags)?;
         let captures = RefCell::new(matcher.create_captures());
         let scratch = RefCell::new(matcher.create_scratch());
-        let object = Object::new();
+        let object = context.map_or_else(Object::new, Object::new_for);
         object.0.state.borrow_mut().regexp = Some(RegExpSlot(Rc::new(RegExpData {
             source: pattern,
             flags,
@@ -330,11 +338,20 @@ impl RegExp {
 
     /// Parses an original literal spelling such as `/a+/gu`.
     pub fn from_literal(spelling: &str) -> RuntimeResult<Self> {
+        Self::literal_in(None, spelling)
+    }
+
+    pub(crate) fn from_literal_for(context: &Object, spelling: &str) -> RuntimeResult<Self> {
+        Self::literal_in(Some(context), spelling)
+    }
+
+    fn literal_in(context: Option<&Object>, spelling: &str) -> RuntimeResult<Self> {
         let end = spelling
             .rfind('/')
             .filter(|index| *index > 0)
             .ok_or_else(|| RuntimeError::syntax_error("invalid RegExp literal"))?;
-        Self::new(
+        Self::allocate(
+            context,
             JsString::from(spelling[1..end].to_owned()),
             &spelling[end + 1..],
         )
@@ -585,6 +602,31 @@ fn utf16_range(text: &str, start: usize, end: usize) -> RuntimeResult<String> {
 #[cfg(test)]
 mod cache_tests {
     use super::*;
+    #[test]
+    fn managed_regexp_instances_keep_cursors_separate_and_release_leaf_state() {
+        let runtime = crate::runtime::Runtime::new();
+        let context = Object::new_in(&runtime);
+        let first = RegExp::new_for(&context, "(a+)".into(), "g").unwrap();
+        let second = RegExp::new_for(&context, "(a+)".into(), "g").unwrap();
+        let weak_data = Rc::downgrade(&first.slot().0);
+        assert!(first.exec(&"aa".into()).unwrap().is_some());
+        assert_eq!(first.last_index(), 2);
+        assert_eq!(second.last_index(), 0);
+        let before = runtime.diagnostics().live;
+        assert!(RegExp::new_for(&context, "(".into(), "").is_err());
+        assert_eq!(runtime.diagnostics().live, before);
+        drop(context);
+        runtime.collect_migration_graph().unwrap();
+        assert_eq!(first.last_index(), 2);
+        assert!(second.exec(&"aa".into()).unwrap().is_some());
+        assert!(first.exec(&"aa".into()).unwrap().is_none());
+        assert_eq!(first.last_index(), 0);
+        drop(first);
+        runtime.collect_migration_graph().unwrap();
+        assert!(weak_data.upgrade().is_none());
+        drop(second);
+        assert_eq!(runtime.collect_migration_graph().unwrap().retained, 0);
+    }
     fn units(source: &str) -> Vec<u16> {
         source.encode_utf16().collect()
     }

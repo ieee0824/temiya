@@ -983,6 +983,8 @@ mod managed_allocation_tests {
                 "var buffer=new ArrayBuffer(8);var byteView=new TypedArray(buffer,1,4);var dataView=new DataView(buffer,2,2);if(ArrayBuffer.isView(byteView)&&ArrayBuffer.isView(dataView)&&Object.getPrototypeOf(byteView)===TypedArray.prototype&&Object.getPrototypeOf(dataView)===DataView.prototype){42;}else{0;}",
                 "if(ArrayBuffer.isView(new TypedArray(8))){42;}else{0;}",
                 "Number(42);",
+                "var regexp=new RegExp('(a)?(b)');var match=regexp.exec('b');if(Array.isArray(match)&&Object.getPrototypeOf(match)===Array.prototype&&match.length===3&&match[1]===undefined&&match[2]==='b'){42;}else{0;}",
+                "var regexpCalled=RegExp('a+','g');if(regexpCalled.exec('aa')[0]==='aa'&&regexpCalled.exec('aa')===null){42;}else{0;}",
                 "var numberValues=Array.prototype.values.call(42);if(numberValues.next().done){42;}else{0;}",
                 "var textValues=Array.prototype.values.call('💡');if(textValues.next().value==='\\uD83D' && textValues.next().value==='\\uDCA1' && textValues.next().done){42;}else{0;}",
                 "var stack=[];stack.push(20,22);stack.shift()+stack.pop();",
@@ -1031,6 +1033,23 @@ mod managed_allocation_tests {
                 engine.evaluate(&symbol_string).unwrap_err().kind(),
                 ExceptionKind::TypeError
             );
+            let invalid_regexp = engine.compile(&realm, "new RegExp('a','gg');").unwrap();
+            assert_eq!(
+                engine.evaluate(&invalid_regexp).unwrap_err().kind(),
+                ExceptionKind::SyntaxError
+            );
+            if backend == ScriptBackend::Ast {
+                let literal = engine
+                    .compile(&realm, "var literal=/(a)?(b)/;literal.exec('b')[2];")
+                    .unwrap();
+                assert!(
+                    engine
+                        .evaluate(&literal)
+                        .unwrap()
+                        .value()
+                        .same_value(&Value::String("b".into()))
+                );
+            }
         }
     }
 

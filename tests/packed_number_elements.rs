@@ -55,6 +55,14 @@ fn numeric_bits_and_object_edges_survive_storage_transitions_and_collection() {
             .unwrap()
     );
 
+    // Start the managed-child overwrite from a fresh numeric-only refill.
+    assert!(object.set(&"length".into(), Value::Number(0.0)).unwrap());
+    assert!(
+        object
+            .create_data_property("0".into(), Value::Number(0.0))
+            .unwrap()
+    );
+
     let marker = Rc::new(());
     let captured = marker.clone();
     let child = Object::native_function_in(&context, move |_, _| {

@@ -103,6 +103,26 @@ impl WeakObjectRoot {
 }
 
 impl Runtime {
+    pub(super) fn root_realm(
+        &self,
+        handle: Handle<super::execution::ManagedRealm>,
+    ) -> Option<super::Realm> {
+        use super::execution::{RealmReference, RealmRoot};
+        let heap = self.0.heap.borrow();
+        let data = heap.with(handle, |realm| realm.data.clone())?;
+        if let Some(facade) = data.facade.borrow().upgrade() {
+            return Some(super::Realm(RealmReference::Managed(facade)));
+        }
+        let root = heap.root(handle)?;
+        drop(heap);
+        let facade = Rc::new(RealmRoot {
+            root,
+            data: data.clone(),
+            runtime: self.clone(),
+        });
+        *data.facade.borrow_mut() = Rc::downgrade(&facade);
+        Some(super::Realm(RealmReference::Managed(facade)))
+    }
     pub(super) fn allocate_realm(&self, data: super::execution::RealmData) -> super::Realm {
         use super::execution::{ManagedRealm, RealmReference, RealmRoot};
         let data = Rc::new(data);

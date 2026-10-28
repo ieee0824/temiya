@@ -299,6 +299,7 @@ pub(super) struct BoundFunction {
 }
 
 pub(super) enum ManagedCallable {
+    Ast(super::function::StoredFunctionClosure),
     Bound(BoundFunction),
     ProxyRevoker(std::cell::RefCell<Option<StoredObject>>),
 }
@@ -308,13 +309,19 @@ impl ManagedCallable {
         match self {
             Self::Bound(bound) => bound.target.load(owner).map(Some),
             Self::ProxyRevoker(_) => Ok(None),
+            Self::Ast(_) => Ok(None),
         }
     }
     fn is_constructor(&self) -> bool {
-        matches!(self, Self::Bound(bound) if bound.constructor)
-    }
-    fn call(&self, owner: &Object, arguments: &[Value]) -> RuntimeResult<Value> {
         match self {
+            Self::Bound(bound) => bound.constructor,
+            Self::Ast(closure) => closure.is_constructor(),
+            Self::ProxyRevoker(_) => false,
+        }
+    }
+    fn call(&self, owner: &Object, this: Value, arguments: &[Value]) -> RuntimeResult<Value> {
+        match self {
+            Self::Ast(closure) => closure.call(owner, this, arguments),
             Self::Bound(bound) => {
                 let target = bound.target.load(owner)?;
                 let this_value = bound.this_value.load(owner)?;
@@ -339,6 +346,9 @@ impl ManagedCallable {
         arguments: &[Value],
         new_target: Object,
     ) -> RuntimeResult<Object> {
+        if let Self::Ast(closure) = self {
+            return closure.construct(owner, arguments, new_target);
+        }
         let Self::Bound(bound) = self else {
             return Err(RuntimeError::type_error("object is not a constructor"));
         };
@@ -353,6 +363,7 @@ impl ManagedCallable {
     }
     fn trace(&self, tracer: &mut crate::gc::Tracer<'_>) {
         match self {
+            Self::Ast(closure) => closure.trace(tracer),
             Self::Bound(bound) => bound.trace(tracer),
             Self::ProxyRevoker(slot) => {
                 if let Some(proxy) = &*slot.borrow() {
@@ -712,7 +723,7 @@ impl Object {
         let result = if proxy {
             super::proxy::apply_slot(self, this_value, arguments)
         } else if let Some(bound) = bound {
-            bound.call(self, arguments)
+            bound.call(self, this_value, arguments)
         } else {
             callback.expect("validated callable")(this_value, arguments)
         };

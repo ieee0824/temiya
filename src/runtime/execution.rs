@@ -44,6 +44,42 @@ pub(super) struct RealmRoot {
 pub(super) struct ManagedRealm {
     pub(super) data: Rc<RealmData>,
 }
+
+pub(super) enum StoredRealm {
+    Legacy(Realm),
+    Managed(Handle<ManagedRealm>),
+}
+impl StoredRealm {
+    pub(super) fn store(owner: &impl StoredOwner, realm: &Realm) -> RuntimeResult<Self> {
+        match (owner.runtime(), realm.runtime()) {
+            (None, None) => Ok(Self::Legacy(realm.clone())),
+            (Some(left), Some(right)) if left.same_heap(right) => {
+                let target = realm.handle().expect("managed Realm");
+                left.record_object_edge(owner.handle().expect("managed owner"), target)?;
+                Ok(Self::Managed(target))
+            }
+            _ => Err(RuntimeError::type_error(
+                "Realm belongs to a different allocation context",
+            )),
+        }
+    }
+    pub(super) fn load(&self, owner: &impl StoredOwner) -> RuntimeResult<Realm> {
+        match (self, owner.runtime()) {
+            (Self::Legacy(realm), None) => Ok(realm.clone()),
+            (Self::Managed(handle), Some(runtime)) => runtime
+                .root_realm(*handle)
+                .ok_or_else(|| RuntimeError::internal_error("stale managed Realm edge")),
+            _ => Err(RuntimeError::internal_error(
+                "Realm allocation context mismatch",
+            )),
+        }
+    }
+    pub(super) fn trace(&self, tracer: &mut Tracer<'_>) {
+        if let Self::Managed(handle) = self {
+            tracer.mark(*handle);
+        }
+    }
+}
 impl Trace for ManagedRealm {
     fn trace(&self, tracer: &mut Tracer<'_>) {
         self.data.trace(tracer);

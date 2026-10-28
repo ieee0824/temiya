@@ -1017,6 +1017,53 @@ mod managed_allocation_tests {
     }
 
     #[test]
+    fn managed_ast_function_captures_preserve_then_release_environment_cycles() {
+        for source in [
+            "var escaped=(function make(){var payload={probe:marker};function read(){return payload.probe();}payload.back=read;return read;})();delete marker;escaped;",
+            "var escaped=(()=>{let payload={probe:marker};let read=()=>payload.probe();payload.back=read;return read;})();delete marker;escaped;",
+        ] {
+            let mut engine = Engine::builder().script_backend(ScriptBackend::Ast).build();
+            engine.managed_allocation = true;
+            let realm = engine.create_realm();
+            let token = Rc::new(());
+            let weak = Rc::downgrade(&token);
+            engine
+                .register_global_function(&realm, "marker", move |context, _, _| {
+                    let _ = Rc::strong_count(&token);
+                    Ok(context.value(Value::Number(42.0)))
+                })
+                .unwrap();
+            let script = engine.compile(&realm, source).unwrap();
+            let value = engine.evaluate(&script).unwrap();
+            let clone = value.clone();
+            drop(script);
+            let clear = engine.compile(&realm, "escaped=undefined;").unwrap();
+            engine.evaluate(&clear).unwrap();
+            drop(clear);
+            drop(value);
+            engine.runtime.collect_migration_graph().unwrap();
+            assert!(weak.upgrade().is_some());
+            {
+                let Value::Object(function) = clone.value() else {
+                    panic!("escaped function");
+                };
+                assert!(
+                    function
+                        .call(Value::Undefined, &[])
+                        .unwrap()
+                        .same_value(&Value::Number(42.0))
+                );
+            }
+            drop(clone);
+            engine.runtime.collect_migration_graph().unwrap();
+            assert!(
+                weak.upgrade().is_none(),
+                "unrooted closure/environment cycle: {source}"
+            );
+        }
+    }
+
+    #[test]
     fn public_handle_clones_preserve_a_js_cycle_then_allow_reclamation_at_a_test_safepoint() {
         for backend in [ScriptBackend::Ast, ScriptBackend::Bytecode] {
             for source in [

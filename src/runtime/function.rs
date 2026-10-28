@@ -1,6 +1,11 @@
 //! ECMAScript function objects, calls, constructors, and parameter binding.
 
-use std::{cell::RefCell, rc::Rc};
+use super::{
+    environment::StoredEnvironment,
+    execution::StoredRealm,
+    stored::{StoredObject, StoredValue},
+};
+use std::rc::Rc;
 
 use crate::ast::{Expr, ExprKind, Function, FunctionBody, MethodKind};
 
@@ -23,13 +28,85 @@ pub enum FunctionKind {
 
 #[derive(Clone)]
 pub(super) struct FunctionClosure {
-    pub(super) code: Function,
+    pub(super) code: Rc<Function>,
     pub(super) kind: FunctionKind,
     pub(super) realm: Realm,
     pub(super) environment: Environment,
     pub(super) lexical_this: Value,
     #[allow(dead_code)]
     home_object: Option<Object>,
+}
+
+pub(super) struct StoredFunctionClosure {
+    code: Rc<Function>,
+    kind: FunctionKind,
+    realm: StoredRealm,
+    environment: StoredEnvironment,
+    lexical_this: StoredValue,
+    home_object: Option<StoredObject>,
+}
+impl StoredFunctionClosure {
+    fn load(&self, owner: &Object) -> RuntimeResult<FunctionClosure> {
+        Ok(FunctionClosure {
+            code: self.code.clone(),
+            kind: self.kind,
+            realm: self.realm.load(owner)?,
+            environment: self.environment.load(owner)?,
+            lexical_this: self.lexical_this.load(owner)?,
+            home_object: self
+                .home_object
+                .as_ref()
+                .map(|object| object.load(owner))
+                .transpose()?,
+        })
+    }
+    pub(super) fn is_constructor(&self) -> bool {
+        !self.code.generator
+            && !self.code.asynchronous
+            && matches!(
+                self.kind,
+                FunctionKind::Normal | FunctionKind::Method(MethodKind::Constructor)
+            )
+    }
+    pub(super) fn call(
+        &self,
+        owner: &Object,
+        this: Value,
+        arguments: &[Value],
+    ) -> RuntimeResult<Value> {
+        let closure = self.load(owner)?;
+        if closure.code.generator {
+            create_generator_object(&closure, owner.clone(), this, arguments).map(Value::Object)
+        } else if closure.code.asynchronous {
+            settled_promise_object(
+                &closure.realm,
+                call_function(&closure, owner.clone(), this, arguments, None)
+                    .map_err(|error| closure.realm.bind_exception(error)),
+            )
+            .map(Value::Object)
+        } else {
+            call_function(&closure, owner.clone(), this, arguments, None)
+                .map_err(|error| closure.realm.bind_exception(error))
+        }
+    }
+    pub(super) fn construct(
+        &self,
+        owner: &Object,
+        arguments: &[Value],
+        new_target: Object,
+    ) -> RuntimeResult<Object> {
+        let closure = self.load(owner)?;
+        construct_function(&closure, owner.clone(), arguments, new_target)
+            .map_err(|error| closure.realm.bind_exception(error))
+    }
+    pub(super) fn trace(&self, tracer: &mut crate::gc::Tracer<'_>) {
+        self.realm.trace(tracer);
+        self.environment.trace(tracer);
+        self.lexical_this.trace(tracer);
+        if let Some(object) = &self.home_object {
+            object.trace(tracer);
+        }
+    }
 }
 
 pub(super) fn create_function(
@@ -51,67 +128,24 @@ pub(super) fn create_function(
         } else {
             None
         };
-    let closure = Rc::new(FunctionClosure {
-        code: code.clone(),
+    let function = Object::new_for(&evaluator.realm.global_object());
+    let closure = StoredFunctionClosure {
+        code: Rc::new(code.clone()),
         kind,
-        realm: evaluator.realm.clone(),
-        environment: name_environment
-            .clone()
-            .unwrap_or_else(|| evaluator.environment.clone()),
-        lexical_this: evaluator.this_value.clone(),
-        home_object,
-    });
-    let slot = Rc::new(RefCell::new(None::<super::WeakObject>));
-    let call_closure = closure.clone();
-    let call_slot = slot.clone();
-    let call = move |this: Value, arguments: &[Value]| {
-        let function = call_slot
-            .borrow()
+        realm: StoredRealm::store(&function, &evaluator.realm)?,
+        environment: StoredEnvironment::store(
+            &function,
+            name_environment.as_ref().unwrap_or(&evaluator.environment),
+        )?,
+        lexical_this: StoredValue::store(&function, &evaluator.this_value)?,
+        home_object: home_object
             .as_ref()
-            .and_then(super::WeakObject::upgrade)
-            .ok_or_else(|| RuntimeError::internal_error("function object is not initialized"))?;
-        if call_closure.code.generator {
-            create_generator_object(&call_closure, function, this, arguments).map(Value::Object)
-        } else if call_closure.code.asynchronous {
-            settled_promise_object(
-                &call_closure.realm,
-                call_function(&call_closure, function, this, arguments, None)
-                    .map_err(|error| call_closure.realm.bind_exception(error)),
-            )
-            .map(Value::Object)
-        } else {
-            call_function(&call_closure, function, this, arguments, None)
-                .map_err(|error| call_closure.realm.bind_exception(error))
-        }
+            .map(|object| StoredObject::store(&function, object))
+            .transpose()?,
     };
-    let constructable = !code.generator
-        && !code.asynchronous
-        && matches!(
-            kind,
-            FunctionKind::Normal | FunctionKind::Method(MethodKind::Constructor)
-        );
-    let function = if constructable {
-        let construct_closure = closure.clone();
-        let construct_slot = slot.clone();
-        Object::native_callable_constructor_for(
-            &evaluator.realm.global_object(),
-            call,
-            move |arguments, new_target| {
-                let function = construct_slot
-                    .borrow()
-                    .as_ref()
-                    .and_then(super::WeakObject::upgrade)
-                    .ok_or_else(|| {
-                        RuntimeError::internal_error("function object is not initialized")
-                    })?;
-                construct_function(&construct_closure, function, arguments, new_target)
-                    .map_err(|error| construct_closure.realm.bind_exception(error))
-            },
-        )
-    } else {
-        Object::native_function_for(&evaluator.realm.global_object(), call)
-    };
-    *slot.borrow_mut() = Some(function.downgrade());
+    let constructable = closure.is_constructor();
+    function.0.state.borrow_mut().managed_callable =
+        Some(Rc::new(super::object::ManagedCallable::Ast(closure)));
     function.initialize_prototype(Some(
         evaluator
             .realm

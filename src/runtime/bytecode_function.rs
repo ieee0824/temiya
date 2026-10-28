@@ -127,10 +127,8 @@ pub(crate) fn create(
     function.initialize_function_properties(
         template.parameters.len(),
         template.name.clone().unwrap_or_default(),
-    );
-    if !template.arrow {
-        function.install_lazy_function_prototype(realm.intrinsic(IntrinsicId::ObjectPrototype))?;
-    }
+        (!template.arrow).then(|| realm.intrinsic(IntrinsicId::ObjectPrototype)),
+    )?;
     if let Some(named) = named {
         named.initialize_binding(
             template.name.as_ref().expect("named template"),

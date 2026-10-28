@@ -869,7 +869,16 @@ impl Object {
 
     // Only for a newly allocated ordinary bytecode function, before it is
     // published. Both values are leaves and the standard descriptors are known.
-    pub(super) fn initialize_function_properties(&self, length: usize, name: JsString) {
+    pub(super) fn initialize_function_properties(
+        &self,
+        length: usize,
+        name: JsString,
+        object_prototype: Option<Object>,
+    ) -> RuntimeResult<()> {
+        let object_prototype = object_prototype
+            .as_ref()
+            .map(|parent| StoredObject::store(self, parent))
+            .transpose()?;
         let mut state = self.0.state.borrow_mut();
         debug_assert!(state.properties.is_empty());
         debug_assert!(state.proxy.is_none() && !state.array);
@@ -889,6 +898,19 @@ impl Object {
                 },
             });
         }
+        if let Some(parent) = object_prototype {
+            state.properties.push(PropertyEntry {
+                key: "prototype".into(),
+                descriptor: StoredDescriptor::Data {
+                    value: StoredValue::Undefined,
+                    writable: true,
+                    enumerable: false,
+                    configurable: false,
+                },
+            });
+            state.lazy_function_prototype = Some(parent);
+        }
+        Ok(())
     }
 
     pub(super) fn install_lazy_function_prototype(

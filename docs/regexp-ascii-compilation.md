@@ -128,3 +128,19 @@ controls are within noise. The earlier local noisy report and every prior
 ARM64 miss remain archived. Full same-source qualification run 40607319755
 adds cold reconfirmation, warm/original-eleven regressions and controls on four
 runners. Those results and latest CI/security remain necessary before merge.
+
+The full a6c90bd wave is complete: original before/after and identical-binary
+controls are all 132 within-noise decisions; all 36 warm before/after and all
+36 warm/Boa decisions are faster. Original/Boa has 131 faster and one within
+noise (Intel string-concat ratio0.766296, threshold0.249140), with no slower
+decision. That host is the exact Intel6973P-C target in #510: arithmetic/Boa
+ratios0.852346/0.852616/0.804638 all pass; current-main arithmetic also passes,
+so no arithmetic gain is attributed to the equality change alone.
+
+Additional full-wave cold data contains one Intel comparison within noise:
+ratio0.855336, threshold0.276044. Its same-host Boa repetition passes all three.
+This uncertainty remains recorded and requires controlled replication; it is
+not removed by the earlier successful cold cohorts. Matched-Intel replication
+and original arithmetic profiling keep the source/input/thresholds fixed.
+Initial four-probe profile and four-probe qualification requests found no
+matched hardware; those successful workflow jobs are not measurement passes.

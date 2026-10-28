@@ -28,7 +28,7 @@ for (const file of recorded) {
   }
 }
 let reports = 0;
-for (const file of recorded.filter(p => /\/(cold-report|cold|cold-same-binary)\.json$/.test(p))) {
+for (const file of recorded.filter(p => /\/(cold-report|cold|cold-same-binary|cold-replication)\.json$/.test(p))) {
   execFileSync(process.execPath, [path.join(root, 'verify-cold-report.mjs'), path.join(root, file)]);
   reports++;
 }

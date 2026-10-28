@@ -66,8 +66,8 @@ cold and macro statistics, fixed oracles, checked counts and decisions.
 A valid report with a false speed gate remains false. For a single cold report,
 run node benchmarks/regexp-cold-ascii/verify-cold-report.mjs PATH.
 
-The inventory covers 445 files, 54 cold reports and 29 macro reports. Macro
-coverage is 1434 workers, 22944 checked results and 717 decisions. This is an
+The inventory covers 611 files, 62 cold reports and 77 macro reports. Macro
+coverage is 3834 workers, 61344 checked results and 1917 decisions. This is an
 archive verification, not a new timing experiment, binary rebuild, whole-app
 throughput claim, full-conformance claim or hard process-RSS bound. Compressed
 logs and patches preserve their original bytes, including whitespace.
@@ -101,3 +101,25 @@ reference-head-audit.json records that observed omoikane main97d5b3f is13
 commits ahead of the timing pin, with identical engine subtree and root
 Cargo manifests/lock. Host bindings and DOM bootstrap changed; historical
 timing is not relabeled as measurement of that newer application revision.
+
+Both full four-runner waves are now retained. Historical6702d00 original
+before/after has131 within-noise and1 faster decision; its identical-binary
+controls include one faster and one slower decision (primitive-string-method
+ratio1.117314), so these are not hidden or attributed to source changes.
+
+Adopted a6c90bd full run40607319755 has132 original before/after decisions
+within noise,36 warm before/after faster and132 identical-binary decisions
+within noise. Actual-Boa comparisons have131 original faster and1 within
+noise (Intel string-concat0.766296, threshold0.249140); warm/Boa has36 faster.
+All results are correct. The additional Intel6973P-C cold report includes
+ratio0.855336 within noise because threshold0.276044; its repetition has
+all3 Boa wins. This exception remains unresolved for the full acceptance
+audit and is not replaced by the earlier eight-cohort cold qualification.
+
+On that exact Intel CPU, original arithmetic/Boa is0.852346/0.852616/0.804638,
+all faster. Current-main arithmetic/Boa is also all faster, and candidate/main
+is within noise: no new arithmetic speedup is attributed to the key change.
+Intel-specific profiles are still missing. The first two four-probe requests
+(40609718685,40610915908) obtained no matched CPUs, and are retained only
+as unavailable-hardware observations in intel6973-probes/. Additional
+predeclared replication/profile attempts keep the source and thresholds fixed.

@@ -1,0 +1,77 @@
+{
+  "source_revision": "69200109f16388776e2835ea982ab8a992c36c8a",
+  "workflow_run": 40764795309,
+  "files": {
+    "x64/component-build/build-info.json": "1733c3864a93f0d3e02afe4b0a45127c7f3a96c2fa97ee53c9c9bd3be0411693",
+    "x64/component-checks.json": "6eefa566faefb40f1867e155bf33f5e4945a2216466272a01d3dcdd20065c4ad",
+    "x64/component-verification.json": "0f0b0e2a7720a262e519bb9517a0446d82b2b00e17982a616a2c81bdf21e972d",
+    "x64/components.json": "0cd3eebd0681c78560b3fb443ae38de036f2eff821c8f2227eb829c58c2c1155",
+    "x64/components.progress": "4f74f06ec45974d664da2c9d3702f8d88dcf8d7cd732afd6c2bb9c8c4c4ba08e",
+    "arm64/component-build/build-info.json": "1ed5a7a3e029a1c668c7aa9e22d0a306aad9af91f678fd4efe407e67e11c5220",
+    "arm64/component-checks.json": "6eefa566faefb40f1867e155bf33f5e4945a2216466272a01d3dcdd20065c4ad",
+    "arm64/component-verification.json": "0f0b0e2a7720a262e519bb9517a0446d82b2b00e17982a616a2c81bdf21e972d",
+    "arm64/components.json": "b48657d4102a151fc4ab71f855b0d967531f29275123174c99a3e32a53536f64",
+    "arm64/components.progress": "c1febc5c846736a2f19d82689081c271467f7744cae85bd8592922825d5326a9"
+  },
+  "hosts": [
+    {
+      "machine": {
+        "platform": "linux",
+        "release": "7.0.0-1017-azure",
+        "architecture": "x64",
+        "logical_cpus": 4,
+        "cpu_models": [
+          "AMD EPYC 7763 64-Core Processor"
+        ]
+      },
+      "workers": 18,
+      "checked_values": 288,
+      "all_component_cases_valid": true,
+      "engine_gc_reclamation_ready": true,
+      "ownership_cases": [
+        "acyclic-object",
+        "self-cycle",
+        "two-object-cycle",
+        "arrow-function",
+        "ordinary-function",
+        "escaped-prototype",
+        "lexical-closure"
+      ],
+      "adapter_checks": {
+        "checked_results": 12,
+        "rejected_measurement_mutations": 42,
+        "rejected_commands": 6
+      }
+    },
+    {
+      "machine": {
+        "platform": "linux",
+        "release": "7.0.0-1017-azure",
+        "architecture": "arm64",
+        "logical_cpus": 4,
+        "cpu_models": [
+          "unknown"
+        ]
+      },
+      "workers": 18,
+      "checked_values": 288,
+      "all_component_cases_valid": true,
+      "engine_gc_reclamation_ready": true,
+      "ownership_cases": [
+        "acyclic-object",
+        "self-cycle",
+        "two-object-cycle",
+        "arrow-function",
+        "ordinary-function",
+        "escaped-prototype",
+        "lexical-closure"
+      ],
+      "adapter_checks": {
+        "checked_results": 12,
+        "rejected_measurement_mutations": 42,
+        "rejected_commands": 6
+      }
+    }
+  ],
+  "qualification": "Both original component reports independently verified:36 workers/576 values correct, full15 samples3rotations, fixed watchdogs. Each actual defaultEngine ownership probe strict exit0, all7 fixtures release and retained handles/clones work. ARM CPU model reported unknown; architecture observedarm64. Standalone Heap GC timings remain separate from Engine collection; no cross-engine speed or universal memory/GC claim."
+}

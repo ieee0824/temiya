@@ -23,10 +23,23 @@ Before/after versus runtime872: all33 comparisons within noise. No qualified
 improvement or regression is claimed. Actual pinned omoikane modified Boa:
 32 faster and1 within noise (prop-mega pair2, ratio0.6981, threshold0.4795).
 All primitive-string-method pairs pass the speed gate, but this report does not
-qualify all33 comparisons. No runs or pairs are discarded. Hosted comparison
-and current-source full library Miri remain pending. Earlier-source hosted,
+qualify all33 comparisons. No runs or pairs are discarded. The [hosted follow-up](hosted-general) qualifies all33 actual-Boa decisions
+on each of AMD EPYC9V45 and AMD EPYC7763, with every report validating66 workers
+and1056 values. Main comparisons retain7 slower decisions per host; same-binary
+controls retain33 noise and32 noise/1 slower. These are bounded host results,
+not an application-wide claim or a revision of the local32/1 observation.
+Current-source full library Miri remains pending. Earlier-source hosted,
 component, async and full-Miri results retain their original source labels.
 
 statistics-verifier.mjs independently recomputes medians, MAD, original-input
 coverage, value counts, order, limits and decisions from either report. File
 hashes and source object identities bind these observations to the source.
+
+The source/compiler/machine-bound actual Engine collection profile and all
+fifteen issue criteria are mapped in acceptance-follow-up.json and
+phase-acceptance-map.json. Those records retain the remaining full-Miri and
+merge gates; implementation evidence alone is not a completion claim.
+
+Run `node benchmarks/runtime-gc/experiments/primitive-prototypes-6c3/verify-integrity.mjs`
+from the checkout to verify the complete byte inventory and raw/compressed log
+hashes. Statistical, build-identity and exact Miri audits remain separate.

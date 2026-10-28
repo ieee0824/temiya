@@ -32,12 +32,14 @@ reclamation and records integrated Engine collection in the profile above.
 Earlier competitive source stages qualified the uninstrumented original-eleven
 comparison against actual Boa under the documented guest-CPU0 condition. The
 latest source6c3 cohort records32 faster/1 noise decisions and does not qualify
-all33; its hosted follow-up remains pending. Unqualified/unaffined runs and
+all33 on that local machine. Its independent hosted follow-up on AMD9V45 and
+AMD7763 qualifies all33 actual-Boa comparisons per host, while preserving main
+regressions and same-binary variability. Unqualified/unaffined runs and
 material regressions against main are retained alongside these observations.
 These newer results do not retroactively change the historical component
 cohort or establish cross-engine GC pause superiority. #427's [phase evidence map](../benchmarks/runtime-gc/experiments/primitive-prototypes-6c3/phase-acceptance-map.json)
 records each stage separately. The current original-eleven Engine GC profile
 also has a clean-source/compiler/machine/affinity record and independent
 root/pause checks; it is a single instrumented pass, not cross-engine GC
-performance proof. Latest hosted speed/full-Miri and final integration audits
+performance proof. Latest full-Miri and final integration audits
 remain required before completion.

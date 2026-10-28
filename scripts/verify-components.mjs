@@ -1,12 +1,14 @@
 // Recompute stored component evidence; no execution or cross-engine speed claim.
 import fs from 'node:fs';
-import {componentVersion,componentCases,validateComponent,statistics} from './component-benchmark-reference.mjs';
+import {componentVersion,componentCases,validateComponent} from './component-benchmark-reference.mjs';
 const file=process.argv[2];if(!file)throw Error('usage: verify-components.mjs REPORT');
 const report=JSON.parse(fs.readFileSync(file));
 const require=(ok,label)=>{if(!ok)throw Error(label);};
 require(report.fixture_version===componentVersion&&report.samples===15&&report.rounds===3&&report.runs.length===18,'complete repeated protocol');
 require(report.limits.timeout_ms===180000&&report.limits.rss_limit_kib===524288,'fixed watchdogs');
-require(report.build.source_clean===true&&/^[a-f0-9]{40}$/.test(report.build.revision)&&report.build.profile==='release'&&report.build.features.length===0,'release source provenance');
+require(report.build.source_clean===true&&/^[a-f0-9]{40}$/.test(report.build.revision)&&report.build.profile==='release'&&report.build.features.length===0&&report.build.release_debug===false&&report.build.rustflags==='','release source provenance');
+const architecture={x64:'x86_64',arm64:'aarch64'}[report.machine.architecture];
+require(architecture&&report.machine.platform==='linux'&&report.machine.logical_cpus>0,'native measurement machine');
 const seen=new Set();let checked=0;
 for(const row of report.runs){
  const contract=componentCases.find(c=>c.name===row.name),key=row.round+'/'+row.name;
@@ -16,7 +18,11 @@ for(const row of report.runs){
  if(row.status==='pass'){
   require(row.exit.code===0&&row.exit.signal===null,'actual successful child');
   validateComponent(row.measurement,contract,15);checked+=row.measurement.validated_passes;
-  require(JSON.stringify(row.statistics)===JSON.stringify(statistics(row.measurement.samples_ns)),'independent median/MAD');
+  // Separate calculation from the collection driver's statistics helper.
+  const sorted=row.measurement.samples_ns.slice().sort((a,b)=>a-b),middle=sorted[7];
+  const deviations=sorted.map(n=>Math.abs(n-middle)).sort((a,b)=>a-b),mad=deviations[7];
+  require(row.statistics.median_ns===middle&&row.statistics.mad_ns===mad&&row.statistics.relative_mad===mad/middle,'independent median/MAD');
+  require(row.measurement.architecture===architecture,'worker and machine architecture');
   require(JSON.stringify(JSON.parse(row.stdout))===JSON.stringify(row.measurement),'raw worker output');
  }
 }

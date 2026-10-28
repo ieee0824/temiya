@@ -49,6 +49,10 @@ jobs:
         run: node benchmarks/regexp-cold-ascii/verify-integrity.mjs
       - name: Verify original arithmetic Intel instruction evidence
         run: node benchmarks/intel-arithmetic/verify.mjs
+      - name: Verify checked component records and rejection gates
+        run: |
+          node benchmarks/components/verify-integrity.mjs
+          node scripts/check-component-records.mjs
       - name: Run Clippy
         run: cargo +stable clippy --locked --all-targets --all-features -- -D warnings
 

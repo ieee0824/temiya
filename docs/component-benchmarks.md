@@ -80,3 +80,16 @@ This advances #427's dedicated phase groups. The standalone GC qualification,
 actual Engine retention limitations and broader application/SpiderMonkey goals
 must be considered explicitly in its completion audit, rather than inferred
 from a successful benchmark workflow.
+
+## Recorded first cohort
+
+Source6ec1c50 was measured locally on ARM64 and in hosted run40620663377 on
+Intel Xeon Platinum8573C x64 and another ARM64 host. All54 isolated workers
+completed864 checked pass-level results. The Engine ownership probe returned
+strict code2 on all three hosts, retaining self-cycle, two-object-cycle and
+escaped-prototype; Engine reclamation readiness remains false.
+
+[Raw data, all round medians/MAD, provenance and independent verification](../benchmarks/components/README.md)
+retain these failures alongside successful standalone Heap observations. The
+library/runtime/test/Cargo source paths are unchanged from main2f0f4c2; this is
+a suite/evidence change with no engine optimization or cross-engine speed claim.

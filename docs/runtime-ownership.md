@@ -145,10 +145,11 @@ runtime allocation collection is enabled.
 | HostCallContext / host arguments and results | IDs only in context; arguments, receiver and return handles have Values | Active R for call; validate result provenance before adopting its internal edge |
 | FFI wrappers / registry (`ffi.rs`) | boxed Engine/Realm/Script/Value handles; registry stores kind/address only | Wrappers own R, release exactly once; address registry is not an extra GC root; CString errors have no Value edge |
 
-The separate bytecode/JIT/debugger/collector development components are not
-selected by Engine today. Their register/frame/cache handles require an
-additional tracing audit before connection (#307, #324, #340). They cannot
-supply missing roots for the current AST path.
+Engine selects AST or verified bytecode execution; both paths' captures,
+temporaries and active regions are included here. Experimental JIT, debugger
+and standalone collector development components remain separate. Connecting
+additional register/frame/cache state requires its own tracing audit
+(#307, #324, #340).
 
 ## Selected ownership representation
 
@@ -161,7 +162,7 @@ Internal fields store non-owning `Handle<T>` and private `StoredValue` variants;
 public `Value::Object`/Object facades own rooted references. Boundary conversion
 between stored and rooted values is explicit. Ordinary JS evaluation uses the
 internal representation and does not register every expression result in the
-persistent root HashMap.
+persistent root table.
 
 Object, Environment, Realm, FunctionData, PromiseData, generator state, module
 records and managed job payloads implement Trace. Leaf backing bytes/AST/Regex
@@ -206,8 +207,9 @@ cycle retaining Runtime remains the host's explicit ownership responsibility.
    borrow before a getter, Proxy trap, host callback, nested allocation or job.
    Never collect with an outstanding Heap::with_mut/RefCell borrow. Handle
    identity may cross a safepoint; an interior Rust reference may not.
-3. Initial safepoints are explicit allocation/loop-backedge/call-return sites
-   with registered frames. Publish/root a new allocation before another
+3. Initial safepoints use registered frames. This integration selects allocation
+   safepoints and explicit collection; future loop-backedge/call-return sites
+   must obey the same rooting protocol. Publish/root a new allocation before another
    collection opportunity. Existing Heap automatic pre-allocation collection
    must be invoked only after this protocol protects all inputs. Stress mode
    collects at every eligible allocation to expose missing temporary roots.
@@ -495,7 +497,7 @@ paths, without adding a root registration per primitive property check.
 
 ### Bounded activation facade region
 
-The outermost VM run owns an external region with at most eight recently used
+The outermost VM run owns an external region with at most sixteen recently used
 Object facades. Nested runs in the same Runtime share it. This reuses facade
 allocations and root registrations for repeated reads of a stable receiver;
 it does not store owning roots in managed records. Runtime holds only a Weak
@@ -532,5 +534,6 @@ An additional test runs the same root/clone transitions with a live Engine and
 collects after each transition, preserving callbacks/constructors/closures and
 releasing the host token after the last handle. These fixtures now also pass
 through the public default Engine and strict CLI, with the 0.2 context APIs and
-without Legacy storage variants. Complete external stress/ABI/toolchain gates
-and performance qualification remain pending.
+without Legacy storage variants. The recorded external ABI/toolchain tests and
+original-workload performance qualification are separate from the remaining
+full Miri delivery gate.

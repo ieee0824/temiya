@@ -19,6 +19,12 @@ an explicit collection. Owned handles register roots, including handles kept
 after the Engine is dropped. Dropping a Realm handle alone does not promise
 immediate destruction while another owner keeps the heap alive.
 
+`engine.create_realm_with_host(HostHooks::new(|| 42.0))` injects the UTC
+millisecond clock used by that Realm's Date constructor and Date.now. The Realm
+uses the same engine heap and provenance checks as `create_realm`. This permits
+deterministic tests and hosts without a wall clock. Rust captures in HostHooks
+remain external host state and follow the ownership contract below.
+
 Host objects with custom runtime hooks must use
 `Object::new_in(engine.allocation_context())`. Low-level callbacks can use
 `Object::native_function_in(engine.allocation_context(), callback)`; this

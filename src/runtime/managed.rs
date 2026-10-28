@@ -24,9 +24,29 @@ pub(super) struct RuntimeData {
     allocation_interval: Cell<usize>,
     allocation_remaining: Cell<usize>,
     active_objects: RefCell<Weak<RefCell<Vec<Object>>>>,
+    #[cfg(all(test, not(miri)))]
+    collection_ns: Cell<u128>,
 }
 
-const ACTIVE_OBJECTS: usize = 8;
+#[cfg(all(test, not(miri)))]
+struct CollectionTimer<'a> {
+    total: &'a Cell<u128>,
+    start: std::time::Instant,
+}
+#[cfg(all(test, not(miri)))]
+impl Drop for CollectionTimer<'_> {
+    fn drop(&mut self) {
+        self.total.set(
+            self.total
+                .get()
+                .saturating_add(self.start.elapsed().as_nanos()),
+        );
+    }
+}
+
+// Leave room for the container as well as a small polymorphic receiver set.
+// The whole bounded region is still cleared before any collection.
+const ACTIVE_OBJECTS: usize = 16;
 
 // This is an external activation region, never a payload stored in the heap.
 // Nested VM calls share the outer region. Its bounded facade cache is cleared
@@ -165,6 +185,11 @@ impl Runtime {
             }
         }
         let _reset = Reset(&self.0.collecting);
+        #[cfg(all(test, not(miri)))]
+        let _timer = CollectionTimer {
+            total: &self.0.collection_ns,
+            start: std::time::Instant::now(),
+        };
         self.clear_active_objects();
         let (_, retired) = self.0.heap.borrow_mut().collect_retiring_with(incoming);
         // A destructor may allocate/evaluate. Nested allocations skip collection
@@ -347,6 +372,8 @@ impl Runtime {
             allocation_interval: Cell::new(4096),
             allocation_remaining: Cell::new(4096),
             active_objects: RefCell::new(Weak::new()),
+            #[cfg(all(test, not(miri)))]
+            collection_ns: Cell::new(0),
         }))
     }
     pub(super) fn allocate_object(&self, data: ObjectData) -> Object {
@@ -401,6 +428,11 @@ impl Runtime {
             }
         }
         let _reset = Reset(&self.0.collecting);
+        #[cfg(all(test, not(miri)))]
+        let _timer = CollectionTimer {
+            total: &self.0.collection_ns,
+            start: std::time::Instant::now(),
+        };
         self.clear_active_objects();
         let (stats, retired) = self.0.heap.borrow_mut().collect_retiring();
         // Host Drop may reenter evaluation/allocation after slot retirement.
@@ -430,11 +462,52 @@ impl Runtime {
     pub(crate) fn diagnostics(&self) -> crate::gc::HeapDiagnostics {
         self.0.heap.borrow().diagnostics()
     }
+
+    #[cfg(all(test, not(miri)))]
+    pub(crate) fn profile_snapshot(&self) -> (crate::gc::HeapDiagnostics, [usize; 3], u128) {
+        let heap = self.0.heap.borrow();
+        (
+            heap.diagnostics(),
+            heap.root_activity(),
+            self.0.collection_ns.get(),
+        )
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(not(miri))]
+    #[test]
+    fn container_and_polymorphic_receivers_reuse_warm_activation_roots() {
+        let runtime = Runtime::new();
+        let container = Object::new_in(&runtime);
+        for index in 0..8 {
+            container
+                .create_data_property(
+                    index.to_string().as_str().into(),
+                    super::super::Value::Object(Object::new_in(&runtime)),
+                )
+                .unwrap();
+        }
+        let _region = runtime.enter_object_root_region().unwrap();
+        let read = |index: usize| {
+            let owner = runtime.root_object(container.0.handle().unwrap()).unwrap();
+            owner.get(&index.to_string().as_str().into()).unwrap()
+        };
+        for index in 0..8 {
+            drop(read(index));
+        }
+        let (_, before, _) = runtime.profile_snapshot();
+        for index in 0..1_000 {
+            drop(read(index % 8));
+        }
+        let (_, after, _) = runtime.profile_snapshot();
+        assert_eq!(
+            after, before,
+            "warm reads must not allocate more Root registrations"
+        );
+    }
     #[test]
     fn activation_facades_are_bounded_and_do_not_retain_dead_graphs_at_collection() {
         let runtime = Runtime::new();

@@ -160,6 +160,20 @@ impl Engine {
         }
     }
 
+    /// Creates a Realm in this engine's heap with injected host services.
+    /// Opaque Rust captures in the hooks follow the host-state ownership contract.
+    #[must_use]
+    pub fn create_realm_with_host(&self, host: crate::runtime::HostHooks) -> RealmHandle {
+        let global = Object::new_in(&self.runtime);
+        let realm = Realm::try_new_with_host(global.clone(), Value::Object(global), host)
+            .expect("fresh Engine global has the engine allocation context");
+        RealmHandle {
+            engine_id: self.id,
+            realm_id: realm.identity(),
+            realm,
+        }
+    }
+
     /// Collects unreachable runtime objects across all Realms of this engine.
     /// Owned value, object, script and module handles remain valid.
     pub fn collect_garbage(&self) -> Result<crate::gc::CollectionStats, EmbedError> {
@@ -963,7 +977,7 @@ mod managed_allocation_tests {
         for backend in [ScriptBackend::Ast, ScriptBackend::Bytecode] {
             let engine = Engine::builder().script_backend(backend).build();
             engine.runtime.set_allocation_collection_interval(0);
-            let realm = engine.create_realm();
+            let realm = engine.create_realm_with_host(crate::runtime::HostHooks::new(|| 42.0));
             for source in [
                 "function sum(a,b){return a+b;}sum(20,22);",
                 "var constructedArray=new Array({answer:42});constructedArray[0].answer;",
@@ -985,7 +999,7 @@ mod managed_allocation_tests {
                 "if(Object('abc').valueOf()==='abc'&&Object.getPrototypeOf(Object(true))===Boolean.prototype&&Object.getPrototypeOf(Object(Symbol.iterator))===Symbol.prototype&&Object(42n).valueOf()===42n){42;}else{0;}",
                 "(new Number(42)).valueOf();",
                 "(new Date(42)).valueOf();",
-                "if((new Date(0)).toISOString()==='1970-01-01T00:00:00.000Z'&&typeof Date()==='string'&&typeof Date.now()==='number'){42;}else{0;}",
+                "if((new Date(0)).toISOString()==='1970-01-01T00:00:00.000Z'&&typeof Date()==='string'&&Date.now()===42){42;}else{0;}",
                 "if((new String('💡')).valueOf()==='💡' && String(Symbol.iterator).slice(0,7)==='Symbol('){42;}else{0;}",
                 "var buffer=new ArrayBuffer(8);var byteView=new TypedArray(buffer,1,4);var dataView=new DataView(buffer,2,2);if(ArrayBuffer.isView(byteView)&&ArrayBuffer.isView(dataView)&&Object.getPrototypeOf(byteView)===TypedArray.prototype&&Object.getPrototypeOf(dataView)===DataView.prototype){42;}else{0;}",
                 "if(ArrayBuffer.isView(new TypedArray(8))){42;}else{0;}",
@@ -1921,5 +1935,133 @@ mod managed_allocation_tests {
                 );
             }
         }
+    }
+}
+
+// Diagnostic counters and pause timers are absent from production and Miri.
+// These observations complement the separate uninstrumented speed comparison.
+#[cfg(all(test, not(miri)))]
+mod runtime_workload_profile {
+    use super::*;
+    use std::{fs, io::Write, path::PathBuf, time::Instant};
+
+    fn snapshot(runtime: &crate::runtime::AllocationContext) -> serde_json::Value {
+        let (heap, roots, collection_ns) = runtime.profile_snapshot();
+        serde_json::json!({
+            "live": heap.live, "slots": heap.slots, "rooted": heap.rooted,
+            "collections": heap.collections, "reclaimed_total": heap.reclaimed_total,
+            "peak_live": heap.peak_live, "allocations_total": heap.live + heap.reclaimed_total,
+            "root_registration_calls": roots[0], "root_unregistration_calls": roots[1],
+            "peak_distinct_roots": roots[2], "collection_pause_ns": collection_ns,
+        })
+    }
+
+    #[test]
+    #[ignore = "requires the pinned original workload directory and an output path"]
+    fn original_eleven_runtime_allocation_root_and_collection_profile() {
+        let directory = PathBuf::from(
+            std::env::var("TEMIYA_PROFILE_WORKLOADS").expect("set TEMIYA_PROFILE_WORKLOADS"),
+        );
+        let output = std::env::var("TEMIYA_PROFILE_OUTPUT").expect("set TEMIYA_PROFILE_OUTPUT");
+        let manifest: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(directory.join("manifest.json")).unwrap())
+                .unwrap();
+        assert_eq!(
+            manifest["revision"],
+            "007556adccb8fb4329236932ca8175f8e8d119d2"
+        );
+        assert_eq!(
+            manifest["fixture_sha256"],
+            "177eb80ae73d1081eb620f747b4703e2a9f2731e0255bb60131b73b7dcac6464"
+        );
+        let definitions = manifest["workloads"].as_array().unwrap();
+        assert_eq!(definitions.len(), 11);
+        let mut cases = Vec::new();
+        for definition in definitions {
+            let name = definition["name"].as_str().unwrap();
+            let workload: serde_json::Value = serde_json::from_str(
+                &fs::read_to_string(directory.join(format!("{name}.json"))).unwrap(),
+            )
+            .unwrap();
+            for key in [
+                "name",
+                "iterations",
+                "expected",
+                "body_sha256",
+                "setup_sha256",
+                "invocation_sha256",
+            ] {
+                assert_eq!(workload[key], definition[key], "{name}: {key}");
+            }
+            let engine = Engine::default();
+            let realm = engine.create_realm();
+            let runtime = engine.runtime.clone();
+            let startup = snapshot(&runtime);
+            let setup = engine
+                .compile(&realm, workload["setup"].as_str().unwrap())
+                .unwrap();
+            engine.evaluate(&setup).unwrap();
+            drop(setup);
+            engine.collect_garbage().unwrap();
+            let before = snapshot(&runtime);
+            let start = Instant::now();
+            let script = engine
+                .compile(&realm, workload["invocation"].as_str().unwrap())
+                .unwrap();
+            let backend = script.backend();
+            let result = engine.evaluate(&script).unwrap();
+            drop(script);
+            let wall_ns = start.elapsed().as_nanos();
+            assert!(
+                result
+                    .value()
+                    .same_value(&Value::Number(workload["expected"].as_f64().unwrap())),
+                "{name}"
+            );
+            drop(result);
+            let after = snapshot(&runtime);
+            let pause_ns = after["collection_pause_ns"].as_u64().unwrap()
+                - before["collection_pause_ns"].as_u64().unwrap();
+            let allocation_count = after["allocations_total"].as_u64().unwrap()
+                - before["allocations_total"].as_u64().unwrap();
+            let registration_calls = after["root_registration_calls"].as_u64().unwrap()
+                - before["root_registration_calls"].as_u64().unwrap();
+            let unregistration_calls = after["root_unregistration_calls"].as_u64().unwrap()
+                - before["root_unregistration_calls"].as_u64().unwrap();
+            assert!(u128::from(pause_ns) <= wall_ns);
+            engine.collect_garbage().unwrap();
+            let after_explicit_collection = snapshot(&runtime);
+            drop((realm, engine));
+            runtime.collect_garbage().unwrap();
+            let released = snapshot(&runtime);
+            assert_eq!(released["live"], 0, "{name}");
+            assert_eq!(
+                released["root_registration_calls"], released["root_unregistration_calls"],
+                "{name}"
+            );
+            cases.push(serde_json::json!({
+                "name": name, "iterations": workload["iterations"], "expected": workload["expected"],
+                "validated": true, "backend": format!("{backend:?}"), "startup": startup,
+                "before": before, "after": after, "after_explicit_collection": after_explicit_collection,
+                "after_releasing_engine_and_handles": released, "managed_allocations": allocation_count,
+                "root_registration_calls": registration_calls, "root_unregistration_calls": unregistration_calls,
+                "wall_ns_including_automatic_collection": wall_ns, "automatic_collection_pause_ns": pause_ns,
+                "mutator_ns_excluding_collection_pauses": wall_ns - u128::from(pause_ns),
+            }));
+        }
+        let report = serde_json::json!({
+            "scope": "one validated original invocation after setup and explicit precollection; no warmup; test-only counters/timers",
+            "timing_instrumentation": true, "performance_acceptance": false,
+            "root_count_scope": "Heap Root registrations, not public facade clones sharing an existing registration",
+            "pause_scope": "Runtime collection including facade-cache clearing, sweep and retired host destruction; also measured on unwind",
+            "allocation_count_scope": "managed cells derived from cumulative reclaimed plus live, excluding ordinary Rust backing allocations",
+            "profile": if cfg!(debug_assertions) { "debug" } else { "release" }, "manifest": manifest, "cases": cases,
+        });
+        let mut file = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(output)
+            .unwrap();
+        writeln!(file, "{}", serde_json::to_string_pretty(&report).unwrap()).unwrap();
     }
 }

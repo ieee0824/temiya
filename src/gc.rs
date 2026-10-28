@@ -203,6 +203,8 @@ struct Slot {
 struct RootTable {
     slots: Vec<Option<RootEntry>>,
     active: Vec<RawHandle>,
+    #[cfg(all(test, not(miri)))]
+    activity: [usize; 3], // registration calls, removal calls, peak distinct roots
 }
 struct RootEntry {
     identity: RawHandle,
@@ -211,6 +213,10 @@ struct RootEntry {
 }
 impl RootTable {
     fn register(&mut self, identity: RawHandle) {
+        #[cfg(all(test, not(miri)))]
+        {
+            self.activity[0] += 1;
+        }
         if self.slots.len() <= identity.slot {
             self.slots.resize_with(identity.slot + 1, || None);
         }
@@ -227,8 +233,16 @@ impl RootTable {
             position: self.active.len(),
         });
         self.active.push(identity);
+        #[cfg(all(test, not(miri)))]
+        {
+            self.activity[2] = self.activity[2].max(self.active.len());
+        }
     }
     fn unregister(&mut self, identity: RawHandle) {
+        #[cfg(all(test, not(miri)))]
+        {
+            self.activity[1] += 1;
+        }
         let entry = self.slots[identity.slot].as_mut().expect("registered root");
         assert_eq!(entry.identity, identity, "root identity changed");
         assert_ne!(entry.count, 0, "root already unregistered");
@@ -973,6 +987,11 @@ impl Heap {
         }
     }
 
+    #[cfg(all(test, not(miri)))]
+    pub(crate) fn root_activity(&self) -> [usize; 3] {
+        self.roots.borrow().activity
+    }
+
     /// Verifies roots, traced edges, remembered owners, and the free list.
     pub fn verify(&self) -> Result<(), HeapVerificationError> {
         for raw in self.roots.borrow().active.iter().copied() {
@@ -1068,6 +1087,26 @@ fn register_root(roots: &RootCounts, handle: RawHandle) {
 #[cfg(test)]
 mod shared_record_tests {
     use super::*;
+
+    #[cfg(not(miri))]
+    #[test]
+    fn diagnostic_root_activity_counts_registrations_and_balanced_removals() {
+        let drops = Rc::new(Cell::new(0));
+        let mut heap = Heap::new();
+        assert_eq!(heap.root_activity(), [0, 0, 0]);
+        let first = heap.allocate(record(&drops));
+        let second = heap.allocate_shared(Rc::new(record(&drops)));
+        let clone = first.clone();
+        assert_eq!(heap.root_activity(), [3, 0, 2]);
+        drop(first);
+        drop(clone);
+        assert_eq!(heap.root_activity(), [3, 2, 2]);
+        assert_eq!(heap.collect().retained, 1);
+        drop(second);
+        assert_eq!(heap.root_activity(), [3, 3, 2]);
+        assert_eq!(heap.collect().retained, 0);
+        assert_eq!(drops.get(), 2);
+    }
 
     struct Record {
         child: Cell<Option<Handle<Record>>>,

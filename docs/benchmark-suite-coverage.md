@@ -42,4 +42,7 @@ records each stage separately. The current original-eleven Engine GC profile
 also has a clean-source/compiler/machine/affinity record and independent
 root/pause checks; it is a single instrumented pass, not cross-engine GC
 performance proof. The latest119 exact library Miri executions and all19 security jobs pass;
-final integration and actual merge remain required before completion.
+PR #522 merged the actual Engine migration. This follow-up integrates the
+source-specific phase/acceptance records and completes the measurement
+criterion; its evidence does not claim all-phase cross-engine speed or full
+application/SpiderMonkey superiority.

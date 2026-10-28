@@ -53,16 +53,18 @@ Run `cargo run --example backend_scope --all-features` to check these examples
 through the public APIs, including the unsupported cases. See
 [bytecode and JIT](docs/bytecode.md) for their explicit error contracts.
 
-The 0.2 migration branch integrates a shared tracing heap into `Engine`, with
-allocation safepoints and `Engine::collect_garbage`. Host-created objects use
-the Engine's explicit allocation context; see [embedding](docs/embedding.md).
-Runtime collection is undergoing conformance and performance qualification. Debugger and
-optimizing-tier contracts are development components. The Test262 tooling
-records corpus metadata but does not yet establish whole-engine conformance.
-The previous default API passed the fixed original-eleven omoikane Boa comparison
-on the recorded x64 and ARM64 machines; see
-[results and scope](docs/auto-backend-integration.md). Those measurements do not
-qualify the new GC branch, whose performance checks remain outstanding.
+The 0.2 Engine integrates a shared tracing heap, allocation safepoints and
+`Engine::collect_garbage`. Public handles retain live objects and closures;
+unreachable cycles are reclaimed. Host-created objects use the Engine's
+explicit allocation context; see [embedding](docs/embedding.md).
+The traced runtime passes all33 fixed original-eleven omoikane modified-Boa
+comparisons on each of two recorded x64 hosts. The local ARM64 follow-up has
+32 faster decisions and1 within noise. Main regressions, machine variability,
+source identities and complete raw evidence are preserved in the
+[runtime qualification](docs/runtime-ownership.md). These results are limited
+to the recorded workloads and conditions. Selected Test262 regressions and
+full library Miri checks pass; whole-engine ECMAScript conformance remains
+incomplete. Debugger and optimizing-tier contracts are development components.
 Separate async, RegExp, component and pinned SpiderMonkey results are recorded
 in the [benchmark coverage matrix](docs/benchmark-suite-coverage.md).
 Broader application performance and SpiderMonkey superiority remain unverified.

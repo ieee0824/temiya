@@ -39,8 +39,9 @@ hashes and source object identities bind these observations to the source.
 
 The source/compiler/machine-bound actual Engine collection profile and all
 fifteen issue criteria are mapped in acceptance-follow-up.json and
-phase-acceptance-map.json. Those records retain the remaining actual merge/integration gate; verified
-implementation evidence alone is not an already-merged claim.
+phase-acceptance-map.json. The implementation merged through PR522 at
+05ca830a5c217c27cf6e6e9e7c2d8542007950a2. The remaining capture-time gate is
+integration of these qualification records and issue427 finalization.
 
 Run `node benchmarks/runtime-gc/experiments/primitive-prototypes-6c3/verify-integrity.mjs`
 from the checkout to verify the complete byte inventory and raw/compressed log

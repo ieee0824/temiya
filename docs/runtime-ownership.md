@@ -1,8 +1,7 @@
 # Runtime ownership migration
 
 Decision for #256, based on main `4866b4de8ea03de01066fcfd450b9a16d011c948`.
-This is the implementation contract for #257, #313 and #340. The migration
-branch now uses a shared tracing heap for public Engine Realms, with allocation
+This is the implementation contract for #257, #313 and #340. Engine now uses a shared tracing heap for public Realms, with allocation
 safepoints and an explicit `Engine::collect_garbage` hook. Public factories now
 use explicit or inherited allocation contexts; Legacy facade/storage variants
 and the private Legacy queue fallback have been removed. The original
@@ -173,6 +172,10 @@ is observable but does not excuse or erase the failed candidate qualification.
 retain both hosts and all controls. The local CPU0 result above remains bounded
 to its recorded condition. It does not prove the required speed goal on these
 hosted machines; allocation and execution costs still need improvement.
+
+PR #522 merged the verified implementation at
+`05ca830a5c217c27cf6e6e9e7c2d8542007950a2`. The checked head4b256bd and measured
+snapshot6b1 have identical runtime, worker and manifest objects.
 
 ### Separate allocation, root and pause observations
 

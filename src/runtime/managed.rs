@@ -24,6 +24,7 @@ pub(super) struct RuntimeData {
     allocation_interval: Cell<usize>,
     allocation_remaining: Cell<usize>,
     active_objects: RefCell<Weak<RefCell<Vec<Object>>>>,
+    object_facades: RefCell<Vec<Weak<ObjectRoot>>>,
 }
 
 const ACTIVE_OBJECTS: usize = 8;
@@ -112,6 +113,31 @@ impl WeakObjectRoot {
 }
 
 impl Runtime {
+    fn remember_object_facade(&self, facade: &Rc<ObjectRoot>) {
+        let index = facade.root.handle().slot_index();
+        let mut facades = self.0.object_facades.borrow_mut();
+        if facades.len() <= index {
+            facades.resize_with(index + 1, Weak::new);
+        }
+        facades[index] = Rc::downgrade(facade);
+    }
+
+    fn cached_object(&self, handle: Handle<ManagedObject>) -> Option<Object> {
+        let facade = self
+            .0
+            .object_facades
+            .borrow()
+            .get(handle.slot_index())?
+            .upgrade()?;
+        // A live facade already registers a root. Comparing its complete
+        // identity rejects foreign heaps and reused slots without another
+        // heap lookup or data downcast. This cache itself owns only Weak.
+        if facade.root.handle() != handle {
+            return None;
+        }
+        Some(Object(ObjectReference(facade)))
+    }
+
     pub(crate) fn enter_object_root_region(&self) -> Option<ObjectRootRegion> {
         let mut active = self.0.active_objects.borrow_mut();
         if active.upgrade().is_some() {
@@ -347,6 +373,7 @@ impl Runtime {
             allocation_interval: Cell::new(4096),
             allocation_remaining: Cell::new(4096),
             active_objects: RefCell::new(Weak::new()),
+            object_facades: RefCell::new(Vec::new()),
         }))
     }
     pub(super) fn allocate_object(&self, data: ObjectData) -> Object {
@@ -359,9 +386,14 @@ impl Runtime {
             runtime: self.clone(),
         });
         *data.facade.borrow_mut() = Rc::downgrade(&facade);
+        self.remember_object_facade(&facade);
         Object(ObjectReference(facade))
     }
     pub(super) fn root_object(&self, handle: Handle<ManagedObject>) -> Option<Object> {
+        if let Some(object) = self.cached_object(handle) {
+            self.remember_active_object(&object);
+            return Some(object);
+        }
         let heap = self.0.heap.borrow();
         let data = heap.shared(handle)?;
         if let Some(facade) = data.facade.borrow().upgrade() {
@@ -377,6 +409,7 @@ impl Runtime {
             runtime: self.clone(),
         });
         *data.facade.borrow_mut() = Rc::downgrade(&facade);
+        self.remember_object_facade(&facade);
         let object = Object(ObjectReference(facade));
         self.remember_active_object(&object);
         Some(object)
@@ -435,6 +468,57 @@ impl Runtime {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn weak_facade_index_preserves_canonical_roots_and_rejects_reused_or_foreign_slots() {
+        let runtime = Runtime::new();
+        let foreign_runtime = Runtime::new();
+        let object = Object::new_in(&runtime);
+        let foreign = Object::new_in(&foreign_runtime);
+        let handle = object.0.handle().unwrap();
+        let foreign_handle = foreign.0.handle().unwrap();
+        assert_eq!(handle.slot_index(), foreign_handle.slot_index());
+        assert!(runtime.cached_object(foreign_handle).is_none());
+        assert!(runtime.root_object(foreign_handle).is_none());
+        let clone = runtime.root_object(handle).unwrap();
+        assert!(Rc::ptr_eq(&object.0.0, &clone.0.0));
+        assert_eq!(runtime.diagnostics().rooted, 1);
+        drop(clone);
+        drop(object);
+        assert_eq!(runtime.diagnostics().rooted, 0);
+        assert_eq!(runtime.collect_garbage().unwrap().retained, 0);
+        let replacement = Object::new_in(&runtime);
+        let replacement_handle = replacement.0.handle().unwrap();
+        assert_eq!(handle.slot_index(), replacement_handle.slot_index());
+        assert_ne!(handle, replacement_handle);
+        assert!(runtime.cached_object(handle).is_none());
+        assert!(runtime.root_object(handle).is_none());
+        assert!(runtime.root_object(foreign_handle).is_none());
+        assert_eq!(runtime.cached_object(replacement_handle), Some(replacement));
+    }
+
+    #[test]
+    fn weak_facade_index_revives_only_live_traced_records() {
+        let runtime = Runtime::new();
+        let owner = Object::new_in(&runtime);
+        let child = Object::new_in(&runtime);
+        let child_handle = child.0.handle().unwrap();
+        owner
+            .create_data_property("child".into(), super::super::Value::Object(child.clone()))
+            .unwrap();
+        drop(child);
+        assert!(runtime.cached_object(child_handle).is_none());
+        assert_eq!(runtime.collect_garbage().unwrap().retained, 2);
+        let child = runtime.root_object(child_handle).unwrap();
+        let clone = runtime.root_object(child_handle).unwrap();
+        assert!(Rc::ptr_eq(&child.0.0, &clone.0.0));
+        drop(clone);
+        drop(child);
+        owner.delete(&"child".into());
+        assert_eq!(runtime.collect_garbage().unwrap().retained, 1);
+        assert!(runtime.cached_object(child_handle).is_none());
+        assert!(runtime.root_object(child_handle).is_none());
+    }
+
     #[test]
     fn activation_facades_are_bounded_and_do_not_retain_dead_graphs_at_collection() {
         let runtime = Runtime::new();

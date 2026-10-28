@@ -461,6 +461,13 @@ history of allocated objects between collection points. Tests cover cache bounds
 slot retirement under allocation collection, explicit collection while a clone
 remains live, nested region sharing and unwind cleanup.
 
+Runtime also indexes weak references to canonical Object facades by heap slot.
+A cache hit compares the complete heap/slot/generation identity before reusing
+the already registered facade. This index adds no root and cannot keep a record
+live. Expired entries fall back to the heap's typed lookup; reused or foreign
+slots fail the identity check. This avoids a heap borrow and data downcast when
+an Object facade already exists, without changing collection reachability.
+
 All five managed allocation families (Object, Environment, Realm, JobQueue,
 SourceTextModule) now collect before allocation through a Runtime safepoint.
 The normal production interval is 4096 managed allocations. Tests set

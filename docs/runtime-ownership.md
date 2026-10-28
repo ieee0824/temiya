@@ -25,11 +25,15 @@ The local original-eleven actual-Boa comparison records32 faster decisions and
 one within noise (prop-mega pair2, ratio0.6981 and threshold0.4795). All three
 primitive-string-method pairs pass, but this is not full33 qualification.
 Before/after against872 records33 noise decisions; nominal shorter times are
-not a qualified improvement. The first hosted follow-up on AMD EPYC9V45 passes all33 actual-Boa decisions,
-with time ratios0.408–0.810. Its same-binary control has33 noise decisions,
-while main comparisons retain9 faster/17 noise/7 slower. The
-[full raw reports and controls](../benchmarks/runtime-gc/experiments/primitive-prototypes-6c3/hosted-general) are retained. The
-second host and the16-shard full library Miri run remain pending. Snapshot6b1's CI/ASan failed an existing policy
+not a qualified improvement. The two independent hosted follow-ups qualify all33 actual-Boa decisions
+on each host: AMD EPYC9V45 time ratios0.408–0.810, AMD EPYC7763 ratios0.417–0.738.
+Every report has66 correct workers/1056 values. Both main/Boa controls pass33;
+same-binary controls have33 noise and32 noise/1 slower respectively. Both main
+comparisons retain9 faster/17 noise/7 slower. The
+[full raw reports and controls](../benchmarks/runtime-gc/experiments/primitive-prototypes-6c3/hosted-general) retain all observations,
+including slower comparisons and variability. This is a bounded qualification
+on these hosts, not universal absence of regressions. The16-shard full library
+Miri run remains pending. Snapshot6b1's CI/ASan failed an existing policy
 test that still expected8 shards; head4b256bd changes that expectation to16
 without changing runtime/examples/Cargo/runner source. Its current CI40773845349
 passes all four jobs, with660 passed/21 ignored in each x64 stable/MSRV run

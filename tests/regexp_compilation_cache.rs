@@ -190,3 +190,77 @@ fn cached_matcher_preserves_utf16_boundaries_and_current_surrogate_errors() {
         RuntimeErrorKind::SyntaxError
     );
 }
+
+#[test]
+fn non_ascii_cache_keys_preserve_scalar_patterns_and_independent_state() {
+    for _ in 0..2 {
+        let astral = RegExp::new(JsString::from("😀"), "gu").unwrap();
+        let latin = RegExp::new(JsString::from("é"), "gu").unwrap();
+        let input = JsString::from("😀é");
+        assert_eq!(astral.source(), JsString::from("😀"));
+        assert_eq!(latin.source(), JsString::from("é"));
+        assert_eq!(astral.last_index(), 0);
+        assert_eq!(latin.last_index(), 0);
+        assert_eq!(astral.exec(&input).unwrap().unwrap().index, 0);
+        assert_eq!(astral.last_index(), 2);
+        assert_eq!(latin.exec(&input).unwrap().unwrap().index, 2);
+        assert_eq!(latin.last_index(), 3);
+        assert!(astral.exec(&input).unwrap().is_none());
+        assert_eq!(astral.last_index(), 0);
+        assert_eq!(latin.last_index(), 3);
+    }
+}
+
+#[test]
+fn builtin_exec_owns_each_capture_array_and_clears_optional_groups() {
+    for backend in [ScriptBackend::Ast, ScriptBackend::Auto] {
+        let engine = Engine::builder().script_backend(backend).build();
+        let realm = engine.create_realm();
+        let script = engine
+            .compile(
+                &realm,
+                "var r=new RegExp('(a)?b','g');var first=r.exec('ab b');\
+             var second=r.exec('ab b');var failure=r.exec('ab b');\
+             first!==second&&first[0]==='ab'&&first[1]==='a'&&\
+             second[0]==='b'&&second[1]===undefined&&failure===null&&\
+             r.exec('ab')[1]==='a'&&first[1]==='a';",
+            )
+            .unwrap();
+        for _ in 0..2 {
+            assert!(
+                engine
+                    .evaluate(&script)
+                    .unwrap()
+                    .value()
+                    .same_value(&Value::Boolean(true))
+            );
+        }
+    }
+}
+
+#[test]
+fn short_ascii_input_and_unicode_fallback_keep_owned_captures_at_buffer_boundary() {
+    for len in [63, 64, 65] {
+        let input = JsString::from("a".repeat(len));
+        let regexp = RegExp::new(JsString::from("(a+)"), "gu").unwrap();
+        let found = regexp.exec(&input).unwrap().unwrap();
+        assert_eq!(found.index, 0);
+        assert_eq!(
+            found.captures,
+            vec![Some(input.clone()), Some(input.clone())]
+        );
+        assert_eq!(regexp.last_index(), len);
+        assert!(regexp.exec(&input).unwrap().is_none());
+        assert_eq!(regexp.last_index(), 0);
+        assert_eq!(found.captures[0], Some(input));
+    }
+    let input = JsString::from(format!("{}😀{}", "a".repeat(31), "a".repeat(31)));
+    assert_eq!(input.code_units().len(), 64);
+    let regexp = RegExp::new(JsString::from("(?<value>.)"), "gu").unwrap();
+    regexp.set_last_index(31);
+    let found = regexp.exec(&input).unwrap().unwrap();
+    assert_eq!(found.index, 31);
+    assert_eq!(found.captures[0], Some(JsString::from("😀")));
+    assert_eq!(found.named_captures[0].1, Some(JsString::from("😀")));
+    assert_eq!(regexp.last_index(), 33);
+}

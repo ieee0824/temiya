@@ -8,6 +8,11 @@ on:
         description: Successful pinned-shell build run ID
         required: true
         type: string
+      adapter_only:
+        description: Run semantic adapter checks without starting a new timing capture
+        required: false
+        type: boolean
+        default: false
 permissions:
   contents: read
   actions: read
@@ -15,8 +20,13 @@ concurrency:
   group: spidermonkey-benchmark-${{ github.ref }}
   cancel-in-progress: true
 jobs:
-  compare:
+  differential-adapter:
     if: github.event_name == 'workflow_dispatch'
+    uses: ./.github/workflows/differential-adapter.yml
+    with:
+      shell_run: ${{ inputs.shell_run }}
+  compare:
+    if: github.event_name == 'workflow_dispatch' && !inputs.adapter_only
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     env:

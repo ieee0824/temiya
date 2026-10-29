@@ -1,0 +1,145 @@
+name: Actual SpiderMonkey differential adapter
+on:
+  workflow_call:
+    inputs:
+      shell_run:
+        type: string
+        required: true
+  workflow_dispatch:
+    inputs:
+      shell_run:
+        description: Successful pinned native shell build run
+        type: string
+        default: '40530470739'
+        required: true
+permissions:
+  contents: read
+  actions: read
+jobs:
+  compare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      TEMIYA_DIFFERENTIAL_BUILD_INFO: target/differential-results/temiya-build.json
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Retrieve verified fixed-source native shell
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHELL_RUN: ${{ inputs.shell_run }}
+        run: |
+          [[ "$SHELL_RUN" =~ ^[0-9]+$ ]]
+          mkdir -p target/shell-evidence target/shell target/differential-results
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SHELL_RUN" --jq '{conclusion,path,head_sha,html_url,run_attempt}' > target/differential-results/shell-run.json
+          node -e 'const r=require("./target/differential-results/shell-run.json");if(r.conclusion!=="success"||r.path!==".github/workflows/spidermonkey-target.yml")throw Error("verified source build required")'
+          shell_attempt="$(node -p 'require("./target/differential-results/shell-run.json").run_attempt')"
+          [[ "$shell_attempt" =~ ^[0-9]+$ ]]
+          gh run download "$SHELL_RUN" --name "spidermonkey-target-$SHELL_RUN-$shell_attempt" --dir target/shell-evidence
+          (cd target/shell-evidence && sha256sum --check shell.tar.gz.sha256)
+          tar -xzf target/shell-evidence/shell.tar.gz -C target/shell
+      - name: Build actual Temiya worker
+        run: |
+          rustup toolchain install stable --profile minimal
+          cargo +stable build --locked --release --no-default-features --bin temiya-differential-worker --bin temiya-test262
+          node <<'NODE'
+          const fs=require('fs'),cp=require('child_process'),crypto=require('crypto');
+          const binary='target/release/temiya-differential-worker';
+          const info={source_revision:cp.execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim(),
+            source_clean:cp.execFileSync('git',['status','--porcelain'],{encoding:'utf8'}).trim()==='',
+            rustc:cp.execFileSync('rustc',['+stable','-vV'],{encoding:'utf8'}),features:[],profile:'release',
+            cargo_args:['build','--locked','--release','--no-default-features','--bin','temiya-differential-worker','--bin','temiya-test262'],
+            executable_sha256:crypto.createHash('sha256').update(fs.readFileSync(binary)).digest('hex')};
+          fs.writeFileSync(process.env.TEMIYA_DIFFERENTIAL_BUILD_INFO,JSON.stringify(info,null,2));
+          NODE
+      - name: Prepare unchanged fixed Test262 originals
+        run: |
+          scripts/test262
+          node scripts/prepare-differential-test262.mjs target/release/temiya-test262 \
+            target/test262 target/differential-results/test262-cases.json
+      - name: Compare actual native observations in both selected modes
+        run: |
+          for mode in interpreter default; do
+            node scripts/compare-js-engines.mjs --temiya target/release/temiya-differential-worker \
+              --spidermonkey target/shell/bin/js --spidermonkey-info target/shell-evidence/target-check.json \
+              --cases testing/differential/adapter-cases.json --known testing/differential/known-differences.json \
+              --output "target/differential-results/$mode" \
+              --mode "$mode" --timeout-ms 2000
+          done
+      - name: Compare fixed original Test262 variants through both real engines
+        run: |
+          for mode in interpreter default; do
+            node scripts/compare-js-engines.mjs --temiya target/release/temiya-differential-worker \
+              --spidermonkey target/shell/bin/js --spidermonkey-info target/shell-evidence/target-check.json \
+              --cases target/differential-results/test262-cases.json \
+              --output "target/differential-results/test262-$mode" --mode "$mode" --timeout-ms 2000
+          done
+      - name: Record semantic discovery without suppressing mismatches
+        run: |
+          set +e
+          node scripts/compare-js-engines.mjs --temiya target/release/temiya-differential-worker \
+            --spidermonkey target/shell/bin/js --spidermonkey-info target/shell-evidence/target-check.json \
+            --cases testing/differential/discovery-cases.json --output target/differential-results/discovery \
+            --mode interpreter --timeout-ms 2000
+          discovery_exit=$?
+          set -e
+          printf '%s\n' "$discovery_exit" > target/differential-results/discovery-exit.txt
+          node -e 'const r=require("./target/differential-results/discovery/report.json");if(r.results.some(x=>!["match","mismatch"].includes(x.classification)))throw Error("native observation failed");console.log(JSON.stringify(r.counts))'
+      - name: Verify unsupported snapshots and actual deadlines never pass
+        run: |
+          set +e
+          node scripts/compare-js-engines.mjs --temiya target/release/temiya-differential-worker \
+            --spidermonkey target/shell/bin/js --spidermonkey-info target/shell-evidence/target-check.json \
+            --cases testing/differential/unsupported-cases.json --output target/differential-results/unsupported \
+            --mode interpreter --timeout-ms 2000
+          unsupported_exit=$?
+          node scripts/compare-js-engines.mjs --temiya target/release/temiya-differential-worker \
+            --spidermonkey target/shell/bin/js --spidermonkey-info target/shell-evidence/target-check.json \
+            --cases testing/differential/timeout-cases.json --output target/differential-results/timeout \
+            --mode interpreter --timeout-ms 100
+          timeout_exit=$?
+          set -e
+          test "$unsupported_exit" -eq 1
+          test "$timeout_exit" -eq 1
+          node <<'NODE'
+          const u=require('./target/differential-results/unsupported/report.json');
+          const t=require('./target/differential-results/timeout/report.json');
+          if(u.counts['unsupported-observation']!==2||t.counts['infrastructure-failure']!==1)throw Error('invalid outcomes passed');
+          for(const worker of [t.results[0].temiya,t.results[0].spidermonkey])
+            if(!worker.record.error?.includes('ETIMEDOUT'))throw Error('actual process deadline was not observed');
+          const getter=u.results.find(r=>r.id==='accessor-snapshot');
+          for(const worker of [getter.temiya,getter.spidermonkey])
+            if(worker.observation.effects.length!==0)throw Error('snapshot invoked a getter');
+          NODE
+      - name: Verify exact known difference and line-minimal witness
+        run: |
+          node scripts/compare-js-engines.mjs --temiya target/release/temiya-differential-worker \
+            --spidermonkey target/shell/bin/js --spidermonkey-info target/shell-evidence/target-check.json \
+            --cases testing/differential/known-cases.json --known testing/differential/known-differences.json \
+            --output target/differential-results/known --mode interpreter --timeout-ms 2000
+          node scripts/compare-js-engines.mjs --temiya target/release/temiya-differential-worker \
+            --spidermonkey target/shell/bin/js --spidermonkey-info target/shell-evidence/target-check.json \
+            --cases testing/differential/reducer-witnesses.json \
+            --output target/differential-results/reducer-witness --mode interpreter --timeout-ms 2000
+          node -e 'const k=require("./target/differential-results/known/report.json"),w=require("./target/differential-results/reducer-witness/report.json");if(k.counts["known-difference"]!==2||w.counts.match!==1)throw Error("known signature or minimal witness changed")'
+      - name: Reject changed observations under the same known source
+        run: |
+          node -e 'const fs=require("fs"),rows=require("./testing/differential/known-differences.json");rows[0].observation_sha256="0".repeat(64);fs.writeFileSync("target/changed-known.json",JSON.stringify(rows))'
+          set +e
+          node scripts/compare-js-engines.mjs --temiya target/release/temiya-differential-worker \
+            --spidermonkey target/shell/bin/js --spidermonkey-info target/shell-evidence/target-check.json \
+            --cases testing/differential/known-cases.json --known target/changed-known.json \
+            --output target/differential-results/changed-known --mode interpreter --timeout-ms 2000
+          changed_exit=$?
+          set -e
+          test "$changed_exit" -eq 1
+          node -e 'const r=require("./target/differential-results/changed-known/report.json");if(r.counts.mismatch!==1||r.results.find(x=>x.id==="promise-resolve-member").classification!=="mismatch")throw Error("changed observations were hidden")'
+      - name: Preserve raw observations and reproducers
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: differential-adapter-${{ github.run_id }}-${{ github.run_attempt }}
+          path: target/differential-results
+          if-no-files-found: error
+          retention-days: 30

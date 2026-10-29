@@ -41,10 +41,14 @@ jobs:
         run: rustup toolchain install stable --profile minimal --component rustfmt --component clippy
       - name: Check formatting
         run: cargo +stable fmt --all --check
+      - name: Verify retained native differential observations
+        run: node benchmarks/native-differential/verify.mjs
       - name: Check external benchmark adapter formatting
         run: rustfmt +stable --edition 2024 --check benchmarks/omoikane-worker/main.rs
       - name: Check authored RegExp input contracts
         run: node scripts/check-regexp-workloads.mjs
+      - name: Validate structured differential observation protocol
+        run: node --test tests/differential-observation.test.mjs
       - name: Check Test262 regression policy boundaries
         run: |
           node --test tests/test262-regression-policy.test.mjs

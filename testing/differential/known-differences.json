@@ -1,0 +1,21 @@
+[
+  {
+    "id": "promise-resolve-member-179",
+    "source_sha256": "57fea935a4e838e6e420613fd1f6bb12fe950cd16e2427e3a7b5dd1ace9f5988",
+    "observation_sha256": "2e37f03915c978d7ee7ddc4d30c57f8a8185337e66977afdbfe40133852c5e40",
+    "reason": "Temiya has no own Promise.resolve; actual pinned native observations are undefined versus function.",
+    "issue": "https://github.com/ieee0824/temiya/issues/179",
+    "reproducer": "testing/differential/reproducers/promise-resolve-member.js",
+    "observed_run": "https://github.com/ieee0824/temiya/actions/runs/40922559708"
+  },
+  {
+    "id": "symbol-constructor-alias-204",
+    "source_sha256": "f3ff7abfad5dd623319713e24fc50768ec5df3a748ce78e58e30be0deeacdc4a",
+    "observation_sha256": "7de5080bb1f8364ac64660b14bfc740a4843f0f2e515500818e9515da7ef9e51",
+    "reason": "Actual public Symbol constructor currently returns undefined instead of a unique Symbol; alias probe records the same missing boundary.",
+    "issue": "https://github.com/ieee0824/temiya/issues/204",
+    "reproducer": "testing/differential/reproducers/symbol-alias.js",
+    "minimal_reproducer": "testing/differential/reproducers/symbol-constructor.js",
+    "observed_run": "https://github.com/ieee0824/temiya/actions/runs/40924511679"
+  }
+]

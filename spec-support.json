@@ -11785,7 +11785,23 @@
         "tests/test262-regression-policy.test.mjs",
         "scripts/check-test262-regressions.mjs"
       ],
-      "rationale": "Actual pinned Engine captures feed an independently verified per-variant comparison. Known-pass failures/timeouts, missing results and unexplained new skips fail; policy changes require fresh reasons. Full-run shards cover each file once. Stable/MSRV focused CLI integration has raw artifacts. Production known-pass selection and periodic full workflow await the completed feature baseline; whole-corpus compatibility is not qualified."
+      "rationale": "Actual pinned Engine captures feed an independently verified per-variant comparison. Known-pass failures/timeouts, missing results and unexplained new skips fail; policy changes require fresh reasons. Full-run shards cover each file once. Stable/MSRV focused CLI integration and a production PR run of128files214variants retain raw evidence. PR selection uses the verified full baseline, and the weekly workflow partitions every eligible file into eight jobs. Whole-corpus compatibility is not qualified."
+    },
+    {
+      "id": "component.native-differential-adapter",
+      "status": "partial",
+      "issues": [
+        153,
+        179,
+        204
+      ],
+      "tests": [
+        "tests/differential_worker.rs",
+        "tests/differential-observation.test.mjs",
+        "testing/differential/adapter-cases.json",
+        "testing/differential/test262-selection.json"
+      ],
+      "rationale": "Actual public Engine and pinned native SpiderMonkey workers compare typed completions, exception types, ordered side effects and native jobs. Raw bytes, executable identities and exact known-difference reproducers remain recorded. Native runs include five unchanged original Test262 variants in both modes; unsupported values, accessor snapshots and infrastructure faults never count as equal passes. General exotic object semantics, whole-corpus conformance and performance superiority remain unqualified."
     }
   ]
 }

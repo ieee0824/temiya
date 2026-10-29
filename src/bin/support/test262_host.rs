@@ -136,7 +136,10 @@ fn install_realm(state: &Rc<HostState>, index: usize) -> RuntimeResult<Object> {
             PropertyDescriptor::accessor(Some(getter), None, false, true),
         )?;
     }
-    global.create_data_property("$262".into(), Value::Object(host.clone()))?;
+    global.define_own_property(
+        "$262".into(),
+        PropertyDescriptor::data(Value::Object(host.clone()), true, false, true),
+    )?;
     Ok(host)
 }
 

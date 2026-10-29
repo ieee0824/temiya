@@ -235,8 +235,12 @@ fn host_realms_evaluate_scripts_with_separate_globals_and_original_throws() {
 flags: []
 ---*/
 assert($262.global === this);
+var hostDescriptor = Object.getOwnPropertyDescriptor(this, '$262');
+assert(hostDescriptor.writable && hostDescriptor.configurable && !hostDescriptor.enumerable);
 var child = $262.createRealm();
 assert(child.global !== this);
+var childDescriptor = Object.getOwnPropertyDescriptor(child.global, '$262');
+assert(childDescriptor.writable && childDescriptor.configurable && !childDescriptor.enumerable);
 assert(child.global.Array !== Array);
 assert(child.global.$262 === child);
 assert(child.evalScript('var isolated=41; isolated+1;') === 42);

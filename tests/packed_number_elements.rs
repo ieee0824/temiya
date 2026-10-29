@@ -112,6 +112,36 @@ fn numeric_bits_and_object_edges_survive_storage_transitions_and_collection() {
     assert_eq!(context.collect_garbage().unwrap().retained, 0);
 }
 
+#[test]
+fn script_index_reads_preserve_special_numbers_objects_and_accessor_receivers() {
+    use temiya::{Engine, embedding::ScriptBackend};
+
+    let source = "var a=[0,-0,Infinity,-Infinity,NaN]; \
+        var check=function(){return 1/a[0]===Infinity && 1/a[1]===-Infinity \
+            && a[2]===Infinity && a[3]===-Infinity && a[4]!==a[4];}; \
+        var ok=check(); delete a[2]; a[4294967294]=7; a.length=5; a[2]=Infinity; \
+        ok=ok&&check(); var child={value:42}; a[2]=child; \
+        ok=ok && a[2]===child && a[2].value===42; var calls=0; \
+        Object.defineProperty(a,'1',{get:function(){calls++; return this===a ? -0 : 1;},configurable:true}); \
+        ok=ok && 1/a[1]===-Infinity && calls===1; delete a[0]; \
+        Object.defineProperty(Array.prototype,'0',{get:function(){calls++; return this===a ? 9 : 0;},configurable:true}); \
+        ok && a[0]===9 && calls===2;";
+    for backend in [ScriptBackend::Ast, ScriptBackend::Bytecode] {
+        let engine = Engine::builder().script_backend(backend).build();
+        let realm = engine.create_realm();
+        let script = engine.compile(&realm, source).unwrap();
+        assert_eq!(script.backend(), backend);
+        assert!(
+            engine
+                .evaluate(&script)
+                .unwrap()
+                .value()
+                .same_value(&Value::Boolean(true)),
+            "{backend:?}"
+        );
+    }
+}
+
 #[derive(Clone, Debug)]
 enum ModelValue {
     Number(f64),

@@ -81,6 +81,14 @@ eligibility, GC schedule or workload input changes accompany this optimization.
 Its performance qualification is separate and pending; the source6fb3160
 measurements and failures above remain unchanged.
 
+The follow-up also fuses value-only element reads: packed numbers return their
+f64 directly; descriptor-backed slots retain the ordinary owner-checked value
+load without constructing a temporary ElementRef and calling another helper.
+Full descriptor operations still use the view and reconstruct all flags.
+Missing slots and accessors continue through the caller's full property lookup.
+An AST/Bytecode differential test checks signed zero/infinities/NaN, sparse
+restoration, object-valued elements and own/inherited accessor receivers.
+
 Performance qualification is pending. Keep the original eleven workload bodies,
 counts, oracles,15 samples/3 alternating pairs,512MiB/180-second watchdogs and
 the existing10%/MAD gate for candidate/main and actual pinned omoikane modified

@@ -823,8 +823,7 @@ impl Object {
         {
             return None;
         }
-        let descriptor = state.elements.as_ref()?.get(index)?;
-        descriptor.value(self)
+        state.elements.as_ref()?.get_value(index, self)
     }
 
     // A hint identifies a position, never a cached Value or assumed shape.

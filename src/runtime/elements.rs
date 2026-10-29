@@ -34,13 +34,6 @@ impl ElementRef<'_, StoredDescriptor> {
             Self::Descriptor(descriptor) => descriptor.load(owner),
         }
     }
-
-    pub(super) fn value(&self, owner: &Object) -> Option<Value> {
-        match self {
-            Self::Number(value) => Some(Value::Number(*value)),
-            Self::Descriptor(descriptor) => descriptor.value()?.load(owner).ok(),
-        }
-    }
 }
 
 pub(super) trait ElementDescriptor: Clone {
@@ -109,6 +102,22 @@ pub(super) enum Elements<D: ElementDescriptor = PropertyDescriptor> {
 impl<D: ElementDescriptor> Default for Elements<D> {
     fn default() -> Self {
         Self::Packed(Vec::new())
+    }
+}
+
+impl Elements<StoredDescriptor> {
+    /// Value-only reads avoid a temporary descriptor view on every storage kind.
+    /// Accessors/missing indices still fall back to the caller's full lookup.
+    pub(super) fn get_value(&self, index: u32, owner: &Object) -> Option<Value> {
+        let descriptor = match self {
+            Self::PackedNumbers(slots) => {
+                return slots.get(index as usize).map(|value| Value::Number(*value));
+            }
+            Self::Packed(slots) => slots.get(index as usize),
+            Self::Holey { slots, .. } => slots.get(index as usize).and_then(Option::as_ref),
+            Self::Sparse(slots) => slots.get(&index),
+        }?;
+        descriptor.value()?.load(owner).ok()
     }
 }
 

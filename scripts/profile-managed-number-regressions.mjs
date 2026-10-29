@@ -42,7 +42,7 @@ for (const [label,checkout,target,expected] of [
     source_objects:Object.fromEntries(['src','examples','Cargo.toml','Cargo.lock','scripts/omoikane-benchmark-reference.mjs'].map(p=>[p,git(checkout,'rev-parse',`HEAD:${p}`)]))};
   metadata.builds.push(build); fs.copyFileSync(executable,path.join(dir,'worker.bin'));
   const symbols=run('nm',['-S','-C',executable]); fs.writeFileSync(path.join(dir,'symbols.txt'),symbols);
-  const selected=symbols.split('\n').filter(l=>/VirtualMachine>::run::<(?:false|true)>$|Object>::(?:own_element_value|try_get_own_property)$|elements::ElementRef.*::value$/.test(l));
+  const selected=symbols.split('\n').filter(l=>/VirtualMachine>::run::<(?:false|true)>$|Object>::(?:own_element_value|try_get_own_property)$|elements::ElementRef.*::value$|elements::Elements.*::get_value$/.test(l));
   const functions=[];
   for (const [index,line] of selected.entries()) {
     const m=line.match(/^([a-f0-9]+) ([a-f0-9]+) \w (.+)$/); assert(m);

@@ -90,6 +90,39 @@ fn computed_names_accessors_and_static_methods_use_actual_class_objects() {
 }
 
 #[test]
+fn class_restricted_properties_are_inherited_and_use_one_realm_thrower() {
+    check(
+        "class C {} let p = Object.getPrototypeOf(C); let a = Object.getOwnPropertyDescriptor(p, 'caller'); let b = Object.getOwnPropertyDescriptor(p, 'arguments'); let count = 0; try { C.caller; } catch (e) { if (e instanceof TypeError) count++; } try { C.arguments = 1; } catch (e) { if (e instanceof TypeError) count++; } count === 2 && !C.hasOwnProperty('caller') && !C.hasOwnProperty('arguments') && a.get === a.set && a.get === b.get && b.get === b.set && !a.enumerable && a.configurable && !Object.isExtensible(a.get) && a.get.name === '' && a.get.length === 0 && Object.getOwnPropertyDescriptor(a.get, 'name').configurable === false && Object.getOwnPropertyDescriptor(a.get, 'length').configurable === false;",
+    );
+}
+
+#[test]
+fn class_call_and_restricted_accessor_errors_belong_to_the_class_realm() {
+    let engine = Engine::default();
+    let origin = engine.create_realm();
+    let caller = engine.create_realm();
+    let definition = engine.compile(&origin, "class C {} C;").unwrap();
+    let class = engine.evaluate(&definition).unwrap();
+    engine
+        .set_global(
+            &caller,
+            "C",
+            engine.value(&caller, class.value().clone()).unwrap(),
+        )
+        .unwrap();
+    let prototype = engine.compile(&origin, "TypeError.prototype;").unwrap();
+    let prototype = engine.evaluate(&prototype).unwrap();
+    for source in [
+        "try { C(); } catch (e) { Object.getPrototypeOf(e); }",
+        "try { C.caller; } catch (e) { Object.getPrototypeOf(e); }",
+    ] {
+        let script = engine.compile(&caller, source).unwrap();
+        let result = engine.evaluate(&script).unwrap();
+        assert!(result.value().same_value(prototype.value()));
+    }
+}
+
+#[test]
 fn class_environments_and_instances_survive_engine_collection() {
     for backend in [ScriptBackend::Ast, ScriptBackend::Auto] {
         let engine = Engine::builder().script_backend(backend).build();

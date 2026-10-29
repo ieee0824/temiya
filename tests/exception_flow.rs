@@ -179,11 +179,11 @@ fn generator_throw_values_survive_both_active_and_completed_boundaries() {
 
 #[test]
 fn internal_failures_cannot_be_swallowed_by_catch_or_finally() {
-    // Unsupported class evaluation currently produces an InternalError.
+    // Derived classes remain unsupported; base classes now execute normally.
     let engine = Engine::default();
     let realm = engine.create_realm();
     let script = engine.compile(&realm,
-        "function f() { try { (class {}); } catch (e) { return true; } finally { return true; } } f();"
+        "function f() { try { (class extends Object {}); } catch (e) { return true; } finally { return true; } } f();"
     ).unwrap();
     assert_eq!(
         engine.evaluate(&script).unwrap_err().kind(),

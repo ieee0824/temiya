@@ -11773,6 +11773,22 @@
         "scripts/test262-baseline.mjs"
       ],
       "rationale": "Real CLI metadata-only indexing and isolated execution capture per-feature outcomes with overlapping tags, untagged cases, timeout separation and explicit not-run/unreported coverage. Snapshots retain raw reports and corpus/manifest/binary/selection identities. Authored and fixed-revision captures are distinguished; metadata errors retain unknown variant counts. Reporting does not qualify full feature support or regression selection."
+    },
+    {
+      "id": "component.native-differential-adapter",
+      "status": "partial",
+      "issues": [
+        153,
+        179,
+        204
+      ],
+      "tests": [
+        "tests/differential_worker.rs",
+        "tests/differential-observation.test.mjs",
+        "testing/differential/adapter-cases.json",
+        "testing/differential/test262-selection.json"
+      ],
+      "rationale": "Actual public Engine and pinned native SpiderMonkey workers compare typed completions, exception types, ordered side effects and native jobs. Raw bytes, executable identities and exact known-difference reproducers remain recorded. Native runs include five unchanged original Test262 variants in both modes; unsupported values, accessor snapshots and infrastructure faults never count as equal passes. General exotic object semantics, whole-corpus conformance and performance superiority remain unqualified."
     }
   ]
 }

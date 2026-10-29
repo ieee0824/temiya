@@ -123,6 +123,14 @@ these focused passes do not qualify the Promise constructor or the whole async
 language feature. Authored CLI regressions additionally cover FIFO across child
 Realms, rejection handling, duplicates, raw/setup boundaries and infinite jobs.
 
+The [async qualification record](../benchmarks/test262-async-signals/README.md)
+retains the original CLI executions, GC validation and new native comparisons.
+Both recorded x64 cohorts are faster than actual modified Boa on all eleven
+inputs, with all before/after decisions within the noise gate. ARM64 retains
+slower and inconclusive outcomes. The initial candidate's reproducible losses
+and modeled counters remain separately preserved; no whole-corpus or universal
+speed claim follows from these focused measurements.
+
 ```sh
 TEST262_DIR=target/test262 cargo test --locked --test test262_engine \
   pinned_ -- --ignored --nocapture

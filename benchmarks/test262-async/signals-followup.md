@@ -27,6 +27,10 @@ Checks on this candidate:
 - Nayuta v0.3.2 scans the same four Rust files successfully: 13 heuristic
   candidates, not confirmed bugs. No additional Nayuta defect was found.
 
-The sidecar code and its validation logs accompany this document. MSRV, C ABI
-and the exact committed-source CI checks will run before merge. New worker hashes
-and native comparisons will be recorded separately from the initial candidate.
+The sidecar code and its validation logs accompany this document. Exact-source
+CI40865480082 at 30d6c41 passes all four jobs, including MSRV and C ABI. The
+[new native qualification](../test262-async-signals/README.md) retains twelve
+separate reports. Both recorded x64 cohorts have all 33 candidate/Boa decisions
+faster and all 33 candidate/baseline decisions within the noise gate. ARM64
+retains slower and inconclusive observations; the initial candidate's regressions
+remain preserved separately.

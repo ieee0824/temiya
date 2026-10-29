@@ -1,6 +1,7 @@
 //! Per-execution Test262 host environment. Native callbacks retain only a weak
 //! owner: globals cannot create an untraced Rust cycle back to rooted Realms.
 
+use super::asynchronous::Monitor;
 use std::{cell::RefCell, rc::Rc};
 
 use temiya::{
@@ -19,13 +20,19 @@ pub struct HostEnvironment {
 struct HostState {
     engine: Rc<Engine>,
     realms: RefCell<Vec<RealmHandle>>,
+    monitor: Monitor,
 }
 
 impl HostEnvironment {
-    pub fn install(engine: Rc<Engine>, realm: RealmHandle) -> RuntimeResult<Self> {
+    pub fn install(
+        engine: Rc<Engine>,
+        realm: RealmHandle,
+        monitor: Monitor,
+    ) -> RuntimeResult<Self> {
         let state = Rc::new(HostState {
             engine,
             realms: RefCell::new(vec![realm]),
+            monitor,
         });
         install_realm(&state, 0)?;
         Ok(Self { _state: state })
@@ -35,6 +42,18 @@ impl HostEnvironment {
 fn install_realm(state: &Rc<HostState>, index: usize) -> RuntimeResult<Object> {
     let realm = state.realms.borrow()[index].clone();
     let global = realm.record().global_object();
+    state
+        .engine
+        .register_job_error_callback(&realm, state.monitor.rejection_callback())
+        .map_err(|error| RuntimeError::internal_error(error.to_string()))?;
+    let print =
+        realm
+            .record()
+            .create_native_function("print", 1, state.monitor.print_callback())?;
+    global.define_own_property(
+        "print".into(),
+        PropertyDescriptor::data(Value::Object(print), true, false, true),
+    )?;
     let host = Object::new_in(global.allocation_context());
     if !host.try_set_prototype(Some(realm.record().intrinsic(IntrinsicId::ObjectPrototype)))? {
         return Err(RuntimeError::internal_error(
@@ -48,7 +67,11 @@ fn install_realm(state: &Rc<HostState>, index: usize) -> RuntimeResult<Object> {
         .record()
         .create_native_function("createRealm", 0, move |_, _| {
             let state = weak.upgrade().ok_or_else(expired)?;
-            let child = state.engine.create_realm();
+            let parent = state.realms.borrow()[index].clone();
+            let child = state
+                .engine
+                .create_realm_sharing_jobs(&parent)
+                .map_err(|error| RuntimeError::internal_error(error.to_string()))?;
             let index = {
                 let mut realms = state.realms.borrow_mut();
                 let index = realms.len();
@@ -156,7 +179,8 @@ mod tests {
     fn script_hook_detaches_existing_runtime_views() {
         let engine = Rc::new(Engine::default());
         let realm = engine.create_realm();
-        let _host = HostEnvironment::install(engine.clone(), realm.clone()).unwrap();
+        let _host =
+            HostEnvironment::install(engine.clone(), realm.clone(), Monitor::new(false)).unwrap();
         let script = engine
             .compile(&realm, "var buffer = new ArrayBuffer(8); buffer;")
             .unwrap();
@@ -197,7 +221,8 @@ mod tests {
     fn global_callbacks_do_not_keep_the_host_owner_alive() {
         let engine = Rc::new(Engine::default());
         let realm = engine.create_realm();
-        let host = HostEnvironment::install(engine.clone(), realm.clone()).unwrap();
+        let host =
+            HostEnvironment::install(engine.clone(), realm.clone(), Monitor::new(false)).unwrap();
         let weak = Rc::downgrade(&host._state);
         let script = engine
             .compile(&realm, "$262.createRealm(); $262.gc();")

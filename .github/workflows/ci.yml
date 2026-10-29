@@ -106,6 +106,10 @@ jobs:
         env:
           TEST262_DIR: target/test262
         run: cargo +${{ matrix.toolchain }} test --locked --test test262_engine pinned_ --all-features -- --ignored --nocapture
+      - name: Run original Test262 async completion cases
+        env:
+          TEST262_DIR: target/test262
+        run: cargo +${{ matrix.toolchain }} test --locked --test test262_async pinned_ --all-features -- --ignored --nocapture
       - name: Run original var-binding resolution regression
         env:
           TEST262_DIR: target/test262

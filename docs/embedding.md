@@ -101,7 +101,16 @@ engine or Realm is rejected. Host callback and resolver panics are caught at
 the Rust boundary and converted to engine exceptions; they never unwind
 through JavaScript evaluation. Jobs execute FIFO at an explicit `drain_jobs`
 microtask checkpoint, and unhandled Promise errors can be observed with
-`register_job_error_callback`.
+`register_job_error_callback`. Rejection checks run after ordinary jobs reach
+quiescence, retaining their traced state across collection.
+
+`Engine::create_realm_sharing_jobs(&parent)` creates a fresh Realm/global with
+the parent's host hooks and Agent job queue. Draining either Realm drives that
+shared FIFO, including child continuations. Parent provenance is checked;
+`create_realm` and `create_realm_with_host` retain independent queues. Test262
+child Realms use the shared API. Job callbacks must not capture strong Engine
+or Realm owners that introduce host cycles; deadline enforcement belongs to
+the host (the Test262 CLI uses a worker supervisor).
 
 JavaScript Promise rejection values retain their type and identity in reactions
 and in `Exception::thrown()` passed to the job-error callback, including

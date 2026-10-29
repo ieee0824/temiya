@@ -146,3 +146,35 @@ fn unhandled_hook_runs_at_checkpoint_and_is_suppressed_by_then() {
     queue.drain().unwrap();
     assert_eq!(&*reported.borrow(), &["unhandled"]);
 }
+
+#[test]
+fn checkpoint_rejection_tracking_survives_gc_after_promise_facades_drop() {
+    let context = temiya::runtime::AllocationContext::new();
+    let queue = JobQueue::new(&context);
+    let reports = Rc::new(RefCell::new(Vec::new()));
+    let weak = Rc::downgrade(&reports);
+    queue.set_unhandled_rejection_hook(move |error| {
+        weak.upgrade()
+            .unwrap()
+            .borrow_mut()
+            .push(error.message().to_owned())
+    });
+    Promise::rejected_on(
+        queue.clone(),
+        RuntimeError::type_error("unhandled after GC"),
+    )
+    .unwrap();
+    let handled = Promise::rejected_on(queue.clone(), RuntimeError::type_error("handled")).unwrap();
+    handled
+        .then(
+            None,
+            Some(Object::native_function_in(&context, |_, _| {
+                Ok(Value::Undefined)
+            })),
+        )
+        .unwrap();
+    drop(handled);
+    context.collect_garbage().unwrap();
+    queue.drain().unwrap();
+    assert_eq!(*reports.borrow(), ["unhandled after GC"]);
+}

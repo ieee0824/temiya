@@ -171,6 +171,26 @@ impl Realm {
         global_this_value: Value,
         host_hooks: HostHooks,
     ) -> RuntimeResult<Self> {
+        Self::initialize_with_queue(global_object, global_this_value, host_hooks, None)
+    }
+
+    /// Creates a Realm sharing an existing Agent's FIFO Promise-job queue.
+    /// The global object and queue must belong to the same allocation context.
+    pub fn try_new_with_host_and_queue(
+        global_object: Object,
+        global_this_value: Value,
+        host_hooks: HostHooks,
+        queue: JobQueue,
+    ) -> RuntimeResult<Self> {
+        Self::initialize_with_queue(global_object, global_this_value, host_hooks, Some(queue))
+    }
+
+    fn initialize_with_queue(
+        global_object: Object,
+        global_this_value: Value,
+        host_hooks: HostHooks,
+        queue: Option<JobQueue>,
+    ) -> RuntimeResult<Self> {
         if let Value::Object(value) = &global_this_value {
             StoredObject::check_context(&global_object, value)?;
         }
@@ -179,7 +199,7 @@ impl Realm {
         let runtime = global_object.allocation_context().clone();
         let stored_global_this = StoredValue::initial(Some(&runtime), &global_this_value)?;
         let global_environment = Environment::global(global_object.clone(), global_this_value);
-        let queue = JobQueue::new(&runtime);
+        let queue = queue.unwrap_or_else(|| JobQueue::new(&runtime));
         let data = RealmData {
             facade: RefCell::new(Weak::new()),
             id: next_id(&NEXT_ID, "Realm"),

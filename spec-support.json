@@ -11696,7 +11696,7 @@
         "tests/test262_engine.rs",
         "tests/test262_harness.rs"
       ],
-      "rationale": "Public Engine-backed synchronous CLI and Executor run actual parse/link/evaluate phases with fresh Realms, unchanged harness sources and strict/raw/quoted-list handling. Original CLI cases and all 30 prior #146 dependency files are tested. The real $262 realm/evalScript/detach/gc hooks are connected. Async completion, process limits and corpus baselines remain separate; no whole-suite qualification."
+      "rationale": "Public Engine-backed CLI and Executor run actual parse/link/evaluate phases with fresh Realms, unchanged harness sources and strict/raw/quoted-list handling. Original CLI cases and all 30 prior #146 dependency files are tested. The real $262 realm/evalScript/detach/gc hooks are connected. Async completion has a supervised worker path; general process limits and corpus baselines remain separate; no whole-suite qualification."
     },
     {
       "id": "component.test262-host-hooks",
@@ -11712,6 +11712,21 @@
         "tests/test262_engine.rs"
       ],
       "rationale": "Real child Realms, ScriptRecord evalScript completions, ArrayBuffer detachment and Engine collection are installed per execution with weak callbacks and externally rooted Realm handles. Cross-Realm identity, detached runtime-view reads/writes and immutable original cases are tested. Integer TypedArray/SharedArrayBuffer globals, broader DataView methods and unpaired UTF-16 Script source remain unqualified; no whole-host API conformance claim."
+    },
+    {
+      "id": "component.test262-async-completion",
+      "status": "partial",
+      "issues": [
+        148,
+        150,
+        179
+      ],
+      "tests": [
+        "tests/test262_async.rs",
+        "tests/async_embedding_jobs.rs",
+        "tests/promise_job_queue.rs"
+      ],
+      "rationale": "The actual CLI loads the original doneprintHandle harness, drives shared Agent jobs and distinguishes completion, rejection, duplicates and missing completion. A worker supervisor enforces finite async deadlines including infinite bodies/jobs. Original pinned return/throw cases pass in AST and Auto. Global Promise APIs, broader async conformance and synchronous/resource limits remain unqualified."
     }
   ]
 }

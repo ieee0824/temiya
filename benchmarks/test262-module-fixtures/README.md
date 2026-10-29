@@ -46,8 +46,14 @@ The fixed pin is d53ebc8b1931d9f1541e43d59650776e4b766248. Includes and fixtures
 are read unchanged from Git objects. Gzip files preserve raw command/report bytes;
 `evidence.json` records compressed and uncompressed SHA-256 values.
 
-CI passed at source 67f428322c5249c0422ad4b7e6be4bcb1951dab2. Strict Miri
-with collection at every allocation and new performance qualification are
-pending. The freshly built default Engine
+CI passed at source 67f428322c5249c0422ad4b7e6be4bcb1951dab2 and again at
+d25d974b9502b9382c02ce58a0985f4c33f28910, with stable, Rust 1.85.0,
+formatting/Clippy and C ABI checks successful. The 71 engine/worker/build input
+hashes match across these revisions; the latter adds evidence and documentation.
+Strict-provenance, symbolic-alignment Miri passed all five module graph GC tests
+(including allocation-by-allocation collection) and both public API regressions.
+Their terminal logs and CI output are preserved and checked by `verify.mjs`.
+
+New performance qualification is pending. The freshly built default Engine
 worker differs from the previous source, so earlier Boa timing reports do not
 qualify this candidate's speed. This draft is not ready to merge.

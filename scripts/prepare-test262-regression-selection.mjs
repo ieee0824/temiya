@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
-import {selectPaths, checkBaselineUpdate} from './test262-regression-policy.mjs';
+import {selectPaths, checkBaselineUpdate, validateSkipReasons} from './test262-regression-policy.mjs';
 
 const [reference, policyFile, mode, shardText, shardsText, destination] = process.argv.slice(2);
 if (process.argv.length !== 8)
@@ -11,6 +11,7 @@ assert(['pr', 'full'].includes(mode), 'invalid execution mode');
 assert(!fs.existsSync(destination), 'selection destination must be new');
 const policy = JSON.parse(fs.readFileSync(policyFile));
 checkBaselineUpdate(null, policy);
+validateSkipReasons(policy.skip_reasons);
 const bytes = fs.readFileSync(path.join(reference, 'baseline.json'));
 assert.equal(createHash('sha256').update(bytes).digest('hex'), policy.reference_baseline_sha256);
 const universe = JSON.parse(fs.readFileSync(path.join(reference, 'universe.json')));

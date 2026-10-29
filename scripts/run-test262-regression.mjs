@@ -4,7 +4,7 @@ import path from 'node:path';
 import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
-import {checkBaselineUpdate} from './test262-regression-policy.mjs';
+import {checkBaselineUpdate, validateSkipReasons} from './test262-regression-policy.mjs';
 
 const [engine, corpus, reference, policyFile, output, mode, shardText, shardsText, previousFile]
   = process.argv.slice(2);
@@ -13,6 +13,7 @@ if (process.argv.length < 10 || process.argv.length > 11)
 assert(['pr', 'full'].includes(mode), 'invalid execution mode');
 const read = file => JSON.parse(fs.readFileSync(file));
 checkBaselineUpdate(previousFile ? read(previousFile) : null, read(policyFile));
+validateSkipReasons(read(policyFile).skip_reasons);
 const root = path.resolve(output);
 assert(!fs.existsSync(root), 'output must be new');
 fs.mkdirSync(root, {recursive: true});

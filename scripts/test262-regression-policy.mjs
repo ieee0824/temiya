@@ -40,6 +40,18 @@ export function selectPaths(policy, universe, {full = false, shard = 0, shards =
   return result;
 }
 
+export function validateSkipReasons(skipReasons) {
+  assert(Array.isArray(skipReasons), 'skip_reasons must be an explicit array');
+  const approvals = new Map();
+  for (const row of skipReasons) {
+    assert(row && canonicalPath(row.path) && variants.has(row.variant) && reason(row.reason),
+      'every skip exception requires a variant and nonempty reason');
+    assert(!approvals.has(id(row)), 'duplicate skip exception');
+    approvals.set(id(row), row.reason.trim());
+  }
+  return approvals;
+}
+
 export function compareOutcomes(expectedRows, actualRows, selectedPaths, skipReasons = []) {
   const expected = index(expectedRows), actual = index(actualRows);
   assert(Array.isArray(selectedPaths) && selectedPaths.length > 0, 'empty selection');
@@ -48,13 +60,7 @@ export function compareOutcomes(expectedRows, actualRows, selectedPaths, skipRea
   assert.equal(selected.size, selectedPaths.length, 'duplicate selection path');
   const baselinePaths = new Set(expectedRows.map(r => r.path));
   for (const p of selected) assert(baselinePaths.has(p), 'selection outside baseline');
-  const approvals = new Map();
-  for (const row of skipReasons) {
-    assert(canonicalPath(row.path) && variants.has(row.variant) && reason(row.reason),
-      'every skip exception requires a variant and nonempty reason');
-    assert(!approvals.has(id(row)), 'duplicate skip exception');
-    approvals.set(id(row), row.reason.trim());
-  }
+  const approvals = validateSkipReasons(skipReasons);
   const failures = [], transitions = [], used = new Set();
   for (const [key, before] of expected) {
     if (!selected.has(before.path)) continue;

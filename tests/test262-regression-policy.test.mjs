@@ -1,9 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {compareOutcomes, checkComparableConditions, checkBaselineUpdate, selectPaths}
+import {compareOutcomes, checkComparableConditions, checkBaselineUpdate, selectPaths, validateSkipReasons}
   from '../scripts/test262-regression-policy.mjs';
 const row = (outcome, variant = 'Sloppy') => ({path: 'test/a.js', variant, outcome});
 const paths = ['test/a.js'];
+
+test('all skip settings require reasons and unique identities before selection filtering', () => {
+  const outside = {path: 'test/outside-pr.js', variant: 'Strict', reason: 'Tracked missing host hook'};
+  assert.equal(validateSkipReasons([outside]).size, 1);
+  assert.throws(() => validateSkipReasons([{...outside, reason: ' '}]), /nonempty/);
+  assert.throws(() => validateSkipReasons([outside, outside]), /duplicate/);
+  assert.throws(() => validateSkipReasons([null]), /nonempty/);
+  assert.throws(() => validateSkipReasons(undefined), /explicit array/);
+});
 
 test('full shards cover every original path exactly once, including uneven boundaries', () => {
   const universe = Array.from({length: 52133}, (_, n) => 'test/' + String(n).padStart(5, '0') + '.js');

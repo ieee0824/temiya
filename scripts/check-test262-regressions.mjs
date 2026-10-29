@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
-import {compareOutcomes, checkComparableConditions, checkBaselineUpdate, selectPaths}
+import {compareOutcomes, checkComparableConditions, checkBaselineUpdate, selectPaths, validateSkipReasons}
   from './test262-regression-policy.mjs';
 
 try {
@@ -24,6 +24,7 @@ try {
   const read = file => JSON.parse(fs.readFileSync(file));
   const policy = read(policyFile);
   checkBaselineUpdate(previousFile ? read(previousFile) : null, policy);
+  validateSkipReasons(policy.skip_reasons);
   const referenceBytes = fs.readFileSync(path.join(reference, 'baseline.json'));
   assert.equal(createHash('sha256').update(referenceBytes).digest('hex'),
     policy.reference_baseline_sha256, 'policy must identify the exact reference baseline');
@@ -54,7 +55,6 @@ try {
     const successfulPaths = new Set(expected.filter(row => row.outcome === 'pass').map(row => row.path));
     assert(selection.every(name => successfulPaths.has(name)), 'PR selection must exercise known passes');
   }
-  assert(Array.isArray(policy.skip_reasons), 'skip_reasons must be an explicit array');
   const exceptions = policy.skip_reasons.filter(row => selected.has(row.path));
   const result = compareOutcomes(expected, actual, selection, exceptions);
   console.log(JSON.stringify({schema: 1, kind: 'test262-regression-gate',

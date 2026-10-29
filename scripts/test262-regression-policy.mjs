@@ -85,7 +85,7 @@ export function checkBaselineUpdate(previous, next) {
   assert(reason(next.update?.reason), 'baseline requires an update reason');
   const payload = value => { const {update, ...rest} = value; return rest; };
   if (previous && JSON.stringify(payload(previous)) !== JSON.stringify(payload(next))) {
-    assert.notDeepEqual(next.update, previous.update,
+    assert.notEqual(next.update.reason.trim(), previous.update?.reason?.trim(),
       'baseline changes require a fresh update reason');
   }
 }

@@ -40,6 +40,8 @@ test('baseline updates need a new reason, including selection and budget changes
   checkBaselineUpdate(null, initial);
   checkBaselineUpdate(initial, structuredClone(initial));
   assert.throws(() => checkBaselineUpdate(initial, {...initial, cases: []}), /fresh/);
+  assert.throws(() => checkBaselineUpdate(initial,
+    {...initial, cases: [], update: {...initial.update, date: 'new date'}}), /fresh/);
   checkBaselineUpdate(initial, {...initial, cases: [], update: {reason: 'Remove obsolete corpus case'}});
   assert.throws(() => checkBaselineUpdate(null, {...initial, update: {reason: ''}}), /reason/);
 });

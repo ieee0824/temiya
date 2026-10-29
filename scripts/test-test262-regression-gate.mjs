@@ -1,0 +1,72 @@
+// Actual pinned Test262 -> Engine CLI -> capture verifier -> regression gate.
+import fs from 'node:fs';
+import path from 'node:path';
+import assert from 'node:assert/strict';
+import {createHash} from 'node:crypto';
+import {spawnSync} from 'node:child_process';
+import {fileURLToPath} from 'node:url';
+
+const [engine, corpus, output] = process.argv.slice(2);
+if (process.argv.length !== 5)
+  throw Error('usage: node scripts/test-test262-regression-gate.mjs ENGINE CORPUS NEW_OUTPUT');
+const root = path.resolve(output);
+assert(!fs.existsSync(root), 'integration output must be new');
+fs.mkdirSync(root, {recursive: true});
+const scripts = path.dirname(fileURLToPath(import.meta.url));
+function run(script, args, status = 0) {
+  const result = spawnSync(process.execPath, [path.join(scripts, script), ...args],
+    {encoding: 'utf8', timeout: 120000, maxBuffer: 16 * 1024 * 1024});
+  fs.writeFileSync(path.join(root, 'commands.jsonl'), JSON.stringify({script, args,
+    status: result.status, stdout: result.stdout, stderr: result.stderr}) + '\n', {flag: 'a'});
+  assert.equal(result.status, status, result.stderr + '\n' + result.stdout);
+  return result;
+}
+const selection = [
+  'test/built-ins/String/prototype/at/returns-item.js',
+  'test/built-ins/String/prototype/charAt/pos-coerce-err.js',
+];
+const selectionFile = path.join(root, 'selection.json');
+fs.writeFileSync(selectionFile, JSON.stringify(selection));
+function capture(name, extra = []) {
+  const directory = path.join(root, name);
+  run('test262-baseline.mjs', ['--engine', path.resolve(engine), '--corpus', path.resolve(corpus),
+    '--output', directory, '--pinned', '--universe', selectionFile,
+    '--timeout-ms', '1000', ...extra]);
+  return directory;
+}
+const reference = capture('reference');
+const candidate = capture('candidate');
+const baselineBytes = fs.readFileSync(path.join(reference, 'baseline.json'));
+const baseline = JSON.parse(baselineBytes);
+assert.equal(baseline.totals.pass, 4, 'all four original strict/sloppy variants must pass');
+assert.equal(baseline.totals.total, 4);
+const policy = {schema: 1, update: {reason: 'Integration uses four actually passing pinned original variants'},
+  reference_baseline_sha256: createHash('sha256').update(baselineBytes).digest('hex'),
+  pr_selection: selection, skip_reasons: []};
+const policyFile = path.join(root, 'policy.json');
+fs.writeFileSync(policyFile, JSON.stringify(policy));
+const gateArgs = [reference, candidate, policyFile];
+const accepted = JSON.parse(run('check-test262-regressions.mjs', gateArgs).stdout);
+assert.equal(accepted.passed, true);
+assert.equal(accepted.observed_variants, 4);
+run('check-test262-regressions.mjs', ['--full', ...gateArgs]);
+
+const changedBudget = capture('changed-budget', ['--memory-mb', '256']);
+assert.match(run('check-test262-regressions.mjs', [reference, changedBudget, policyFile], 2).stderr,
+  /incomparable condition: memory_mb/);
+
+const candidateSummary = path.join(candidate, 'baseline.json');
+const original = fs.readFileSync(candidateSummary);
+const forged = JSON.parse(original);
+forged.totals.pass = 999;
+fs.writeFileSync(candidateSummary, JSON.stringify(forged));
+assert.match(run('check-test262-regressions.mjs', gateArgs, 2).stderr, /capture integrity verification failed/);
+fs.writeFileSync(candidateSummary, original);
+
+const changedPolicyFile = path.join(root, 'changed-policy.json');
+fs.writeFileSync(changedPolicyFile, JSON.stringify({...policy, pr_selection: selection.slice(0, 1)}));
+assert.match(run('check-test262-regressions.mjs', [reference, candidate, changedPolicyFile, policyFile], 2).stderr,
+  /fresh update reason/);
+console.log(JSON.stringify({integration: 'pass', original_variants: 4,
+  checks: ['pr pass', 'full pass', 'budget mismatch rejected', 'forged count rejected',
+    'baseline change without fresh reason rejected'], output: root}));

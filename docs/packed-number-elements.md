@@ -1,125 +1,100 @@
 # Compact default numeric array elements
 
-Issue #489 introduces a contiguous `Vec<f64>` representation for complete
-numeric data descriptors with writable/enumerable/configurable all true.
-Reads reconstruct those same descriptor flags; the f64 payload is copied
-without arithmetic, preserving NaN, signed zero, infinities and subnormals.
-Holes, sparse indices, accessors, nondefault attributes and mixed values expand
-to ordinary descriptors before the existing validation/storage operations.
-Expanded arrays keep that representation until an empty numeric refill.
+Issue #489 stores contiguous, complete numeric data descriptors in `Vec<f64>`
+when writable/enumerable/configurable are all true. Payloads are copied without
+arithmetic, retaining NaN bits, signed zero, infinities and subnormals. Reflective
+reads reconstruct every default flag. Holes, sparse indices, accessors,
+nondefault attributes and mixed values expand to ordinary descriptors before
+existing validation/storage operations. Expanded arrays retain that form until
+an empty numeric refill; writes do not repeatedly scan arrays to repack them.
 
-The stored-descriptor representation uses the same typed handles and owner
-checks as other managed arrays. Numeric-only slots have no managed edge and
-need no per-slot tracing. Prototypes and named properties remain traced, as do
-all descriptor-backed element representations. No collector interval or public
-API changes are introduced. The separate ArraySetLength coercion work in #450
-is unchanged; numeric length shrink and failed descriptor/shrink behavior retain
-their existing checks.
+Value-only indexed reads combine storage lookup with the ordinary owner-checked
+value load. Missing entries and accessors use full property lookup with the
+original receiver. Numeric slots contain no managed edges; prototypes, named
+properties and every descriptor-backed element remain strongly traced.
 
-The public integration tests preserve special numeric bits/default attributes,
-exercise hole/sparse/mixed transitions and live/retired object edges across GC,
-and compare operation sequences against an independent ordered descriptor
-model. Existing JS/prototype/accessor/Proxy regressions also exercise the new
-initial numeric representation. Native tests pass661/21 ignored on local ARM64;
-Clippy passes, and both new integration tests pass strict-provenance/symbolic-
-alignment Miri with isolation enabled. Selected pinned Test262 array-element,
-array-stack and array-literal gates pass; skipped cases are not counted as passes.
+The x64 regression investigation also identified unnecessary general binding
+write work. An initialized mutable Number binding now accepts another Number
+by copying its payload after TDZ/mutability checks. Other writes retain
+`StoredValue::store_owned`, context checks, barriers and old-payload destruction.
+No public API, cache eligibility, collector interval or execution budget changes
+are introduced. ArraySetLength double coercion #450 remains separate; numeric
+length shrink and failed descriptor/shrink behavior retain their existing checks.
+
+The qualified runtime source is `dd7df4455bbcfcf8764464ff2185eb4650f1372a`, compared
+with main `c7c4f265c4002de1d90223eccaa64aaafdada52a`. Full evidence is in
+`benchmarks/managed-packed-numbers/experiments/fused-dd7`.
+
+Local ARM64 native tests pass663/21 ignored in88 suites; fmt and Clippy pass.
+[CI40800358815](https://github.com/ieee0824/temiya/actions/runs/40800358815) passes
+stable/Rust1.85, formatting/Clippy and C ABI. All4 public integration tests pass
+strict-provenance/symbolic-alignment Miri with isolation enabled. Full runtime
+[security40800358738](https://github.com/ieee0824/temiya/actions/runs/40800358738)
+passes119 distinct exact library Miri tests,0 ignored, the complete16-shard
+partition and all19 jobs, including ASan and dependency audit. Source/status/full
+logs and independent audits are retained; older-source results are not relabeled.
+
+The special-number test checks every payload and default flag through holes,
+sparse storage, descriptor restoration and GC, then directly overwrites numeric
+storage with a managed child and verifies retention/release. An independent
+ordered descriptor model compares1024 native operations (48 under Miri), keys,
+length, flags, values and failed operations. AST/Bytecode differential checks
+cover special numbers, object-valued indexed reads and own/inherited accessor
+receivers. Binding tests check exact bits, TDZ, immutable strict/sloppy writes,
+rejected foreign-context objects, child retention/release and type transitions.
+Fixed Test262 array-elements, array-stack and array-literal wrappers execute the
+pinned corpus revision and pass. Ignored-by-default selected wrappers are run
+explicitly; this is selected regression coverage, not the entire Test262 suite.
+
+The unchanged original-eleven performance protocol uses15 timed samples plus a
+checked warmup,3 alternating pairs,512MiB/180-second watchdogs and the existing
+`max(10%, 3*(relative MAD A + relative MAD B))` gate. Setup/startup/warmup are
+excluded from timed samples; each timed pass parses and evaluates the same
+invocation. No body, count, oracle, pair or unfavorable observation is discarded.
+The reference is the actual modified Boa and public sandboxed embedding in
+omoikane at007556adccb8fb4329236932ca8175f8e8d119d2, with original features/locks
+and no JIT. Both workers use Rust1.99.1 release builds; Temiya has no default
+features. The real embedding's cooperative limits and Temiya's lack of an
+equivalent cooperative budget remain explicitly recorded in the native reports.
+
+| Observed cohort | Candidate/main | Candidate/actual modified Boa | Controls |
+| --- | --- | --- | --- |
+| ARM64 guestCPU0 |1 faster/32 noise/0 slower|33 faster beyond gate|not measured|
+| Hosted AMD EPYC7763 |3 faster/30 noise/0 slower|33 faster beyond gate|baseline/Boa33 faster; same binary33 noise|
+| Hosted Intel Xeon Platinum8370C |33 noise/0 slower|33 faster beyond gate|baseline/Boa33 faster; same binary33 noise|
+
+All10 reports independently validate66 workers/1056 values each, original inputs,
+statistics, source/compiler/feature/lock/binary identities and controls. Hosted
+machines were independently assigned without a model filter. The diagnostic
+rebuilds exactly match both native hosted binaries. All9 array before/after
+pairs are within their gates: no array timing improvement is established.
+Qualification applies to these workloads and observed environments, not arbitrary
+JavaScript or SpiderMonkey's JIT. ARM affinity and its physical-host limitations
+are recorded; agent affinity is restored after both terminal measurements.
 
 `cargo run --locked --release --no-default-features --example array_allocation_probe`
-measures Rust allocation requests for one clear/default-number refill after128
-warmups using prebuilt keys and one existing public ArrayObject. With4096 slots,
-the current main reference requests585216 bytes and the candidate65024 bytes,
-both in7 requests, with sum8386560 and zero final retained cells. This is about
-89% fewer requested bytes, not peak live bytes, RSS or a timing comparison.
-The same probe source is used with unchanged reference library/manifests.
+measures one clear/default-number refill after128 warmups with prebuilt keys and
+one public ArrayObject. For4096 numbers, reference requests585216 bytes and
+candidate65024 bytes (7 requests each), validates sum8386560 and retains0 cells.
+This is about89% fewer requested bytes, not peak live bytes, RSS or a timing win.
+The identical probe was temporarily added to the unchanged reference library;
+it was removed before freezing the clean baseline timing worker.
 
-The first managed-storage candidate used `Cow<StoredDescriptor>` to synthesize
-complete descriptors even for value-only reads. Its retained ARM64 comparison
-had no before/after regression beyond the gate, but no qualified array speedup.
-One of two hosted x64 machines recorded 13 slower before/after pairs, including
-array, object and primitive workloads. The other recorded all 33 within the gate.
-The actual Boa comparison also missed individual gates on ARM64 and one hosted
-machine. All reports and controls are retained in
-`benchmarks/managed-packed-numbers/experiments/cow-25e`; these results do not
-qualify the candidate for the performance objective.
+Earlier pre-GC, Cow and small-view trials retain their unfavorable reports and
+controls. See `docs/three-experiment-comparisons.md`, `experiments/cow-25e` and
+`experiments/view-6fb`. The view's hosted4/5 regressions and one Boa miss were not
+accepted despite passing safety checks. Matched-binary x64 profiling localized
+extra general binding-write and indexed-value helper work; the follow-up was
+then separately qualified. Raw instruction profiles/disassembly are retained
+with lossless gzip and both hashes. Some modeled branch/cache counters increase;
+model counters and instrumented times never replace native speed gates. The
+upstream audit at main49715ad confirms identical vendored engine/Cargo objects,
+while app JS/DOM changed; no timing of that newer complete embedding is claimed.
 
-The next implementation uses a small numeric-or-borrowed-descriptor view for
-reads. Value-only reads copy the f64 directly; descriptor consumers still
-reconstruct every default flag, and managed values still use owner validation.
-This removes unnecessary full descriptor construction/destruction from that
-path. It is a hypothesis to measure, not a demonstrated explanation for the
-unrelated hosted regressions or a speed claim.
-
-For this view at source6fb3160, the retained ARM64 comparison validates all66
-workers/1056 values in each report. Candidate/main has33 decisions within the
-fixed gate and no qualified array speedup. Candidate/actual modified Boa has
-all33 decisions faster beyond the gate. Both use the same Rust compiler and
-unchanged original-eleven protocol; source/binary/adapter identities are checked.
-This is a qualification of those workloads in that measured ARM64 environment,
-not arbitrary-program performance. Full stable/Rust1.85/Clippy/C ABI CI passes;
-the view's two integration Miri tests also pass. See
-`benchmarks/managed-packed-numbers/experiments/view-6fb` for evidence. Hosted
-run40792533180 subsequently recorded4 and5 before/after regressions on independent
-AMD7763 machines. Both regress all3 primitive-string-property pairs and one
-string-concat pair; one also regresses prop-mega. Candidate/actual Boa is32 faster/
-1 noise on one machine and33 faster on the other. All8 reports validate66 workers/
-1056 values each, with complete controls/identities. All6 hosted array pairs are
-within their gates. Full runtime security passes119 exact Miri tests/0 ignored
-and all19 jobs, including ASan/audit. This candidate is not
-qualified for merge; all unfavorable observations are retained for investigation.
-
-The x64 diagnostic rebuilt the exact native benchmark binaries and localized
-extra general binding-write work in `Binding::write` and its function-binding
-caller. A following candidate directly overwrites an existing Number with an
-incoming Number after the existing TDZ/mutability checks. That scalar overwrite
-has no managed edge or owned payload; all other type changes continue through
-`StoredValue::store_owned`, its context checks and barriers, and the ordinary
-destruction of the old value. The independent public binding test checks exact
-numeric bits, TDZ, immutable strict/sloppy writes, rejected foreign-context
-objects, live/released managed children and string/number transitions. No cache
-eligibility, GC schedule or workload input changes accompany this optimization.
-Its performance qualification is separate and pending; the source6fb3160
-measurements and failures above remain unchanged.
-
-The follow-up also fuses value-only element reads: packed numbers return their
-f64 directly; descriptor-backed slots retain the ordinary owner-checked value
-load without constructing a temporary ElementRef and calling another helper.
-Full descriptor operations still use the view and reconstruct all flags.
-Missing slots and accessors continue through the caller's full property lookup.
-An AST/Bytecode differential test checks signed zero/infinities/NaN, sparse
-restoration, object-valued elements and own/inherited accessor receivers.
-
-For the combined follow-up at dd7df4455bbcfcf8764464ff2185eb4650f1372a,
-native663/21 ignored, Clippy/fmt, selected fixed Test262 gates, all4 integration
-Miri tests/0 ignored and all4 stable/MSRV/quality/C ABI CI jobs pass. ARM64 main
-comparison is1 faster/32 noise/0 slower; all3 array decisions are noise. Actual
-modified Boa is slower beyond the fixed gate in all33 comparisons. Each ARM64
-report validates66 workers/1056 values with separate statistical and identity
-audits. See `benchmarks/managed-packed-numbers/experiments/fused-dd7`.
-Hosted run40800448415 also completes: AMD7763 has3 improvements/30 noise/0 slower
-before/after decisions, Intel8370C has33 noise/0 slower, and both qualify all33
-actual-Boa faster decisions. Baseline/Boa controls qualify33 each and identical-
-binary controls are33 noise each. The independently assigned machines were not
-filtered by CPU model. All8 hosted reports validate66 workers/1056 values and
-source/compiler/feature/lock/binary/control identities; diagnostic binaries
-match both native cohorts exactly. All9 ARM64/hosted array before/after pairs
-remain noise, so requested allocation savings must not be described as an array
-timing win. Full latest-runtime security and final merge remain pending.
-
-Performance qualification is pending. Keep the original eleven workload bodies,
-counts, oracles,15 samples/3 alternating pairs,512MiB/180-second watchdogs and
-the existing10%/MAD gate for candidate/main and actual pinned omoikane modified
-Boa on ARM64 and hosted x64. Retain all decisions, regressions and controls.
-The older pre-GC packed-number trial did not qualify an array speed improvement;
-its unfavorable measurements remain in `docs/three-experiment-comparisons.md`.
-
-The #489 acceptance evidence is organized as follows; pending rows are not
-completed by the earlier ARM64 result:
-
-| Condition | Evidence |
+| #489 requirement | Evidence |
 | --- | --- |
-| Special numeric payloads and default flags | `numeric_bits_and_object_edges_survive_storage_transitions_and_collection` checks every special payload's exact f64 bits/default flags through holes, sparse and descriptor restoration with GC, then a direct numeric-to-managed-child overwrite across GC. The strengthened native/Miri checks both pass2/0 ignored. |
-| Holes, inherited getters, descriptor restrictions, shrinking and sparse/mixed storage | `tests/array_elements.rs` covers representation round trips, mutating prototype accessors, Proxy traps and failed length shrink. `tests/array_stack.rs` also covers inherited holes and read-only length with required partial changes. |
-| Independent model and fixed Test262 | `complete_descriptors_match_an_independent_model_with_gc_between_operations` compares1024 seeded native operations (48 under Miri), keys, length, flags and values. The pinned array-elements, array-stack and array-literal wrappers pass and assert the fixed corpus revision; selected ignored-by-default wrappers are explicitly executed. |
-| Original-eleven speed comparisons | `experiments/view-6fb` retains ARM64 and both hosted before/after and actual-Boa reports, controls, source/binary identities and independent statistics. Hosted regressions and one Boa gate miss remain unresolved. Old adverse reports and supplemental instruction diagnostics are retained separately from native speed gates. |
-| Stable, MSRV, quality, security, documentation and merge | CI40792515990 passes stable/Rust1.85/Clippy/fmt/C ABI. Native, integration Miri and fixed Test262 logs are retained. Full runtime security40792515995 passes119 exact Miri tests/0 ignored and all19 jobs. Hosted speed regressions prevent final merge. |
+| Special numeric payloads and default flags | Exact-bit public test, GC and representation round trips; four integration Miri passes. |
+| Hole/prototype/descriptor/length/mixed/sparse transitions | Public array tests, AST/Bytecode receiver tests, independent descriptor model and GC checks. |
+| Independent model and pinned Test262 |1024 native/48 Miri model operations and explicitly executed fixed array wrappers. |
+| Original-eleven ARM64/hosted comparisons and adverse-result investigation | All10 reports, complete controls/identities/statistical audits, both older failed trials and matched-binary diagnosis. |
+| Stable/MSRV/quality/security/results and integration | CI40800358815, security40800358738, retained logs/audits and this document; final integration/merge state is [PR #524](https://github.com/ieee0824/temiya/pull/524). |

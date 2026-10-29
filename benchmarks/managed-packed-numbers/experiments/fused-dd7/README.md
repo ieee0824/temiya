@@ -46,10 +46,15 @@ input and oracle, alternating pair order and the unchanged10%/MAD/15-sample gate
 All9 array before/after decisions are noise. The AMD improvements are all3
 primitive-string-method pairs (ratios0.8864–0.8977). Reported gains apply to these
 workloads in the observed environments, not arbitrary JavaScript. Earlier
-regressions remain preserved as distinct source trials. Full latest-runtime
-security40800358738 and final merge remain pending. Each source
+regressions remain preserved as distinct source trials. Full runtime
+security40800358738 passes119 distinct exact library Miri tests/0 ignored,
+the complete16-shard partition and all19 jobs, including ASan/audit. Full
+source/status/log hashes and the independent audit are retained. Runtime
+qualification is complete; final integration/merge status belongs to PR524.
+Each source
 has separate evidence; earlier favorable or unfavorable results do not qualify
-this one. No speed or merge acceptance is implied by these validation logs.
+this one. Validation logs alone do not imply a speed win; the independently
+audited native reports above establish the stated qualification.
 
 The completed x64 diagnostic40800451093 validates all6 original-input instrumented
 runs. Whole-process Ir candidate/main ratios are0.96221 primitive-string-property,

@@ -7,6 +7,10 @@ The files in this directory describe the first implementation at source
   ARM64/hosted results, controls, source identities and completed security proof.
 - `experiments/view-6fb`: smaller numeric/borrowed-descriptor read view at source
   6fb3160be6d966b7b0c35fb7b5da06ddb33b3583, with separate validation and timings.
+- `experiments/fused-dd7`: guarded numeric binding writes and direct indexed
+  values at dd7df4455bbcfcf8764464ff2185eb4650f1372a; all33 actual-Boa pairs
+  qualify on ARM64, AMD7763 and Intel8370C with no before/after regression.
+  Native/MSRV/quality and119 exact library Miri/all19 security jobs pass.
 
 Audit retained original-eleven reports with
 `node scripts/audit-original-workload-records.mjs REPORT.json [...]`.

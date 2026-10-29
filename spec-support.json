@@ -11658,6 +11658,25 @@
         "tests/script_module_pipeline.rs"
       ],
       "rationale": "Host ModuleGraph exercises actual linking and evaluation. Script probes do not execute module source; dynamic import and pending top-level await remain incomplete."
+    },
+    {
+      "id": "component.test262-engine-runner",
+      "status": "partial",
+      "issues": [
+        145,
+        146,
+        147,
+        148,
+        149,
+        150,
+        151,
+        152
+      ],
+      "tests": [
+        "tests/test262_engine.rs",
+        "tests/test262_harness.rs"
+      ],
+      "rationale": "Public Engine-backed synchronous CLI and Executor run actual parse/link/evaluate phases with fresh Realms, unchanged harness sources and strict/raw/quoted-list handling. Original CLI cases and all 30 prior #146 dependency files are tested. $262, async completion, process limits and corpus baselines remain separate; no whole-suite qualification."
     }
   ]
 }

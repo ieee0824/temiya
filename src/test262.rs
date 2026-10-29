@@ -2,6 +2,9 @@
 
 use std::{collections::BTreeMap, fmt};
 
+mod engine;
+pub use engine::{Corpus, EngineExecutor, EngineTestResult, run_with_engine};
+
 /// Test262 upstream revision consumed by the repository harness.
 pub const TEST262_REVISION: &str = "d53ebc8b1931d9f1541e43d59650776e4b766248";
 
@@ -329,12 +332,60 @@ fn parse_inline_list(source: &str) -> Result<Vec<String>, HarnessError> {
         .strip_prefix('[')
         .and_then(|value| value.strip_suffix(']'))
         .ok_or_else(|| HarnessError("metadata lists must use inline [item, ...] syntax".into()))?;
-    Ok(content
-        .split(',')
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(ToOwned::to_owned)
-        .collect())
+    fn item(source: &str) -> Result<String, HarnessError> {
+        let source = source.trim();
+        if source.is_empty() {
+            return Err(HarnessError("empty metadata list item".into()));
+        }
+        if source.starts_with('"') {
+            return serde_json::from_str(source)
+                .map_err(|e| HarnessError(format!("invalid double-quoted metadata item: {e}")));
+        }
+        if let Some(inner) = source.strip_prefix('\'').and_then(|s| s.strip_suffix('\'')) {
+            if inner.replace("''", "").contains('\'') {
+                return Err(HarnessError("invalid single-quoted metadata item".into()));
+            }
+            return Ok(inner.replace("''", "'"));
+        }
+        if source.starts_with('\'') {
+            return Err(HarnessError("invalid single-quoted metadata item".into()));
+        }
+        Ok(source.to_owned())
+    }
+    if content.trim().is_empty() {
+        return Ok(Vec::new());
+    }
+    let mut values = Vec::new();
+    let mut start = 0;
+    let mut quote = None;
+    let mut escaped = false;
+    let mut chars = content.char_indices().peekable();
+    while let Some((index, ch)) = chars.next() {
+        match quote {
+            Some('"') if escaped => escaped = false,
+            Some('"') if ch == '\\' => escaped = true,
+            Some('\'') if ch == '\'' && chars.peek().is_some_and(|(_, next)| *next == '\'') => {
+                chars.next();
+            }
+            Some(delimiter) if ch == delimiter => quote = None,
+            Some(_) => {}
+            None if matches!(ch, '\'' | '"') && content[start..index].trim().is_empty() => {
+                quote = Some(ch)
+            }
+            None if ch == ',' => {
+                values.push(item(&content[start..index])?);
+                start = index + 1;
+            }
+            None => {}
+        }
+    }
+    if quote.is_some() {
+        return Err(HarnessError("unterminated quoted metadata item".into()));
+    }
+    if !content[start..].trim().is_empty() {
+        values.push(item(&content[start..])?);
+    }
+    Ok(values)
 }
 
 fn string_field<'a>(value: &'a serde_json::Value, name: &str) -> Result<&'a str, HarnessError> {

@@ -129,6 +129,13 @@ the public header/example and compares exported symbols with the ABI allowlist.
 
 ### Canonical module resolution
 
+`Engine::link_module` links a loaded handle without executing module bodies.
+It preserves the Engine identity check and is idempotent after successful linking.
+Hosts can distinguish linking errors from errors returned later by
+`Engine::evaluate_module`; evaluation still links automatically when needed.
+`ModuleHandle::status` returns the current `runtime::ModuleStatus` without running
+JavaScript, so a host need not mistake incomplete evaluation for completion.
+
 `Engine::load_module_with_resolver` adds a separate referrer-aware identity
 resolver and source loader. The resolver receives `None` for the root, then the
 canonical importing module name and original `ast::ModuleRequest` for each

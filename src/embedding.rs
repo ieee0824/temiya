@@ -321,6 +321,20 @@ impl Engine {
         Ok(())
     }
 
+    /// Links a loaded module without evaluating any module body.
+    ///
+    /// Hosts such as conformance runners can distinguish resolution/linking
+    /// failures from evaluation failures. Repeated successful linking is a no-op.
+    pub fn link_module(&self, module: &ModuleHandle) -> Result<(), Exception> {
+        if module.engine_id != self.id {
+            return Err(Exception::engine("module belongs to another engine"));
+        }
+        module
+            .module
+            .link()
+            .map_err(|error| Exception::runtime(error, self.id, module.realm_id))
+    }
+
     /// Loads a module graph with referrer-aware canonical module identities.
     ///
     /// `resolve` receives `None` for the root and the canonical importing
@@ -548,6 +562,14 @@ pub struct ModuleHandle {
     engine_id: u64,
     realm_id: u64,
     module: SourceTextModule,
+}
+
+impl ModuleHandle {
+    /// Returns the current graph evaluation state without running JavaScript.
+    #[must_use]
+    pub fn status(&self) -> crate::runtime::ModuleStatus {
+        self.module.status()
+    }
 }
 
 /// Provenance-preserving factory available during a native host call.

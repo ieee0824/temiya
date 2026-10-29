@@ -83,6 +83,7 @@ jobs:
         run: |
           cargo +${{ matrix.toolchain }} build --locked --release --example measure_workload
           node scripts/check-workload-workers.mjs target/release/examples/measure_workload
+          sha256sum target/release/examples/measure_workload
       - name: Verify checked component worker contracts
         run: |
           cargo +${{ matrix.toolchain }} build --locked --release --no-default-features --example measure_components

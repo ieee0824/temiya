@@ -23,6 +23,9 @@ pub(super) struct StoredClosure {
     environment: StoredEnvironment,
 }
 impl StoredClosure {
+    pub(super) fn has_legacy_properties(&self) -> bool {
+        !self.template.strict && !self.template.arrow
+    }
     pub(super) fn source_realm(&self) -> &StoredRealm {
         &self.realm
     }

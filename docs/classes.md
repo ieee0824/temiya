@@ -35,6 +35,14 @@ classes do not gain own properties for these names. This follows
 Definition evaluation follows the selected
 [ECMA-262 2026 class algorithm](https://tc39.es/ecma262/2026/multipage/ecmascript-language-functions-and-classes.html#sec-runtime-semantics-classdefinitionevaluation).
 
+Non-strict ordinary functions retain a redacted legacy extension: their own
+`caller` and `arguments` properties return null, are non-writable,
+non-enumerable and non-configurable, and never expose stack frames. They are
+materialized only on reflection/access so normal function creation and calls
+do not allocate these extra properties. Strict functions, methods, arrows,
+generators, async functions and classes do not receive this extension. This
+does not implement general legacy caller introspection.
+
 Derived construction (#155), super references (#156), public fields (#157),
 static initialization (#158) and private elements (#159/#160) are separate work.
 Unsupported elements produce explicit Engine failures; they are never silently

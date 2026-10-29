@@ -90,6 +90,16 @@ fn computed_names_accessors_and_static_methods_use_actual_class_objects() {
 }
 
 #[test]
+fn non_strict_ordinary_function_legacy_properties_do_not_inherit_class_restrictions() {
+    check(
+        "function f() { return f.caller; } f() === null && f.arguments === null && f.hasOwnProperty('caller') && f.hasOwnProperty('arguments') && Object.getOwnPropertyDescriptor(f, 'caller').writable === false && Reflect.defineProperty(f, 'caller', {value: 1}) === false && delete f.caller === false;",
+    );
+    check(
+        "function f() { 'use strict'; } let caught = false; try { f.caller; } catch (e) { caught = e instanceof TypeError; } caught && !f.hasOwnProperty('caller');",
+    );
+}
+
+#[test]
 fn class_restricted_properties_are_inherited_and_use_one_realm_thrower() {
     check(
         "class C {} let p = Object.getPrototypeOf(C); let a = Object.getOwnPropertyDescriptor(p, 'caller'); let b = Object.getOwnPropertyDescriptor(p, 'arguments'); let count = 0; try { C.caller; } catch (e) { if (e instanceof TypeError) count++; } try { C.arguments = 1; } catch (e) { if (e instanceof TypeError) count++; } count === 2 && !C.hasOwnProperty('caller') && !C.hasOwnProperty('arguments') && a.get === a.set && a.get === b.get && b.get === b.set && !a.enumerable && a.configurable && !Object.isExtensible(a.get) && a.get.name === '' && a.get.length === 0 && Object.getOwnPropertyDescriptor(a.get, 'name').configurable === false && Object.getOwnPropertyDescriptor(a.get, 'length').configurable === false;",

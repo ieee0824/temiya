@@ -46,6 +46,12 @@ pub(super) struct StoredFunctionClosure {
     home_object: Option<StoredObject>,
 }
 impl StoredFunctionClosure {
+    pub(super) fn has_legacy_properties(&self) -> bool {
+        self.kind == FunctionKind::Normal
+            && !self.code.strict
+            && !self.code.generator
+            && !self.code.asynchronous
+    }
     pub(super) fn source_realm(&self) -> &StoredRealm {
         &self.realm
     }

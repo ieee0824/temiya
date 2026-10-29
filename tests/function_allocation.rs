@@ -30,7 +30,8 @@ fn reflection_before_value_read_keeps_property_order_and_nonextensibility() {
         var keys = Reflect.ownKeys(f);
         Object.preventExtensions(f);
         var p = f.prototype;
-        keys[0] === 'length' && keys[1] === 'name' && keys[2] === 'prototype' && keys[3] === 'tail' &&
+        keys[0] === 'caller' && keys[1] === 'arguments' &&
+        keys[2] === 'length' && keys[3] === 'name' && keys[4] === 'prototype' && keys[5] === 'tail' &&
         p === Object.getOwnPropertyDescriptor(f, 'prototype').value &&
         p.constructor === f && Object.getPrototypeOf(new f()) === p && !Object.isExtensible(f);");
 }

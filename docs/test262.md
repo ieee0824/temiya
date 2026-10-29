@@ -307,3 +307,16 @@ execution provenance, all per-variant outcomes, feature/untagged totals and
 reported-attempt rates. A corrupted summary or missing result cannot establish
 a complete validated capture. These integrity checks do not declare language
 features implemented.
+
+For a preserved capture archive with its `capture.json` descriptor, verify the
+compressed identity, every decoded file and independently reconstructed outcomes:
+
+```sh
+node scripts/verify-test262-archive.mjs path/to/archive-directory
+```
+
+An optional second argument supplies a new destination directory to retain the
+verified decoded capture for further comparisons. Without it, temporary decoded
+files are removed after verification. Archive integrity preserves failures,
+timeouts, skips and unexecuted coverage as recorded; it does not qualify language
+features or turn those outcomes into passes.

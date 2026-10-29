@@ -14,11 +14,17 @@
       "-Zmiri-symbolic-alignment-check"
     ]
   },
-  "scope": "New numeric-binding overwrite and fused indexed-value reads. Original11 ARM64/hosted acceptance, x64 instruction diagnosis and complete latest-source CI/security pending. No speed qualification implied; older failing trials retained unchanged.",
+  "scope": "Native663/21 ignored, integration Miri4/0 ignored, native CI all4 passed. ARM64 beforeafter1 faster/32 noise/0 slower; array3 noise. Actual-Boa ARM64 and hosted two-machine acceptance/full latest-runtime security pending. x64 instrumented Ir lower while some modeled branch/cache counters higher; no native speed qualification from counters. Prior failed source6fb retained.",
   "files": {
+    "README.md": "08c1c3387c7caaf24a004b979648faf70be0b880977314f55dab8802abad4b6d",
     "agent-affinity.log": "a7bbf307f197e5fd06eb557ac482262a8583f22803cc13381f776bc846982ef1",
     "allocation-after.json": "ac8fd7df447c71d08463e65012ec1b307fc3b89699a43b7944ae4df430f3e6cd",
     "baseline-worker-info.json": "6425c21d6d63731aa93e843352581190c2dde69b2fb5240394d546e556527633",
+    "beforeafter.json": "fd254dcf54c3168e1009e2bd36fda98b330f74cde8d406401659cd45206815cd",
+    "beforeafter.progress": "bea73d6dac3a4777ca60f47dd9438f61f477371ff20761cbb62dc4feb550fd09",
+    "beforeafter.statistics.json": "d07aad63d2424d33eaf1e1c550fabe9529c7eee9be7c2e26542e0d2ee72327a7",
+    "ci-status.json": "dfc2c970f87f99f96fea4ee767720fc58800dd9366ce14892aa3a12cf198ee35",
+    "ci.log": "78e8cadb78dcd8bfbf8f69077ac90f5c06b782801907b0869fc5cf092e0a0189",
     "clippy.log": "efc817559922491efa69c05fb6c7a5bc5d3c6a635b506c872c6e2a5dcdbeed92",
     "fmt.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "integration-miri.log": "c3595ff13b261e39bbbe7b8b2b704a623aeade2bb39914a19d5e22077a32d458",
@@ -26,6 +32,96 @@
     "release.log": "e631a4aae906df22f5730bb177aa341bd0e9c5089e687bac1d424706863d6ce4",
     "test262.log": "87f598ec6ea3525256064ae40c90042292542cf8d2e34456515db2690b4ed5ef",
     "worker-info.json": "08e44d40eadbee0d282703bf936612bc964e479b4c70bb19c08f24ec110309cf",
-    "README.md": "08c1c3387c7caaf24a004b979648faf70be0b880977314f55dab8802abad4b6d"
-  }
+    "x64-profile/baseline/function-0.asm.txt": "1a069d87760ad3aa9529eba2e866a5bce8f43cb86cdcc854c7b98bcfc79b9a91",
+    "x64-profile/baseline/function-1.asm.txt": "3ce5c1bf81be9c08c491328dfd218bd114c222cf55a004d23b9d7f28320b4018",
+    "x64-profile/baseline/function-2.asm.txt": "6268f59113651026be277b7909a4b1708218d7c839650c4e786b52e0ff89e298",
+    "x64-profile/baseline/function-3.asm.txt": "9fe07e32ad28cb6176f551acd53e00622833113862762670bf146374b8b02c8f",
+    "x64-profile/baseline/functions.json": "e70fecb9178eb56b48bdca8843878e018f8899f06a468ad76313eb618860f74c",
+    "x64-profile/baseline/primitive-string-property.annotation.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "x64-profile/baseline/primitive-string-property.callgrind.gz": "bb7260a7f217f1edbe40838568aa67e2076a252c48b8a1368053ba54dfe1a92c",
+    "x64-profile/baseline/primitive-string-property.exclusive.txt": "61c43349e6546d1c7a87b2897fd2f7896f700de692f668d5dc102ee93ae8c68a",
+    "x64-profile/baseline/primitive-string-property.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "x64-profile/baseline/primitive-string-property.stdout": "ca9356eac5acf592be7d0595f445ba08b2a8c2908d81112cf3b27857d9d985bb",
+    "x64-profile/baseline/primitive-string-property.valgrind.log": "8c37ce5cbbcf226f58457d95f26a4c970108a4a9cccc343660aa436373b6a996",
+    "x64-profile/baseline/prop-mega.annotation.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "x64-profile/baseline/prop-mega.callgrind.gz": "7d78fefea5469384561f442fdabbbc5909bf063f0758d02b7f245982fae5bc5a",
+    "x64-profile/baseline/prop-mega.exclusive.txt": "ab108a04fceb38ba89ff82e396c4ef667525dc11c3c070eed47b8dccb8757037",
+    "x64-profile/baseline/prop-mega.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "x64-profile/baseline/prop-mega.stdout": "f2f890fedbf766acbf7d241ef5495f9d02027ea79f126a0a0debbf0a525737af",
+    "x64-profile/baseline/prop-mega.valgrind.log": "355b90c68c2922cc5c44f9f934bfc7f777262f73711bc81ebaf11c51569f8040",
+    "x64-profile/baseline/string-concat.annotation.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "x64-profile/baseline/string-concat.callgrind.gz": "67c1d3e2338dfcf18595a4e4aca0e8ae29f696abde4b56b0f73f58dec1d0ad92",
+    "x64-profile/baseline/string-concat.exclusive.txt": "75e454bbc5d366c4d9367ff5405d2a0d433c0ff27b2ba6e5b24d8bf0a5eec095",
+    "x64-profile/baseline/string-concat.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "x64-profile/baseline/string-concat.stdout": "fccc0699fae8e4274c6160d8791decf5e623717a311363a94044910d10077430",
+    "x64-profile/baseline/string-concat.valgrind.log": "353e65185469994c8613f38dc57c9681e9a0ff5ed021dd4dd4f543f9e36f02e9",
+    "x64-profile/baseline/symbols.txt": "c5659e390a7b65906a467f339fb9b0bc359f2c2e89e360df067c39cfa095e559",
+    "x64-profile/baseline-build.log": "42ceef3c5cace53af559afc29a44eb33ab13a5763310bc068112a60a4ac158d0",
+    "x64-profile/measured/function-0.asm.txt": "6462623e0ccb0c1f256600cfdbe752681d56cfdfd7c9900b82a5cffb3222b9dc",
+    "x64-profile/measured/function-1.asm.txt": "5c7612087c590804ec3e18debb092ee482e2006802251937e2e1e2b09436ed54",
+    "x64-profile/measured/function-2.asm.txt": "4bd05dbce6a13f36520ac89d480b5d43ad70cbec91a4999b98c1ec6e10d4b30e",
+    "x64-profile/measured/function-3.asm.txt": "a0edb20939a78354bc7d4db22ce4d84ed3982a9666247b3f2b268afe80486e6a",
+    "x64-profile/measured/functions.json": "61814accd4369bb1238cd4d26cfc0bfdcfd8a025da77bd5d76867b05cf39b4d3",
+    "x64-profile/measured/primitive-string-property.annotation.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "x64-profile/measured/primitive-string-property.callgrind.gz": "2e46053fa7f3a3e2bee0ed9080aa5c4e2bc8ec51b5163b1d89fee318e4d739db",
+    "x64-profile/measured/primitive-string-property.exclusive.txt": "2925e4f1c629a1948441c5eb17fc376bc751ed7d3b71d0b65f43e600732827a9",
+    "x64-profile/measured/primitive-string-property.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "x64-profile/measured/primitive-string-property.stdout": "2c0bf466e52c63329dd2af6fd11c85bdf429be2972b31e6475576100804856af",
+    "x64-profile/measured/primitive-string-property.valgrind.log": "2e18e33b33818abddb88c938cb5cdc3be1bead458ec19db36567d8bfb9a2a26b",
+    "x64-profile/measured/prop-mega.annotation.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "x64-profile/measured/prop-mega.callgrind.gz": "68f09e8682f5843691e2fe91877c4e9a42513a158fb5e55673c9787a395bbba5",
+    "x64-profile/measured/prop-mega.exclusive.txt": "16400fb1eacc33caaacd4913868761be7e16646cdb7c67e0162cb78c9dbf89d4",
+    "x64-profile/measured/prop-mega.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "x64-profile/measured/prop-mega.stdout": "22ebb9262591ad0c7f100375f6c1fa30f36f0a8213521903bdb906030f39b5af",
+    "x64-profile/measured/prop-mega.valgrind.log": "2cbf9920a2b814873af9ccfe73f2cc61041a8a6a89ada2a0213265c2c0cfcda5",
+    "x64-profile/measured/string-concat.annotation.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "x64-profile/measured/string-concat.callgrind.gz": "666f9077c11138a13a01cf172d3d274ceb4e07b993d7017cb5f8dd0d2bce4ec6",
+    "x64-profile/measured/string-concat.exclusive.txt": "1b0cb9152ac4f8aff3b5465c1c66c476df54004138757d3013e6f2974e775664",
+    "x64-profile/measured/string-concat.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "x64-profile/measured/string-concat.stdout": "25d84102253abbcc1e16c0581f579d6c1201f78a0a9f17c2f5abc45b966a2f2c",
+    "x64-profile/measured/string-concat.valgrind.log": "04cc9c168692739c08c926097ff309ffdbc7fcce1c658bd0122d29ec3184b1c3",
+    "x64-profile/measured/symbols.txt": "b1b7d90e30584d324048d3a6eab46a7163619c89dc295053c2ee5545b1d48388",
+    "x64-profile/measured-build.log": "e0faa7fdc164506cade72c67c006a6c97bf1021284d80a9249a0b1a9af23da0a",
+    "x64-profile/metadata.json": "2dbe6aa8156e2a5589cc20e47adb072eefa0bd4b6a98a59d4e84d61bdd4f6ab4",
+    "x64-profile/status.json": "583625f3384da6bd67515ff1e11aa65ca5f472e8a89e37380e945df54bfcea5b",
+    "x64-profile/summary.json": "02153e8c80d19b180a0a6b26359790f516ba9b98ea8a67e8de76413133964492"
+  },
+  "compressed_raw_records": [
+    {
+      "stored_path": "x64-profile/baseline/primitive-string-property.callgrind.gz",
+      "original_path": "x64-profile/baseline/primitive-string-property.callgrind",
+      "uncompressed_sha256": "2d3b72e3af9d7dc47c82e73438b25c4e05a9e535bcabe433a28f9ac1a72da07c",
+      "compressed_sha256": "bb7260a7f217f1edbe40838568aa67e2076a252c48b8a1368053ba54dfe1a92c"
+    },
+    {
+      "stored_path": "x64-profile/baseline/string-concat.callgrind.gz",
+      "original_path": "x64-profile/baseline/string-concat.callgrind",
+      "uncompressed_sha256": "eea1bca0fb7763acbd4e35a766c34c7b2d99c856da70d8203130d68f34ac59ec",
+      "compressed_sha256": "67c1d3e2338dfcf18595a4e4aca0e8ae29f696abde4b56b0f73f58dec1d0ad92"
+    },
+    {
+      "stored_path": "x64-profile/baseline/prop-mega.callgrind.gz",
+      "original_path": "x64-profile/baseline/prop-mega.callgrind",
+      "uncompressed_sha256": "231654cb51352445c03beaaa3048a593a4647b874220aad270dbeb820ae9fe5a",
+      "compressed_sha256": "7d78fefea5469384561f442fdabbbc5909bf063f0758d02b7f245982fae5bc5a"
+    },
+    {
+      "stored_path": "x64-profile/measured/primitive-string-property.callgrind.gz",
+      "original_path": "x64-profile/measured/primitive-string-property.callgrind",
+      "uncompressed_sha256": "cebbd239eeb1401da5d906ec562298b8fa1cb9414e172a15f56b573981930961",
+      "compressed_sha256": "2e46053fa7f3a3e2bee0ed9080aa5c4e2bc8ec51b5163b1d89fee318e4d739db"
+    },
+    {
+      "stored_path": "x64-profile/measured/string-concat.callgrind.gz",
+      "original_path": "x64-profile/measured/string-concat.callgrind",
+      "uncompressed_sha256": "f97f716d690e718ba122f41115828fe6ed794e2ce7a8924af543673802a6b398",
+      "compressed_sha256": "666f9077c11138a13a01cf172d3d274ceb4e07b993d7017cb5f8dd0d2bce4ec6"
+    },
+    {
+      "stored_path": "x64-profile/measured/prop-mega.callgrind.gz",
+      "original_path": "x64-profile/measured/prop-mega.callgrind",
+      "uncompressed_sha256": "df356ad8771036dcde123fc26e8da234d7b0a6249f4dc3fe95e10bfc83ecff98",
+      "compressed_sha256": "68f09e8682f5843691e2fe91877c4e9a42513a158fb5e55673c9787a395bbba5"
+    }
+  ]
 }

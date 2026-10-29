@@ -1,0 +1,64 @@
+{
+  "schema": 1,
+  "initial_failure": {
+    "run": 40960167834,
+    "job": 123751116990,
+    "source_revision": "f1c2734883a62ceda9784cc0aab8f31f21836b91",
+    "reason": "ASAN shadow mapping fails under worker RLIMIT_AS512MiB before test execution"
+  },
+  "native_fix_verification": {
+    "source_base": "f1c2734883a62ceda9784cc0aab8f31f21836b91",
+    "working_tree_changes": true,
+    "inputs": [
+      {
+        "file": "build.rs",
+        "sha256": "698cc3c0cb7ded3eb7e0534089781becf918f7bd14db50b432884324de6a0423"
+      },
+      {
+        "file": "src/bin/support/test262_resources.rs",
+        "sha256": "d3f8663167d6113620064cc5107379c655fd05c6292e4c3f43aba3c6da5ff00f"
+      },
+      {
+        "file": "src/bin/support/test262_supervisor.rs",
+        "sha256": "d0e0a24bfd74c34bc2d47dc0b08a87ca16ac3a3c91c3a0f28820088c1afc21a1"
+      },
+      {
+        "file": "tests/test262_isolation.rs",
+        "sha256": "aaac47bd023fae35327a23e414e03a054bb6914fe933fb1c1a6c75ade1cdb351"
+      }
+    ],
+    "tests_pass": 731,
+    "tests_ignored": 26,
+    "groups": 96,
+    "clippy": "pass",
+    "fmt": "pass"
+  },
+  "asan_fix_verification": "PENDING actual instrumented CI; native test success does not prove ASAN coverage",
+  "official_reference": "https://clang.llvm.org/docs/AddressSanitizer.html#limitations",
+  "files": [
+    {
+      "file": "initial-failure.log.gz",
+      "sha256": "e1bbe690ddbd5e23186fc3d6a95c26b999d828f1375ab4eba30e0dacfba36bca",
+      "decoded_bytes": 145417,
+      "decoded_sha256": "452cf46cb9ba159886dbbfab9f14faa23afe09abfd22cd71d829e11f712cad8a"
+    },
+    {
+      "file": "native-all-features.log.gz",
+      "sha256": "f68c14eacfefd9c793848b41c1efcc0fb28ecaec00570c89f68a929496dca617",
+      "decoded_bytes": 80217,
+      "decoded_sha256": "3320247cbdc5d7e1cbcabf3302303c87e35a1453bda087092d103a1b7aa39c13"
+    },
+    {
+      "file": "native-clippy.log.gz",
+      "sha256": "383bc1941c2a19838542143185474b2eb0c2ede112a05f2e74133d87712f61fb",
+      "decoded_bytes": 126,
+      "decoded_sha256": "160700f2f75ea6c26fbacb3cc18ae9c5113678aaeb4a2a1c9afeaad3cde8561a"
+    },
+    {
+      "file": "native-fmt.log.gz",
+      "sha256": "59869db34853933b239f1e2219cf7d431da006aa919635478511fabbfc8849d2",
+      "decoded_bytes": 0,
+      "decoded_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ]
+}

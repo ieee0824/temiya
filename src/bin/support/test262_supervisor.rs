@@ -194,17 +194,36 @@ pub fn run(request: Request<'_>) -> Value {
                 true,
             ));
         }
-        if !matches!(status.code(), Some(0 | 1 | 3)) {
+        // ASan exits with code 1 rather than Rust's fatal signal. Only an
+        // instrumented build with no worker JSON can use this diagnostic path.
+        let sanitizer_failure =
+            if resources::ADDRESS_SANITIZED && output.is_empty() && status.code() == Some(1) {
+                if diagnostic.contains("ERROR: AddressSanitizer: stack-overflow")
+                    && diagnostic.contains("SUMMARY: AddressSanitizer: stack-overflow")
+                {
+                    Some("StackOverflow")
+                } else if diagnostic.contains("ERROR: AddressSanitizer: allocator is out of memory")
+                    && diagnostic.contains("SUMMARY: AddressSanitizer: out-of-memory")
+                {
+                    Some("OutOfMemory")
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+        if sanitizer_failure.is_some() || !matches!(status.code(), Some(0 | 1 | 3)) {
             // Signals alone do not establish memory or stack exhaustion. Rust's
             // fatal diagnostic must accompany the abnormal process termination.
-            let kind =
+            let kind = sanitizer_failure.unwrap_or_else(|| {
                 if diagnostic.contains("memory allocation of ") && diagnostic.contains(" failed") {
                     "OutOfMemory"
                 } else if diagnostic.contains("has overflowed its stack") {
                     "StackOverflow"
                 } else {
                     "WorkerCrash"
-                };
+                }
+            });
             return Ok(failure(
                 path,
                 variant,
@@ -287,6 +306,6 @@ pub fn run(request: Request<'_>) -> Value {
         record["async_outcome"] = Value::Null;
     }
     record["worker_exit"] = exit_details;
-    record["resources"] = json!({"applied":limits_applied,"timeout_ms":timeout_ms,"memory_limit_bytes":limits.memory_bytes(),"stack_limit_bytes":limits.stack_bytes(),"peak_rss_kib":peak_rss_kib});
+    record["resources"] = json!({"applied":limits_applied,"timeout_ms":timeout_ms,"memory_limit_bytes":limits.memory_bytes(),"address_space_limit_bytes":limits_applied.then(|| limits.address_space_bytes()).flatten(),"address_sanitizer":resources::ADDRESS_SANITIZED,"stack_limit_bytes":limits.stack_bytes(),"peak_rss_kib":peak_rss_kib});
     record
 }

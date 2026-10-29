@@ -25,3 +25,17 @@ to full commits and updates are reviewed through ordinary CI. Failures require a
 fix or an explicit reviewed policy change; the workflow has no silent allowlist.
 The project currently contains no Rust `unsafe` block, but Miri and ASan remain
 enabled so future unsafe or FFI boundaries enter continuous coverage immediately.
+
+The actual `-Zsanitizer=address` compilation profile is detected by Cargo's
+encoded compiler flags. Test262 workers in that profile retain the requested
+RSS watchdog, stack/core limits and wall deadline, while omitting RLIMIT_AS:
+[ASan maps more than 16 TB of sparse virtual shadow space](https://clang.llvm.org/docs/AddressSanitizer.html#limitations).
+Normal builds retain both RLIMIT_AS and RSS limits. This is not selected by a
+runtime environment variable. Every instrumented integration test and worker
+still runs; resource tests check the appropriate kernel policy. JSON explicitly
+records `address_sanitizer` and an absent `address_space_limit_bytes` in this
+profile, so its successful runs do not claim a virtual-address cap. Sanitizer
+results are not native performance measurements.
+
+A manual dispatch with `asan_only=true` runs this focused check. Ordinary PR and
+scheduled security runs retain dependency audit and all Miri shards as well.

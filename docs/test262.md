@@ -436,3 +436,11 @@ variants were recovered with the identical binary and per-variant conditions.
 Independent verification checks all 13,147 decoded files and recovery history.
 These are measured outcomes of this executable, not claims that all listed
 features conform to the specification.
+
+Address-sanitized builds explicitly report `resources.address_sanitizer: true`
+and `address_space_limit_bytes: null`. Their large sparse shadow mapping is
+incompatible with the native virtual-address cap; the requested finite RSS,
+stack, core and wall bounds remain active. Normal builds report the active
+virtual-address cap in bytes after successful worker setup. This distinction is
+derived from the actual compiler instrumentation flags, not an environment
+switch at test execution. See [sanitizer coverage](security-checks.md).

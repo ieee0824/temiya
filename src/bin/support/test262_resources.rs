@@ -1,6 +1,10 @@
 //! OS bounds apply only to disposable Test262 workers, never the parent Engine.
 use std::{io, process::Command};
 
+// Cargo derives this from actual instrumentation flags, never runtime env.
+// ASan maps terabytes of sparse shadow address space.
+pub const ADDRESS_SANITIZED: bool = cfg!(temiya_address_sanitizer);
+
 #[derive(Clone, Copy)]
 pub struct Limits {
     pub memory_mb: u64,
@@ -10,6 +14,10 @@ pub struct Limits {
 impl Limits {
     pub fn memory_bytes(self) -> u64 {
         self.memory_mb * 1024 * 1024
+    }
+
+    pub fn address_space_bytes(self) -> Option<u64> {
+        (!ADDRESS_SANITIZED).then(|| self.memory_bytes())
     }
 
     pub fn stack_bytes(self) -> u64 {
@@ -33,6 +41,10 @@ impl Limits {
                     (libc::RLIMIT_STACK, stack),
                     (libc::RLIMIT_CORE, 0),
                 ] {
+                    // ASan still has RSS, wall, stack and core bounds.
+                    if resource == libc::RLIMIT_AS && ADDRESS_SANITIZED {
+                        continue;
+                    }
                     let limit = libc::rlimit {
                         rlim_cur: value,
                         rlim_max: value,

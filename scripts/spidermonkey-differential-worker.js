@@ -86,8 +86,12 @@
     else pendingRejections.delete(promise);
   });
   let completion;
-  try { completion = {kind: 'normal', value: value(run(request.source))}; }
-  catch (error) { completion = {kind: 'throw', error: exception(error)}; }
+  try { run(request.source, {execute: false}); }
+  catch (error) { completion = {kind: 'compile-error', error: exception(error)}; }
+  if (!completion) {
+    try { completion = {kind: 'normal', value: value(run(request.source))}; }
+    catch (error) { completion = {kind: 'throw', error: exception(error)}; }
+  }
   checkpoint();
   // Observe still-unhandled reasons after the user checkpoint. Use the actual
   // Promise reaction API; do not rely on an unverified shell result accessor.

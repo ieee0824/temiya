@@ -1,0 +1,65 @@
+name: Actual SpiderMonkey differential adapter
+on:
+  workflow_dispatch:
+    inputs:
+      shell_run:
+        description: Successful pinned native shell build run
+        type: string
+        default: '40530470739'
+        required: true
+permissions:
+  contents: read
+  actions: read
+jobs:
+  compare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Retrieve verified fixed-source native shell
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHELL_RUN: ${{ inputs.shell_run }}
+        run: |
+          [[ "$SHELL_RUN" =~ ^[0-9]+$ ]]
+          mkdir -p target/shell-evidence target/shell target/differential-results
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SHELL_RUN" --jq '{conclusion,path,head_sha,html_url,run_attempt}' > target/differential-results/shell-run.json
+          node -e 'const r=require("./target/differential-results/shell-run.json");if(r.conclusion!=="success"||r.path!==".github/workflows/spidermonkey-target.yml")throw Error("verified source build required")'
+          shell_attempt="$(node -p 'require("./target/differential-results/shell-run.json").run_attempt')"
+          [[ "$shell_attempt" =~ ^[0-9]+$ ]]
+          gh run download "$SHELL_RUN" --name "spidermonkey-target-$SHELL_RUN-$shell_attempt" --dir target/shell-evidence
+          (cd target/shell-evidence && sha256sum --check shell.tar.gz.sha256)
+          tar -xzf target/shell-evidence/shell.tar.gz -C target/shell
+      - name: Build actual Temiya worker
+        run: |
+          rustup toolchain install stable --profile minimal
+          cargo +stable build --locked --release --no-default-features --bin temiya-differential-worker
+      - name: Compare actual native observations in both selected modes
+        run: |
+          for mode in interpreter default; do
+            node scripts/compare-js-engines.mjs --temiya target/release/temiya-differential-worker \
+              --spidermonkey target/shell/bin/js --spidermonkey-info target/shell-evidence/target-check.json \
+              --cases testing/differential/adapter-cases.json --output "target/differential-results/$mode" \
+              --mode "$mode" --timeout-ms 2000
+          done
+      - name: Record semantic discovery without suppressing mismatches
+        run: |
+          set +e
+          node scripts/compare-js-engines.mjs --temiya target/release/temiya-differential-worker \
+            --spidermonkey target/shell/bin/js --spidermonkey-info target/shell-evidence/target-check.json \
+            --cases testing/differential/discovery-cases.json --output target/differential-results/discovery \
+            --mode interpreter --timeout-ms 2000
+          discovery_exit=$?
+          set -e
+          printf '%s\n' "$discovery_exit" > target/differential-results/discovery-exit.txt
+          node -e 'const r=require("./target/differential-results/discovery/report.json");if(r.results.some(x=>!["match","mismatch"].includes(x.classification)))throw Error("native observation failed");console.log(JSON.stringify(r.counts))'
+      - name: Preserve raw observations and reproducers
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: differential-adapter-${{ github.run_id }}-${{ github.run_attempt }}
+          path: target/differential-results
+          if-no-files-found: error
+          retention-days: 30

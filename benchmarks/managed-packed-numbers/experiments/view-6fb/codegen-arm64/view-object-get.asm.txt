@@ -1,0 +1,23 @@
+
+/tmp/temiya-managed-packed-view-frozen-worker:     file format elf64-littleaarch64
+
+
+Disassembly of section .text:
+
+000000000015dd48 <<temiya::runtime::Object>::get>:
+  15dd48:	f9400009 	ldr	x9, [x0]
+  15dd4c:	f940012a 	ldr	x10, [x9]
+  15dd50:	b100054a 	adds	x10, x10, #0x1
+  15dd54:	f900012a 	str	x10, [x9]
+  15dd58:	54000162 	b.cs	15dd84 <<temiya::runtime::Object>::get+0x3c>  // b.hs, b.nlast
+  15dd5c:	d100c3ff 	sub	sp, sp, #0x30
+  15dd60:	a9027bfd 	stp	x29, x30, [sp, #32]
+  15dd64:	910083fd 	add	x29, sp, #0x20
+  15dd68:	b2410fea 	mov	x10, #0x8000000000000007    	// #-9223372036854775801
+  15dd6c:	910003e2 	mov	x2, sp
+  15dd70:	a90027ea 	stp	x10, x9, [sp]
+  15dd74:	97ffe2b1 	bl	156838 <<temiya::runtime::Object>::get_with_receiver>
+  15dd78:	a9427bfd 	ldp	x29, x30, [sp, #32]
+  15dd7c:	9100c3ff 	add	sp, sp, #0x30
+  15dd80:	d65f03c0 	ret
+  15dd84:	d4200020 	brk	#0x1

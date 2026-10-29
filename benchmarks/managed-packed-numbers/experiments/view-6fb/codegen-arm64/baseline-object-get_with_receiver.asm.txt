@@ -1,0 +1,315 @@
+
+/tmp/temiya-managed-packed-baseline-frozen-worker:     file format elf64-littleaarch64
+
+
+Disassembly of section .text:
+
+00000000000fc66c <<temiya::runtime::Object>::get_with_receiver>:
+   fc66c:	d103c3ff 	sub	sp, sp, #0xf0
+   fc670:	a90b7bfd 	stp	x29, x30, [sp, #176]
+   fc674:	f90063f7 	str	x23, [sp, #192]
+   fc678:	a90d57f6 	stp	x22, x21, [sp, #208]
+   fc67c:	a90e4ff4 	stp	x20, x19, [sp, #224]
+   fc680:	9102c3fd 	add	x29, sp, #0xb0
+   fc684:	aa0203f3 	mov	x19, x2
+   fc688:	aa0103f5 	mov	x21, x1
+   fc68c:	aa0003f6 	mov	x22, x0
+   fc690:	aa0803f4 	mov	x20, x8
+   fc694:	910103e8 	add	x8, sp, #0x40
+   fc698:	aa1f03e2 	mov	x2, xzr
+   fc69c:	940016ac 	bl	10214c <<temiya::runtime::Object>::own_data_value_with_hint>
+   fc6a0:	f94023e8 	ldr	x8, [sp, #64]
+   fc6a4:	b100091f 	cmn	x8, #0x2
+   fc6a8:	540002c1 	b.ne	fc700 <<temiya::runtime::Object>::get_with_receiver+0x94>  // b.any
+   fc6ac:	f94002c8 	ldr	x8, [x22]
+   fc6b0:	92f0000a 	mov	x10, #0x7fffffffffffffff    	// #9223372036854775807
+   fc6b4:	f9401908 	ldr	x8, [x8, #48]
+   fc6b8:	f9403109 	ldr	x9, [x8, #96]
+   fc6bc:	eb0a013f 	cmp	x9, x10
+   fc6c0:	54001ba2 	b.cs	fca34 <<temiya::runtime::Object>::get_with_receiver+0x3c8>  // b.hs, b.nlast
+   fc6c4:	f940d508 	ldr	x8, [x8, #424]
+   fc6c8:	b4000368 	cbz	x8, fc734 <<temiya::runtime::Object>::get_with_receiver+0xc8>
+   fc6cc:	ad400660 	ldp	q0, q1, [x19]
+   fc6d0:	910103e2 	add	x2, sp, #0x40
+   fc6d4:	aa1403e8 	mov	x8, x20
+   fc6d8:	aa1603e0 	mov	x0, x22
+   fc6dc:	aa1503e1 	mov	x1, x21
+   fc6e0:	ad0207e0 	stp	q0, q1, [sp, #64]
+   fc6e4:	97fddd5e 	bl	73c5c <temiya::runtime::proxy::get>
+   fc6e8:	a94e4ff4 	ldp	x20, x19, [sp, #224]
+   fc6ec:	f94063f7 	ldr	x23, [sp, #192]
+   fc6f0:	a94d57f6 	ldp	x22, x21, [sp, #208]
+   fc6f4:	a94b7bfd 	ldp	x29, x30, [sp, #176]
+   fc6f8:	9103c3ff 	add	sp, sp, #0xf0
+   fc6fc:	d65f03c0 	ret
+   fc700:	ad4207e0 	ldp	q0, q1, [sp, #64]
+   fc704:	92800008 	mov	x8, #0xffffffffffffffff    	// #-1
+   fc708:	f9000288 	str	x8, [x20]
+   fc70c:	3c808280 	stur	q0, [x20, #8]
+   fc710:	3c818281 	stur	q1, [x20, #24]
+   fc714:	aa1303e0 	mov	x0, x19
+   fc718:	97ffefbb 	bl	f8604 <core::ptr::drop_glue::<temiya::runtime::Value>>
+   fc71c:	a94e4ff4 	ldp	x20, x19, [sp, #224]
+   fc720:	f94063f7 	ldr	x23, [sp, #192]
+   fc724:	a94d57f6 	ldp	x22, x21, [sp, #208]
+   fc728:	a94b7bfd 	ldp	x29, x30, [sp, #176]
+   fc72c:	9103c3ff 	add	sp, sp, #0xf0
+   fc730:	d65f03c0 	ret
+   fc734:	910103e8 	add	x8, sp, #0x40
+   fc738:	aa1603e0 	mov	x0, x22
+   fc73c:	aa1503e1 	mov	x1, x21
+   fc740:	910103f7 	add	x23, sp, #0x40
+   fc744:	94000b27 	bl	ff3e0 <<temiya::runtime::Object>::try_get_own_property>
+   fc748:	f94023e8 	ldr	x8, [sp, #64]
+   fc74c:	b100051f 	cmn	x8, #0x1
+   fc750:	54000660 	b.eq	fc81c <<temiya::runtime::Object>::get_with_receiver+0x1b0>  // b.none
+   fc754:	3cc082e0 	ldur	q0, [x23, #8]
+   fc758:	3cc182e1 	ldur	q1, [x23, #24]
+   fc75c:	f100091f 	cmp	x8, #0x2
+   fc760:	3cc282e2 	ldur	q2, [x23, #40]
+   fc764:	ad0007e0 	stp	q0, q1, [sp]
+   fc768:	3cc382e0 	ldur	q0, [x23, #56]
+   fc76c:	ad0103e2 	stp	q2, q0, [sp, #32]
+   fc770:	54000700 	b.eq	fc850 <<temiya::runtime::Object>::get_with_receiver+0x1e4>  // b.none
+   fc774:	ad4003e2 	ldp	q2, q0, [sp]
+   fc778:	910103f5 	add	x21, sp, #0x40
+   fc77c:	f90023e8 	str	x8, [sp, #64]
+   fc780:	3c8583e0 	stur	q0, [sp, #88]
+   fc784:	ad4107e0 	ldp	q0, q1, [sp, #32]
+   fc788:	f94033f7 	ldr	x23, [sp, #96]
+   fc78c:	3c8483e2 	stur	q2, [sp, #72]
+   fc790:	3c8783e1 	stur	q1, [sp, #120]
+   fc794:	b1000aff 	cmn	x23, #0x2
+   fc798:	394203e9 	ldrb	w9, [sp, #128]
+   fc79c:	3c8683e0 	stur	q0, [sp, #104]
+   fc7a0:	7a420920 	ccmp	w9, #0x2, #0x0, eq	// eq = none
+   fc7a4:	1a9f07f6 	cset	w22, ne	// ne = any
+   fc7a8:	54000bc0 	b.eq	fc920 <<temiya::runtime::Object>::get_with_receiver+0x2b4>  // b.none
+   fc7ac:	d2f00009 	mov	x9, #0x8000000000000000    	// #-9223372036854775808
+   fc7b0:	b1000aff 	cmn	x23, #0x2
+   fc7b4:	f90003e9 	str	x9, [sp]
+   fc7b8:	54000120 	b.eq	fc7dc <<temiya::runtime::Object>::get_with_receiver+0x170>  // b.none
+   fc7bc:	3cc683e0 	ldur	q0, [sp, #104]
+   fc7c0:	f9403fe8 	ldr	x8, [sp, #120]
+   fc7c4:	3c9e03a0 	stur	q0, [x29, #-32]
+   fc7c8:	f81f03a8 	stur	x8, [x29, #-16]
+   fc7cc:	910003e0 	mov	x0, sp
+   fc7d0:	97ffef8d 	bl	f8604 <core::ptr::drop_glue::<temiya::runtime::Value>>
+   fc7d4:	f94023e8 	ldr	x8, [sp, #64]
+   fc7d8:	aa1703e9 	mov	x9, x23
+   fc7dc:	f85f03aa 	ldur	x10, [x29, #-16]
+   fc7e0:	3cde03a0 	ldur	q0, [x29, #-32]
+   fc7e4:	f900128a 	str	x10, [x20, #32]
+   fc7e8:	9280000a 	mov	x10, #0xffffffffffffffff    	// #-1
+   fc7ec:	3d800680 	str	q0, [x20, #16]
+   fc7f0:	a900268a 	stp	x10, x9, [x20]
+   fc7f4:	b4000ee8 	cbz	x8, fc9d0 <<temiya::runtime::Object>::get_with_receiver+0x364>
+   fc7f8:	f94027e8 	ldr	x8, [sp, #72]
+   fc7fc:	b4000ea8 	cbz	x8, fc9d0 <<temiya::runtime::Object>::get_with_receiver+0x364>
+   fc800:	f9400109 	ldr	x9, [x8]
+   fc804:	f1000529 	subs	x9, x9, #0x1
+   fc808:	f9000109 	str	x9, [x8]
+   fc80c:	54000e21 	b.ne	fc9d0 <<temiya::runtime::Object>::get_with_receiver+0x364>  // b.any
+   fc810:	910022a0 	add	x0, x21, #0x8
+   fc814:	94012f44 	bl	148524 <<alloc::rc::Rc<temiya::runtime::managed::ObjectRoot>>::drop_slow>
+   fc818:	1400006e 	b	fc9d0 <<temiya::runtime::Object>::get_with_receiver+0x364>
+   fc81c:	f94027e1 	ldr	x1, [sp, #72]
+   fc820:	b4000081 	cbz	x1, fc830 <<temiya::runtime::Object>::get_with_receiver+0x1c4>
+   fc824:	f9402be0 	ldr	x0, [sp, #80]
+   fc828:	52800022 	mov	w2, #0x1                   	// #1
+   fc82c:	97fd68e5 	bl	56bc0 <__rustc::__rust_dealloc>
+   fc830:	f94033f7 	ldr	x23, [sp, #96]
+   fc834:	b40000f7 	cbz	x23, fc850 <<temiya::runtime::Object>::get_with_receiver+0x1e4>
+   fc838:	aa1703e0 	mov	x0, x23
+   fc83c:	97ffef72 	bl	f8604 <core::ptr::drop_glue::<temiya::runtime::Value>>
+   fc840:	aa1703e0 	mov	x0, x23
+   fc844:	52800401 	mov	w1, #0x20                  	// #32
+   fc848:	52800102 	mov	w2, #0x8                   	// #8
+   fc84c:	97fd68dd 	bl	56bc0 <__rustc::__rust_dealloc>
+   fc850:	910103e8 	add	x8, sp, #0x40
+   fc854:	aa1603e0 	mov	x0, x22
+   fc858:	97fffef8 	bl	fc438 <<temiya::runtime::Object>::try_prototype>
+   fc85c:	a9445be1 	ldp	x1, x22, [sp, #64]
+   fc860:	b100043f 	cmn	x1, #0x1
+   fc864:	54000320 	b.eq	fc8c8 <<temiya::runtime::Object>::get_with_receiver+0x25c>  // b.none
+   fc868:	b4000081 	cbz	x1, fc878 <<temiya::runtime::Object>::get_with_receiver+0x20c>
+   fc86c:	aa1603e0 	mov	x0, x22
+   fc870:	52800022 	mov	w2, #0x1                   	// #1
+   fc874:	97fd68d3 	bl	56bc0 <__rustc::__rust_dealloc>
+   fc878:	f9402ff6 	ldr	x22, [sp, #88]
+   fc87c:	b40000f6 	cbz	x22, fc898 <<temiya::runtime::Object>::get_with_receiver+0x22c>
+   fc880:	aa1603e0 	mov	x0, x22
+   fc884:	97ffef60 	bl	f8604 <core::ptr::drop_glue::<temiya::runtime::Value>>
+   fc888:	aa1603e0 	mov	x0, x22
+   fc88c:	52800401 	mov	w1, #0x20                  	// #32
+   fc890:	52800102 	mov	w2, #0x8                   	// #8
+   fc894:	97fd68cb 	bl	56bc0 <__rustc::__rust_dealloc>
+   fc898:	d0000908 	adrp	x8, 21e000 <anon.5f5573f668d0a9231bac1cdfe4ad81cd.0.llvm.9858846796959936972+0x41d>
+   fc89c:	ad400a61 	ldp	q1, q2, [x19]
+   fc8a0:	3dc1e500 	ldr	q0, [x8, #1936]
+   fc8a4:	f90033f5 	str	x21, [sp, #96]
+   fc8a8:	3d8003e0 	str	q0, [sp]
+   fc8ac:	ad020be1 	stp	q1, q2, [sp, #64]
+   fc8b0:	ad4007e0 	ldp	q0, q1, [sp]
+   fc8b4:	910103e0 	add	x0, sp, #0x40
+   fc8b8:	f94013e8 	ldr	x8, [sp, #32]
+   fc8bc:	ad000680 	stp	q0, q1, [x20]
+   fc8c0:	f9001288 	str	x8, [x20, #32]
+   fc8c4:	17ffff95 	b	fc718 <<temiya::runtime::Object>::get_with_receiver+0xac>
+   fc8c8:	d0000908 	adrp	x8, 21e000 <anon.5f5573f668d0a9231bac1cdfe4ad81cd.0.llvm.9858846796959936972+0x41d>
+   fc8cc:	ad400a61 	ldp	q1, q2, [x19]
+   fc8d0:	3dc1e500 	ldr	q0, [x8, #1936]
+   fc8d4:	f90033f5 	str	x21, [sp, #96]
+   fc8d8:	3d8003e0 	str	q0, [sp]
+   fc8dc:	ad020be1 	stp	q1, q2, [sp, #64]
+   fc8e0:	b4fffe96 	cbz	x22, fc8b0 <<temiya::runtime::Object>::get_with_receiver+0x244>
+   fc8e4:	ad400660 	ldp	q0, q1, [x19]
+   fc8e8:	f9000fb6 	str	x22, [x29, #24]
+   fc8ec:	ad3f07a0 	stp	q0, q1, [x29, #-32]
+   fc8f0:	910063a0 	add	x0, x29, #0x18
+   fc8f4:	d10083a2 	sub	x2, x29, #0x20
+   fc8f8:	aa1403e8 	mov	x8, x20
+   fc8fc:	aa1503e1 	mov	x1, x21
+   fc900:	97ffff5b 	bl	fc66c <<temiya::runtime::Object>::get_with_receiver>
+   fc904:	f94002c8 	ldr	x8, [x22]
+   fc908:	f1000508 	subs	x8, x8, #0x1
+   fc90c:	f90002c8 	str	x8, [x22]
+   fc910:	54000780 	b.eq	fca00 <<temiya::runtime::Object>::get_with_receiver+0x394>  // b.none
+   fc914:	910003e8 	mov	x8, sp
+   fc918:	b27d0100 	orr	x0, x8, #0x8
+   fc91c:	17ffff7f 	b	fc718 <<temiya::runtime::Object>::get_with_receiver+0xac>
+   fc920:	f100051f 	cmp	x8, #0x1
+   fc924:	54000501 	b.ne	fc9c4 <<temiya::runtime::Object>::get_with_receiver+0x358>  // b.any
+   fc928:	f94027f7 	ldr	x23, [sp, #72]
+   fc92c:	b40004d7 	cbz	x23, fc9c4 <<temiya::runtime::Object>::get_with_receiver+0x358>
+   fc930:	ad400660 	ldp	q0, q1, [x19]
+   fc934:	f81e03b7 	stur	x23, [x29, #-32]
+   fc938:	ad0007e0 	stp	q0, q1, [sp]
+   fc93c:	d10083a0 	sub	x0, x29, #0x20
+   fc940:	910003e1 	mov	x1, sp
+   fc944:	aa1403e8 	mov	x8, x20
+   fc948:	52800102 	mov	w2, #0x8                   	// #8
+   fc94c:	aa1f03e3 	mov	x3, xzr
+   fc950:	94001c7b 	bl	103b3c <<temiya::runtime::Object>::call>
+   fc954:	f94002e8 	ldr	x8, [x23]
+   fc958:	f1000508 	subs	x8, x8, #0x1
+   fc95c:	f90002e8 	str	x8, [x23]
+   fc960:	54000061 	b.ne	fc96c <<temiya::runtime::Object>::get_with_receiver+0x300>  // b.any
+   fc964:	d10083a0 	sub	x0, x29, #0x20
+   fc968:	94012eef 	bl	148524 <<alloc::rc::Rc<temiya::runtime::managed::ObjectRoot>>::drop_slow>
+   fc96c:	f94033e8 	ldr	x8, [sp, #96]
+   fc970:	b100091f 	cmn	x8, #0x2
+   fc974:	54000060 	b.eq	fc980 <<temiya::runtime::Object>::get_with_receiver+0x314>  // b.none
+   fc978:	910082a0 	add	x0, x21, #0x20
+   fc97c:	97ffef22 	bl	f8604 <core::ptr::drop_glue::<temiya::runtime::Value>>
+   fc980:	f9402be8 	ldr	x8, [sp, #80]
+   fc984:	b4ffeb28 	cbz	x8, fc6e8 <<temiya::runtime::Object>::get_with_receiver+0x7c>
+   fc988:	f9402fe8 	ldr	x8, [sp, #88]
+   fc98c:	b4ffeae8 	cbz	x8, fc6e8 <<temiya::runtime::Object>::get_with_receiver+0x7c>
+   fc990:	f9400109 	ldr	x9, [x8]
+   fc994:	f1000529 	subs	x9, x9, #0x1
+   fc998:	f9000109 	str	x9, [x8]
+   fc99c:	54ffea61 	b.ne	fc6e8 <<temiya::runtime::Object>::get_with_receiver+0x7c>  // b.any
+   fc9a0:	910103e8 	add	x8, sp, #0x40
+   fc9a4:	91006100 	add	x0, x8, #0x18
+   fc9a8:	94012edf 	bl	148524 <<alloc::rc::Rc<temiya::runtime::managed::ObjectRoot>>::drop_slow>
+   fc9ac:	a94e4ff4 	ldp	x20, x19, [sp, #224]
+   fc9b0:	f94063f7 	ldr	x23, [sp, #192]
+   fc9b4:	a94d57f6 	ldp	x22, x21, [sp, #208]
+   fc9b8:	a94b7bfd 	ldp	x29, x30, [sp, #176]
+   fc9bc:	9103c3ff 	add	sp, sp, #0xf0
+   fc9c0:	d65f03c0 	ret
+   fc9c4:	d0000908 	adrp	x8, 21e000 <anon.5f5573f668d0a9231bac1cdfe4ad81cd.0.llvm.9858846796959936972+0x41d>
+   fc9c8:	3dc1e500 	ldr	q0, [x8, #1936]
+   fc9cc:	3d800280 	str	q0, [x20]
+   fc9d0:	f9402be8 	ldr	x8, [sp, #80]
+   fc9d4:	b4ffea08 	cbz	x8, fc714 <<temiya::runtime::Object>::get_with_receiver+0xa8>
+   fc9d8:	f9402fe8 	ldr	x8, [sp, #88]
+   fc9dc:	b4ffe9c8 	cbz	x8, fc714 <<temiya::runtime::Object>::get_with_receiver+0xa8>
+   fc9e0:	f9400109 	ldr	x9, [x8]
+   fc9e4:	f1000529 	subs	x9, x9, #0x1
+   fc9e8:	f9000109 	str	x9, [x8]
+   fc9ec:	54ffe941 	b.ne	fc714 <<temiya::runtime::Object>::get_with_receiver+0xa8>  // b.any
+   fc9f0:	910103e8 	add	x8, sp, #0x40
+   fc9f4:	91006100 	add	x0, x8, #0x18
+   fc9f8:	94012ecb 	bl	148524 <<alloc::rc::Rc<temiya::runtime::managed::ObjectRoot>>::drop_slow>
+   fc9fc:	17ffff46 	b	fc714 <<temiya::runtime::Object>::get_with_receiver+0xa8>
+   fca00:	910063a0 	add	x0, x29, #0x18
+   fca04:	94012ec8 	bl	148524 <<alloc::rc::Rc<temiya::runtime::managed::ObjectRoot>>::drop_slow>
+   fca08:	f94003e8 	ldr	x8, [sp]
+   fca0c:	b100051f 	cmn	x8, #0x1
+   fca10:	54fff820 	b.eq	fc914 <<temiya::runtime::Object>::get_with_receiver+0x2a8>  // b.none
+   fca14:	910003e0 	mov	x0, sp
+   fca18:	97ffeede 	bl	f8590 <core::ptr::drop_glue::<temiya::runtime::RuntimeError>>
+   fca1c:	a94e4ff4 	ldp	x20, x19, [sp, #224]
+   fca20:	f94063f7 	ldr	x23, [sp, #192]
+   fca24:	a94d57f6 	ldp	x22, x21, [sp, #208]
+   fca28:	a94b7bfd 	ldp	x29, x30, [sp, #176]
+   fca2c:	9103c3ff 	add	sp, sp, #0xf0
+   fca30:	d65f03c0 	ret
+   fca34:	b0000f60 	adrp	x0, 2e9000 <anon.46072af94c57455d6224636f064cacc8.17.llvm.17087605574227578671+0x28>
+   fca38:	912be000 	add	x0, x0, #0xaf8
+   fca3c:	97fd498c 	bl	4f06c <core::cell::panic_already_mutably_borrowed>
+   fca40:	d4200020 	brk	#0x1
+   fca44:	aa0003f4 	mov	x20, x0
+   fca48:	910103e8 	add	x8, sp, #0x40
+   fca4c:	91004100 	add	x0, x8, #0x10
+   fca50:	97ffeafc 	bl	f7640 <core::ptr::drop_glue::<core::option::Option<core::option::Option<temiya::runtime::Object>>>>
+   fca54:	14000035 	b	fcb28 <<temiya::runtime::Object>::get_with_receiver+0x4bc>
+   fca58:	aa0003f4 	mov	x20, x0
+   fca5c:	1400000f 	b	fca98 <<temiya::runtime::Object>::get_with_receiver+0x42c>
+   fca60:	aa0003f4 	mov	x20, x0
+   fca64:	910103e8 	add	x8, sp, #0x40
+   fca68:	91004100 	add	x0, x8, #0x10
+   fca6c:	97ffeaf5 	bl	f7640 <core::ptr::drop_glue::<core::option::Option<core::option::Option<temiya::runtime::Object>>>>
+   fca70:	14000030 	b	fcb30 <<temiya::runtime::Object>::get_with_receiver+0x4c4>
+   fca74:	aa0003f4 	mov	x20, x0
+   fca78:	1400001d 	b	fcaec <<temiya::runtime::Object>::get_with_receiver+0x480>
+   fca7c:	f94002e8 	ldr	x8, [x23]
+   fca80:	aa0003f4 	mov	x20, x0
+   fca84:	f1000508 	subs	x8, x8, #0x1
+   fca88:	f90002e8 	str	x8, [x23]
+   fca8c:	54000061 	b.ne	fca98 <<temiya::runtime::Object>::get_with_receiver+0x42c>  // b.any
+   fca90:	d10083a0 	sub	x0, x29, #0x20
+   fca94:	94012ea4 	bl	148524 <<alloc::rc::Rc<temiya::runtime::managed::ObjectRoot>>::drop_slow>
+   fca98:	f94033e8 	ldr	x8, [sp, #96]
+   fca9c:	b100091f 	cmn	x8, #0x2
+   fcaa0:	540000e0 	b.eq	fcabc <<temiya::runtime::Object>::get_with_receiver+0x450>  // b.none
+   fcaa4:	910082a0 	add	x0, x21, #0x20
+   fcaa8:	97ffeed7 	bl	f8604 <core::ptr::drop_glue::<temiya::runtime::Value>>
+   fcaac:	14000004 	b	fcabc <<temiya::runtime::Object>::get_with_receiver+0x450>
+   fcab0:	aa0003f4 	mov	x20, x0
+   fcab4:	910103e0 	add	x0, sp, #0x40
+   fcab8:	97ffeae2 	bl	f7640 <core::ptr::drop_glue::<core::option::Option<core::option::Option<temiya::runtime::Object>>>>
+   fcabc:	910103e8 	add	x8, sp, #0x40
+   fcac0:	91004100 	add	x0, x8, #0x10
+   fcac4:	97ffeadf 	bl	f7640 <core::ptr::drop_glue::<core::option::Option<core::option::Option<temiya::runtime::Object>>>>
+   fcac8:	37000316 	tbnz	w22, #0, fcb28 <<temiya::runtime::Object>::get_with_receiver+0x4bc>
+   fcacc:	14000019 	b	fcb30 <<temiya::runtime::Object>::get_with_receiver+0x4c4>
+   fcad0:	f94002c8 	ldr	x8, [x22]
+   fcad4:	aa0003f4 	mov	x20, x0
+   fcad8:	f1000508 	subs	x8, x8, #0x1
+   fcadc:	f90002c8 	str	x8, [x22]
+   fcae0:	54000061 	b.ne	fcaec <<temiya::runtime::Object>::get_with_receiver+0x480>  // b.any
+   fcae4:	910063a0 	add	x0, x29, #0x18
+   fcae8:	94012e8f 	bl	148524 <<alloc::rc::Rc<temiya::runtime::managed::ObjectRoot>>::drop_slow>
+   fcaec:	910003e0 	mov	x0, sp
+   fcaf0:	97ffec05 	bl	f7b04 <core::ptr::drop_glue::<core::result::Result<temiya::runtime::Value, temiya::runtime::RuntimeError>>>
+   fcaf4:	1400000f 	b	fcb30 <<temiya::runtime::Object>::get_with_receiver+0x4c4>
+   fcaf8:	97fd4997 	bl	4f154 <core::panicking::panic_in_cleanup>
+   fcafc:	97fd4996 	bl	4f154 <core::panicking::panic_in_cleanup>
+   fcb00:	aa0003f4 	mov	x20, x0
+   fcb04:	aa1703e0 	mov	x0, x23
+   fcb08:	14000003 	b	fcb14 <<temiya::runtime::Object>::get_with_receiver+0x4a8>
+   fcb0c:	aa0003f4 	mov	x20, x0
+   fcb10:	aa1603e0 	mov	x0, x22
+   fcb14:	52800401 	mov	w1, #0x20                  	// #32
+   fcb18:	52800102 	mov	w2, #0x8                   	// #8
+   fcb1c:	97fd6829 	bl	56bc0 <__rustc::__rust_dealloc>
+   fcb20:	14000002 	b	fcb28 <<temiya::runtime::Object>::get_with_receiver+0x4bc>
+   fcb24:	aa0003f4 	mov	x20, x0
+   fcb28:	aa1303e0 	mov	x0, x19
+   fcb2c:	97ffeeb6 	bl	f8604 <core::ptr::drop_glue::<temiya::runtime::Value>>
+   fcb30:	aa1403e0 	mov	x0, x20
+   fcb34:	97fd1a23 	bl	433c0 <_Unwind_Resume@plt>
+   fcb38:	97fd4987 	bl	4f154 <core::panicking::panic_in_cleanup>

@@ -13,6 +13,10 @@ Audit retained original-eleven reports with
 The auditor recomputes all values, sample statistics, alternating orders and
 fixed gates. An audit success verifies the recorded outcome, including noise
 and regressions; it does not turn a report into a speed qualification.
+For hosted cohorts, also run
+`node scripts/audit-omoikane-hosted-identities.mjs COHORT_DIR MEASURED_SHA BASELINE_SHA`
+to check compiler/adapter/features/locks and all four reports' worker/control
+identities. Neither auditor requires a favorable timing outcome.
 
 This is a new trial on the integrated tracing runtime, not the earlier pre-GC
 packed-number trial. Contiguous default numeric descriptors use8-byte values;

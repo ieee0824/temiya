@@ -34,6 +34,31 @@ validates8386560 and retains0 cells; this is not timing, RSS or peak memory.
 The offline auditor rejects7 corruptions of a complete real report. Run it with
 `node scripts/audit-original-workload-records.mjs REPORT.json [...]`.
 An audit verifies outcomes without requiring or fabricating a favorable result.
+Hosted identity checks are also reproducible with
+`node scripts/audit-omoikane-hosted-identities.mjs COHORT_DIR MEASURED_SHA BASELINE_SHA`.
+The complete old Cow cohort passes; four metadata corruptions (added JIT,
+wrong adapter hash, inconsistent candidate hash and wrong control revision)
+are rejected. This identity audit is separate from the statistical audit.
+
+## Investigation of owned-descriptor overhead
+
+`codegen-arm64` retains disassembly, symbol sizes, binary hashes and compiler
+for all three frozen workers. In `own_element_value`, Cow has420 bytes of code
+and208 bytes of entry stack allocation; the view has228/80. The view also calls
+a separate252-byte/80-byte-stack `ElementRef::value` helper, so the individual
+function shrink must not be presented as a reduction in the complete call
+path. `try_get_own_property` uses304 entry-stack bytes for Cow and240 for view
+and reference. These are static observations, not runtime cost measurements.
+
+`callgrind-array` retains one whole-process diagnostic per frozen binary with
+the original500000-iteration array body, one checked warmup and one checked
+pass. All three validate124999750000 twice. Total instruction references are
+8419414936 reference,8482373294 Cow,8397370199 view: Cow/reference1.00748,
+view/reference0.99738 and view/Cow0.98998. Startup/setup are included. This modest
+instruction difference is not a native-time or CPU-cycle result and does not
+establish why the old hosted x64 cohort had broad regressions. Native array
+before/after remains within its fixed gates. No old unfavorable report is
+replaced by this diagnostic.
 
 Hosted two-machine comparisons (run40792533180) and full latest-runtime security
 (run40792515995) remain pending. No merge acceptance is implied. The initial

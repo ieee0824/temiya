@@ -1,0 +1,20 @@
+{
+  "tool": "valgrind-3.24.0",
+  "events": [
+    "Ir"
+  ],
+  "scope": "Diagnostic Callgrind whole-process Ir, including startup/setup/one checked warmup/one checked pass. Original array500000 body/oracle unchanged. Ir is neither native time nor CPU cycles and does not qualify speed.",
+  "workload_sha256": "32c8dc127a2389fdc9237382f7b490e3faa9e522a0f357035ab260f3f06679d8",
+  "original_array_iterations": 500000,
+  "expected": 124999750000,
+  "checked_passes_per_worker": 2,
+  "per_process_instruction_references": {
+    "baseline": 8419414936,
+    "cow": 8482373294,
+    "view": 8397370199
+  },
+  "cow_to_baseline": 1.007477759259827,
+  "view_to_baseline": 0.9973816782795987,
+  "view_to_cow": 0.9899788547315965,
+  "qualification": "One whole-process diagnostic per frozen worker, including startup/setup/warmup. No native timing/cycle claim; does not resolve earlier broad hosted x64 regressions."
+}

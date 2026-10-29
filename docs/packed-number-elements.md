@@ -89,6 +89,16 @@ Missing slots and accessors continue through the caller's full property lookup.
 An AST/Bytecode differential test checks signed zero/infinities/NaN, sparse
 restoration, object-valued elements and own/inherited accessor receivers.
 
+For the combined follow-up at dd7df4455bbcfcf8764464ff2185eb4650f1372a,
+native663/21 ignored, Clippy/fmt, selected fixed Test262 gates, all4 integration
+Miri tests/0 ignored and all4 stable/MSRV/quality/C ABI CI jobs pass. ARM64 main
+comparison is1 faster/32 noise/0 slower; all3 array decisions are noise. Actual
+modified Boa is slower beyond the fixed gate in all33 comparisons. Each ARM64
+report validates66 workers/1056 values with separate statistical and identity
+audits. See `benchmarks/managed-packed-numbers/experiments/fused-dd7`.
+Hosted two-machine observations and complete latest-runtime security remain
+pending; this ARM64 result alone does not qualify the follow-up for merge.
+
 Performance qualification is pending. Keep the original eleven workload bodies,
 counts, oracles,15 samples/3 alternating pairs,512MiB/180-second watchdogs and
 the existing10%/MAD gate for candidate/main and actual pinned omoikane modified

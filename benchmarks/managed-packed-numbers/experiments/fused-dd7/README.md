@@ -28,8 +28,11 @@ in7 requests; this is allocation requests only, not peak/RSS or native timing.
 Native CI40800358815 passes all4 jobs, including stable/Rust1.85/Clippy/fmt/C ABI.
 The ARM64 before/after report validates all66 workers/1056 values and independently
 recomputes1 faster/32 noise/0 slower decisions. Array ratios0.9916,0.9926,1.0000
-are all noise; this does not establish an array speedup. Actual modified-Boa ARM64
-and hosted two-machine comparison40800448415, plus full runtime security40800358738,
+are all noise; this does not establish an array speedup. The actual modified-Boa
+ARM64 report validates66 workers/1056 values and qualifies all33 faster decisions
+with the original fixed gates. Source/compiler/reference metadata and all frozen
+binary hashes are checked. Agent affinity was restored after both terminal
+reports. Hosted two-machine comparison40800448415 and full runtime security40800358738
 remain in progress. Each source
 has separate evidence; earlier favorable or unfavorable results do not qualify
 this one. No speed or merge acceptance is implied by these validation logs.

@@ -389,3 +389,18 @@ artifacts. It checks accepted PR/full comparisons, full partitions, changed
 resource bounds, forged pass counts and unexplained policy updates. These focused
 integration cases do not qualify the entire corpus. The production PR selection
 and periodic workflow remain pending the completed full reference capture in #151.
+
+## Archived capture verification
+
+For a preserved capture archive with its `capture.json` descriptor, verify the
+compressed identity, every decoded file and independently reconstructed outcomes:
+
+```sh
+node scripts/verify-test262-archive.mjs path/to/archive-directory
+```
+
+An optional second argument supplies a new destination directory to retain the
+verified decoded capture for further comparisons. Without it, temporary decoded
+files are removed after verification. Archive integrity preserves failures,
+timeouts, skips and unexecuted coverage as recorded; it does not qualify language
+features or turn those outcomes into passes.

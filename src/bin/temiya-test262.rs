@@ -15,10 +15,11 @@ use temiya::{
 
 const HELP: &str = "Usage: temiya-test262 --corpus DIR [--pinned] [--backend auto|ast|bytecode]
                       [--timeout-ms 10000] [--memory-mb 512] [--stack-kb 8192]
-                      [--manifest FILE] [--output FILE] TEST_PATH [...]
+                      [--manifest FILE] [--output FILE] [--metadata-only] TEST_PATH [...]
 
 TEST_PATH is corpus-relative. Each test/variant gets a fresh Engine and Realm.
 --pinned reads every source/harness file from the fixed Git commit.
+--metadata-only lists original metadata and variants without executing an Engine.
 Every executable variant uses a separate worker with a finite deadline (1..120000 ms).
 Linux workers have address-space/RSS and stack limits; the core-file limit is zero.
 JSON distinguishes timeout, memory exhaustion, stack overflow, crash and async completion.
@@ -33,6 +34,7 @@ struct Options {
     timeout_ms: u64,
     limits: resources::Limits,
     worker: Option<TestVariant>,
+    metadata_only: bool,
 }
 fn parse() -> Result<Option<Options>, String> {
     let mut args = env::args().skip(1);
@@ -46,10 +48,12 @@ fn parse() -> Result<Option<Options>, String> {
         stack_kb: 8192,
     };
     let mut worker = None;
+    let mut metadata_only = false;
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--help" | "-h" => return Ok(None),
             "--pinned" => pinned = true,
+            "--metadata-only" => metadata_only = true,
             "--corpus" => {
                 corpus = Some(PathBuf::from(args.next().ok_or("missing --corpus value")?))
             }
@@ -121,6 +125,9 @@ fn parse() -> Result<Option<Options>, String> {
     if worker.is_some() && tests.len() != 1 {
         return Err("a worker requires one TEST_PATH".into());
     }
+    if worker.is_some() && metadata_only {
+        return Err("--metadata-only cannot run as an internal worker".into());
+    }
     Ok(Some(Options {
         corpus: corpus.ok_or("--corpus is required")?,
         pinned,
@@ -131,6 +138,7 @@ fn parse() -> Result<Option<Options>, String> {
         timeout_ms,
         limits,
         worker,
+        metadata_only,
     }))
 }
 fn record(execution: EngineTestResult) -> Value {
@@ -202,10 +210,24 @@ fn execute(options: Options) -> Result<u8, String> {
         let test = match test {
             Ok(test) => test,
             Err(error) => {
-                records.push(json!({"path":path,"variant":null,"status":"fail","stage":"setup","detail":error.to_string()}));
+                if options.metadata_only {
+                    records.push(json!({"path":path,"parsed":false,"engine_executed":false,"detail":error.to_string()}));
+                } else {
+                    records.push(json!({"path":path,"variant":null,"status":"fail","stage":"setup","detail":error.to_string()}));
+                }
                 continue;
             }
         };
+        if options.metadata_only {
+            let variants: Vec<_> = test
+                .variants()
+                .iter()
+                .map(|variant| format!("{variant:?}"))
+                .collect();
+            let negative = test.metadata.negative.as_ref().map(|expected| json!({"phase":format!("{:?}",expected.phase),"type":expected.error_type}));
+            records.push(json!({"path":path,"parsed":true,"engine_executed":false,"features":test.metadata.features,"flags":test.metadata.flags,"includes":test.metadata.includes,"negative":negative,"variants":variants}));
+            continue;
+        }
         if let Some(variant) = options.worker {
             records.extend(
                 engine::run_worker_variant(&test, &manifest, &corpus, options.backend, variant)
@@ -237,6 +259,16 @@ fn execute(options: Options) -> Result<u8, String> {
                 }));
             }
         }
+    }
+    if options.metadata_only {
+        let failed = records.iter().any(|record| record["parsed"] != true);
+        let report = json!({"schema":1,"kind":"test262-metadata","corpus_revision":corpus.revision(),"manifest_revision":manifest.revision,"engine_executed":false,"cases":records});
+        let text = serde_json::to_string_pretty(&report).map_err(|e| e.to_string())?;
+        if let Some(path) = options.output {
+            fs::write(path, &text).map_err(|e| e.to_string())?;
+        }
+        println!("{text}");
+        return Ok(u8::from(failed));
     }
     let passed = records.iter().filter(|r| r["status"] == "pass").count();
     let failed = records.iter().filter(|r| r["status"] == "fail").count();

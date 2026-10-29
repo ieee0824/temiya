@@ -699,24 +699,178 @@ pub fn parse_case(
     path: impl Into<String>,
     source: impl Into<String>,
 ) -> Result<TestCase, HarnessError> {
-    let mut case = TestCase::parse(path, source)?;
-    let start = case.source.find("/*---").expect("validated frontmatter") + 5;
+    let source = source.into();
+    let start = source
+        .find("/*---")
+        .ok_or_else(|| HarnessError("missing Test262 frontmatter start".into()))?
+        + 5;
     let end = start
-        + case.source[start..]
+        + source[start..]
             .find("---*/")
-            .expect("validated frontmatter");
-    for line in case.source[start..end].lines().map(str::trim) {
-        if let Some(value) = line.strip_prefix("includes:") {
-            case.metadata.includes = parse_flow_list(value)?;
+            .ok_or_else(|| HarnessError("missing Test262 frontmatter end".into()))?;
+    let lines: Vec<_> = source[start..end].lines().collect();
+    let indent = lines
+        .iter()
+        .filter(|line| !line.trim().is_empty() && !line.trim().starts_with('#'))
+        .map(|line| line.len() - line.trim_start().len())
+        .min()
+        .unwrap_or(0);
+    let mut lists = BTreeMap::new();
+    let mut negative = BTreeMap::new();
+    let mut negative_seen = false;
+    let mut index = 0;
+    while index < lines.len() {
+        let line = lines[index];
+        index += 1;
+        if line.len() - line.trim_start().len() != indent || line.trim().is_empty() {
+            continue;
         }
-        if let Some(value) = line.strip_prefix("features:") {
-            case.metadata.features = parse_flow_list(value)?;
-        }
-        if let Some(value) = line.strip_prefix("flags:") {
-            case.metadata.flags = parse_flow_list(value)?;
+        let Some((key, value)) = line[indent..].split_once(':') else {
+            continue;
+        };
+        if matches!(key, "includes" | "features" | "flags") {
+            if lists.contains_key(key) {
+                return Err(HarnessError(format!("duplicate metadata list: {key}")));
+            }
+            let mut value = metadata_value(value).to_owned();
+            let mut items = Vec::new();
+            if value.is_empty() {
+                while index < lines.len() {
+                    let next = lines[index];
+                    if next.trim().is_empty() || next.trim().starts_with('#') {
+                        index += 1;
+                        continue;
+                    }
+                    let next_indent = next.len() - next.trim_start().len();
+                    if next_indent < indent
+                        || (next_indent == indent && !next.trim().starts_with("- "))
+                    {
+                        break;
+                    }
+                    let item = next.trim().strip_prefix("- ").ok_or_else(|| {
+                        HarnessError("expected a metadata block-list item".into())
+                    })?;
+                    items.push(metadata_scalar(item)?);
+                    index += 1;
+                }
+            } else {
+                while !value.ends_with(']')
+                    && index < lines.len()
+                    && (lines[index].len() - lines[index].trim_start().len() > indent
+                        || lines[index].trim().is_empty()
+                        || lines[index].trim().starts_with(']')
+                        || lines[index].trim().starts_with('#'))
+                {
+                    value.push(' ');
+                    value.push_str(metadata_value(lines[index]));
+                    index += 1;
+                }
+                items = parse_flow_list(&value)?;
+            }
+            lists.insert(key.to_owned(), items);
+        } else if key == "negative" {
+            if negative_seen || !metadata_value(value).is_empty() {
+                return Err(HarnessError(
+                    "negative metadata must be one block mapping".into(),
+                ));
+            }
+            negative_seen = true;
+            while index < lines.len() {
+                let next = lines[index];
+                if next.trim().is_empty() || next.trim().starts_with('#') {
+                    index += 1;
+                    continue;
+                }
+                if next.len() - next.trim_start().len() <= indent {
+                    break;
+                }
+                if let Some((key, value)) = next.trim().split_once(':') {
+                    if matches!(key, "phase" | "type")
+                        && negative
+                            .insert(key.to_owned(), metadata_scalar(value)?)
+                            .is_some()
+                    {
+                        return Err(HarnessError("duplicate negative metadata field".into()));
+                    }
+                }
+                index += 1;
+            }
         }
     }
+    let mut canonical = String::new();
+    for (key, values) in &lists {
+        canonical.push_str(&format!(
+            "{key}: {}\n",
+            serde_json::to_string(values).map_err(|e| HarnessError(e.to_string()))?
+        ));
+    }
+    if negative_seen {
+        let phase = negative
+            .get("phase")
+            .ok_or_else(|| HarnessError("negative phase is required".into()))?;
+        let kind = negative
+            .get("type")
+            .ok_or_else(|| HarnessError("negative type is required".into()))?;
+        if phase.contains(['\n', '\r']) || kind.contains(['\n', '\r']) {
+            return Err(HarnessError(
+                "negative fields must be single-line names".into(),
+            ));
+        }
+        canonical.push_str(&format!("negative:\n  phase: {phase}\n  type: {kind}\n"));
+    }
+    // The foundation parses metadata only. Never evaluate its canonical copy:
+    // keep the complete original JavaScript/frontmatter bytes for the Engine.
+    let mut case = TestCase::parse(path, format!("/*---\n{canonical}---*/"))?;
+    case.metadata.includes = lists.remove("includes").unwrap_or_default();
+    case.metadata.features = lists.remove("features").unwrap_or_default();
+    case.metadata.flags = lists.remove("flags").unwrap_or_default();
+    case.source = source;
     Ok(case)
+}
+
+fn metadata_scalar(source: &str) -> Result<String, HarnessError> {
+    let value = metadata_value(source);
+    if value.is_empty() || value.starts_with(['[', '{']) {
+        return Err(HarnessError("metadata item must be a string".into()));
+    }
+    if value.starts_with(['\'', '"']) {
+        let mut values = parse_flow_list(&format!("[{value}]"))?;
+        if values.len() != 1 {
+            return Err(HarnessError("metadata item must be one string".into()));
+        }
+        Ok(values.remove(0))
+    } else {
+        Ok(value.to_owned())
+    }
+}
+
+fn metadata_value(source: &str) -> &str {
+    let mut quote = None;
+    let mut escaped = false;
+    let mut token_start = true;
+    let mut chars = source.char_indices().peekable();
+    while let Some((index, ch)) = chars.next() {
+        match quote {
+            Some('"') if escaped => escaped = false,
+            Some('"') if ch == '\\' => escaped = true,
+            Some('\'') if ch == '\'' && chars.peek().is_some_and(|(_, next)| *next == '\'') => {
+                chars.next();
+            }
+            Some(delimiter) if ch == delimiter => {
+                quote = None;
+                token_start = false;
+            }
+            Some(_) => {}
+            None if ch == '#' && (index == 0 || source[..index].ends_with(char::is_whitespace)) => {
+                return source[..index].trim();
+            }
+            None if token_start && matches!(ch, '\'' | '"') => quote = Some(ch),
+            None if matches!(ch, '[' | ',') => token_start = true,
+            None if !ch.is_whitespace() => token_start = false,
+            None => {}
+        }
+    }
+    source.trim()
 }
 
 fn parse_flow_list(source: &str) -> Result<Vec<String>, HarnessError> {

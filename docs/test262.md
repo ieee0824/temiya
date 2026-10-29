@@ -61,8 +61,12 @@ to the test source, not the harness files. Raw source is unmodified and loads no
 harness, including when metadata lists an include. A missing, unparsable or throwing
 include is a `HarnessError`; it cannot satisfy a negative JavaScript expectation.
 The CLI adapter extends the foundation parser through `parse_case`, retaining the
-original JavaScript source bytes. Its inline lists accept plain names, single-quoted names and JSON-style double-quoted
-strings; commas inside quoted include filenames are preserved. Malformed lists
+original JavaScript source bytes. Lists accept flow (including multiline) and
+block forms, plain/single-quoted/JSON-style double-quoted strings, comments and
+consistent root indentation. Commas inside quoted include filenames are preserved.
+Description text does not become a list field. Metadata is canonicalized only
+for the foundation's metadata parser; the Engine receives the original source.
+Malformed or duplicate lists
 fail rather than silently losing items. Unsupported broader YAML remains an
 explicit frontmatter failure, not a successful execution.
 
@@ -89,7 +93,7 @@ The integrated runner and include/strict/raw handling cover #145/#146. The
 Async completion and a hard async worker deadline are connected by #148.
 Relative module fixtures and resolution-negative audits are connected by #149.
 General process isolation/resource limits are connected by #150 on Linux.
-Feature baselines (#151) and regression selection (#152) remain separate work.
+Feature baseline capture is connected by #151; regression selection (#152) remains separate work.
 A small selection does not qualify the whole corpus or a complete language feature.
 
 The module selection in `tests/fixtures/test262-module/selection.json` reads
@@ -232,3 +236,87 @@ controls and matched full-input instruction diagnostics. Both recorded x64
 cohorts pass all 33 actual-Boa comparisons. ARM64 has inconclusive cases and
 mixed before/after outcomes; the record does not claim universal superiority or
 the absence of a baseline regression.
+
+### Feature baseline capture
+
+The metadata-only index is separate from execution results:
+
+```sh
+cargo run --locked --bin temiya-test262 -- --corpus target/test262 --pinned \
+  --metadata-only test/language/expressions/addition/S11.6.1_A1.js
+```
+
+It reads the actual CLI's metadata and variants, sets `engine_executed: false`,
+and has no pass counts. Invalid metadata/missing files have `parsed: false` and
+no invented variants. An index is not evidence that a test passed.
+
+Capture a baseline through the actual isolated runner with:
+
+```sh
+cargo build --locked --release --no-default-features --bin temiya-test262
+node scripts/test262-baseline.mjs --engine target/release/temiya-test262 \
+  --corpus target/test262 --pinned --output target/baseline-auto \
+  --backend auto --timeout-ms 1000 --memory-mb 512 --stack-kb 8192
+```
+
+The output directory must be new or empty. The controller freezes the executable
+for the run and snapshots the manifest. Corpus/manifest revision, SHA-256 hashes
+of the executable/controller/manifest/universe/selection, backend, resource bounds
+and host conditions are recorded. Optional `--engine-info BUILD_JSON` preserves
+provided build provenance after checking its `executable_sha256` against the
+frozen executable; source/compiler/profile are not guessed from a file path.
+Unpinned local/authored captures are labelled as unqualified for fixed-revision
+conformance comparisons.
+
+By default the universe is `test/**/*.js`, excluding `_FIXTURE.js` and
+`test/staging/`, enumerated from the pinned Git tree. `--universe PATHS_JSON`
+can supply an explicit canonical path list; `--selection PATHS_JSON` selects
+which indexed files to execute. All universe entries are indexed, and unselected
+variants remain `not_run`. No selection is inferred from passing outcomes.
+The default selection is the entire eligible universe.
+
+`baseline.json` contains global and per-feature exclusive pass/fail/skip/timeout/
+not-run/unreported counts. Timeout is a subset of raw CLI fail and is separated
+in this summary. Feature groups overlap when a test names multiple features;
+their counts must not be summed to infer global totals. Tests without features
+have a separate `untagged` group. The reported-attempt pass rate uses only
+pass+fail+timeout; skip/not-run/unreported are never passes. A zero denominator
+produces null rather than a successful rate.
+
+Frontmatter failures have unknown variants/features. They remain separate file
+errors; `universe.variant_count_exact` is false and `totals.total` counts only
+known variants. Actual selected setup failures retain their raw record too.
+Missing execution results are `unreported`, and the controller exits unsuccessfully
+when capture errors or unreported variants remain. Normal Engine failures are
+baseline data and do not prevent saving the report.
+
+`catalog.json`, `outcomes.json` and each raw metadata/execution report, stderr,
+exit/signal and hash remain available. `progress.json` records completed batches
+while a long capture runs. Every executable variant still uses the CLI's process
+and resource supervision. A feature's measured pass count does not declare that
+feature implemented or establish whole-corpus language conformance.
+
+Independently reconstruct the saved counts and raw-report identities with:
+
+```sh
+node scripts/verify-test262-baseline.mjs target/baseline-auto
+```
+
+This verifier checks manifest/universe/selection/report hashes, metadata and
+execution provenance, all per-variant outcomes, feature/untagged totals and
+reported-attempt rates. A corrupted summary or missing result cannot establish
+a complete validated capture. These integrity checks do not declare language
+features implemented.
+
+For a preserved capture archive with its `capture.json` descriptor, verify the
+compressed identity, every decoded file and independently reconstructed outcomes:
+
+```sh
+node scripts/verify-test262-archive.mjs path/to/archive-directory
+```
+
+An optional second argument supplies a new destination directory to retain the
+verified decoded capture for further comparisons. Without it, temporary decoded
+files are removed after verification. Archive integrity preserves failures,
+timeouts, skips and unexecuted coverage as recorded; it does not qualify language
+features or turn those outcomes into passes.

@@ -1,0 +1,1 @@
+var s=Symbol('x');record(s,s,Symbol('x'));s

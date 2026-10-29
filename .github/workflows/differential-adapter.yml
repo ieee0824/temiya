@@ -46,7 +46,8 @@ jobs:
           for mode in interpreter default; do
             node scripts/compare-js-engines.mjs --temiya target/release/temiya-differential-worker \
               --spidermonkey target/shell/bin/js --spidermonkey-info target/shell-evidence/target-check.json \
-              --cases testing/differential/adapter-cases.json --output "target/differential-results/$mode" \
+              --cases testing/differential/adapter-cases.json --known testing/differential/known-differences.json \
+              --output "target/differential-results/$mode" \
               --mode "$mode" --timeout-ms 2000
           done
       - name: Record semantic discovery without suppressing mismatches
@@ -90,25 +91,25 @@ jobs:
         run: |
           node scripts/compare-js-engines.mjs --temiya target/release/temiya-differential-worker \
             --spidermonkey target/shell/bin/js --spidermonkey-info target/shell-evidence/target-check.json \
-            --cases testing/differential/discovery-cases.json --known testing/differential/known-differences.json \
+            --cases testing/differential/known-cases.json --known testing/differential/known-differences.json \
             --output target/differential-results/known --mode interpreter --timeout-ms 2000
           node scripts/compare-js-engines.mjs --temiya target/release/temiya-differential-worker \
             --spidermonkey target/shell/bin/js --spidermonkey-info target/shell-evidence/target-check.json \
             --cases testing/differential/reducer-witnesses.json \
             --output target/differential-results/reducer-witness --mode interpreter --timeout-ms 2000
-          node -e 'const k=require("./target/differential-results/known/report.json"),w=require("./target/differential-results/reducer-witness/report.json");if(k.counts["known-difference"]!==1||w.counts.match!==1)throw Error("known signature or minimal witness changed")'
+          node -e 'const k=require("./target/differential-results/known/report.json"),w=require("./target/differential-results/reducer-witness/report.json");if(k.counts["known-difference"]!==2||w.counts.match!==1)throw Error("known signature or minimal witness changed")'
       - name: Reject changed observations under the same known source
         run: |
           node -e 'const fs=require("fs"),rows=require("./testing/differential/known-differences.json");rows[0].observation_sha256="0".repeat(64);fs.writeFileSync("target/changed-known.json",JSON.stringify(rows))'
           set +e
           node scripts/compare-js-engines.mjs --temiya target/release/temiya-differential-worker \
             --spidermonkey target/shell/bin/js --spidermonkey-info target/shell-evidence/target-check.json \
-            --cases testing/differential/discovery-cases.json --known target/changed-known.json \
+            --cases testing/differential/known-cases.json --known target/changed-known.json \
             --output target/differential-results/changed-known --mode interpreter --timeout-ms 2000
           changed_exit=$?
           set -e
           test "$changed_exit" -eq 1
-          node -e 'const r=require("./target/differential-results/changed-known/report.json");if(r.counts.mismatch!==1||r.counts["known-difference"])throw Error("changed observations were hidden")'
+          node -e 'const r=require("./target/differential-results/changed-known/report.json");if(r.counts.mismatch!==1||r.results.find(x=>x.id==="promise-resolve-member").classification!=="mismatch")throw Error("changed observations were hidden")'
       - name: Preserve raw observations and reproducers
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

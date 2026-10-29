@@ -334,6 +334,21 @@ changes to the reference, selection, exceptions or other baseline fields require
 a different nonempty update reason. Changing only a date cannot reuse the old
 reason. Reviewers should assess whether the stated reason justifies the change.
 
+Create an initial policy explicitly from a verified reference with:
+
+```sh
+node scripts/create-test262-regression-policy.mjs target/reference \
+  target/policy.json 128 'Initial selection from the recorded fixed-revision baseline'
+```
+
+Only files whose every recorded variant passed are eligible. The deterministic
+selection first covers previously uncovered feature, variant, negative and
+async/raw labels; lexical path order resolves ties. It fills up to the requested
+file bound and records eligible files, selected variants and covered/uncovered
+labels in `selection_evidence`. This is a known-success regression sample, not
+a conformance percentage or a substitute for the periodic full run. The command
+cannot overwrite an existing policy; reviewed updates need a fresh reason.
+
 Given a complete reference directory and a policy describing it, run a PR capture
 and gate with:
 

@@ -2,7 +2,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import assert from 'node:assert/strict';
-import {createHash} from 'node:crypto';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 
@@ -40,11 +39,13 @@ const baselineBytes = fs.readFileSync(path.join(reference, 'baseline.json'));
 const baseline = JSON.parse(baselineBytes);
 assert.equal(baseline.totals.pass, 4, 'all four original strict/sloppy variants must pass');
 assert.equal(baseline.totals.total, 4);
-const policy = {schema: 1, update: {reason: 'Integration uses four actually passing pinned original variants'},
-  reference_baseline_sha256: createHash('sha256').update(baselineBytes).digest('hex'),
-  pr_selection: selection, skip_reasons: []};
 const policyFile = path.join(root, 'policy.json');
-fs.writeFileSync(policyFile, JSON.stringify(policy));
+run('create-test262-regression-policy.mjs', [reference, policyFile, '128',
+  'Integration uses four actually passing pinned original variants']);
+const policy = JSON.parse(fs.readFileSync(policyFile));
+assert.deepEqual(policy.pr_selection, selection);
+assert.equal(policy.selection_evidence.selected_variants, 4);
+assert.deepEqual(policy.selection_evidence.uncovered_labels, []);
 const gateArgs = [reference, candidate, policyFile];
 const invalidPolicyFile = path.join(root, 'invalid-outside-skip-policy.json');
 fs.writeFileSync(invalidPolicyFile, JSON.stringify({...policy,

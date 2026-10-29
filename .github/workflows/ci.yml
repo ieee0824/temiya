@@ -47,6 +47,8 @@ jobs:
         run: node scripts/check-regexp-workloads.mjs
       - name: Verify retained fresh RegExp evidence
         run: node benchmarks/regexp-cold-ascii/verify-integrity.mjs
+      - name: Verify retained full Test262 baseline and collection history
+        run: node scripts/verify-test262-archive.mjs benchmarks/test262-feature-baseline
       - name: Verify original arithmetic Intel instruction evidence
         run: node benchmarks/intel-arithmetic/verify.mjs
       - name: Verify checked component records and rejection gates

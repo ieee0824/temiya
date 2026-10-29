@@ -41,6 +41,10 @@ for (const row of known) {
   assert(typeof row.id === 'string' && row.id && !knownIds.has(row.id));
   assert(/^[a-f0-9]{64}$/.test(row.source_sha256) && /^[a-f0-9]{64}$/.test(row.observation_sha256));
   assert(typeof row.reason === 'string' && row.reason.trim() && typeof row.issue === 'string' && row.issue.trim());
+  assert(typeof row.reproducer === 'string' && !path.isAbsolute(row.reproducer) &&
+    !row.reproducer.split(/[\\/]/).some(part => !part || part === '.' || part === '..'), 'canonical reproducer path required');
+  assert.equal(sha(fs.readFileSync(new URL('../' + row.reproducer, import.meta.url))),
+    row.source_sha256, 'known reproducer must match the exact source identity');
   knownIds.add(row.id);
 }
 const output = path.resolve(options.output);

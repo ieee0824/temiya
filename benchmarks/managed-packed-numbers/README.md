@@ -34,7 +34,8 @@ The initial Cow trial completed its comparisons and security checks but did not
 meet the performance objective. Its unfavorable reports remain preserved in
 `experiments/cow-25e`. The top-level provenance's pending list describes the
 original recording snapshot; subsequent results are in the experiment folders.
-The view trial qualifies all33 actual-Boa pairs on ARM64, while hosted results
-and full latest-runtime security remain pending. Keep original11 counts/oracles/
+The view trial qualifies all33 actual-Boa pairs on ARM64, but hosted cohorts have
+4 and5 before/after regressions and one actual-Boa noise decision. Full runtime
+security remains pending and the view is not accepted for merge. Keep original11 counts/oracles/
 15samples/3pairs/512MiB/180seconds/10%-MAD gates and all observations, including
 unfavorable/noise outcomes. Allocation bytes are not timing or peak memory.

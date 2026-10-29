@@ -59,7 +59,13 @@ This is a qualification of those workloads in that measured ARM64 environment,
 not arbitrary-program performance. Full stable/Rust1.85/Clippy/C ABI CI passes;
 the view's two integration Miri tests also pass. See
 `benchmarks/managed-packed-numbers/experiments/view-6fb` for evidence. Hosted
-two-machine comparisons and full latest-runtime security remain pending.
+run40792533180 subsequently recorded4 and5 before/after regressions on independent
+AMD7763 machines. Both regress all3 primitive-string-property pairs and one
+string-concat pair; one also regresses prop-mega. Candidate/actual Boa is32 faster/
+1 noise on one machine and33 faster on the other. All8 reports validate66 workers/
+1056 values each, with complete controls/identities. All6 hosted array pairs are
+within their gates. Full runtime security remains pending. This candidate is not
+qualified for merge; all unfavorable observations are retained for investigation.
 
 Performance qualification is pending. Keep the original eleven workload bodies,
 counts, oracles,15 samples/3 alternating pairs,512MiB/180-second watchdogs and
@@ -67,3 +73,14 @@ the existing10%/MAD gate for candidate/main and actual pinned omoikane modified
 Boa on ARM64 and hosted x64. Retain all decisions, regressions and controls.
 The older pre-GC packed-number trial did not qualify an array speed improvement;
 its unfavorable measurements remain in `docs/three-experiment-comparisons.md`.
+
+The #489 acceptance evidence is organized as follows; pending rows are not
+completed by the earlier ARM64 result:
+
+| Condition | Evidence |
+| --- | --- |
+| Special numeric payloads and default flags | `numeric_bits_and_object_edges_survive_storage_transitions_and_collection` checks every special payload's exact f64 bits/default flags through holes, sparse and descriptor restoration with GC, then a direct numeric-to-managed-child overwrite across GC. The strengthened native/Miri checks both pass2/0 ignored. |
+| Holes, inherited getters, descriptor restrictions, shrinking and sparse/mixed storage | `tests/array_elements.rs` covers representation round trips, mutating prototype accessors, Proxy traps and failed length shrink. `tests/array_stack.rs` also covers inherited holes and read-only length with required partial changes. |
+| Independent model and fixed Test262 | `complete_descriptors_match_an_independent_model_with_gc_between_operations` compares1024 seeded native operations (48 under Miri), keys, length, flags and values. The pinned array-elements, array-stack and array-literal wrappers pass and assert the fixed corpus revision; selected ignored-by-default wrappers are explicitly executed. |
+| Original-eleven speed comparisons | `experiments/view-6fb` retains ARM64 and both hosted before/after and actual-Boa reports, controls, source/binary identities and independent statistics. Hosted regressions and one Boa gate miss remain unresolved. Old adverse reports and supplemental instruction diagnostics are retained separately from native speed gates. |
+| Stable, MSRV, quality, security, documentation and merge | CI40792515990 passes stable/Rust1.85/Clippy/fmt/C ABI. Native, integration Miri and fixed Test262 logs are retained. Full runtime Miri/security40792515995 and final merge remain pending. |

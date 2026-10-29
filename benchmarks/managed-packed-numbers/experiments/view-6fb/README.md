@@ -10,6 +10,21 @@ borrowed descriptor view. Ordinary flags and managed owner checks are retained.
 | Candidate / reference Temiya | 0 | 33 | 0 |
 | Candidate / actual modified Boa | 33 | 0 | 0 |
 
+| Hosted AMD EPYC7763 cohort | Candidate/main | Candidate/actual Boa | Baseline/Boa | Same binary |
+| --- | --- | --- | --- | --- |
+| Copy1 |29 noise /4 slower|32 faster /1 noise|33 faster|33 noise|
+| Copy2 |1 faster /27 noise /5 slower|33 faster|33 faster|33 noise|
+
+Hosted run40792533180 completed collection successfully, but these results do
+not meet the performance objective. Each of its8 reports independently validates
+66 workers/1056 values, original inputs/gates and all source/build/control identities.
+Both cohorts regress all3 primitive-string-property pairs by11.4–12.3%; each
+also regresses string-concat pair2 by10.9%. Copy2 additionally regresses
+prop-mega pair0 by17.3%. All6 hosted array decisions are within their gates.
+Copy1's primitive-string-property/Boa pair1 ratio0.747106 fails its0.532667 MAD
+gate. The other cohort's favorable result does not erase that miss. All raw
+reports, controls, metadata and independent audits are in `hosted`.
+
 Each report has66 successful workers,1056 checked values and33 independently
 recomputed decisions. Inputs are the original eleven,15 samples plus a checked
 warmup,3 alternating pairs,512MiB/180s limits and unchanged10%/MAD gates.
@@ -66,8 +81,9 @@ establish why the old hosted x64 cohort had broad regressions. Native array
 before/after remains within its fixed gates. No old unfavorable report is
 replaced by this diagnostic.
 
-Hosted two-machine comparisons (run40792533180) and full latest-runtime security
-(run40792515995) remain pending. No merge acceptance is implied. The initial
+Full latest-runtime security(run40792515995) remains pending. Hosted regressions
+and the Boa gate miss require investigation; this candidate is not accepted for
+merge. The initial
 Cow trial and pre-GC regressions remain preserved separately and are not erased
 by this ARM64 result. ArraySetLength double coercion #450 is outside this change.
 

@@ -28,3 +28,19 @@ class measurements and statistical decisions, verifies worker identity and
 checks the retained 725-test run and the failed-then-fixed caller regression.
 The source, raw data and conditions remain available even after later fixes.
 Integrity success preserves slow results; it is not performance acceptance.
+
+The intermediate `auto-functions-v1` capture uses clean source `d818832`.
+Eligible Auto function bodies now use verified bytecode, while explicit Ast
+continues using AST evaluation. The fixed class suite improves in 11 of 12
+comparisons against the initial implementation, with one within noise. Against
+actual Boa, six comparisons are slower and six remain within noise. Its
+same-binary control has twelve within-noise decisions. This intermediate version
+still does not meet the class speed goal. All three raw reports, worker identity,
+controller snapshots, and the 728-test log are retained. Functional result JSON
+records 256 passes and 38 dependency failures in each backend and a passing
+214-variant PR gate; the JSON alone is not a reconstruction of those CLI reports.
+
+`node benchmarks/base-classes/verify-auto-functions.mjs` independently checks the
+class measurements and their statistical decisions and validates archived file
+identities and the recorded functional result summaries. Original-eleven
+measurements are separate and cannot establish class speed.

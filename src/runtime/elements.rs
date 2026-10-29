@@ -2,9 +2,46 @@
 //! Complete descriptors survive every representation change. No method here
 //! invokes JavaScript; callers perform descriptor/prototype/Proxy checks.
 
-use std::{borrow::Cow, collections::BTreeMap};
+use std::collections::BTreeMap;
 
-use super::PropertyDescriptor;
+use super::{Object, PropertyDescriptor, RuntimeResult, Value, stored::StoredDescriptor};
+
+/// A numeric read need not construct and then drop a complete descriptor.
+/// Full descriptors are materialized only when the caller needs their flags.
+pub(super) enum ElementRef<'a, D> {
+    Number(f64),
+    Descriptor(&'a D),
+}
+
+impl<D: ElementDescriptor> ElementRef<'_, D> {
+    pub(super) fn configurable(&self) -> Option<bool> {
+        match self {
+            Self::Number(_) => Some(true),
+            Self::Descriptor(descriptor) => descriptor.configurable(),
+        }
+    }
+}
+
+impl ElementRef<'_, StoredDescriptor> {
+    pub(super) fn load(&self, owner: &Object) -> RuntimeResult<PropertyDescriptor> {
+        match self {
+            Self::Number(value) => Ok(PropertyDescriptor::data(
+                Value::Number(*value),
+                true,
+                true,
+                true,
+            )),
+            Self::Descriptor(descriptor) => descriptor.load(owner),
+        }
+    }
+
+    pub(super) fn value(&self, owner: &Object) -> Option<Value> {
+        match self {
+            Self::Number(value) => Some(Value::Number(*value)),
+            Self::Descriptor(descriptor) => descriptor.value()?.load(owner).ok(),
+        }
+    }
+}
 
 pub(super) trait ElementDescriptor: Clone {
     fn configurable(&self) -> Option<bool>;
@@ -94,17 +131,17 @@ impl<D: ElementDescriptor> Elements<D> {
         }
     }
 
-    pub(super) fn get(&self, index: u32) -> Option<Cow<'_, D>> {
+    pub(super) fn get(&self, index: u32) -> Option<ElementRef<'_, D>> {
         match self {
             Self::PackedNumbers(slots) => slots
                 .get(index as usize)
-                .map(|value| Cow::Owned(D::from_number(*value))),
-            Self::Packed(slots) => slots.get(index as usize).map(Cow::Borrowed),
+                .map(|value| ElementRef::Number(*value)),
+            Self::Packed(slots) => slots.get(index as usize).map(ElementRef::Descriptor),
             Self::Holey { slots, .. } => slots
                 .get(index as usize)
                 .and_then(Option::as_ref)
-                .map(Cow::Borrowed),
-            Self::Sparse(slots) => slots.get(&index).map(Cow::Borrowed),
+                .map(ElementRef::Descriptor),
+            Self::Sparse(slots) => slots.get(&index).map(ElementRef::Descriptor),
         }
     }
 

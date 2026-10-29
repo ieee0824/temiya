@@ -33,6 +33,23 @@ both in7 requests, with sum8386560 and zero final retained cells. This is about
 89% fewer requested bytes, not peak live bytes, RSS or a timing comparison.
 The same probe source is used with unchanged reference library/manifests.
 
+The first managed-storage candidate used `Cow<StoredDescriptor>` to synthesize
+complete descriptors even for value-only reads. Its retained ARM64 comparison
+had no before/after regression beyond the gate, but no qualified array speedup.
+One of two hosted x64 machines recorded 13 slower before/after pairs, including
+array, object and primitive workloads. The other recorded all 33 within the gate.
+The actual Boa comparison also missed individual gates on ARM64 and one hosted
+machine. All reports and controls are retained in
+`benchmarks/managed-packed-numbers/experiments/cow-25e`; these results do not
+qualify the candidate for the performance objective.
+
+The next implementation uses a small numeric-or-borrowed-descriptor view for
+reads. Value-only reads copy the f64 directly; descriptor consumers still
+reconstruct every default flag, and managed values still use owner validation.
+This removes unnecessary full descriptor construction/destruction from that
+path. It is a hypothesis to measure, not a demonstrated explanation for the
+unrelated hosted regressions or a speed claim.
+
 Performance qualification is pending. Keep the original eleven workload bodies,
 counts, oracles,15 samples/3 alternating pairs,512MiB/180-second watchdogs and
 the existing10%/MAD gate for candidate/main and actual pinned omoikane modified

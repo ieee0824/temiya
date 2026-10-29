@@ -17,6 +17,10 @@ on:
         description: Full reference commit for managed storage diagnosis
         type: string
         default: c7c4f265c4002de1d90223eccaa64aaafdada52a
+      workloads:
+        description: Optional comma-separated original workload names; empty retains the three managed-storage diagnostics
+        type: string
+        default: ''
 permissions:
   contents: read
 concurrency:
@@ -103,6 +107,7 @@ jobs:
       CARGO_INCREMENTAL: 0
       EXPECTED_MEASURED: ${{ inputs.measured_revision }}
       EXPECTED_BASELINE: ${{ inputs.baseline_revision }}
+      DIAGNOSTIC_WORKLOADS: ${{ inputs.workloads }}
     defaults:
       run:
         working-directory: profile-tools
@@ -144,8 +149,8 @@ jobs:
         run: |
           cargo build --manifest-path ../temiya-baseline/Cargo.toml --locked --release --no-default-features --example measure_workload --target-dir "$RUNNER_TEMP/baseline-target" > "$RUNNER_TEMP/numeric-profile/baseline-build.log" 2>&1
           cargo build --manifest-path ../temiya-current/Cargo.toml --locked --release --no-default-features --example measure_workload --target-dir "$RUNNER_TEMP/measured-target" > "$RUNNER_TEMP/numeric-profile/measured-build.log" 2>&1
-      - name: Diagnose original string and property regressions
-        run: node scripts/profile-managed-number-regressions.mjs "$GITHUB_WORKSPACE/temiya-baseline" "$GITHUB_WORKSPACE/temiya-current" "$RUNNER_TEMP/original" "$RUNNER_TEMP/numeric-profile" "$RUNNER_TEMP/baseline-target" "$RUNNER_TEMP/measured-target"
+      - name: Diagnose selected original workloads
+        run: node scripts/profile-managed-number-regressions.mjs "$GITHUB_WORKSPACE/temiya-baseline" "$GITHUB_WORKSPACE/temiya-current" "$RUNNER_TEMP/original" "$RUNNER_TEMP/numeric-profile" "$RUNNER_TEMP/baseline-target" "$RUNNER_TEMP/measured-target" "$DIAGNOSTIC_WORKLOADS"
       - name: Retain complete diagnostics including failures
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9

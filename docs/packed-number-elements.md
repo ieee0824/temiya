@@ -50,6 +50,17 @@ This removes unnecessary full descriptor construction/destruction from that
 path. It is a hypothesis to measure, not a demonstrated explanation for the
 unrelated hosted regressions or a speed claim.
 
+For this view at source6fb3160, the retained ARM64 comparison validates all66
+workers/1056 values in each report. Candidate/main has33 decisions within the
+fixed gate and no qualified array speedup. Candidate/actual modified Boa has
+all33 decisions faster beyond the gate. Both use the same Rust compiler and
+unchanged original-eleven protocol; source/binary/adapter identities are checked.
+This is a qualification of those workloads in that measured ARM64 environment,
+not arbitrary-program performance. Full stable/Rust1.85/Clippy/C ABI CI passes;
+the view's two integration Miri tests also pass. See
+`benchmarks/managed-packed-numbers/experiments/view-6fb` for evidence. Hosted
+two-machine comparisons and full latest-runtime security remain pending.
+
 Performance qualification is pending. Keep the original eleven workload bodies,
 counts, oracles,15 samples/3 alternating pairs,512MiB/180-second watchdogs and
 the existing10%/MAD gate for candidate/main and actual pinned omoikane modified

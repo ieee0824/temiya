@@ -1,4 +1,18 @@
-# Managed packed numeric elements, source 25e46c7608366603b68504d73dc3ba78a2acbfc8
+# Managed packed numeric elements
+
+The files in this directory describe the first implementation at source
+25e46c7608366603b68504d73dc3ba78a2acbfc8. Later trials are recorded separately:
+
+- `experiments/cow-25e`: original owned-descriptor reads, including all adverse
+  ARM64/hosted results, controls, source identities and completed security proof.
+- `experiments/view-6fb`: smaller numeric/borrowed-descriptor read view at source
+  6fb3160be6d966b7b0c35fb7b5da06ddb33b3583, with separate validation and timings.
+
+Audit retained original-eleven reports with
+`node scripts/audit-original-workload-records.mjs REPORT.json [...]`.
+The auditor recomputes all values, sample statistics, alternating orders and
+fixed gates. An audit success verifies the recorded outcome, including noise
+and regressions; it does not turn a report into a speed qualification.
 
 This is a new trial on the integrated tracing runtime, not the earlier pre-GC
 packed-number trial. Contiguous default numeric descriptors use8-byte values;

@@ -2,9 +2,6 @@
 
 use std::{collections::BTreeMap, fmt};
 
-mod engine;
-pub use engine::{Corpus, EngineExecutor, EngineTestResult, run_with_engine};
-
 /// Test262 upstream revision consumed by the repository harness.
 pub const TEST262_REVISION: &str = "d53ebc8b1931d9f1541e43d59650776e4b766248";
 

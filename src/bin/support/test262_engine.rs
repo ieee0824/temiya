@@ -9,16 +9,16 @@ use std::{
     rc::Rc,
 };
 
-use crate::{
+use temiya::{
     Engine,
     embedding::{EmbedError, Exception, ExceptionKind, HostError, ScriptBackend},
     parser::parse_module,
     runtime::{ModuleStatus, Object, Value},
 };
 
-use super::{
+use temiya::test262::{
     Executor, HarnessError, Manifest, NegativePhase, ObservedFailure, ResultStatus,
-    TEST262_REVISION, TestCase, TestResult, TestVariant, classify,
+    TEST262_REVISION, TestCase, TestResult, TestVariant, run_test,
 };
 
 /// Source of tests, fixtures and unchanged harness files.
@@ -188,7 +188,7 @@ impl EngineExecutor {
     fn compile_failure(&mut self, error: EmbedError) -> ObservedFailure {
         let kind = match &error {
             EmbedError::Compile(error)
-                if error.kind() == crate::runtime::RuntimeErrorKind::SyntaxError =>
+                if error.kind() == temiya::runtime::RuntimeErrorKind::SyntaxError =>
             {
                 "SyntaxError"
             }
@@ -464,52 +464,92 @@ pub fn run_with_engine(
     let has = |flag: &str| test.metadata.flags.iter().any(|value| value == flag);
     let conflicting_flags = (has("onlyStrict") && (has("noStrict") || has("raw")))
         || (has("module") && (has("noStrict") || has("raw")));
-    let mut executor = EngineExecutor::new(
-        corpus.clone(),
-        &test.path,
-        backend,
-        test.metadata.flags.iter().any(|f| f == "raw"),
-    );
-    test.variants()
-        .into_iter()
-        .map(|variant| {
-            let mut observed_failure = None;
-            let status = if let Some(skip) = manifest.skip(&test.path) {
-                ResultStatus::Skipped {
-                    reason: skip.reason.clone(),
-                    detail: skip.detail.clone(),
-                }
-            } else if let Some(flag) = unsupported {
-                ResultStatus::Skipped {
-                    reason: "unsupported-runner-flag".into(),
-                    detail: format!("runner does not support flag {flag}"),
-                }
-            } else if conflicting_flags {
-                ResultStatus::Failed("conflicting variant flags".into())
-            } else {
-                let observed =
-                    executor.execute(&test.source_for(variant), variant, &test.metadata.includes);
-                observed_failure = observed.as_ref().err().cloned();
-                if let Err(error) = &observed {
-                    if matches!(
-                        error.error_type.as_str(),
-                        "HarnessError" | "EngineError" | "UnsupportedBytecode" | "PendingModule"
-                    ) {
-                        ResultStatus::Failed(format!("runner/engine failure: {}", error.error_type))
-                    } else {
-                        classify(test.metadata.negative.as_ref(), observed)
-                    }
-                } else {
-                    classify(test.metadata.negative.as_ref(), observed)
-                }
-            };
-            EngineTestResult {
+    let gated = if let Some(skip) = manifest.skip(&test.path) {
+        Some(ResultStatus::Skipped {
+            reason: skip.reason.clone(),
+            detail: skip.detail.clone(),
+        })
+    } else if let Some(flag) = unsupported {
+        Some(ResultStatus::Skipped {
+            reason: "unsupported-runner-flag".into(),
+            detail: format!("runner does not support flag {flag}"),
+        })
+    } else if conflicting_flags {
+        Some(ResultStatus::Failed("conflicting variant flags".into()))
+    } else {
+        None
+    };
+    if let Some(status) = gated {
+        return test
+            .variants()
+            .into_iter()
+            .map(|variant| EngineTestResult {
                 result: TestResult {
                     path: test.path.clone(),
                     variant,
-                    status,
+                    status: status.clone(),
                 },
-                diagnostic: executor.diagnostic().map(str::to_owned),
+                diagnostic: None,
+                observed_failure: None,
+            })
+            .collect();
+    }
+    type Observation = (Option<String>, Option<ObservedFailure>);
+    struct RecordingExecutor {
+        runner: EngineExecutor,
+        observations: BTreeMap<TestVariant, Observation>,
+    }
+    impl Executor for RecordingExecutor {
+        fn execute(
+            &mut self,
+            source: &str,
+            variant: TestVariant,
+            includes: &[String],
+        ) -> Result<(), ObservedFailure> {
+            let observed = self.runner.execute(source, variant, includes);
+            self.observations.insert(
+                variant,
+                (
+                    self.runner.diagnostic().map(str::to_owned),
+                    observed.as_ref().err().cloned(),
+                ),
+            );
+            observed
+        }
+    }
+    let mut executor = RecordingExecutor {
+        runner: EngineExecutor::new(corpus.clone(), &test.path, backend, has("raw")),
+        observations: BTreeMap::new(),
+    };
+    // Classification stays in the core's existing public harness API; the
+    // concrete Engine/filesystem adapter is compiled only into its CLI client.
+    run_test(test, manifest, &mut executor)
+        .into_iter()
+        .map(|mut result| {
+            let Some((diagnostic, observed_failure)) =
+                executor.observations.remove(&result.variant)
+            else {
+                result.status = ResultStatus::Failed("missing Engine execution observation".into());
+                return EngineTestResult {
+                    result,
+                    diagnostic: None,
+                    observed_failure: None,
+                };
+            };
+            if let Some(error) = &observed_failure {
+                if matches!(
+                    error.error_type.as_str(),
+                    "HarnessError" | "EngineError" | "UnsupportedBytecode" | "PendingModule"
+                ) {
+                    result.status = ResultStatus::Failed(format!(
+                        "runner/engine failure: {}",
+                        error.error_type
+                    ));
+                }
+            }
+            EngineTestResult {
+                result,
+                diagnostic,
                 observed_failure,
             }
         })

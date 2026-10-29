@@ -3,9 +3,12 @@
 use std::{env, fs, path::PathBuf, process::ExitCode};
 
 use serde_json::{Value, json};
+#[path = "support/test262_engine.rs"]
+mod engine;
+use engine::{Corpus, run_with_engine};
 use temiya::{
     embedding::ScriptBackend,
-    test262::{Corpus, Manifest, ResultStatus, TestCase, run_with_engine},
+    test262::{Manifest, ResultStatus, TestCase},
 };
 
 const HELP: &str = "Usage: temiya-test262 --corpus DIR [--pinned] [--backend auto|ast|bytecode]

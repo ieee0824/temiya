@@ -21,6 +21,9 @@ compilation, module loading/linking and evaluation. Parsing alone never produces
 a positive pass. The existing `Executor`/`run_test` API remains available;
 `EngineExecutor` supplies a concrete adapter and `run_with_engine` additionally
 applies metadata capability gates and retains original failure diagnostics.
+The concrete adapter lives in the [CLI support module](../src/bin/support/test262_engine.rs)
+and implements the existing public `Executor`/`run_test` contract. Git/filesystem
+runner code is compiled into the CLI client rather than the engine library.
 
 ```sh
 scripts/test262

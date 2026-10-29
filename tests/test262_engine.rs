@@ -7,11 +7,14 @@ use std::{
     sync::atomic::{AtomicUsize, Ordering},
 };
 
+#[path = "../src/bin/support/test262_engine.rs"]
+mod engine;
+use engine::{Corpus, EngineTestResult, run_with_engine};
 use temiya::{
     Engine,
     embedding::{ExceptionKind, ScriptBackend},
     runtime::{ModuleStatus, Value},
-    test262::{Corpus, Manifest, ResultStatus, TestCase, run_with_engine},
+    test262::{Manifest, ResultStatus, TestCase},
 };
 
 struct Fixture(PathBuf);
@@ -43,7 +46,7 @@ impl Fixture {
     fn corpus(&self) -> Corpus {
         Corpus::directory(&self.0).unwrap()
     }
-    fn run(&self, source: &str, backend: ScriptBackend) -> Vec<temiya::test262::EngineTestResult> {
+    fn run(&self, source: &str, backend: ScriptBackend) -> Vec<EngineTestResult> {
         run_with_engine(
             &TestCase::parse("test/case.js", source).unwrap(),
             &manifest(),
@@ -70,7 +73,7 @@ impl Drop for Fixture {
 fn manifest() -> Manifest {
     Manifest::from_json(include_str!("../test262/manifest.json")).unwrap()
 }
-fn pass(results: &[temiya::test262::EngineTestResult], expected: usize) {
+fn pass(results: &[EngineTestResult], expected: usize) {
     assert_eq!(results.len(), expected);
     assert!(
         results
@@ -79,7 +82,7 @@ fn pass(results: &[temiya::test262::EngineTestResult], expected: usize) {
         "{results:?}"
     );
 }
-fn fail(results: &[temiya::test262::EngineTestResult]) {
+fn fail(results: &[EngineTestResult]) {
     assert!(!results.is_empty());
     assert!(
         results
@@ -186,6 +189,12 @@ fn harness_failures_and_unavailable_hooks_never_satisfy_negative_tests() {
             let results = fixture.run(&source, backend);
             fail(&results);
             assert!(format!("{:?}", results[0]).contains("HarnessError"));
+            assert!(
+                results[0]
+                    .diagnostic
+                    .as_deref()
+                    .is_some_and(|text| text.contains(include))
+            );
         }
         for source in [
             "$262.evalScript('missingName');",
@@ -312,6 +321,7 @@ fn cli_runs_real_cases_and_keeps_setup_failures_and_skips_out_of_pass_counts() {
 #[test]
 fn corpus_and_include_paths_cannot_escape_their_roots() {
     let fixture = Fixture::new();
+    assert!(fixture.corpus().revision().is_none());
     for path in [
         "../Cargo.toml",
         "/etc/passwd",

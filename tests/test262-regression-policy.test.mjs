@@ -1,9 +1,21 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {compareOutcomes, checkComparableConditions, checkBaselineUpdate}
+import {compareOutcomes, checkComparableConditions, checkBaselineUpdate, selectPaths}
   from '../scripts/test262-regression-policy.mjs';
 const row = (outcome, variant = 'Sloppy') => ({path: 'test/a.js', variant, outcome});
 const paths = ['test/a.js'];
+
+test('full shards cover every original path exactly once, including uneven boundaries', () => {
+  const universe = Array.from({length: 52133}, (_, n) => 'test/' + String(n).padStart(5, '0') + '.js');
+  const rows = Array.from({length: 8}, (_, shard) => selectPaths({}, universe, {full: true, shard, shards: 8}));
+  assert.deepEqual(rows.flat().sort(), universe);
+  assert.equal(new Set(rows.flat()).size, universe.length);
+  assert.equal(Math.max(...rows.map(r => r.length)) - Math.min(...rows.map(r => r.length)), 1);
+  assert.deepEqual(selectPaths({pr_selection: paths}, paths), paths);
+  assert.throws(() => selectPaths({}, universe, {full: true, shard: 8, shards: 8}), /index/);
+  assert.throws(() => selectPaths({pr_selection: paths}, paths, {shards: 2}), /only full/);
+  assert.throws(() => selectPaths({pr_selection: ['test/z.js']}, paths), /outside/);
+});
 
 test('known pass cannot become fail, timeout, skip, missing, or unexecuted', () => {
   for (const status of ['fail', 'timeout', 'skip', 'not_run', 'unreported'])

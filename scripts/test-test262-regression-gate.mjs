@@ -27,10 +27,10 @@ const selection = [
 ];
 const selectionFile = path.join(root, 'selection.json');
 fs.writeFileSync(selectionFile, JSON.stringify(selection));
-function capture(name, extra = []) {
+function capture(name, extra = [], selectedFile = selectionFile) {
   const directory = path.join(root, name);
   run('test262-baseline.mjs', ['--engine', path.resolve(engine), '--corpus', path.resolve(corpus),
-    '--output', directory, '--pinned', '--universe', selectionFile,
+    '--output', directory, '--pinned', '--universe', selectedFile,
     '--timeout-ms', '1000', ...extra]);
   return directory;
 }
@@ -50,6 +50,14 @@ const accepted = JSON.parse(run('check-test262-regressions.mjs', gateArgs).stdou
 assert.equal(accepted.passed, true);
 assert.equal(accepted.observed_variants, 4);
 run('check-test262-regressions.mjs', ['--full', ...gateArgs]);
+for (let shard = 0; shard < 2; shard++) {
+  const selectedFile = path.join(root, 'shard-' + shard + '.json');
+  run('prepare-test262-regression-selection.mjs',
+    [reference, policyFile, 'full', String(shard), '2', selectedFile]);
+  const directory = capture('shard-' + shard, [], selectedFile);
+  run('check-test262-regressions.mjs',
+    ['--full', '--shard', shard + '/2', reference, directory, policyFile]);
+}
 
 const changedBudget = capture('changed-budget', ['--memory-mb', '256']);
 assert.match(run('check-test262-regressions.mjs', [reference, changedBudget, policyFile], 2).stderr,
@@ -68,5 +76,5 @@ fs.writeFileSync(changedPolicyFile, JSON.stringify({...policy, pr_selection: sel
 assert.match(run('check-test262-regressions.mjs', [reference, candidate, changedPolicyFile, policyFile], 2).stderr,
   /fresh update reason/);
 console.log(JSON.stringify({integration: 'pass', original_variants: 4,
-  checks: ['pr pass', 'full pass', 'budget mismatch rejected', 'forged count rejected',
+  checks: ['pr pass', 'full pass', 'all full shards pass', 'budget mismatch rejected', 'forged count rejected',
     'baseline change without fresh reason rejected'], output: root}));

@@ -23,6 +23,23 @@ function index(rows) {
   return map;
 }
 
+export function selectPaths(policy, universe, {full = false, shard = 0, shards = 1} = {}) {
+  assert(Array.isArray(universe) && universe.every(canonicalPath), 'invalid baseline universe');
+  assert.deepEqual(universe, [...new Set(universe)].sort(), 'baseline universe must be sorted and unique');
+  assert(Number.isInteger(shards) && shards >= 1 && shards <= 64, 'invalid shard count');
+  assert(Number.isInteger(shard) && shard >= 0 && shard < shards, 'invalid shard index');
+  assert(full || (shard === 0 && shards === 1), 'only full runs may be sharded');
+  const selection = full ? universe : policy.pr_selection;
+  assert(Array.isArray(selection) && selection.length > 0 && selection.every(canonicalPath),
+    'nonempty canonical selection required');
+  assert.deepEqual(selection, [...new Set(selection)].sort(), 'selection must be sorted and unique');
+  const available = new Set(universe);
+  assert(selection.every(name => available.has(name)), 'selection outside baseline universe');
+  const result = selection.filter((_, index) => index % shards === shard);
+  assert(result.length > 0, 'empty shard');
+  return result;
+}
+
 export function compareOutcomes(expectedRows, actualRows, selectedPaths, skipReasons = []) {
   const expected = index(expectedRows), actual = index(actualRows);
   assert(Array.isArray(selectedPaths) && selectedPaths.length > 0, 'empty selection');

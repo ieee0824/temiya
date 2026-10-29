@@ -498,9 +498,17 @@ pub struct ExpressionEvaluator {
     pub(super) this_value: Value,
     pub(super) new_target: Option<Object>,
     pub(super) strict: bool,
+    pub(super) function_cache: Option<super::function::FunctionCache>,
 }
 
 impl ExpressionEvaluator {
+    pub(super) fn with_function_cache(
+        mut self,
+        cache: Option<super::function::FunctionCache>,
+    ) -> Self {
+        self.function_cache = cache;
+        self
+    }
     pub(super) fn evaluate_named(
         &self,
         expression: &Expr,
@@ -529,6 +537,7 @@ impl ExpressionEvaluator {
             this_value,
             new_target: None,
             strict: false,
+            function_cache: None,
         }
     }
 
@@ -546,6 +555,7 @@ impl ExpressionEvaluator {
             this_value,
             new_target: None,
             strict,
+            function_cache: None,
         }
     }
 
@@ -1417,6 +1427,7 @@ pub(super) struct StoredExpressionEvaluator {
     this_value: super::stored::StoredValue,
     new_target: Option<super::stored::StoredObject>,
     strict: bool,
+    function_cache: Option<super::function::FunctionCache>,
 }
 impl StoredExpressionEvaluator {
     pub(super) fn store(owner: &Object, evaluator: ExpressionEvaluator) -> RuntimeResult<Self> {
@@ -1433,6 +1444,7 @@ impl StoredExpressionEvaluator {
                 .map(|target| super::stored::StoredObject::store(owner, target))
                 .transpose()?,
             strict: evaluator.strict,
+            function_cache: evaluator.function_cache,
         })
     }
     pub(super) fn load(self, owner: &Object) -> RuntimeResult<ExpressionEvaluator> {
@@ -1446,6 +1458,7 @@ impl StoredExpressionEvaluator {
                 .map(|target| target.load(owner))
                 .transpose()?,
             strict: self.strict,
+            function_cache: self.function_cache,
         })
     }
     pub(super) fn trace(&self, tracer: &mut crate::gc::Tracer<'_>) {

@@ -5,9 +5,15 @@ use super::{
     execution::StoredRealm,
     stored::{StoredObject, StoredValue},
 };
-use std::rc::Rc;
+use std::{
+    cell::RefCell,
+    collections::HashMap,
+    ops::Deref,
+    rc::{Rc, Weak},
+};
 
 use crate::ast::{Expr, ExprKind, Function, FunctionBody, MethodKind};
+use crate::bytecode::{BytecodeCompiler, FunctionTemplate};
 
 use super::{
     Completion, Environment, ExpressionEvaluator, JsString, Object, PropertyKey, Realm,
@@ -26,9 +32,81 @@ pub enum FunctionKind {
     Method(MethodKind),
 }
 
+type FunctionCacheKey = (usize, usize, u8);
+type CodeCache = HashMap<FunctionCacheKey, Vec<Rc<FunctionCode>>>;
+pub(super) type FunctionCache = Rc<RefCell<CodeCache>>;
+
+#[derive(Debug)]
+pub(super) struct FunctionCode {
+    ast: Function,
+    kind: FunctionKind,
+    compiled: Option<Rc<FunctionTemplate>>,
+    auto_functions: bool,
+    cache: Weak<RefCell<CodeCache>>,
+}
+impl Deref for FunctionCode {
+    type Target = Function;
+    fn deref(&self) -> &Function {
+        &self.ast
+    }
+}
+impl FunctionCode {
+    fn context(&self) -> Option<FunctionCache> {
+        self.auto_functions
+            .then(|| self.cache.upgrade().unwrap_or_default())
+    }
+}
+
+fn prepare_code(
+    code: &Function,
+    kind: FunctionKind,
+    cache: &Option<FunctionCache>,
+) -> Rc<FunctionCode> {
+    let tag = match kind {
+        FunctionKind::Normal => 0,
+        FunctionKind::Arrow => 1,
+        FunctionKind::Method(MethodKind::Method) => 2,
+        FunctionKind::Method(MethodKind::Get) => 3,
+        FunctionKind::Method(MethodKind::Set) => 4,
+        FunctionKind::Method(MethodKind::Constructor) => 5,
+    };
+    let key = (code.span.start, code.span.end, tag);
+    if let Some(cache) = cache {
+        if let Some(found) = cache.borrow().get(&key).and_then(|entries| {
+            entries
+                .iter()
+                .find(|entry| entry.kind == kind && entry.ast == *code)
+        }) {
+            return found.clone();
+        }
+    }
+    let compiled = if cache.is_some() && kind != FunctionKind::Arrow {
+        BytecodeCompiler::compile_function_template(code)
+            .ok()
+            .map(Rc::new)
+    } else {
+        None
+    };
+    let prepared = Rc::new(FunctionCode {
+        ast: code.clone(),
+        kind,
+        compiled,
+        auto_functions: cache.is_some(),
+        cache: cache.as_ref().map_or_else(Weak::new, Rc::downgrade),
+    });
+    if let Some(cache) = cache {
+        cache
+            .borrow_mut()
+            .entry(key)
+            .or_default()
+            .push(prepared.clone());
+    }
+    prepared
+}
+
 #[derive(Clone)]
 pub(super) struct FunctionClosure {
-    pub(super) code: Rc<Function>,
+    pub(super) code: Rc<FunctionCode>,
     pub(super) kind: FunctionKind,
     pub(super) realm: Realm,
     pub(super) environment: Environment,
@@ -38,7 +116,7 @@ pub(super) struct FunctionClosure {
 }
 
 pub(super) struct StoredFunctionClosure {
-    code: Rc<Function>,
+    code: Rc<FunctionCode>,
     kind: FunctionKind,
     realm: StoredRealm,
     environment: StoredEnvironment,
@@ -149,7 +227,7 @@ pub(super) fn create_function(
             .intrinsic(super::IntrinsicId::FunctionPrototype),
     );
     let closure = StoredFunctionClosure {
-        code: Rc::new(code.clone()),
+        code: prepare_code(code, kind, &evaluator.function_cache),
         kind,
         realm: StoredRealm::store(&function, &evaluator.realm)?,
         environment: StoredEnvironment::store(
@@ -208,6 +286,17 @@ fn call_function(
     arguments: &[Value],
     new_target: Option<Object>,
 ) -> RuntimeResult<Value> {
+    if let Some(template) = &closure.code.compiled {
+        return super::bytecode_function::execute_template(
+            template.clone(),
+            closure.realm.clone(),
+            closure.environment.clone(),
+            function,
+            this_argument,
+            arguments,
+            new_target,
+        );
+    }
     let lexical = closure.kind == FunctionKind::Arrow;
     let this_value = if lexical {
         closure.lexical_this.clone()
@@ -238,7 +327,8 @@ fn call_function(
         this_value.clone(),
         closure.code.strict,
     )
-    .with_new_target(new_target.clone());
+    .with_new_target(new_target.clone())
+    .with_function_cache(closure.code.context());
     bind_parameters(
         &evaluator,
         &environment,
@@ -256,7 +346,8 @@ fn call_function(
                 this_value,
                 closure.code.strict,
             )
-            .with_new_target(new_target);
+            .with_new_target(new_target)
+            .with_function_cache(evaluator.function_cache.clone());
             match statements.evaluate_statement(body)? {
                 Completion::Return(value) => Ok(value),
                 Completion::Normal(_) => Ok(Value::Undefined),
@@ -439,6 +530,35 @@ mod primitive_this_tests {
             );
             drop((global, realm));
             assert_eq!(runtime.collect_migration_graph().unwrap().retained, 0);
+        }
+    }
+}
+
+#[cfg(test)]
+mod auto_body_tests {
+    use crate::{Engine, embedding::ScriptBackend, runtime::Value};
+
+    #[test]
+    fn only_auto_fallback_enters_the_verified_function_runtime() {
+        for backend in [ScriptBackend::Ast, ScriptBackend::Auto] {
+            let engine = Engine::builder().script_backend(backend).build();
+            let realm = engine.create_realm();
+            let script = engine.compile(&realm, "class C { static total(n) { let sum = 0; for (let i = 0; i < n; i++) { sum += i; } return sum; } }").unwrap();
+            assert_eq!(script.backend(), ScriptBackend::Ast);
+            engine.evaluate(&script).unwrap();
+            let call = engine.compile(&realm, "C.total(4);").unwrap();
+            let before = super::super::bytecode_function::bridged_calls();
+            assert!(
+                engine
+                    .evaluate(&call)
+                    .unwrap()
+                    .value()
+                    .same_value(&Value::Number(6.0))
+            );
+            assert_eq!(
+                super::super::bytecode_function::bridged_calls() - before,
+                usize::from(backend == ScriptBackend::Auto)
+            );
         }
     }
 }

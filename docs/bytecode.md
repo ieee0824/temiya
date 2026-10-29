@@ -1,6 +1,6 @@
 # Portable bytecode
 
-Engine defaults to whole-Script Auto selection: supported Scripts use verified bytecode and unsupported Scripts use AST before any observable execution. Explicit Ast and Bytecode selections remain available. Earlier sections describe historical implementation stages, including the former AST default. No AST-function loop tier is enabled by this integration. The pre-GC default API passed all 33 original-eleven Boa comparisons on both recorded x64 and ARM64 machines; see [integration scope and evidence](auto-backend-integration.md). The shared-heap migration and numeric-return path require fresh performance qualification.
+Engine defaults to whole-Script Auto selection: supported Scripts use verified bytecode and unsupported Scripts use AST before any observable execution. In an Auto AST Script, eligible ordinary/class function bodies can independently use the verified bytecode function runtime; unsupported bodies remain AST, and errors are never retried. Explicit Ast keeps AST bodies and explicit Bytecode still rejects an unsupported whole Script. This does not enable a JIT or hot-loop tier. Earlier sections describe historical implementation stages, including the former AST default. The pre-GC default API passed all 33 original-eleven Boa comparisons on both recorded x64 and ARM64 machines; see [integration scope and evidence](auto-backend-integration.md). Runtime changes require fresh performance qualification.
 
 ## Guarded numeric returns
 

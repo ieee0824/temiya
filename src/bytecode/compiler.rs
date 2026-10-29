@@ -22,6 +22,11 @@ use super::{
 pub struct BytecodeCompiler;
 
 impl BytecodeCompiler {
+    pub(crate) fn compile_function_template(
+        function: &Function,
+    ) -> Result<FunctionTemplate, CompileError> {
+        Compiler::empty(function.strict).function_template(function, false)
+    }
     /// Parses Script source, lowers it, and verifies the resulting bytecode.
     pub fn compile(source: &str) -> Result<VerifiedBytecode, CompileError> {
         let program =

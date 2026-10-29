@@ -40,6 +40,26 @@ fn inferred_class_names_and_constructor_new_target_are_observable() {
 }
 
 #[test]
+fn shared_function_code_never_shares_class_environments() {
+    check(
+        "function make(value) { return class Named { static read() { return value; } static self() { return Named; } }; } let A = make(1); let B = make(2); A !== B && A.read() === 1 && B.read() === 2 && A.self() === A && B.self() === B;",
+    );
+    check(
+        "let total = 0; for (let i = 0; i < 20; i++) { let C = class { constructor(value) { this.value = value; } read() { return this.value; } }; total += new C(i).read(); } total === 190;",
+    );
+}
+
+#[test]
+fn compiled_and_fallback_class_bodies_never_replay_side_effects() {
+    check(
+        "let hits = 0; let marker = {}; class C { static fail(x) { hits += x; throw marker; } } let same = false; try { C.fail(1); } catch (e) { same = e === marker; } same && hits === 1;",
+    );
+    check(
+        "let hits = 0; class C { static run(x = 1) { try { hits += x; return 7; } finally { hits += 2; } } } C.run() === 7 && hits === 3;",
+    );
+}
+
+#[test]
 fn direct_class_calls_throw_before_running_the_body() {
     check(
         "let effects = 0; class C { constructor() { effects++; } } let caught = false; try { C(); } catch (e) { caught = e instanceof TypeError; } caught && effects === 0;",

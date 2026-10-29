@@ -17,6 +17,32 @@ struct Closure {
     environment: Environment,
 }
 
+pub(super) fn execute_template(
+    template: Rc<FunctionTemplate>,
+    realm: Realm,
+    environment: Environment,
+    function: Object,
+    this: Value,
+    arguments: &[Value],
+    new_target: Option<Object>,
+) -> RuntimeResult<Value> {
+    #[cfg(test)]
+    BRIDGED_CALLS.with(|count| count.set(count.get() + 1));
+    Closure {
+        template,
+        realm,
+        environment,
+    }
+    .call(function, this, arguments, new_target)
+}
+
+#[cfg(test)]
+thread_local! { static BRIDGED_CALLS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) }; }
+#[cfg(test)]
+pub(super) fn bridged_calls() -> usize {
+    BRIDGED_CALLS.with(std::cell::Cell::get)
+}
+
 pub(super) struct StoredClosure {
     template: Rc<FunctionTemplate>,
     realm: StoredRealm,

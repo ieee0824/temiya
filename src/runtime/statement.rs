@@ -84,6 +84,17 @@ pub struct StatementEvaluator {
 }
 
 impl StatementEvaluator {
+    pub(super) fn with_function_cache(
+        mut self,
+        cache: Option<super::function::FunctionCache>,
+    ) -> Self {
+        self.expression.function_cache = cache;
+        self
+    }
+
+    pub(crate) fn with_auto_functions(self) -> Self {
+        self.with_function_cache(Some(Default::default()))
+    }
     pub(super) fn with_new_target(mut self, new_target: Option<Object>) -> Self {
         self.expression.new_target = new_target;
         self

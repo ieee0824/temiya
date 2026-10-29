@@ -1,4 +1,5 @@
 //! Base class definitions. Derived construction and fields have separate gates.
+use std::borrow::Cow;
 
 use crate::ast::{
     Class, ClassElementKind, ExprKind, Function, FunctionBody, MethodKind, Stmt, StmtKind,
@@ -47,7 +48,8 @@ pub(super) fn evaluate(
         outer.this_value.clone(),
         true,
     )
-    .with_new_target(outer.new_target.clone());
+    .with_new_target(outer.new_target.clone())
+    .with_function_cache(outer.function_cache.clone());
     let prototype = Object::new_with_prototype(outer.realm.intrinsic(IntrinsicId::ObjectPrototype));
     let explicit = class
         .elements
@@ -59,19 +61,22 @@ pub(super) fn evaluate(
             } if !element.is_static => Some(function.as_ref()),
             _ => None,
         });
-    let mut code = explicit.cloned().unwrap_or_else(|| Function {
-        span: class.span,
-        name: None,
-        parameters: vec![],
-        body: FunctionBody::Block(Box::new(Stmt {
+    let code = if let Some(function) = explicit {
+        strict_code(function)
+    } else {
+        Cow::Owned(Function {
             span: class.span,
-            kind: StmtKind::Block(vec![]),
-        })),
-        asynchronous: false,
-        generator: false,
-        strict: true,
-    });
-    code.strict = true;
+            name: None,
+            parameters: vec![],
+            body: FunctionBody::Block(Box::new(Stmt {
+                span: class.span,
+                kind: StmtKind::Block(vec![]),
+            })),
+            asynchronous: false,
+            generator: false,
+            strict: true,
+        })
+    };
     let constructor = create_function(
         &code,
         FunctionKind::Method(MethodKind::Constructor),
@@ -120,8 +125,7 @@ pub(super) fn evaluate(
         } else {
             &prototype
         };
-        let mut code = function.as_ref().clone();
-        code.strict = true;
+        let code = strict_code(function);
         let method = create_function(
             &code,
             FunctionKind::Method(*kind),
@@ -177,4 +181,14 @@ pub(super) fn evaluate(
         environment.initialize_binding(&name, Value::Object(constructor.clone()))?;
     }
     Ok(constructor)
+}
+
+fn strict_code(function: &Function) -> Cow<'_, Function> {
+    if function.strict {
+        Cow::Borrowed(function)
+    } else {
+        let mut code = function.clone();
+        code.strict = true;
+        Cow::Owned(code)
+    }
 }

@@ -2,7 +2,17 @@
 
 The public Engine executes base class declarations and expressions through the
 AST backend. Auto selects this path before execution when a Script contains a
-class; explicit Bytecode still rejects class compilation.
+class; explicit Bytecode still rejects class compilation. Within an Auto
+AST Script, eligible simple-parameter ordinary and class function bodies are
+independently verified and run by the bytecode function runtime. Explicit Ast
+keeps function bodies in the AST interpreter. Unsupported bodies select AST
+before execution; runtime errors never trigger a second execution.
+
+The per-evaluation cache shares immutable code, not class environments, `this`
+or objects. Span/kind lookup is checked against the complete function AST, so
+unrelated definitions cannot reuse code by coincidental source offsets. Code
+holds only weak cache links; class instances and captured names retain the
+normal traced runtime ownership.
 
 ```js
 class Point {

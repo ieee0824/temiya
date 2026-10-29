@@ -47,6 +47,8 @@ jobs:
         run: node scripts/check-regexp-workloads.mjs
       - name: Verify retained fresh RegExp evidence
         run: node benchmarks/regexp-cold-ascii/verify-integrity.mjs
+      - name: Verify retained full Test262 baseline and collection history
+        run: node scripts/verify-test262-archive.mjs benchmarks/test262-feature-baseline
       - name: Verify original arithmetic Intel instruction evidence
         run: node benchmarks/intel-arithmetic/verify.mjs
       - name: Verify checked component records and rejection gates
@@ -98,6 +100,16 @@ jobs:
           node scripts/check-numeric-allocations.mjs target/numeric-allocations.json
       - name: Fetch pinned Test262 regression corpus
         run: scripts/test262
+      - name: Exercise real CLI collection recovery without replacing known outcomes
+        run: node scripts/test-test262-recovery.mjs target/debug/temiya-test262 target/test262 target/test262-recovery-integration
+      - name: Preserve collector recovery integration evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: test262-recovery-integration-${{ matrix.toolchain }}
+          path: target/test262-recovery-integration
+          if-no-files-found: error
+          retention-days: 30
       - name: Run original Test262 cases through the shell
         env:
           TEST262_DIR: target/test262

@@ -11760,6 +11760,19 @@
         "tests/test262_engine.rs"
       ],
       "rationale": "Linux CLI runs each executable variant in a fresh child with finite deadline, pre-exec address-space/stack limits, RSS monitoring and a zero core-file limit. Actual timeout, stack/allocation exhaustion, fatal signals, global/job isolation and ordinary negative cases are tested. Host failures cannot satisfy JavaScript negatives. Parent corpus metadata loading, non-Linux resource enforcement and general security sandboxing are not qualified."
+    },
+    {
+      "id": "component.test262-feature-baseline",
+      "status": "partial",
+      "issues": [
+        151,
+        152
+      ],
+      "tests": [
+        "tests/test262_metadata_only.rs",
+        "scripts/test262-baseline.mjs"
+      ],
+      "rationale": "Real CLI metadata-only indexing and isolated execution capture per-feature outcomes with overlapping tags, untagged cases, timeout separation and explicit not-run/unreported coverage. Snapshots retain raw reports and corpus/manifest/binary/selection identities. Authored and fixed-revision captures are distinguished; metadata errors retain unknown variant counts. Reporting does not qualify full feature support or regression selection."
     }
   ]
 }

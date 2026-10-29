@@ -119,6 +119,7 @@ The host environment installs `$262.global`, `createRealm`, `evalScript`,
 `detachArrayBuffer` and a real Engine-backed `gc` in the initial and child
 Realms, including raw variants. Child Realms have separate globals/intrinsics
 and recursively receive the host API, without inheriting the parent test harness.
+The global `$262` binding is writable and configurable, and is not enumerable.
 `evalScript` evaluates a real Script record in the function's original Realm,
 returns its completion value and preserves thrown value identity and the error
 Realm. Empty completion returns undefined. Registry borrows end before JavaScript
@@ -142,3 +143,10 @@ original files / 34 variants in each of AST and Auto, including the previously
 tracked Array length cross-Realm case. Broader byteLength and global-code audits
 retain missing typed globals, class declarations and direct-eval failures; they
 do not qualify those other features.
+
+The [host-hook qualification record](../benchmarks/test262-host-hooks/README.md)
+retains all native comparisons, one planned ARM replay, identical-executable
+controls and matched full-input instruction diagnostics. Both recorded x64
+cohorts pass all 33 actual-Boa comparisons. ARM64 has inconclusive cases and
+mixed before/after outcomes; the record does not claim universal superiority or
+the absence of a baseline regression.

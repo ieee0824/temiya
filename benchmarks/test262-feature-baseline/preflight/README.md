@@ -5,3 +5,9 @@ Source `d79eded4244a0fac2b8893754720fcb547777fd1`; CI run [40912271681](https://
 `evidence.json` records decoded SHA-256 identities for the compressed raw logs. `worker-identity.json` records unchanged library/worker source inputs and exact ARM/x64 worker identities against the prior process-isolation performance records. This supports only the existing workload/host measurements; it makes no broader performance claim.
 
 The full fixed-corpus capture is still running. These files are preflight evidence, not the completed feature baseline.
+
+Run `node benchmarks/test262-feature-baseline/verify.mjs` from the repository root
+to decode and hash all six logs, reconstruct the CI test totals, check the 64
+unchanged worker inputs, and compare the worker identities with the preserved
+process-isolation performance records. Verify the completed feature capture
+separately with `scripts/verify-test262-baseline.mjs`.

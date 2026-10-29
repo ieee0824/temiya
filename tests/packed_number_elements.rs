@@ -11,6 +11,9 @@ fn numeric_bits_and_object_edges_survive_storage_transitions_and_collection() {
     let object = array.object();
     let bits = [
         0,
+        // Delete this ordinary value so every special payload survives the
+        // hole/sparse/descriptor round trip without being overwritten.
+        42.0_f64.to_bits(),
         1 << 63,
         f64::INFINITY.to_bits(),
         f64::NEG_INFINITY.to_bits(),
@@ -29,31 +32,43 @@ fn numeric_bits_and_object_edges_survive_storage_transitions_and_collection() {
         );
     }
     context.collect_garbage().unwrap();
-    for (index, bits) in bits.into_iter().enumerate() {
-        let descriptor = object
-            .get_own_property(&index.to_string().as_str().into())
-            .unwrap();
-        assert_eq!(descriptor.writable, Some(true));
-        assert_eq!(descriptor.enumerable, Some(true));
-        assert_eq!(descriptor.configurable, Some(true));
-        let Some(Value::Number(value)) = descriptor.value else {
-            panic!("number required")
-        };
-        assert_eq!(value.to_bits(), bits);
-    }
+    let check_bits = |missing: Option<usize>| {
+        for (index, bits) in bits.into_iter().enumerate() {
+            if missing == Some(index) {
+                continue;
+            }
+            let descriptor = object
+                .get_own_property(&index.to_string().as_str().into())
+                .unwrap();
+            assert_eq!(descriptor.writable, Some(true));
+            assert_eq!(descriptor.enumerable, Some(true));
+            assert_eq!(descriptor.configurable, Some(true));
+            let Some(Value::Number(value)) = descriptor.value else {
+                panic!("number required")
+            };
+            assert_eq!(value.to_bits(), bits, "numeric payload at index {index}");
+        }
+    };
+    check_bits(None);
     assert!(object.try_delete(&"1".into()).unwrap());
     assert!(object.get_own_property(&"1".into()).is_none());
+    context.collect_garbage().unwrap();
+    check_bits(Some(1));
     assert!(
         object
             .create_data_property("4294967294".into(), Value::Number(42.0))
             .unwrap()
     );
-    assert!(object.set(&"length".into(), Value::Number(7.0)).unwrap());
+    context.collect_garbage().unwrap();
+    check_bits(Some(1));
+    assert!(object.set(&"length".into(), Value::Number(8.0)).unwrap());
     assert!(
         object
-            .create_data_property("1".into(), Value::Number(-0.0))
+            .create_data_property("1".into(), Value::Number(42.0))
             .unwrap()
     );
+    context.collect_garbage().unwrap();
+    check_bits(None);
 
     // Start the managed-child overwrite from a fresh numeric-only refill.
     assert!(object.set(&"length".into(), Value::Number(0.0)).unwrap());

@@ -1,0 +1,113 @@
+name: Test262 known-pass regressions
+
+on:
+  pull_request:
+  schedule:
+    - cron: '17 5 * * 0'
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Execution selection
+        type: choice
+        options: [pr, full]
+        default: pr
+
+permissions:
+  contents: read
+
+concurrency:
+  group: test262-regressions-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.select.outputs.matrix }}
+    steps:
+      - id: select
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REQUESTED_MODE: ${{ inputs.mode }}
+        run: |
+          node <<'NODE' >> "$GITHUB_OUTPUT"
+          const fs = require('fs');
+          const full = process.env.EVENT_NAME === 'schedule' || process.env.REQUESTED_MODE === 'full';
+          const count = full ? 8 : 1;
+          const include = Array.from({length: count}, (_, shard) => ({
+            mode: full ? 'full' : 'pr', shard, shards: count, timeout: full ? 360 : 30
+          }));
+          console.log('matrix=' + JSON.stringify({include}));
+          NODE
+
+  execute:
+    needs: plan
+    name: Test262 ${{ matrix.mode }} ${{ matrix.shard }}/${{ matrix.shards }}
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ matrix.timeout }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install Rust
+        run: rustup toolchain install stable --profile minimal
+      - name: Build actual isolated runner
+        run: cargo +stable build --locked --release --no-default-features --bin temiya-test262
+      - name: Record actual binary and build conditions
+        run: |
+          node <<'NODE'
+          const fs = require('fs'), cp = require('child_process'), crypto = require('crypto');
+          const executable = 'target/release/temiya-test262';
+          const info = {
+            source_revision: cp.execFileSync('git', ['rev-parse', 'HEAD'], {encoding: 'utf8'}).trim(),
+            source_clean: cp.execFileSync('git', ['status', '--porcelain'], {encoding: 'utf8'}).trim() === '',
+            rustc: cp.execFileSync('rustc', ['+stable', '-vV'], {encoding: 'utf8'}),
+            profile: 'release', features: [],
+            cargo_args: ['build', '--locked', '--release', '--no-default-features', '--bin', 'temiya-test262'],
+            executable_sha256: crypto.createHash('sha256').update(fs.readFileSync(executable)).digest('hex')
+          };
+          fs.writeFileSync('target/test262-build-info.json', JSON.stringify(info, null, 2));
+          NODE
+      - name: Fetch pinned corpus
+        run: scripts/test262
+      - name: Verify and decode recorded full reference
+        run: node scripts/verify-test262-archive.mjs benchmarks/test262-feature-baseline target/test262-reference
+      - name: Read previous PR policy for update review
+        if: github.event_name == 'pull_request'
+        env:
+          POLICY_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          git fetch --no-tags --depth=1 origin "$POLICY_BASE_SHA"
+          if git cat-file -e "$POLICY_BASE_SHA:test262/regression-policy.json"; then
+            git show "$POLICY_BASE_SHA:test262/regression-policy.json" > target/previous-test262-policy.json
+          fi
+      - name: Capture actual results and check per-variant regressions
+        env:
+          TEST262_ENGINE_INFO: target/test262-build-info.json
+          CAPTURE_MODE: ${{ matrix.mode }}
+          CAPTURE_SHARD: ${{ matrix.shard }}
+          CAPTURE_SHARDS: ${{ matrix.shards }}
+        run: |
+          previous_policy=()
+          if [ -f target/previous-test262-policy.json ]; then
+            previous_policy+=(target/previous-test262-policy.json)
+          fi
+          node scripts/run-test262-regression.mjs target/release/temiya-test262 \
+            target/test262 target/test262-reference test262/regression-policy.json \
+            target/test262-regression "$CAPTURE_MODE" "$CAPTURE_SHARD" "$CAPTURE_SHARDS" \
+            "${previous_policy[@]}"
+      - name: Preserve all outcomes and diagnostics
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: test262-${{ matrix.mode }}-${{ matrix.shard }}-of-${{ matrix.shards }}
+          path: |
+            target/test262-build-info.json
+            target/test262-regression
+          if-no-files-found: error
+          retention-days: 30

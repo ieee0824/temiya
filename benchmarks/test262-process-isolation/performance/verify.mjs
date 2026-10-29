@@ -30,6 +30,10 @@ assert.deepEqual(Object.fromEntries(audit.reports.map(r=>[path.relative(temporar
 for(const folder of ['hosted/copy1','hosted/copy2'])execFileSync('node',[path.join(repository,'scripts/audit-omoikane-hosted-identities.mjs'),path.join(temporary,folder),p.measured_revision,p.baseline_revision],{cwd:repository,stdio:'pipe'});
 const arm=f=>read('arm64/'+f+'.json'),candidate=arm('current-info'),baseline=arm('baseline-info'),boa=arm('boa-build-info');
 assert.equal(candidate.revision,p.arm_revision);assert.equal(baseline.revision,p.arm_baseline_revision);
+const equivalent=arm('baseline-source-equivalence');
+assert.equal(equivalent.baseline_build_source,p.arm_baseline_revision);assert.equal(equivalent.hosted_baseline_ref,p.baseline_revision);
+for(const [revision,inputs]of Object.entries(equivalent.inputs)){assert.deepEqual(inputs,equivalent.inputs[p.baseline_revision]);for(const [file,expected]of Object.entries(inputs))assert.equal(hash(execFileSync('git',['show',revision+':'+file],{cwd:repository})),expected);}
+
 assert.equal(candidate.executable_sha256,'38c851370e0b19f2037a8f68b9098b65cc05e837c02cec7c85b0885e7cbce474');assert.equal(baseline.executable_sha256,'8f9c59dd6a00ada83ce34a0732118eedaf00ce636e589f4cafebce7c69375b74');
 assert.equal(boa.omoikane_revision,'007556adccb8fb4329236932ca8175f8e8d119d2');assert.equal(boa.checkout_clean,true);assert.equal(boa.profile,'release');assert.equal(boa.rustflags,'');assert.equal(boa.execution_mode,'interpreter; baseline-jit feature absent');assert.deepEqual(boa.cargo_args,['build','--locked','--release']);
 assert.equal(boa.worker_source_sha256,hash(execFileSync('git',['show',p.measured_revision+':benchmarks/omoikane-worker/main.rs'],{cwd:repository})));

@@ -43,7 +43,7 @@ for (const row of known) {
   assert(typeof row.reason === 'string' && row.reason.trim() && typeof row.issue === 'string' && row.issue.trim());
   assert(typeof row.reproducer === 'string' && !path.isAbsolute(row.reproducer) &&
     !row.reproducer.split(/[\\/]/).some(part => !part || part === '.' || part === '..'), 'canonical reproducer path required');
-  assert.equal(sha(fs.readFileSync(new URL('../' + row.reproducer, import.meta.url))),
+  assert.equal(sha(fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '..', row.reproducer))),
     row.source_sha256, 'known reproducer must match the exact source identity');
   knownIds.add(row.id);
 }

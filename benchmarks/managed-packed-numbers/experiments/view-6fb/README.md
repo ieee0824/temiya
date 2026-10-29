@@ -39,6 +39,12 @@ Hosted identity checks are also reproducible with
 The complete old Cow cohort passes; four metadata corruptions (added JIT,
 wrong adapter hash, inconsistent candidate hash and wrong control revision)
 are rejected. This identity audit is separate from the statistical audit.
+The full library Miri auditor is reproducible with
+`node scripts/audit-full-library-miri.mjs FULL_LOG STATUS_JSON EXPECTED_SOURCE OUTPUT_JSON`.
+It requires119 distinct exact successes, no ignored tests, the complete16-shard
+partition and all19 terminal jobs successful for that source. Against the
+completed prior-source run it rejects wrong-source, missing-job and ignored-test
+mutations. Those rejection checks do not qualify the still-running view source.
 
 ## Investigation of owned-descriptor overhead
 

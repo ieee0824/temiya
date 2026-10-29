@@ -82,6 +82,10 @@ Collector-independent handles, explicit roots, and tracing rules are described
 in [garbage collector contracts](docs/gc.md).
 The pinned conformance corpus and metadata rules are documented in the
 [Test262 harness](docs/test262.md).
+Run selected original cases with `cargo run --locked --bin temiya-test262 --
+--corpus target/test262 --pinned TEST_PATH`; the runner reports pass, fail and
+skip separately after actual Engine execution. It does not qualify the full
+corpus or implement asynchronous completion yet.
 Cross-engine result normalization and reproducer reduction are documented in
 [differential testing](docs/differential-testing.md).
 Lexer/parser fuzz targets, limits, corpus, and regression handling are described

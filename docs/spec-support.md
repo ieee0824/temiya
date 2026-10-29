@@ -33,9 +33,11 @@ unconnected collector; incremental/generational collection is still separate.
   more executable JavaScript probes, with separate expected parser, AST, explicit
   Bytecode and Auto outcomes. This is an enumerated inventory, not an exhaustive
   listing of every ECMA-262 production and member.
-- `components` records six host/runtime boundaries. A Rust collection iterator,
+- `components` records seven host/runtime/tooling boundaries. A Rust collection iterator,
   weak-handle primitive or Promise state machine does not prove that the matching
   JavaScript constructor or prototype method is exposed.
+  The Engine-backed Test262 runner is one tooling boundary; its focused original
+  cases do not qualify the whole corpus or close the remaining harness/async work.
 - `test262.status: "not-run"` means the entire entry has no corpus qualification.
   It never means pass or skip. Focused, historical suite results retain their own
   scope in [`test262/`](../test262/) and [qualification records](runtime-ownership.md).

@@ -6,7 +6,7 @@ import {execFileSync, spawnSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
 import {oracle, revision, fixtureSha256} from './omoikane-benchmark-reference.mjs';
 
-const [baseline, measured, fixtures, output, baselineTarget, measuredTarget] = process.argv.slice(2);
+const [baseline, measured, fixtures, output, baselineTarget, measuredTarget, namesText] = process.argv.slice(2);
 assert([baseline, measured, fixtures, output, baselineTarget, measuredTarget].every(Boolean));
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 const read = p => JSON.parse(fs.readFileSync(p));
@@ -21,12 +21,13 @@ for (const item of manifest.workloads) {
   assert.equal(input.name, item.name); assert.equal(input.iterations, item.iterations); assert.equal(input.expected, item.expected);
   assert.equal(hash(input.setup), item.setup_sha256); assert.equal(hash(input.invocation), item.invocation_sha256);
 }
-const names = ['primitive-string-property','string-concat','prop-mega'];
+const names = namesText ? namesText.split(',') : ['primitive-string-property','string-concat','prop-mega'];
+assert(names.length > 0 && new Set(names).size === names.length && names.every(name => oracle.some(([known]) => known === name)), 'select unique original workload names');
 const metadata = {
   scope:'Diagnostic whole-process instrumented counters, including startup/setup, one checked warmup and one checked pass. Original workload bodies/counts/oracles unchanged. Cache/branch simulation is a model, not native hardware measurements; instrumented times never qualify speed.',
   recorded_at:new Date().toISOString(), rustc:run('rustc',['-Vv']).trim(),
   valgrind:run('valgrind',['--version']).trim(), machine:run('lscpu',[]),
-  original_manifest:manifest, runs:[], builds:[],
+  original_manifest:manifest, diagnostic_workloads:names, runs:[], builds:[],
 };
 fs.writeFileSync(path.join(output,'metadata.json'),JSON.stringify(metadata,null,2)+'\n');
 for (const [label,checkout,target,expected] of [
@@ -74,4 +75,4 @@ for (const [label,checkout,target,expected] of [
     metadata.runs.push(record); fs.writeFileSync(path.join(output,'metadata.json'),JSON.stringify(metadata,null,2)+'\n'); console.log(JSON.stringify(record));
   }
 }
-assert.equal(metadata.runs.length,6); assert(metadata.runs.every(r=>!r.error));
+assert.equal(metadata.runs.length,names.length*2); assert(metadata.runs.every(r=>!r.error));

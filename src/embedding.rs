@@ -2160,3 +2160,16 @@ mod collection_panic_boundary_tests {
         }
     }
 }
+
+impl ModuleHandle {
+    /// Borrows the rooted module record for explicit linking/status inspection.
+    ///
+    /// The record belongs to this checked handle's original Engine and Realm.
+    /// Calling its `link` method executes no module body; `evaluate_module`
+    /// continues to check the Engine identity and link automatically as before.
+    #[must_use]
+    #[inline(always)]
+    pub fn record(&self) -> &SourceTextModule {
+        &self.module
+    }
+}

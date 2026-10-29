@@ -147,3 +147,9 @@ specifiers before accessing files. Both callbacks are panic-isolated and handles
 retain the existing engine/Realm checks. The original `load_module` callback and
 per-specifier behavior remain unchanged. The [CLI](cli.md) uses this API for
 nested relative imports and canonical file caching in one graph.
+
+`RealmHandle::record` similarly borrows the rooted runtime Realm. A host that
+needs original Script completions can parse a `runtime::ScriptRecord` in that
+Realm and install Realm-specific native functions. The Test262 CLI uses an
+externally owned Realm registry and weak callback captures so globals do not
+retain a Rust reference cycle back to their rooted Realms.

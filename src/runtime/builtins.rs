@@ -542,6 +542,22 @@ fn install_indexed(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {
 
     let array_buffer = intrinsics.get(IntrinsicId::ArrayBuffer);
     let buffer_prototype = intrinsics.get(IntrinsicId::ArrayBufferPrototype);
+    let byte_length = super::native_function::create(
+        &intrinsics.get(IntrinsicId::FunctionPrototype),
+        "get byteLength",
+        0,
+        |this, _| {
+            let object = object_value(&this, "ArrayBuffer byteLength receiver")?;
+            let buffer = ArrayBuffer::from_object(object).ok_or_else(|| {
+                RuntimeError::type_error("receiver has no ArrayBuffer internal slots")
+            })?;
+            Ok(Value::Number(buffer.byte_length() as f64))
+        },
+    )?;
+    buffer_prototype.define_own_property(
+        "byteLength".into(),
+        PropertyDescriptor::accessor(Some(byte_length), None, false, true),
+    )?;
     array_buffer.set_captured_factory(
         &buffer_prototype,
         None,

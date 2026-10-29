@@ -2173,3 +2173,14 @@ impl ModuleHandle {
         &self.module
     }
 }
+
+impl RealmHandle {
+    /// Borrows the rooted runtime Realm belonging to this checked handle.
+    ///
+    /// Low-level host callbacks can use this Realm's native functions and
+    /// Script records while preserving its allocation context and intrinsics.
+    #[must_use]
+    pub fn record(&self) -> &Realm {
+        &self.realm
+    }
+}

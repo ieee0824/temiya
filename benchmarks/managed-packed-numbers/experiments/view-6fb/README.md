@@ -64,3 +64,10 @@ Hosted two-machine comparisons (run40792533180) and full latest-runtime security
 (run40792515995) remain pending. No merge acceptance is implied. The initial
 Cow trial and pre-GC regressions remain preserved separately and are not erased
 by this ARM64 result. ArraySetLength double coercion #450 is outside this change.
+
+`reference-drift-497` records an upstream check on2026-10-29. Omoikane main at
+49715adf280c2787d7e3209bdfe76c64a2ead3d7 has exactly the same Git objects for
+the complete vendored engine tree, Cargo.toml, Cargo.lock and build.rs as the
+comparison pin. Thus the vendored Boa/regress and dependency configuration did
+not change. Application JS/DOM code did change; this is not a timing or rebuild
+of that newer application embedding. The comparison remains explicitly pinned.

@@ -30,7 +30,11 @@ sum8386560 for4096 entries and releases all cells. The same probe source was
 temporarily added to the reference checkout; the runtime/manifests were kept
 unchanged and the probe removed before freezing the clean timing worker.
 
-Performance comparisons and full latest-source CI/security are pending. Keep
-original11 counts/oracles/15samples/3pairs/512MiB/180seconds/10%-MAD gates and
-all observations, including unfavorable/noise outcomes. Allocation bytes are
-not a timing or peak-memory result. Earlier failed trials remain preserved.
+The initial Cow trial completed its comparisons and security checks but did not
+meet the performance objective. Its unfavorable reports remain preserved in
+`experiments/cow-25e`. The top-level provenance's pending list describes the
+original recording snapshot; subsequent results are in the experiment folders.
+The view trial qualifies all33 actual-Boa pairs on ARM64, while hosted results
+and full latest-runtime security remain pending. Keep original11 counts/oracles/
+15samples/3pairs/512MiB/180seconds/10%-MAD gates and all observations, including
+unfavorable/noise outcomes. Allocation bytes are not timing or peak memory.

@@ -286,6 +286,9 @@ impl Engine {
     }
 
     /// Loads a module graph through a panic-isolated host source resolver.
+    /// Unpaired UTF-16 specifiers are rejected before calling the UTF-8 host
+    /// callback. Use [`Self::load_module_with_resolver`] to inspect raw requests
+    /// and select a host-defined canonical identity.
     pub fn load_module<F>(
         &self,
         realm: &RealmHandle,
@@ -297,7 +300,9 @@ impl Engine {
     {
         self.require_realm(realm)?;
         let graph = ModuleGraph::new(realm.realm.clone(), move |request| {
-            let specifier = String::from_utf16_lossy(&request.specifier);
+            let specifier = String::from_utf16(&request.specifier).map_err(|_| {
+                RuntimeError::type_error("module specifier contains unpaired UTF-16 code units")
+            })?;
             catch_unwind(AssertUnwindSafe(|| resolver(&specifier)))
                 .map_err(|_| RuntimeError::internal_error("module resolver panicked"))?
                 .map_err(HostError::into_runtime)

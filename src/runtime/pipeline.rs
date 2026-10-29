@@ -237,6 +237,7 @@ impl SourceTextModule {
             }
             self.instantiate_namespace_exports()?;
             self.instantiate_imports()?;
+            self.validate_indirect_exports()?;
             Ok(())
         })();
         match result {
@@ -396,6 +397,25 @@ impl SourceTextModule {
                 let namespace = self.dependency(request)?.namespace_object()?;
                 self.environment()
                     .initialize_binding(&name, Value::Object(namespace))?;
+            }
+        }
+        Ok(())
+    }
+
+    fn validate_indirect_exports(&self) -> RuntimeResult<()> {
+        for statement in &self.0.program.body {
+            let StmtKind::ExportDeclaration(export) = &statement.kind else {
+                continue;
+            };
+            if let ExportKind::Named {
+                specifiers,
+                request: Some(_),
+            } = &export.kind
+            {
+                for specifier in specifiers {
+                    let name = JsString::from_code_units(specifier.exported.clone());
+                    self.resolve_export(&name, &mut Vec::new())?;
+                }
             }
         }
         Ok(())

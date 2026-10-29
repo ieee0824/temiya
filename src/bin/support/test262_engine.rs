@@ -307,7 +307,12 @@ impl Executor for EngineExecutor {
                             "module attributes are not configured",
                         ));
                     }
-                    resolve_module(referrer, &String::from_utf16_lossy(&request.specifier))
+                    let specifier = String::from_utf16(&request.specifier).map_err(|_| {
+                        HostError::type_error(
+                            "module specifier contains unpaired UTF-16 code units",
+                        )
+                    })?;
+                    resolve_module(referrer, &specifier)
                 },
                 move |path| {
                     let text = if path == root {

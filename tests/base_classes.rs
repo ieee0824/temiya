@@ -172,3 +172,44 @@ fn class_environments_and_instances_survive_engine_collection() {
         ));
     }
 }
+
+#[test]
+fn private_lexical_class_loops_preserve_shadowing_tdz_and_const() {
+    check(
+        "class C { static run(n) { let total = 0; for (let i = 0; i < n; i++) { for (let j = 0; j < i; j++) { total += j; } } return total; } } C.run(5) === 10 && C.run(-1) === 0 && C.run(NaN) === 0;",
+    );
+    check(
+        "class C { static run(n) { let result = 0; for (let i = 0; i < n; i++) { let x; x++; result = x; } return result !== result; } } C.run(1);",
+    );
+    check(
+        "class C { static run(n) { let sum = 0; for (let i = 0; i < n; i++) { const saved = i; { let i = saved + 1; sum += i; } } return sum; } } C.run(10) === 55 && C.run(0) === 0;",
+    );
+    check(
+        "class C { static run(n) { let total = 0; for (let i = 0; i < n; i++) { let x; if (x !== undefined) return -1; x = i; total += x; } return total; } } C.run(5) === 10;",
+    );
+    check(
+        "class C { static run(n) { for (let i = 0; i < n; i++) { value; let value = 1; } } } let caught = false; try { C.run(1); } catch (e) { caught = e instanceof ReferenceError; } caught;",
+    );
+    check(
+        "class C { static run(n) { for (let i = 0; i < n; i++) { value = 1; let value; } } } let caught = false; try { C.run(1); } catch (e) { caught = e instanceof ReferenceError; } caught;",
+    );
+    check(
+        "class C { static run(n) { for (let i = 0; i < n; i++) { const value = 1; value++; } } } let caught = false; try { C.run(1); } catch (e) { caught = e instanceof TypeError; } caught;",
+    );
+    check(
+        "class C { static run(n) { for (let i = 0; i < n; i++) { const value = 1; value = 2; } } } let caught = false; try { C.run(1); } catch (e) { caught = e instanceof TypeError; } caught;",
+    );
+}
+
+#[test]
+fn observable_loop_bindings_and_object_coercions_keep_their_effects() {
+    check(
+        "class C { constructor(value) { this.value = value; } read() { let f = () => this.value; return f(); } } new C(42).read() === 42;",
+    );
+    check(
+        "class C { static run(n) { let a; let b; for (let i = 0; i < n; i++) { let captured = i; if (i === 0) a = function() { return captured; }; else b = function() { return captured; }; } return a() === 0 && b() === 1; } } C.run(2);",
+    );
+    check(
+        "let calls = 0; let input = { valueOf() { calls++; return 3; } }; class C { static run(n) { let total = 0; for (let i = 0; i < n; i++) { total += i; } return total; } } C.run(input) === 3 && calls === 4;",
+    );
+}

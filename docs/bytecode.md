@@ -375,3 +375,14 @@ iterator errors, operand checks and the scoped upstream observations.
 See [object data literals](object-data-literals.md) for bytecode instructions,
 key/value ordering, prototype setters, object spread, scoped upstream tests
 and remaining method/HomeObject limits.
+
+Private primitive-only function loops may keep var, let, and const slots outside
+managed environments. This requires a whole-body proof excluding captures, calls,
+property operations, arguments access, and escaping references, plus numeric
+arguments. Lexical slots retain TDZ and const assignment checks; per-iteration
+environment identities are omitted only when no observer can retain them. The
+public caller-prepared frame API continues publishing all binding writes.
+Empty block descriptors retain their verified scope entries while reusing the
+parent environment, since they introduce no binding identity or declaration.
+The existing explicit-Ast for-let header capture gap is tracked in #537; Auto's
+verified function-loop path already retains the distinct iteration bindings.

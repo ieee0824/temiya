@@ -139,12 +139,22 @@ impl StoredFunctionClosure {
             kind: self.kind,
             realm: self.realm.load(owner)?,
             environment: self.environment.load(owner)?,
-            lexical_this: self.lexical_this.load(owner)?,
-            home_object: self
-                .home_object
-                .as_ref()
-                .map(|object| object.load(owner))
-                .transpose()?,
+            // Verified ordinary/method bodies use their prepared this binding;
+            // the compiler rejects arrows and super-dependent bodies here.
+            // Retain stored GC edges without reviving unused call-local roots.
+            lexical_this: if self.code.compiled.is_some() {
+                Value::Undefined
+            } else {
+                self.lexical_this.load(owner)?
+            },
+            home_object: if self.code.compiled.is_some() {
+                None
+            } else {
+                self.home_object
+                    .as_ref()
+                    .map(|object| object.load(owner))
+                    .transpose()?
+            },
         })
     }
     pub(super) fn is_constructor(&self) -> bool {
@@ -166,6 +176,19 @@ impl StoredFunctionClosure {
                 .realm
                 .load(owner)?
                 .bind_exception(RuntimeError::type_error("class constructor requires new")));
+        }
+        if let Some(template) = &self.code.compiled {
+            let realm = self.realm.load(owner)?;
+            return super::bytecode_function::execute_template(
+                template.clone(),
+                realm.clone(),
+                self.environment.load(owner)?,
+                owner.clone(),
+                this,
+                arguments,
+                None,
+            )
+            .map_err(|error| realm.bind_exception(error));
         }
         let closure = self.load(owner)?;
         if closure.code.generator {

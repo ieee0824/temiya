@@ -44,3 +44,16 @@ records 256 passes and 38 dependency failures in each backend and a passing
 class measurements and their statistical decisions and validates archived file
 identities and the recorded functional result summaries. Original-eleven
 measurements are separate and cannot establish class speed.
+
+The same intermediate ELF was requalified on the unchanged original eleven:
+33 faster decisions against actual Boa and 33 before/after decisions within
+noise. The baseline/Boa control records 32 faster and one within noise; the
+identical candidate ELF control records 32 within noise and one faster. All four
+raw reports are retained and independently recomputed by the intermediate
+verifier. Control labels do not establish a source-level improvement.
+
+`known-ast-for-capture` preserves the authored CLI reproduction and both raw
+backend reports for [#537](https://github.com/ieee0824/temiya/issues/537). Explicit
+Ast loses per-iteration for-let header captures while Auto's verified body
+preserves them at source d818832. This pre-existing loop gap remains open and is
+not original Test262 evidence or a failure fixed by the primitive-slot change.

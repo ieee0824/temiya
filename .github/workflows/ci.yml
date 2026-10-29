@@ -46,7 +46,9 @@ jobs:
       - name: Check authored RegExp input contracts
         run: node scripts/check-regexp-workloads.mjs
       - name: Check Test262 regression policy boundaries
-        run: node --test tests/test262-regression-policy.test.mjs
+        run: |
+          node --test tests/test262-regression-policy.test.mjs
+          node benchmarks/test262-regression-gate/verify.mjs
       - name: Verify retained fresh RegExp evidence
         run: node benchmarks/regexp-cold-ascii/verify-integrity.mjs
       - name: Verify original arithmetic Intel instruction evidence

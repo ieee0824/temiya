@@ -78,8 +78,9 @@ without inventing an executed variant. The checked-in exact-path skip manifest i
 honored before execution. Async/agent and unknown runner flags get explicit skips;
 conflicting strict/raw/module flags fail instead of silently choosing a variant.
 
-The integrated runner and include/strict/raw handling cover #145/#146. `$262`
-hooks (#147), `$DONE`/async completion (#148),
+The integrated runner and include/strict/raw handling cover #145/#146. The
+`$262` realm, evalScript and detach hooks are connected by #147.
+`$DONE`/async completion (#148),
 broader module fixture/negative audits (#149), process isolation/resource limits
 (#150), feature baselines (#151) and regression selection (#152) remain separate
 work. It does not currently impose per-test time or memory limits. A small
@@ -113,3 +114,39 @@ every performance experiment. Its verifier independently checks original
 workload oracles, raw samples, statistical decisions and worker identities.
 Inconclusive ARM64 comparisons remain inconclusive; the record does not turn
 them into speed passes or qualify the whole Test262 corpus.
+
+The host environment installs `$262.global`, `createRealm`, `evalScript`,
+`detachArrayBuffer` and a real Engine-backed `gc` in the initial and child
+Realms, including raw variants. Child Realms have separate globals/intrinsics
+and recursively receive the host API, without inheriting the parent test harness.
+The global `$262` binding is writable and configurable, and is not enumerable.
+`evalScript` evaluates a real Script record in the function's original Realm,
+returns its completion value and preserves thrown value identity and the error
+Realm. Empty completion returns undefined. Registry borrows end before JavaScript
+reentry or collection. Native callbacks hold weak owner references; the owner
+roots every child Realm for that test variant, then releases them together.
+
+Detachment uses the real ArrayBuffer slots and invalidates existing runtime
+TypedArray/DataView reads and writes. The ordinary-buffer `byteLength` getter is
+connected so original JS tests observe zero after detach. Non-buffer receivers
+and nonmatching detach keys throw TypeError in the hook's Realm. Complete integer
+TypedArray globals (#245), broader DataView APIs (#249), SharedArrayBuffer and
+resizable/detach-key facilities remain separate work. An unsupported `agent` or
+`AbstractModuleSource` access is an Engine failure, preventing accidental success
+for a language TypeError negative. Optional IsHTMLDDA is not provided.
+
+The current Script parser accepts UTF-8 source. An evalScript input containing
+unpaired UTF-16 code units is reported as an Engine failure rather than silently
+replacing source characters or satisfying a language SyntaxError negative. Full
+UTF-16 Script input remains unqualified and is tracked by #527. The fixed host regression selects 17
+original files / 34 variants in each of AST and Auto, including the previously
+tracked Array length cross-Realm case. Broader byteLength and global-code audits
+retain missing typed globals, class declarations and direct-eval failures; they
+do not qualify those other features.
+
+The [host-hook qualification record](../benchmarks/test262-host-hooks/README.md)
+retains all native comparisons, one planned ARM replay, identical-executable
+controls and matched full-input instruction diagnostics. Both recorded x64
+cohorts pass all 33 actual-Boa comparisons. ARM64 has inconclusive cases and
+mixed before/after outcomes; the record does not claim universal superiority or
+the absence of a baseline regression.

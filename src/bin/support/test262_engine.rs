@@ -1,5 +1,8 @@
 //! Engine-facing synchronous runner. Harness failures are never language errors.
 
+#[path = "test262_host.rs"]
+mod host;
+
 use std::{
     cell::RefCell,
     collections::BTreeMap,
@@ -256,8 +259,10 @@ impl Executor for EngineExecutor {
         includes: &[String],
     ) -> Result<(), ObservedFailure> {
         self.diagnostic = None;
-        let engine = Engine::builder().script_backend(self.backend).build();
+        let engine = Rc::new(Engine::builder().script_backend(self.backend).build());
         let realm = engine.create_realm();
+        let _host = host::HostEnvironment::install(engine.clone(), realm.clone())
+            .map_err(|error| self.failure(NegativePhase::Runtime, "HarnessError", error))?;
         let mut constructors = Vec::new();
         for name in [
             "Error",

@@ -199,11 +199,7 @@ fn harness_failures_and_unavailable_hooks_never_satisfy_negative_tests() {
                     .is_some_and(|text| text.contains(include))
             );
         }
-        for source in [
-            "$262.evalScript('missingName');",
-            "function f(){$262.evalScript('missingName');} f();",
-            "$DONE();",
-        ] {
+        for source in ["$DONE();", "print();"] {
             fail(&fixture.run(
                 &format!(
                     "/*---\nnegative:\n  phase: runtime\n  type: ReferenceError\n---*/\n{source}"
@@ -215,7 +211,89 @@ fn harness_failures_and_unavailable_hooks_never_satisfy_negative_tests() {
             "/*---\nnegative:\n  phase: runtime\n  type: EngineError\n---*/\nclass C {}",
             backend,
         ));
+        for source in ["$262.agent.start('');", "$262.AbstractModuleSource();"] {
+            let results = fixture.run(
+                &format!("/*---\nnegative:\n  phase: runtime\n  type: TypeError\n---*/\n{source}"),
+                backend,
+            );
+            fail(&results);
+            assert!(results.iter().all(|result| {
+                result
+                    .observed_failure
+                    .as_ref()
+                    .is_some_and(|error| error.error_type == "EngineError")
+            }));
+        }
         fail(&fixture.run("/*---\nincludes: [missing.js]\nnegative:\n  phase: runtime\n  type: HarnessError\n---*/\n1;",backend));
+    }
+}
+
+#[test]
+fn host_realms_evaluate_scripts_with_separate_globals_and_original_throws() {
+    let fixture = Fixture::new();
+    let source = r#"/*---
+flags: []
+---*/
+assert($262.global === this);
+var hostDescriptor = Object.getOwnPropertyDescriptor(this, '$262');
+assert(hostDescriptor.writable && hostDescriptor.configurable && !hostDescriptor.enumerable);
+var child = $262.createRealm();
+assert(child.global !== this);
+var childDescriptor = Object.getOwnPropertyDescriptor(child.global, '$262');
+assert(childDescriptor.writable && childDescriptor.configurable && !childDescriptor.enumerable);
+assert(child.global.Array !== Array);
+assert(child.global.$262 === child);
+assert(child.evalScript('var isolated=41; isolated+1;') === 42);
+assert(child.global.isolated === 41);
+assert(typeof isolated === 'undefined');
+assert(child.evalScript('this;') === child.global);
+assert(child.evalScript('var empty;') === undefined);
+var grandchild = child.evalScript('$262.createRealm();');
+assert(grandchild.global !== child.global);
+assert(grandchild.evalScript('typeof isolated;') === 'undefined');
+var sentinel = {};
+child.global.sentinel = sentinel;
+try { child.evalScript('throw sentinel;'); throw 1; }
+catch (e) { assert(e === sentinel); }
+try { child.evalScript('let = ;'); throw 1; }
+catch (e) { assert(e.constructor === child.global.SyntaxError); }
+try { child.evalScript('missingName;'); throw 1; }
+catch (e) { assert(e.constructor === child.global.ReferenceError); }
+child.evalScript('var nested=$262.createRealm(); $262.gc(); nested.evalScript("var survived=17;");');
+assert(child.global.nested.global.survived === 17);
+"#;
+    for backend in [ScriptBackend::Ast, ScriptBackend::Auto] {
+        pass(&fixture.run(source, backend), 2);
+        for source in [
+            "$262.evalScript('missingName');",
+            "function f(){$262.evalScript('missingName');} f();",
+        ] {
+            pass(&fixture.run(&format!("/*---\nnegative:\n  phase: runtime\n  type: ReferenceError\n---*/\n{source}"), backend), 2);
+        }
+    }
+}
+
+#[test]
+fn host_detachment_updates_byte_length_and_rejects_invalid_buffers_and_keys() {
+    let fixture = Fixture::new();
+    let source = r#"/*---
+flags: []
+---*/
+var buffer = new ArrayBuffer(8);
+assert(buffer.byteLength === 8);
+var child = $262.createRealm();
+assert(child.detachArrayBuffer(buffer) === undefined);
+assert(buffer.byteLength === 0);
+assert($262.detachArrayBuffer(buffer) === undefined);
+var retained = new ArrayBuffer(4);
+try { $262.detachArrayBuffer(retained, 1); throw 1; }
+catch (e) { assert(e.constructor === TypeError); }
+assert(retained.byteLength === 4);
+try { child.detachArrayBuffer({}); throw 1; }
+catch (e) { assert(e.constructor === child.global.TypeError); }
+"#;
+    for backend in [ScriptBackend::Ast, ScriptBackend::Auto] {
+        pass(&fixture.run(source, backend), 2);
     }
 }
 
@@ -524,6 +602,58 @@ fn pinned_harness_dependency_followup() {
         assert_eq!(
             report["counts"],
             serde_json::json!({"pass":60,"fail":0,"skip":0})
+        );
+        assert_eq!(report["corpus_revision"], temiya::test262::TEST262_REVISION);
+        println!("{}", serde_json::to_string_pretty(&report).unwrap());
+    }
+}
+
+#[test]
+#[ignore = "requires fixed Test262 corpus; original host-hook regressions"]
+fn pinned_host_hooks_execute_original_cases() {
+    let upstream = std::env::var("TEST262_DIR").expect("set TEST262_DIR");
+    let mut selected =
+        vec!["test/built-ins/Array/length/define-own-prop-length-overflow-realm.js".to_owned()];
+    // Fixed positive regression selection; broader audits retain unsupported
+    // integer TypedArray/SharedArrayBuffer, class and direct-eval failures.
+    selected.extend(
+        [
+            "detached-buffer.js",
+            "invoked-as-accessor.js",
+            "invoked-as-func.js",
+            "length.js",
+            "name.js",
+            "prop-desc.js",
+            "return-bytelength.js",
+            "this-is-not-object.js",
+        ]
+        .map(|name| format!("test/built-ins/ArrayBuffer/prototype/byteLength/{name}")),
+    );
+    selected.extend(
+        [
+            "script-decl-func-dups.js",
+            "script-decl-func-err-non-configurable.js",
+            "script-decl-func-err-non-extensible.js",
+            "script-decl-func.js",
+            "script-decl-lex-restricted-global.js",
+            "script-decl-lex-var.js",
+            "script-decl-var-err.js",
+            "script-decl-var.js",
+        ]
+        .map(|name| format!("test/language/global-code/{name}")),
+    );
+    assert_eq!(selected.len(), 17);
+    for backend in ["ast", "auto"] {
+        let output = Command::new(env!("CARGO_BIN_EXE_temiya-test262"))
+            .args(["--corpus", &upstream, "--pinned", "--backend", backend])
+            .args(&selected)
+            .output()
+            .unwrap();
+        let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+        assert_eq!(output.status.code(), Some(0), "{report}");
+        assert_eq!(
+            report["counts"],
+            serde_json::json!({"pass":34,"fail":0,"skip":0})
         );
         assert_eq!(report["corpus_revision"], temiya::test262::TEST262_REVISION);
         println!("{}", serde_json::to_string_pretty(&report).unwrap());

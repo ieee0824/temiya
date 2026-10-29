@@ -33,7 +33,7 @@ unconnected collector; incremental/generational collection is still separate.
   more executable JavaScript probes, with separate expected parser, AST, explicit
   Bytecode and Auto outcomes. This is an enumerated inventory, not an exhaustive
   listing of every ECMA-262 production and member.
-- `components` records seven host/runtime/tooling boundaries. A Rust collection iterator,
+- `components` records eight host/runtime/tooling boundaries. A Rust collection iterator,
   weak-handle primitive or Promise state machine does not prove that the matching
   JavaScript constructor or prototype method is exposed.
   The Engine-backed Test262 runner is one tooling boundary; its focused original

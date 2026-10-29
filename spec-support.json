@@ -2308,31 +2308,51 @@
     {
       "id": "api.ArrayBuffer.prototype.byteLength",
       "kind": "accessor",
-      "status": "unimplemented",
+      "status": "partial",
       "reference": "ECMA-262 2026 ArrayBuffer.prototype.byteLength",
       "issues": [
+        147,
         250,
         254
       ],
-      "rationale": "Public Engine checks the stated operation, not full clause conformance.",
+      "rationale": "Public Engine getter examples cover ordinary buffers, descriptor metadata and invalid receivers; fixed detached-buffer cases run through the real host hook. Missing integer TypedArray/SharedArrayBuffer globals leave two external files failing; complete clause conformance is not claimed.",
       "tests": [
-        "tests/spec_support.rs"
+        "tests/spec_support.rs",
+        "tests/test262_engine.rs"
       ],
       "test262": {
         "status": "not-run"
       },
       "probes": [
         {
-          "source": "Object.getOwnPropertyDescriptor(ArrayBuffer.prototype,'byteLength')===undefined;",
+          "source": "new ArrayBuffer(8).byteLength===8;",
           "expected": {
             "parser": "accept",
             "ast": "true",
             "bytecode": "true",
             "auto": "true"
           }
+        },
+        {
+          "source": "var d=Object.getOwnPropertyDescriptor(ArrayBuffer.prototype,'byteLength'); d.get.name==='get byteLength' && d.get.length===0 && d.enumerable===false && d.configurable===true && d.set===undefined;",
+          "expected": {
+            "parser": "accept",
+            "ast": "true",
+            "bytecode": "true",
+            "auto": "true"
+          }
+        },
+        {
+          "source": "Object.getOwnPropertyDescriptor(ArrayBuffer.prototype,'byteLength').get.call({});",
+          "expected": {
+            "parser": "accept",
+            "ast": "TypeError",
+            "bytecode": "TypeError",
+            "auto": "TypeError"
+          }
         }
       ],
-      "evidence_kind": "absence"
+      "evidence_kind": "examples"
     },
     {
       "id": "api.ArrayBuffer.prototype.detached",
@@ -11676,7 +11696,22 @@
         "tests/test262_engine.rs",
         "tests/test262_harness.rs"
       ],
-      "rationale": "Public Engine-backed synchronous CLI and Executor run actual parse/link/evaluate phases with fresh Realms, unchanged harness sources and strict/raw/quoted-list handling. Original CLI cases and all 30 prior #146 dependency files are tested. $262, async completion, process limits and corpus baselines remain separate; no whole-suite qualification."
+      "rationale": "Public Engine-backed synchronous CLI and Executor run actual parse/link/evaluate phases with fresh Realms, unchanged harness sources and strict/raw/quoted-list handling. Original CLI cases and all 30 prior #146 dependency files are tested. The real $262 realm/evalScript/detach/gc hooks are connected. Async completion, process limits and corpus baselines remain separate; no whole-suite qualification."
+    },
+    {
+      "id": "component.test262-host-hooks",
+      "status": "partial",
+      "issues": [
+        147,
+        245,
+        249,
+        250,
+        254
+      ],
+      "tests": [
+        "tests/test262_engine.rs"
+      ],
+      "rationale": "Real child Realms, ScriptRecord evalScript completions, ArrayBuffer detachment and Engine collection are installed per execution with weak callbacks and externally rooted Realm handles. Cross-Realm identity, detached runtime-view reads/writes and immutable original cases are tested. Integer TypedArray/SharedArrayBuffer globals, broader DataView methods and unpaired UTF-16 Script source remain unqualified; no whole-host API conformance claim."
     }
   ]
 }

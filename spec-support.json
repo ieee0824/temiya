@@ -11775,6 +11775,19 @@
       "rationale": "Real CLI metadata-only indexing and isolated execution capture per-feature outcomes with overlapping tags, untagged cases, timeout separation and explicit not-run/unreported coverage. Snapshots retain raw reports and corpus/manifest/binary/selection identities. Authored and fixed-revision captures are distinguished; metadata errors retain unknown variant counts. Reporting does not qualify full feature support or regression selection."
     },
     {
+      "id": "component.test262-regression-gate",
+      "status": "partial",
+      "issues": [
+        152
+      ],
+      "tests": [
+        "scripts/test-test262-regression-gate.mjs",
+        "tests/test262-regression-policy.test.mjs",
+        "scripts/check-test262-regressions.mjs"
+      ],
+      "rationale": "Actual pinned Engine captures feed an independently verified per-variant comparison. Known-pass failures/timeouts, missing results and unexplained new skips fail; policy changes require fresh reasons. Full-run shards cover each file once. Stable/MSRV focused CLI integration and a production PR run of128files214variants retain raw evidence. PR selection uses the verified full baseline, and the weekly workflow partitions every eligible file into eight jobs. Whole-corpus compatibility is not qualified."
+    },
+    {
       "id": "component.native-differential-adapter",
       "status": "partial",
       "issues": [

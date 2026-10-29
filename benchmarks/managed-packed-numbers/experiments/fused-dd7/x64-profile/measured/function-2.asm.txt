@@ -1,0 +1,142 @@
+
+/home/runner/work/_temp/measured-target/release/examples/measure_workload:     file format elf64-x86-64
+
+
+Disassembly of section .text:
+
+00000000001a78f0 <<temiya::runtime::elements::Elements<temiya::runtime::stored::StoredDescriptor>>::get_value>:
+  1a78f0:	41 56                	push   %r14
+  1a78f2:	53                   	push   %rbx
+  1a78f3:	48 83 ec 28          	sub    $0x28,%rsp
+  1a78f7:	48 89 f0             	mov    %rsi,%rax
+  1a78fa:	48 be 00 00 00 00 00 	movabs $0x8000000000000000,%rsi
+  1a7901:	00 00 80 
+  1a7904:	4c 8b 00             	mov    (%rax),%r8
+  1a7907:	4d 89 c1             	mov    %r8,%r9
+  1a790a:	49 31 f1             	xor    %rsi,%r9
+  1a790d:	4d 85 c0             	test   %r8,%r8
+  1a7910:	41 b8 02 00 00 00    	mov    $0x2,%r8d
+  1a7916:	4d 0f 48 c1          	cmovs  %r9,%r8
+  1a791a:	48 89 fb             	mov    %rdi,%rbx
+  1a791d:	48 8d 3d 0c 21 ed ff 	lea    -0x12def4(%rip),%rdi        # 79a30 <anon.cee555ce9de1a57a819e3b5fb2de4b81.179.llvm.4680808945533681850+0x3df>
+  1a7924:	4e 63 04 87          	movslq (%rdi,%r8,4),%r8
+  1a7928:	49 01 f8             	add    %rdi,%r8
+  1a792b:	41 ff e0             	jmp    *%r8
+  1a792e:	89 d1                	mov    %edx,%ecx
+  1a7930:	48 39 48 18          	cmp    %rcx,0x18(%rax)
+  1a7934:	0f 86 76 01 00 00    	jbe    1a7ab0 <<temiya::runtime::elements::Elements<temiya::runtime::stored::StoredDescriptor>>::get_value+0x1c0>
+  1a793a:	48 8b 40 10          	mov    0x10(%rax),%rax
+  1a793e:	f2 0f 10 04 c8       	movsd  (%rax,%rcx,8),%xmm0
+  1a7943:	48 83 c6 05          	add    $0x5,%rsi
+  1a7947:	48 89 33             	mov    %rsi,(%rbx)
+  1a794a:	f2 0f 11 43 08       	movsd  %xmm0,0x8(%rbx)
+  1a794f:	e9 63 01 00 00       	jmp    1a7ab7 <<temiya::runtime::elements::Elements<temiya::runtime::stored::StoredDescriptor>>::get_value+0x1c7>
+  1a7954:	89 d2                	mov    %edx,%edx
+  1a7956:	48 39 50 10          	cmp    %rdx,0x10(%rax)
+  1a795a:	0f 86 50 01 00 00    	jbe    1a7ab0 <<temiya::runtime::elements::Elements<temiya::runtime::stored::StoredDescriptor>>::get_value+0x1c0>
+  1a7960:	48 8b 70 08          	mov    0x8(%rax),%rsi
+  1a7964:	48 8d 14 d2          	lea    (%rdx,%rdx,8),%rdx
+  1a7968:	48 8b 04 d6          	mov    (%rsi,%rdx,8),%rax
+  1a796c:	48 83 f8 ff          	cmp    $0xffffffffffffffff,%rax
+  1a7970:	0f 84 3a 01 00 00    	je     1a7ab0 <<temiya::runtime::elements::Elements<temiya::runtime::stored::StoredDescriptor>>::get_value+0x1c0>
+  1a7976:	48 8d 34 d6          	lea    (%rsi,%rdx,8),%rsi
+  1a797a:	48 83 f8 02          	cmp    $0x2,%rax
+  1a797e:	0f 84 d0 00 00 00    	je     1a7a54 <<temiya::runtime::elements::Elements<temiya::runtime::stored::StoredDescriptor>>::get_value+0x164>
+  1a7984:	e9 27 01 00 00       	jmp    1a7ab0 <<temiya::runtime::elements::Elements<temiya::runtime::stored::StoredDescriptor>>::get_value+0x1c0>
+  1a7989:	48 8b 70 08          	mov    0x8(%rax),%rsi
+  1a798d:	48 85 f6             	test   %rsi,%rsi
+  1a7990:	0f 84 1a 01 00 00    	je     1a7ab0 <<temiya::runtime::elements::Elements<temiya::runtime::stored::StoredDescriptor>>::get_value+0x1c0>
+  1a7996:	48 8b 40 10          	mov    0x10(%rax),%rax
+  1a799a:	44 0f b7 86 4e 03 00 	movzwl 0x34e(%rsi),%r8d
+  1a79a1:	00 
+  1a79a2:	4d 85 c0             	test   %r8,%r8
+  1a79a5:	75 2b                	jne    1a79d2 <<temiya::runtime::elements::Elements<temiya::runtime::stored::StoredDescriptor>>::get_value+0xe2>
+  1a79a7:	66 0f 1f 84 00 00 00 	nopw   0x0(%rax,%rax,1)
+  1a79ae:	00 00 
+  1a79b0:	4c 89 c7             	mov    %r8,%rdi
+  1a79b3:	48 83 e8 01          	sub    $0x1,%rax
+  1a79b7:	0f 82 f3 00 00 00    	jb     1a7ab0 <<temiya::runtime::elements::Elements<temiya::runtime::stored::StoredDescriptor>>::get_value+0x1c0>
+  1a79bd:	48 8b b4 fe 50 03 00 	mov    0x350(%rsi,%rdi,8),%rsi
+  1a79c4:	00 
+  1a79c5:	44 0f b7 86 4e 03 00 	movzwl 0x34e(%rsi),%r8d
+  1a79cc:	00 
+  1a79cd:	4d 85 c0             	test   %r8,%r8
+  1a79d0:	74 de                	je     1a79b0 <<temiya::runtime::elements::Elements<temiya::runtime::stored::StoredDescriptor>>::get_value+0xc0>
+  1a79d2:	42 8d 3c c5 00 00 00 	lea    0x0(,%r8,8),%edi
+  1a79d9:	00 
+  1a79da:	4c 8d 14 ff          	lea    (%rdi,%rdi,8),%r10
+  1a79de:	49 c7 c1 f8 ff ff ff 	mov    $0xfffffffffffffff8,%r9
+  1a79e5:	31 ff                	xor    %edi,%edi
+  1a79e7:	66 0f 1f 84 00 00 00 	nopw   0x0(%rax,%rax,1)
+  1a79ee:	00 00 
+  1a79f0:	3b 94 be 20 03 00 00 	cmp    0x320(%rsi,%rdi,4),%edx
+  1a79f7:	41 0f 97 c3          	seta   %r11b
+  1a79fb:	41 80 db 00          	sbb    $0x0,%r11b
+  1a79ff:	41 80 fb 01          	cmp    $0x1,%r11b
+  1a7a03:	75 1b                	jne    1a7a20 <<temiya::runtime::elements::Elements<temiya::runtime::stored::StoredDescriptor>>::get_value+0x130>
+  1a7a05:	48 ff c7             	inc    %rdi
+  1a7a08:	4f 8d 1c 0a          	lea    (%r10,%r9,1),%r11
+  1a7a0c:	49 83 c3 b8          	add    $0xffffffffffffffb8,%r11
+  1a7a10:	49 83 c1 b8          	add    $0xffffffffffffffb8,%r9
+  1a7a14:	49 83 fb f8          	cmp    $0xfffffffffffffff8,%r11
+  1a7a18:	75 d6                	jne    1a79f0 <<temiya::runtime::elements::Elements<temiya::runtime::stored::StoredDescriptor>>::get_value+0x100>
+  1a7a1a:	eb 94                	jmp    1a79b0 <<temiya::runtime::elements::Elements<temiya::runtime::stored::StoredDescriptor>>::get_value+0xc0>
+  1a7a1c:	0f 1f 40 00          	nopl   0x0(%rax)
+  1a7a20:	45 0f b6 c3          	movzbl %r11b,%r8d
+  1a7a24:	45 85 c0             	test   %r8d,%r8d
+  1a7a27:	75 8a                	jne    1a79b3 <<temiya::runtime::elements::Elements<temiya::runtime::stored::StoredDescriptor>>::get_value+0xc3>
+  1a7a29:	4c 29 ce             	sub    %r9,%rsi
+  1a7a2c:	48 8b 06             	mov    (%rsi),%rax
+  1a7a2f:	48 83 f8 02          	cmp    $0x2,%rax
+  1a7a33:	75 7b                	jne    1a7ab0 <<temiya::runtime::elements::Elements<temiya::runtime::stored::StoredDescriptor>>::get_value+0x1c0>
+  1a7a35:	eb 1d                	jmp    1a7a54 <<temiya::runtime::elements::Elements<temiya::runtime::stored::StoredDescriptor>>::get_value+0x164>
+  1a7a37:	89 d2                	mov    %edx,%edx
+  1a7a39:	48 39 50 18          	cmp    %rdx,0x18(%rax)
+  1a7a3d:	76 71                	jbe    1a7ab0 <<temiya::runtime::elements::Elements<temiya::runtime::stored::StoredDescriptor>>::get_value+0x1c0>
+  1a7a3f:	48 8d 34 d2          	lea    (%rdx,%rdx,8),%rsi
+  1a7a43:	48 c1 e6 03          	shl    $0x3,%rsi
+  1a7a47:	48 03 70 10          	add    0x10(%rax),%rsi
+  1a7a4b:	48 8b 06             	mov    (%rsi),%rax
+  1a7a4e:	48 83 f8 02          	cmp    $0x2,%rax
+  1a7a52:	75 5c                	jne    1a7ab0 <<temiya::runtime::elements::Elements<temiya::runtime::stored::StoredDescriptor>>::get_value+0x1c0>
+  1a7a54:	48 83 c6 08          	add    $0x8,%rsi
+  1a7a58:	48 89 e7             	mov    %rsp,%rdi
+  1a7a5b:	48 89 ca             	mov    %rcx,%rdx
+  1a7a5e:	e8 6d 3e 00 00       	call   1ab8d0 <<temiya::runtime::stored::StoredValue>::load::<temiya::runtime::Object>>
+  1a7a63:	48 8b 34 24          	mov    (%rsp),%rsi
+  1a7a67:	48 83 fe ff          	cmp    $0xffffffffffffffff,%rsi
+  1a7a6b:	74 55                	je     1a7ac2 <<temiya::runtime::elements::Elements<temiya::runtime::stored::StoredDescriptor>>::get_value+0x1d2>
+  1a7a6d:	48 c7 03 fe ff ff ff 	movq   $0xfffffffffffffffe,(%rbx)
+  1a7a74:	48 85 f6             	test   %rsi,%rsi
+  1a7a77:	74 10                	je     1a7a89 <<temiya::runtime::elements::Elements<temiya::runtime::stored::StoredDescriptor>>::get_value+0x199>
+  1a7a79:	48 8b 7c 24 08       	mov    0x8(%rsp),%rdi
+  1a7a7e:	ba 01 00 00 00       	mov    $0x1,%edx
+  1a7a83:	ff 15 7f 77 1b 00    	call   *0x1b777f(%rip)        # 35f208 <_DYNAMIC+0x240>
+  1a7a89:	4c 8b 74 24 18       	mov    0x18(%rsp),%r14
+  1a7a8e:	4d 85 f6             	test   %r14,%r14
+  1a7a91:	74 24                	je     1a7ab7 <<temiya::runtime::elements::Elements<temiya::runtime::stored::StoredDescriptor>>::get_value+0x1c7>
+  1a7a93:	4c 89 f7             	mov    %r14,%rdi
+  1a7a96:	e8 45 c7 ff ff       	call   1a41e0 <core::ptr::drop_glue::<temiya::runtime::Value>>
+  1a7a9b:	be 20 00 00 00       	mov    $0x20,%esi
+  1a7aa0:	ba 08 00 00 00       	mov    $0x8,%edx
+  1a7aa5:	4c 89 f7             	mov    %r14,%rdi
+  1a7aa8:	ff 15 5a 77 1b 00    	call   *0x1b775a(%rip)        # 35f208 <_DYNAMIC+0x240>
+  1a7aae:	eb 07                	jmp    1a7ab7 <<temiya::runtime::elements::Elements<temiya::runtime::stored::StoredDescriptor>>::get_value+0x1c7>
+  1a7ab0:	48 c7 03 fe ff ff ff 	movq   $0xfffffffffffffffe,(%rbx)
+  1a7ab7:	48 89 d8             	mov    %rbx,%rax
+  1a7aba:	48 83 c4 28          	add    $0x28,%rsp
+  1a7abe:	5b                   	pop    %rbx
+  1a7abf:	41 5e                	pop    %r14
+  1a7ac1:	c3                   	ret
+  1a7ac2:	0f 10 44 24 08       	movups 0x8(%rsp),%xmm0
+  1a7ac7:	0f 10 4c 24 18       	movups 0x18(%rsp),%xmm1
+  1a7acc:	0f 11 4b 10          	movups %xmm1,0x10(%rbx)
+  1a7ad0:	0f 11 03             	movups %xmm0,(%rbx)
+  1a7ad3:	eb e2                	jmp    1a7ab7 <<temiya::runtime::elements::Elements<temiya::runtime::stored::StoredDescriptor>>::get_value+0x1c7>
+  1a7ad5:	48 89 c3             	mov    %rax,%rbx
+  1a7ad8:	be 20 00 00 00       	mov    $0x20,%esi
+  1a7add:	ba 08 00 00 00       	mov    $0x8,%edx
+  1a7ae2:	4c 89 f7             	mov    %r14,%rdi
+  1a7ae5:	ff 15 1d 77 1b 00    	call   *0x1b771d(%rip)        # 35f208 <_DYNAMIC+0x240>
+  1a7aeb:	48 89 df             	mov    %rbx,%rdi
+  1a7aee:	e8 dd c4 17 00       	call   323fd0 <_Unwind_Resume@plt>

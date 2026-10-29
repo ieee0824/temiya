@@ -1,0 +1,62 @@
+
+/home/runner/work/_temp/measured-target/release/examples/measure_workload:     file format elf64-x86-64
+
+
+Disassembly of section .text:
+
+00000000001eec10 <<temiya::runtime::elements::ElementRef<temiya::runtime::stored::StoredDescriptor>>::value>:
+  1eec10:	41 56                	push   %r14
+  1eec12:	53                   	push   %rbx
+  1eec13:	48 83 ec 28          	sub    $0x28,%rsp
+  1eec17:	48 89 fb             	mov    %rdi,%rbx
+  1eec1a:	83 3e 01             	cmpl   $0x1,(%rsi)
+  1eec1d:	75 62                	jne    1eec81 <<temiya::runtime::elements::ElementRef<temiya::runtime::stored::StoredDescriptor>>::value+0x71>
+  1eec1f:	48 8b 76 08          	mov    0x8(%rsi),%rsi
+  1eec23:	83 3e 02             	cmpl   $0x2,(%rsi)
+  1eec26:	75 72                	jne    1eec9a <<temiya::runtime::elements::ElementRef<temiya::runtime::stored::StoredDescriptor>>::value+0x8a>
+  1eec28:	48 83 c6 08          	add    $0x8,%rsi
+  1eec2c:	48 89 e7             	mov    %rsp,%rdi
+  1eec2f:	e8 0c 3c f7 ff       	call   162840 <<temiya::runtime::stored::StoredValue>::load::<temiya::runtime::Object>>
+  1eec34:	48 8b 34 24          	mov    (%rsp),%rsi
+  1eec38:	48 83 fe ff          	cmp    $0xffffffffffffffff,%rsi
+  1eec3c:	74 65                	je     1eeca3 <<temiya::runtime::elements::ElementRef<temiya::runtime::stored::StoredDescriptor>>::value+0x93>
+  1eec3e:	48 c7 03 fe ff ff ff 	movq   $0xfffffffffffffffe,(%rbx)
+  1eec45:	48 85 f6             	test   %rsi,%rsi
+  1eec48:	74 10                	je     1eec5a <<temiya::runtime::elements::ElementRef<temiya::runtime::stored::StoredDescriptor>>::value+0x4a>
+  1eec4a:	48 8b 7c 24 08       	mov    0x8(%rsp),%rdi
+  1eec4f:	ba 01 00 00 00       	mov    $0x1,%edx
+  1eec54:	ff 15 ce 03 17 00    	call   *0x1703ce(%rip)        # 35f028 <_DYNAMIC+0x240>
+  1eec5a:	4c 8b 74 24 18       	mov    0x18(%rsp),%r14
+  1eec5f:	4d 85 f6             	test   %r14,%r14
+  1eec62:	74 50                	je     1eecb4 <<temiya::runtime::elements::ElementRef<temiya::runtime::stored::StoredDescriptor>>::value+0xa4>
+  1eec64:	4c 89 f7             	mov    %r14,%rdi
+  1eec67:	e8 54 a0 ff ff       	call   1e8cc0 <core::ptr::drop_glue::<temiya::runtime::Value>>
+  1eec6c:	be 20 00 00 00       	mov    $0x20,%esi
+  1eec71:	ba 08 00 00 00       	mov    $0x8,%edx
+  1eec76:	4c 89 f7             	mov    %r14,%rdi
+  1eec79:	ff 15 a9 03 17 00    	call   *0x1703a9(%rip)        # 35f028 <_DYNAMIC+0x240>
+  1eec7f:	eb 33                	jmp    1eecb4 <<temiya::runtime::elements::ElementRef<temiya::runtime::stored::StoredDescriptor>>::value+0xa4>
+  1eec81:	f2 0f 10 46 08       	movsd  0x8(%rsi),%xmm0
+  1eec86:	48 b8 05 00 00 00 00 	movabs $0x8000000000000005,%rax
+  1eec8d:	00 00 80 
+  1eec90:	48 89 03             	mov    %rax,(%rbx)
+  1eec93:	f2 0f 11 43 08       	movsd  %xmm0,0x8(%rbx)
+  1eec98:	eb 1a                	jmp    1eecb4 <<temiya::runtime::elements::ElementRef<temiya::runtime::stored::StoredDescriptor>>::value+0xa4>
+  1eec9a:	48 c7 03 fe ff ff ff 	movq   $0xfffffffffffffffe,(%rbx)
+  1eeca1:	eb 11                	jmp    1eecb4 <<temiya::runtime::elements::ElementRef<temiya::runtime::stored::StoredDescriptor>>::value+0xa4>
+  1eeca3:	0f 10 44 24 08       	movups 0x8(%rsp),%xmm0
+  1eeca8:	0f 10 4c 24 18       	movups 0x18(%rsp),%xmm1
+  1eecad:	0f 11 4b 10          	movups %xmm1,0x10(%rbx)
+  1eecb1:	0f 11 03             	movups %xmm0,(%rbx)
+  1eecb4:	48 89 d8             	mov    %rbx,%rax
+  1eecb7:	48 83 c4 28          	add    $0x28,%rsp
+  1eecbb:	5b                   	pop    %rbx
+  1eecbc:	41 5e                	pop    %r14
+  1eecbe:	c3                   	ret
+  1eecbf:	48 89 c3             	mov    %rax,%rbx
+  1eecc2:	be 20 00 00 00       	mov    $0x20,%esi
+  1eecc7:	ba 08 00 00 00       	mov    $0x8,%edx
+  1eeccc:	4c 89 f7             	mov    %r14,%rdi
+  1eeccf:	ff 15 53 03 17 00    	call   *0x170353(%rip)        # 35f028 <_DYNAMIC+0x240>
+  1eecd5:	48 89 df             	mov    %rbx,%rdi
+  1eecd8:	e8 13 51 13 00       	call   323df0 <_Unwind_Resume@plt>

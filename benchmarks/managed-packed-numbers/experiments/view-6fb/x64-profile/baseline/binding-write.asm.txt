@@ -1,0 +1,136 @@
+
+/tmp/temiya-managed-packed-view-profile/managed-storage-profile-40797282661-1/baseline/worker.bin:     file format elf64-x86-64
+
+
+Disassembly of section .text:
+
+00000000001a4150 <<temiya::runtime::environment::Binding>::write>:
+  1a4150:	41 57                	push   %r15
+  1a4152:	41 56                	push   %r14
+  1a4154:	53                   	push   %rbx
+  1a4155:	48 81 ec 90 00 00 00 	sub    $0x90,%rsp
+  1a415c:	48 89 cb             	mov    %rcx,%rbx
+  1a415f:	49 89 fe             	mov    %rdi,%r14
+  1a4162:	48 83 3e fe          	cmpq   $0xfffffffffffffffe,(%rsi)
+  1a4166:	0f 85 a6 00 00 00    	jne    1a4212 <<temiya::runtime::environment::Binding>::write+0xc2>
+  1a416c:	48 83 c6 20          	add    $0x20,%rsi
+  1a4170:	48 8d 05 c5 57 ed ff 	lea    -0x12a83b(%rip),%rax        # 7993c <anon.b55a981bff1277874513b5f8c675f067.165.llvm.12246161624149178445>
+  1a4177:	48 89 44 24 68       	mov    %rax,0x68(%rsp)
+  1a417c:	48 c7 44 24 70 1c 00 	movq   $0x1c,0x70(%rsp)
+  1a4183:	00 00 
+  1a4185:	4c 8d 7c 24 50       	lea    0x50(%rsp),%r15
+  1a418a:	4c 89 ff             	mov    %r15,%rdi
+  1a418d:	ff 15 95 87 1b 00    	call   *0x1b8795(%rip)        # 35c928 <_DYNAMIC+0x658>
+  1a4193:	4c 89 7c 24 28       	mov    %r15,0x28(%rsp)
+  1a4198:	48 8d 05 e1 74 00 00 	lea    0x74e1(%rip),%rax        # 1ab680 <<alloc::string::String as core::fmt::Display>::fmt>
+  1a419f:	48 89 44 24 30       	mov    %rax,0x30(%rsp)
+  1a41a4:	48 8d 44 24 68       	lea    0x68(%rsp),%rax
+  1a41a9:	48 89 44 24 38       	mov    %rax,0x38(%rsp)
+  1a41ae:	48 8d 05 7b 96 06 00 	lea    0x6967b(%rip),%rax        # 20d830 <<&str as core::fmt::Display>::fmt>
+  1a41b5:	48 89 44 24 40       	mov    %rax,0x40(%rsp)
+  1a41ba:	48 8d 35 e0 96 ec ff 	lea    -0x136920(%rip),%rsi        # 6d8a1 <anon.b55a981bff1277874513b5f8c675f067.171.llvm.12246161624149178445>
+  1a41c1:	48 8d 7c 24 78       	lea    0x78(%rsp),%rdi
+  1a41c6:	48 8d 54 24 28       	lea    0x28(%rsp),%rdx
+  1a41cb:	ff 15 e7 84 1b 00    	call   *0x1b84e7(%rip)        # 35c6b8 <_DYNAMIC+0x3e8>
+  1a41d1:	48 8b 74 24 50       	mov    0x50(%rsp),%rsi
+  1a41d6:	48 85 f6             	test   %rsi,%rsi
+  1a41d9:	74 10                	je     1a41eb <<temiya::runtime::environment::Binding>::write+0x9b>
+  1a41db:	48 8b 7c 24 58       	mov    0x58(%rsp),%rdi
+  1a41e0:	ba 01 00 00 00       	mov    $0x1,%edx
+  1a41e5:	ff 15 25 83 1b 00    	call   *0x1b8325(%rip)        # 35c510 <_DYNAMIC+0x240>
+  1a41eb:	48 8b 84 24 88 00 00 	mov    0x88(%rsp),%rax
+  1a41f2:	00 
+  1a41f3:	49 89 46 10          	mov    %rax,0x10(%r14)
+  1a41f7:	0f 10 44 24 78       	movups 0x78(%rsp),%xmm0
+  1a41fc:	41 0f 11 06          	movups %xmm0,(%r14)
+  1a4200:	49 c7 46 18 00 00 00 	movq   $0x0,0x18(%r14)
+  1a4207:	00 
+  1a4208:	41 c6 46 20 03       	movb   $0x3,0x20(%r14)
+  1a420d:	e9 c0 00 00 00       	jmp    1a42d2 <<temiya::runtime::environment::Binding>::write+0x182>
+  1a4212:	80 7e 38 00          	cmpb   $0x0,0x38(%rsi)
+  1a4216:	74 50                	je     1a4268 <<temiya::runtime::environment::Binding>::write+0x118>
+  1a4218:	49 89 f7             	mov    %rsi,%r15
+  1a421b:	48 8d 7c 24 28       	lea    0x28(%rsp),%rdi
+  1a4220:	48 89 d6             	mov    %rdx,%rsi
+  1a4223:	48 89 da             	mov    %rbx,%rdx
+  1a4226:	e8 05 f8 fe ff       	call   193a30 <<temiya::runtime::stored::StoredValue>::store_owned::<temiya::runtime::environment::Environment>>
+  1a422b:	48 8b 44 24 28       	mov    0x28(%rsp),%rax
+  1a4230:	0f 10 44 24 30       	movups 0x30(%rsp),%xmm0
+  1a4235:	0f 29 04 24          	movaps %xmm0,(%rsp)
+  1a4239:	0f 10 44 24 40       	movups 0x40(%rsp),%xmm0
+  1a423e:	0f 29 44 24 10       	movaps %xmm0,0x10(%rsp)
+  1a4243:	48 83 f8 ff          	cmp    $0xffffffffffffffff,%rax
+  1a4247:	0f 84 99 00 00 00    	je     1a42e6 <<temiya::runtime::environment::Binding>::write+0x196>
+  1a424d:	0f 28 04 24          	movaps (%rsp),%xmm0
+  1a4251:	0f 28 4c 24 10       	movaps 0x10(%rsp),%xmm1
+  1a4256:	41 0f 11 4e 18       	movups %xmm1,0x18(%r14)
+  1a425b:	41 0f 11 46 08       	movups %xmm0,0x8(%r14)
+  1a4260:	49 89 06             	mov    %rax,(%r14)
+  1a4263:	e9 9f 00 00 00       	jmp    1a4307 <<temiya::runtime::environment::Binding>::write+0x1b7>
+  1a4268:	45 84 c0             	test   %r8b,%r8b
+  1a426b:	75 0f                	jne    1a427c <<temiya::runtime::environment::Binding>::write+0x12c>
+  1a426d:	80 7e 39 00          	cmpb   $0x0,0x39(%rsi)
+  1a4271:	75 09                	jne    1a427c <<temiya::runtime::environment::Binding>::write+0x12c>
+  1a4273:	49 c7 06 ff ff ff ff 	movq   $0xffffffffffffffff,(%r14)
+  1a427a:	eb 56                	jmp    1a42d2 <<temiya::runtime::environment::Binding>::write+0x182>
+  1a427c:	ff 15 c6 82 1b 00    	call   *0x1b82c6(%rip)        # 35c548 <_DYNAMIC+0x278>
+  1a4282:	bf 22 00 00 00       	mov    $0x22,%edi
+  1a4287:	be 01 00 00 00       	mov    $0x1,%esi
+  1a428c:	ff 15 be 82 1b 00    	call   *0x1b82be(%rip)        # 35c550 <_DYNAMIC+0x280>
+  1a4292:	48 85 c0             	test   %rax,%rax
+  1a4295:	74 7d                	je     1a4314 <<temiya::runtime::environment::Binding>::write+0x1c4>
+  1a4297:	0f 10 05 ca 56 ed ff 	movups -0x12a936(%rip),%xmm0        # 79968 <anon.b55a981bff1277874513b5f8c675f067.165.llvm.12246161624149178445+0x2c>
+  1a429e:	0f 11 40 10          	movups %xmm0,0x10(%rax)
+  1a42a2:	0f 10 05 af 56 ed ff 	movups -0x12a951(%rip),%xmm0        # 79958 <anon.b55a981bff1277874513b5f8c675f067.165.llvm.12246161624149178445+0x1c>
+  1a42a9:	0f 11 00             	movups %xmm0,(%rax)
+  1a42ac:	66 c7 40 20 6e 67    	movw   $0x676e,0x20(%rax)
+  1a42b2:	49 c7 06 22 00 00 00 	movq   $0x22,(%r14)
+  1a42b9:	49 89 46 08          	mov    %rax,0x8(%r14)
+  1a42bd:	49 c7 46 10 22 00 00 	movq   $0x22,0x10(%r14)
+  1a42c4:	00 
+  1a42c5:	49 c7 46 18 00 00 00 	movq   $0x0,0x18(%r14)
+  1a42cc:	00 
+  1a42cd:	41 c6 46 20 01       	movb   $0x1,0x20(%r14)
+  1a42d2:	48 89 df             	mov    %rbx,%rdi
+  1a42d5:	48 81 c4 90 00 00 00 	add    $0x90,%rsp
+  1a42dc:	5b                   	pop    %rbx
+  1a42dd:	41 5e                	pop    %r14
+  1a42df:	41 5f                	pop    %r15
+  1a42e1:	e9 1a 1a ff ff       	jmp    195d00 <core::ptr::drop_glue::<temiya::runtime::Value>>
+  1a42e6:	4c 89 ff             	mov    %r15,%rdi
+  1a42e9:	e8 a2 22 ff ff       	call   196590 <core::ptr::drop_glue::<temiya::runtime::stored::StoredValue>>
+  1a42ee:	0f 28 04 24          	movaps (%rsp),%xmm0
+  1a42f2:	0f 28 4c 24 10       	movaps 0x10(%rsp),%xmm1
+  1a42f7:	41 0f 11 4f 10       	movups %xmm1,0x10(%r15)
+  1a42fc:	41 0f 11 07          	movups %xmm0,(%r15)
+  1a4300:	49 c7 06 ff ff ff ff 	movq   $0xffffffffffffffff,(%r14)
+  1a4307:	48 81 c4 90 00 00 00 	add    $0x90,%rsp
+  1a430e:	5b                   	pop    %rbx
+  1a430f:	41 5e                	pop    %r14
+  1a4311:	41 5f                	pop    %r15
+  1a4313:	c3                   	ret
+  1a4314:	bf 01 00 00 00       	mov    $0x1,%edi
+  1a4319:	be 22 00 00 00       	mov    $0x22,%esi
+  1a431e:	ff 15 14 82 1b 00    	call   *0x1b8214(%rip)        # 35c538 <_DYNAMIC+0x268>
+  1a4324:	0f 0b                	ud2
+  1a4326:	49 89 c6             	mov    %rax,%r14
+  1a4329:	0f 28 04 24          	movaps (%rsp),%xmm0
+  1a432d:	0f 28 4c 24 10       	movaps 0x10(%rsp),%xmm1
+  1a4332:	41 0f 11 4f 10       	movups %xmm1,0x10(%r15)
+  1a4337:	41 0f 11 07          	movups %xmm0,(%r15)
+  1a433b:	4c 89 f7             	mov    %r14,%rdi
+  1a433e:	e8 cd cf 17 00       	call   321310 <_Unwind_Resume@plt>
+  1a4343:	49 89 c6             	mov    %rax,%r14
+  1a4346:	48 8b 74 24 50       	mov    0x50(%rsp),%rsi
+  1a434b:	48 85 f6             	test   %rsi,%rsi
+  1a434e:	74 15                	je     1a4365 <<temiya::runtime::environment::Binding>::write+0x215>
+  1a4350:	48 8b 7c 24 58       	mov    0x58(%rsp),%rdi
+  1a4355:	ba 01 00 00 00       	mov    $0x1,%edx
+  1a435a:	ff 15 b0 81 1b 00    	call   *0x1b81b0(%rip)        # 35c510 <_DYNAMIC+0x240>
+  1a4360:	eb 03                	jmp    1a4365 <<temiya::runtime::environment::Binding>::write+0x215>
+  1a4362:	49 89 c6             	mov    %rax,%r14
+  1a4365:	48 89 df             	mov    %rbx,%rdi
+  1a4368:	e8 93 19 ff ff       	call   195d00 <core::ptr::drop_glue::<temiya::runtime::Value>>
+  1a436d:	4c 89 f7             	mov    %r14,%rdi
+  1a4370:	e8 9b cf 17 00       	call   321310 <_Unwind_Resume@plt>
+  1a4375:	ff 15 9d 81 1b 00    	call   *0x1b819d(%rip)        # 35c518 <_DYNAMIC+0x248>

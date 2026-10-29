@@ -1,0 +1,528 @@
+
+/tmp/temiya-managed-packed-view-frozen-worker:     file format elf64-littleaarch64
+
+
+Disassembly of section .text:
+
+0000000000159590 <<temiya::runtime::Object>::try_get_own_property>:
+  159590:	d103c3ff 	sub	sp, sp, #0xf0
+  159594:	a9097bfd 	stp	x29, x30, [sp, #144]
+  159598:	a90a6ffc 	stp	x28, x27, [sp, #160]
+  15959c:	a90b67fa 	stp	x26, x25, [sp, #176]
+  1595a0:	a90c5ff8 	stp	x24, x23, [sp, #192]
+  1595a4:	a90d57f6 	stp	x22, x21, [sp, #208]
+  1595a8:	a90e4ff4 	stp	x20, x19, [sp, #224]
+  1595ac:	910243fd 	add	x29, sp, #0x90
+  1595b0:	f9400016 	ldr	x22, [x0]
+  1595b4:	92f0000a 	mov	x10, #0x7fffffffffffffff    	// #9223372036854775807
+  1595b8:	f9401ad9 	ldr	x25, [x22, #48]
+  1595bc:	aa1903f8 	mov	x24, x25
+  1595c0:	f8460f09 	ldr	x9, [x24, #96]!
+  1595c4:	eb0a013f 	cmp	x9, x10
+  1595c8:	54003be2 	b.cs	159d44 <<temiya::runtime::Object>::try_get_own_property+0x7b4>  // b.hs, b.nlast
+  1595cc:	aa0803f3 	mov	x19, x8
+  1595d0:	f940d728 	ldr	x8, [x25, #424]
+  1595d4:	aa0103f5 	mov	x21, x1
+  1595d8:	aa0003f4 	mov	x20, x0
+  1595dc:	9100052a 	add	x10, x9, #0x1
+  1595e0:	f900332a 	str	x10, [x25, #96]
+  1595e4:	b40001a8 	cbz	x8, 159618 <<temiya::runtime::Object>::try_get_own_property+0x88>
+  1595e8:	aa1303e8 	mov	x8, x19
+  1595ec:	aa1403e0 	mov	x0, x20
+  1595f0:	aa1503e1 	mov	x1, x21
+  1595f4:	f9000309 	str	x9, [x24]
+  1595f8:	a94e4ff4 	ldp	x20, x19, [sp, #224]
+  1595fc:	a94d57f6 	ldp	x22, x21, [sp, #208]
+  159600:	a94c5ff8 	ldp	x24, x23, [sp, #192]
+  159604:	a94b67fa 	ldp	x26, x25, [sp, #176]
+  159608:	a94a6ffc 	ldp	x28, x27, [sp, #160]
+  15960c:	a9497bfd 	ldp	x29, x30, [sp, #144]
+  159610:	9103c3ff 	add	sp, sp, #0xf0
+  159614:	17fd1f9b 	b	a1480 <temiya::runtime::proxy::get_own_property>
+  159618:	f9404728 	ldr	x8, [x25, #136]
+  15961c:	b4000348 	cbz	x8, 159684 <<temiya::runtime::Object>::try_get_own_property+0xf4>
+  159620:	910123e0 	add	x0, sp, #0x48
+  159624:	aa1403e1 	mov	x1, x20
+  159628:	aa1503e2 	mov	x2, x21
+  15962c:	f9000309 	str	x9, [x24]
+  159630:	94000f8b 	bl	15d45c <<temiya::runtime::Object>::materialize_function_prototype>
+  159634:	f94027e8 	ldr	x8, [sp, #72]
+  159638:	b100051f 	cmn	x8, #0x1
+  15963c:	54000140 	b.eq	159664 <<temiya::runtime::Object>::try_get_own_property+0xd4>  // b.none
+  159640:	3cc483e0 	ldur	q0, [sp, #72]
+  159644:	3cc583e1 	ldur	q1, [sp, #88]
+  159648:	92800009 	mov	x9, #0xffffffffffffffff    	// #-1
+  15964c:	f94037e8 	ldr	x8, [sp, #104]
+  159650:	f9000269 	str	x9, [x19]
+  159654:	3c808260 	stur	q0, [x19, #8]
+  159658:	3c818261 	stur	q1, [x19, #24]
+  15965c:	f9001668 	str	x8, [x19, #40]
+  159660:	140001ac 	b	159d10 <<temiya::runtime::Object>::try_get_own_property+0x780>
+  159664:	f9401ad9 	ldr	x25, [x22, #48]
+  159668:	92f00009 	mov	x9, #0x7fffffffffffffff    	// #9223372036854775807
+  15966c:	aa1903f8 	mov	x24, x25
+  159670:	f8460f08 	ldr	x8, [x24, #96]!
+  159674:	eb09011f 	cmp	x8, x9
+  159678:	540036c2 	b.cs	159d50 <<temiya::runtime::Object>::try_get_own_property+0x7c0>  // b.hs, b.nlast
+  15967c:	91000508 	add	x8, x8, #0x1
+  159680:	f9000308 	str	x8, [x24]
+  159684:	3943c328 	ldrb	w8, [x25, #240]
+  159688:	7103fd1f 	cmp	w8, #0xff
+  15968c:	54000ba0 	b.eq	159800 <<temiya::runtime::Object>::try_get_own_property+0x270>  // b.none
+  159690:	394002b6 	ldrb	w22, [x21]
+  159694:	7103fedf 	cmp	w22, #0xff
+  159698:	540001a1 	b.ne	1596cc <<temiya::runtime::Object>::try_get_own_property+0x13c>  // b.any
+  15969c:	aa1503e0 	mov	x0, x21
+  1596a0:	97fdb293 	bl	c60ec <<temiya::runtime::object::PropertyKey>::array_index>
+  1596a4:	36000ae0 	tbz	w0, #0, 159800 <<temiya::runtime::Object>::try_get_own_property+0x270>
+  1596a8:	3943c328 	ldrb	w8, [x25, #240]
+  1596ac:	2a0103f6 	mov	w22, w1
+  1596b0:	7100091f 	cmp	w8, #0x2
+  1596b4:	540005e0 	b.eq	159770 <<temiya::runtime::Object>::try_get_own_property+0x1e0>  // b.none
+  1596b8:	7100051f 	cmp	w8, #0x1
+  1596bc:	54000641 	b.ne	159784 <<temiya::runtime::Object>::try_get_own_property+0x1f4>  // b.any
+  1596c0:	f9407f28 	ldr	x8, [x25, #248]
+  1596c4:	a9418517 	ldp	x23, x1, [x8, #24]
+  1596c8:	14000033 	b	159794 <<temiya::runtime::Object>::try_get_own_property+0x204>
+  1596cc:	b0000660 	adrp	x0, 226000 <anon.5c6aa39b728295f605bec2bdb7d14e8f.121.llvm.10513517209426332082+0x1685>
+  1596d0:	912ef000 	add	x0, x0, #0xbbc
+  1596d4:	910123e8 	add	x8, sp, #0x48
+  1596d8:	528000c1 	mov	w1, #0x6                   	// #6
+  1596dc:	97fc0a97 	bl	5c138 <<temiya::runtime::string::JsString as core::convert::From<&str>>::from>
+  1596e0:	35000256 	cbnz	w22, 159728 <<temiya::runtime::Object>::try_get_own_property+0x198>
+  1596e4:	394123e8 	ldrb	w8, [sp, #72]
+  1596e8:	35000208 	cbnz	w8, 159728 <<temiya::runtime::Object>::try_get_own_property+0x198>
+  1596ec:	394006a8 	ldrb	w8, [x21, #1]
+  1596f0:	394127e9 	ldrb	w9, [sp, #73]
+  1596f4:	6b09011f 	cmp	w8, w9
+  1596f8:	54fffd21 	b.ne	15969c <<temiya::runtime::Object>::try_get_own_property+0x10c>  // b.any
+  1596fc:	f84022a8 	ldur	x8, [x21, #2]
+  159700:	f844a3e9 	ldur	x9, [sp, #74]
+  159704:	f840a2aa 	ldur	x10, [x21, #10]
+  159708:	f84523eb 	ldur	x11, [sp, #82]
+  15970c:	b84122ac 	ldur	w12, [x21, #18]
+  159710:	b845a3ed 	ldur	w13, [sp, #90]
+  159714:	eb09011f 	cmp	x8, x9
+  159718:	fa4b0140 	ccmp	x10, x11, #0x0, eq	// eq = none
+  15971c:	fa4d0180 	ccmp	x12, x13, #0x0, eq	// eq = none
+  159720:	54fffbe1 	b.ne	15969c <<temiya::runtime::Object>::try_get_own_property+0x10c>  // b.any
+  159724:	140000f0 	b	159ae4 <<temiya::runtime::Object>::try_get_own_property+0x554>
+  159728:	910123e1 	add	x1, sp, #0x48
+  15972c:	aa1503e0 	mov	x0, x21
+  159730:	97fc0516 	bl	5ab88 <<temiya::runtime::string::JsString>::eq_other>
+  159734:	394123e8 	ldrb	w8, [sp, #72]
+  159738:	36001160 	tbz	w0, #0, 159964 <<temiya::runtime::Object>::try_get_own_property+0x3d4>
+  15973c:	34001d48 	cbz	w8, 159ae4 <<temiya::runtime::Object>::try_get_own_property+0x554>
+  159740:	7100051f 	cmp	w8, #0x1
+  159744:	54001be1 	b.ne	159ac0 <<temiya::runtime::Object>::try_get_own_property+0x530>  // b.any
+  159748:	f9402be1 	ldr	x1, [sp, #80]
+  15974c:	92800000 	mov	x0, #0xffffffffffffffff    	// #-1
+  159750:	9402f984 	bl	217d60 <__aarch64_ldadd8_rel>
+  159754:	f100041f 	cmp	x0, #0x1
+  159758:	54001c61 	b.ne	159ae4 <<temiya::runtime::Object>::try_get_own_property+0x554>  // b.any
+  15975c:	910123e8 	add	x8, sp, #0x48
+  159760:	d50339bf 	dmb	ishld
+  159764:	91002100 	add	x0, x8, #0x8
+  159768:	97fc09bd 	bl	5be5c <<alloc::sync::Arc<alloc::vec::Vec<u16>>>::drop_slow>
+  15976c:	140000de 	b	159ae4 <<temiya::runtime::Object>::try_get_own_property+0x554>
+  159770:	f9407f28 	ldr	x8, [x25, #248]
+  159774:	91004100 	add	x0, x8, #0x10
+  159778:	97fc032a 	bl	5a420 <<temiya::runtime::string::Rope>::code_units>
+  15977c:	aa0003f7 	mov	x23, x0
+  159780:	14000005 	b	159794 <<temiya::runtime::Object>::try_get_own_property+0x204>
+  159784:	3943c721 	ldrb	w1, [x25, #241]
+  159788:	f1002c3f 	cmp	x1, #0xb
+  15978c:	54002e82 	b.cs	159d5c <<temiya::runtime::Object>::try_get_own_property+0x7cc>  // b.hs, b.nlast
+  159790:	9103cb37 	add	x23, x25, #0xf2
+  159794:	2a1603f6 	mov	w22, w22
+  159798:	eb16003f 	cmp	x1, x22
+  15979c:	54000329 	b.ls	159800 <<temiya::runtime::Object>::try_get_own_property+0x270>  // b.plast
+  1597a0:	97fbf53b 	bl	56c8c <__rustc::__rust_no_alloc_shim_is_unstable_v2>
+  1597a4:	52800040 	mov	w0, #0x2                   	// #2
+  1597a8:	52800041 	mov	w1, #0x2                   	// #2
+  1597ac:	97fbf534 	bl	56c7c <__rustc::__rust_alloc>
+  1597b0:	b4002e20 	cbz	x0, 159d74 <<temiya::runtime::Object>::try_get_own_property+0x7e4>
+  1597b4:	78767ae9 	ldrh	w9, [x23, x22, lsl #1]
+  1597b8:	52800028 	mov	w8, #0x1                   	// #1
+  1597bc:	a90483e8 	stp	x8, x0, [sp, #72]
+  1597c0:	79000009 	strh	w9, [x0]
+  1597c4:	f9002fe8 	str	x8, [sp, #88]
+  1597c8:	910083e8 	add	x8, sp, #0x20
+  1597cc:	910123e0 	add	x0, sp, #0x48
+  1597d0:	97fbf6d1 	bl	57314 <<temiya::runtime::string::JsString>::from_code_units::<alloc::vec::Vec<u16>>>
+  1597d4:	f9401be8 	ldr	x8, [sp, #48]
+  1597d8:	3dc00be0 	ldr	q0, [sp, #32]
+  1597dc:	f900027f 	str	xzr, [x19]
+  1597e0:	f9000a7f 	str	xzr, [x19, #16]
+  1597e4:	f9001e68 	str	x8, [x19, #56]
+  1597e8:	b2410be8 	mov	x8, #0x8000000000000003    	// #-9223372036854775805
+  1597ec:	f9001268 	str	x8, [x19, #32]
+  1597f0:	52802008 	mov	w8, #0x100                 	// #256
+  1597f4:	3c828260 	stur	q0, [x19, #40]
+  1597f8:	79008268 	strh	w8, [x19, #64]
+  1597fc:	140000cd 	b	159b30 <<temiya::runtime::Object>::try_get_own_property+0x5a0>
+  159800:	f9409f28 	ldr	x8, [x25, #312]
+  159804:	b4000488 	cbz	x8, 159894 <<temiya::runtime::Object>::try_get_own_property+0x304>
+  159808:	aa1503e0 	mov	x0, x21
+  15980c:	97fdb238 	bl	c60ec <<temiya::runtime::object::PropertyKey>::array_index>
+  159810:	36000420 	tbz	w0, #0, 159894 <<temiya::runtime::Object>::try_get_own_property+0x304>
+  159814:	f9409f2a 	ldr	x10, [x25, #312]
+  159818:	f9400148 	ldr	x8, [x10]
+  15981c:	d2410109 	eor	x9, x8, #0x8000000000000000
+  159820:	f100011f 	cmp	x8, #0x0
+  159824:	52800048 	mov	w8, #0x2                   	// #2
+  159828:	9a884128 	csel	x8, x9, x8, mi	// mi = first
+  15982c:	f100051f 	cmp	x8, #0x1
+  159830:	5400080c 	b.gt	159930 <<temiya::runtime::Object>::try_get_own_property+0x3a0>
+  159834:	b5000b28 	cbnz	x8, 159998 <<temiya::runtime::Object>::try_get_own_property+0x408>
+  159838:	f9400d48 	ldr	x8, [x10, #24]
+  15983c:	2a0103e9 	mov	w9, w1
+  159840:	eb09011f 	cmp	x8, x9
+  159844:	54001229 	b.ls	159a88 <<temiya::runtime::Object>::try_get_own_property+0x4f8>  // b.plast
+  159848:	f940094a 	ldr	x10, [x10, #16]
+  15984c:	d28000ab 	mov	x11, #0x5                   	// #5
+  159850:	aa1f03e8 	mov	x8, xzr
+  159854:	f2f0000b 	movk	x11, #0x8000, lsl #48
+  159858:	fc697940 	ldr	d0, [x10, x9, lsl #3]
+  15985c:	52800029 	mov	w9, #0x1                   	// #1
+  159860:	f90037eb 	str	x11, [sp, #104]
+  159864:	390223e9 	strb	w9, [sp, #136]
+  159868:	52802029 	mov	w9, #0x101                 	// #257
+  15986c:	f9002fff 	str	xzr, [sp, #88]
+  159870:	780893e9 	sturh	w9, [sp, #137]
+  159874:	ad428be1 	ldp	q1, q2, [sp, #80]
+  159878:	fd0023e0 	str	d0, [sp, #64]
+  15987c:	3cc783e0 	ldur	q0, [sp, #120]
+  159880:	f94047e9 	ldr	x9, [sp, #136]
+  159884:	ad010be1 	stp	q1, q2, [sp, #32]
+  159888:	3d8003e0 	str	q0, [sp]
+  15988c:	f9000be9 	str	x9, [sp, #16]
+  159890:	14000081 	b	159a94 <<temiya::runtime::Object>::try_get_own_property+0x504>
+  159894:	f9406728 	ldr	x8, [x25, #200]
+  159898:	f9408729 	ldr	x9, [x25, #264]
+  15989c:	eb08013f 	cmp	x9, x8
+  1598a0:	540019a2 	b.cs	159bd4 <<temiya::runtime::Object>::try_get_own_property+0x644>  // b.hs, b.nlast
+  1598a4:	52800c0a 	mov	w10, #0x60                  	// #96
+  1598a8:	f940632b 	ldr	x11, [x25, #192]
+  1598ac:	9b0a2d36 	madd	x22, x9, x10, x11
+  1598b0:	394002a9 	ldrb	w9, [x21]
+  1598b4:	aa1603e0 	mov	x0, x22
+  1598b8:	38448c0a 	ldrb	w10, [x0, #72]!
+  1598bc:	7103fd5f 	cmp	w10, #0xff
+  1598c0:	54000101 	b.ne	1598e0 <<temiya::runtime::Object>::try_get_own_property+0x350>  // b.any
+  1598c4:	7103fd3f 	cmp	w9, #0xff
+  1598c8:	54001881 	b.ne	159bd8 <<temiya::runtime::Object>::try_get_own_property+0x648>  // b.any
+  1598cc:	f9402ac9 	ldr	x9, [x22, #80]
+  1598d0:	f94006aa 	ldr	x10, [x21, #8]
+  1598d4:	eb0a013f 	cmp	x9, x10
+  1598d8:	54001801 	b.ne	159bd8 <<temiya::runtime::Object>::try_get_own_property+0x648>  // b.any
+  1598dc:	14000008 	b	1598fc <<temiya::runtime::Object>::try_get_own_property+0x36c>
+  1598e0:	7103fd3f 	cmp	w9, #0xff
+  1598e4:	540017a0 	b.eq	159bd8 <<temiya::runtime::Object>::try_get_own_property+0x648>  // b.none
+  1598e8:	2a0a0129 	orr	w9, w9, w10
+  1598ec:	34001549 	cbz	w9, 159b94 <<temiya::runtime::Object>::try_get_own_property+0x604>
+  1598f0:	aa1503e1 	mov	x1, x21
+  1598f4:	97fc04a5 	bl	5ab88 <<temiya::runtime::string::JsString>::eq_other>
+  1598f8:	360016c0 	tbz	w0, #0, 159bd0 <<temiya::runtime::Object>::try_get_own_property+0x640>
+  1598fc:	910123e8 	add	x8, sp, #0x48
+  159900:	aa1603e0 	mov	x0, x22
+  159904:	aa1403e1 	mov	x1, x20
+  159908:	97fd12a6 	bl	9e3a0 <<temiya::runtime::stored::StoredDescriptor>::load>
+  15990c:	ad4287e0 	ldp	q0, q1, [sp, #80]
+  159910:	f94027e8 	ldr	x8, [sp, #72]
+  159914:	f9403be9 	ldr	x9, [sp, #112]
+  159918:	f100091f 	cmp	x8, #0x2
+  15991c:	ad0107e0 	stp	q0, q1, [sp, #32]
+  159920:	f90023e9 	str	x9, [sp, #64]
+  159924:	54001221 	b.ne	159b68 <<temiya::runtime::Object>::try_get_own_property+0x5d8>  // b.any
+  159928:	92800008 	mov	x8, #0xffffffffffffffff    	// #-1
+  15992c:	14000093 	b	159b78 <<temiya::runtime::Object>::try_get_own_property+0x5e8>
+  159930:	f100091f 	cmp	x8, #0x2
+  159934:	54000421 	b.ne	1599b8 <<temiya::runtime::Object>::try_get_own_property+0x428>  // b.any
+  159938:	f9400949 	ldr	x9, [x10, #16]
+  15993c:	2a0103e8 	mov	w8, w1
+  159940:	eb08013f 	cmp	x9, x8
+  159944:	54000a29 	b.ls	159a88 <<temiya::runtime::Object>::try_get_own_property+0x4f8>  // b.plast
+  159948:	52800909 	mov	w9, #0x48                  	// #72
+  15994c:	f940054a 	ldr	x10, [x10, #8]
+  159950:	9ba92900 	umaddl	x0, w8, w9, x10
+  159954:	f9400008 	ldr	x8, [x0]
+  159958:	b100051f 	cmn	x8, #0x1
+  15995c:	540006a1 	b.ne	159a30 <<temiya::runtime::Object>::try_get_own_property+0x4a0>  // b.any
+  159960:	1400004a 	b	159a88 <<temiya::runtime::Object>::try_get_own_property+0x4f8>
+  159964:	34ffe9c8 	cbz	w8, 15969c <<temiya::runtime::Object>::try_get_own_property+0x10c>
+  159968:	7100051f 	cmp	w8, #0x1
+  15996c:	54000ea1 	b.ne	159b40 <<temiya::runtime::Object>::try_get_own_property+0x5b0>  // b.any
+  159970:	f9402be1 	ldr	x1, [sp, #80]
+  159974:	92800000 	mov	x0, #0xffffffffffffffff    	// #-1
+  159978:	9402f8fa 	bl	217d60 <__aarch64_ldadd8_rel>
+  15997c:	f100041f 	cmp	x0, #0x1
+  159980:	54ffe8e1 	b.ne	15969c <<temiya::runtime::Object>::try_get_own_property+0x10c>  // b.any
+  159984:	910123e8 	add	x8, sp, #0x48
+  159988:	d50339bf 	dmb	ishld
+  15998c:	91002100 	add	x0, x8, #0x8
+  159990:	97fc0933 	bl	5be5c <<alloc::sync::Arc<alloc::vec::Vec<u16>>>::drop_slow>
+  159994:	17ffff42 	b	15969c <<temiya::runtime::Object>::try_get_own_property+0x10c>
+  159998:	f9400d49 	ldr	x9, [x10, #24]
+  15999c:	2a0103e8 	mov	w8, w1
+  1599a0:	eb08013f 	cmp	x9, x8
+  1599a4:	54000729 	b.ls	159a88 <<temiya::runtime::Object>::try_get_own_property+0x4f8>  // b.plast
+  1599a8:	52800909 	mov	w9, #0x48                  	// #72
+  1599ac:	f940094a 	ldr	x10, [x10, #16]
+  1599b0:	9ba92900 	umaddl	x0, w8, w9, x10
+  1599b4:	1400001f 	b	159a30 <<temiya::runtime::Object>::try_get_own_property+0x4a0>
+  1599b8:	f9400549 	ldr	x9, [x10, #8]
+  1599bc:	b4000669 	cbz	x9, 159a88 <<temiya::runtime::Object>::try_get_own_property+0x4f8>
+  1599c0:	f940094a 	ldr	x10, [x10, #16]
+  1599c4:	52800048 	mov	w8, #0x2                   	// #2
+  1599c8:	79469d2c 	ldrh	w12, [x9, #846]
+  1599cc:	b500010c 	cbnz	x12, 1599ec <<temiya::runtime::Object>::try_get_own_property+0x45c>
+  1599d0:	aa0c03eb 	mov	x11, x12
+  1599d4:	b400056a 	cbz	x10, 159a80 <<temiya::runtime::Object>::try_get_own_property+0x4f0>
+  1599d8:	8b0b0d29 	add	x9, x9, x11, lsl #3
+  1599dc:	d100054a 	sub	x10, x10, #0x1
+  1599e0:	f941a929 	ldr	x9, [x9, #848]
+  1599e4:	79469d2c 	ldrh	w12, [x9, #846]
+  1599e8:	b4ffff4c 	cbz	x12, 1599d0 <<temiya::runtime::Object>::try_get_own_property+0x440>
+  1599ec:	d37ef58d 	lsl	x13, x12, #2
+  1599f0:	aa1f03eb 	mov	x11, xzr
+  1599f4:	910c812e 	add	x14, x9, #0x320
+  1599f8:	91002120 	add	x0, x9, #0x8
+  1599fc:	b84045cf 	ldr	w15, [x14], #4
+  159a00:	6b0f003f 	cmp	w1, w15
+  159a04:	1a9f97ef 	cset	w15, hi	// hi = pmore
+  159a08:	5a9f21ef 	csinv	w15, w15, wzr, cs	// cs = hs, nlast
+  159a0c:	12001def 	and	w15, w15, #0xff
+  159a10:	710005ff 	cmp	w15, #0x1
+  159a14:	540000c1 	b.ne	159a2c <<temiya::runtime::Object>::try_get_own_property+0x49c>  // b.any
+  159a18:	f10011ad 	subs	x13, x13, #0x4
+  159a1c:	9100056b 	add	x11, x11, #0x1
+  159a20:	91012000 	add	x0, x0, #0x48
+  159a24:	54fffec1 	b.ne	1599fc <<temiya::runtime::Object>::try_get_own_property+0x46c>  // b.any
+  159a28:	17ffffea 	b	1599d0 <<temiya::runtime::Object>::try_get_own_property+0x440>
+  159a2c:	35fffd4f 	cbnz	w15, 1599d4 <<temiya::runtime::Object>::try_get_own_property+0x444>
+  159a30:	910123e8 	add	x8, sp, #0x48
+  159a34:	aa1403e1 	mov	x1, x20
+  159a38:	97fd125a 	bl	9e3a0 <<temiya::runtime::stored::StoredDescriptor>::load>
+  159a3c:	ad4287e0 	ldp	q0, q1, [sp, #80]
+  159a40:	f9403be9 	ldr	x9, [sp, #112]
+  159a44:	f94027e8 	ldr	x8, [sp, #72]
+  159a48:	f90023e9 	str	x9, [sp, #64]
+  159a4c:	f94047e9 	ldr	x9, [sp, #136]
+  159a50:	ad0107e0 	stp	q0, q1, [sp, #32]
+  159a54:	3cc783e0 	ldur	q0, [sp, #120]
+  159a58:	f100091f 	cmp	x8, #0x2
+  159a5c:	f9000be9 	str	x9, [sp, #16]
+  159a60:	3d8003e0 	str	q0, [sp]
+  159a64:	54000181 	b.ne	159a94 <<temiya::runtime::Object>::try_get_own_property+0x504>  // b.any
+  159a68:	ad4107e0 	ldp	q0, q1, [sp, #32]
+  159a6c:	f94023e8 	ldr	x8, [sp, #64]
+  159a70:	f9001668 	str	x8, [x19, #40]
+  159a74:	92800008 	mov	x8, #0xffffffffffffffff    	// #-1
+  159a78:	3c808260 	stur	q0, [x19, #8]
+  159a7c:	3c818261 	stur	q1, [x19, #24]
+  159a80:	f9000268 	str	x8, [x19]
+  159a84:	1400002c 	b	159b34 <<temiya::runtime::Object>::try_get_own_property+0x5a4>
+  159a88:	52800048 	mov	w8, #0x2                   	// #2
+  159a8c:	f9000268 	str	x8, [x19]
+  159a90:	14000029 	b	159b34 <<temiya::runtime::Object>::try_get_own_property+0x5a4>
+  159a94:	ad4107e0 	ldp	q0, q1, [sp, #32]
+  159a98:	f94023e9 	ldr	x9, [sp, #64]
+  159a9c:	f9000268 	str	x8, [x19]
+  159aa0:	f9001669 	str	x9, [x19, #40]
+  159aa4:	f9400be9 	ldr	x9, [sp, #16]
+  159aa8:	3c808260 	stur	q0, [x19, #8]
+  159aac:	3dc003e0 	ldr	q0, [sp]
+  159ab0:	3c818261 	stur	q1, [x19, #24]
+  159ab4:	3d800e60 	str	q0, [x19, #48]
+  159ab8:	f9002269 	str	x9, [x19, #64]
+  159abc:	1400001e 	b	159b34 <<temiya::runtime::Object>::try_get_own_property+0x5a4>
+  159ac0:	f9402be1 	ldr	x1, [sp, #80]
+  159ac4:	92800000 	mov	x0, #0xffffffffffffffff    	// #-1
+  159ac8:	9402f8a6 	bl	217d60 <__aarch64_ldadd8_rel>
+  159acc:	f100041f 	cmp	x0, #0x1
+  159ad0:	540000a1 	b.ne	159ae4 <<temiya::runtime::Object>::try_get_own_property+0x554>  // b.any
+  159ad4:	910123e8 	add	x8, sp, #0x48
+  159ad8:	d50339bf 	dmb	ishld
+  159adc:	91002100 	add	x0, x8, #0x8
+  159ae0:	97fc08fa 	bl	5bec8 <<alloc::sync::Arc<temiya::runtime::string::Rope>>::drop_slow>
+  159ae4:	3943c328 	ldrb	w8, [x25, #240]
+  159ae8:	340000c8 	cbz	w8, 159b00 <<temiya::runtime::Object>::try_get_own_property+0x570>
+  159aec:	7100051f 	cmp	w8, #0x1
+  159af0:	540000c1 	b.ne	159b08 <<temiya::runtime::Object>::try_get_own_property+0x578>  // b.any
+  159af4:	f9407f28 	ldr	x8, [x25, #248]
+  159af8:	f9401108 	ldr	x8, [x8, #32]
+  159afc:	14000005 	b	159b10 <<temiya::runtime::Object>::try_get_own_property+0x580>
+  159b00:	3943c728 	ldrb	w8, [x25, #241]
+  159b04:	14000003 	b	159b10 <<temiya::runtime::Object>::try_get_own_property+0x580>
+  159b08:	f9407f28 	ldr	x8, [x25, #248]
+  159b0c:	f9402108 	ldr	x8, [x8, #64]
+  159b10:	9e630100 	ucvtf	d0, x8
+  159b14:	d28000a8 	mov	x8, #0x5                   	// #5
+  159b18:	f900027f 	str	xzr, [x19]
+  159b1c:	f2f00008 	movk	x8, #0x8000, lsl #48
+  159b20:	f9000a7f 	str	xzr, [x19, #16]
+  159b24:	7900827f 	strh	wzr, [x19, #64]
+  159b28:	f9001268 	str	x8, [x19, #32]
+  159b2c:	fd001660 	str	d0, [x19, #40]
+  159b30:	39010a7f 	strb	wzr, [x19, #66]
+  159b34:	f9400308 	ldr	x8, [x24]
+  159b38:	d1000508 	sub	x8, x8, #0x1
+  159b3c:	14000074 	b	159d0c <<temiya::runtime::Object>::try_get_own_property+0x77c>
+  159b40:	f9402be1 	ldr	x1, [sp, #80]
+  159b44:	92800000 	mov	x0, #0xffffffffffffffff    	// #-1
+  159b48:	9402f886 	bl	217d60 <__aarch64_ldadd8_rel>
+  159b4c:	f100041f 	cmp	x0, #0x1
+  159b50:	54ffda61 	b.ne	15969c <<temiya::runtime::Object>::try_get_own_property+0x10c>  // b.any
+  159b54:	910123e8 	add	x8, sp, #0x48
+  159b58:	d50339bf 	dmb	ishld
+  159b5c:	91002100 	add	x0, x8, #0x8
+  159b60:	97fc08da 	bl	5bec8 <<alloc::sync::Arc<temiya::runtime::string::Rope>>::drop_slow>
+  159b64:	17fffece 	b	15969c <<temiya::runtime::Object>::try_get_own_property+0x10c>
+  159b68:	3cc783e0 	ldur	q0, [sp, #120]
+  159b6c:	f94047e9 	ldr	x9, [sp, #136]
+  159b70:	3d800e60 	str	q0, [x19, #48]
+  159b74:	f9002269 	str	x9, [x19, #64]
+  159b78:	ad4107e0 	ldp	q0, q1, [sp, #32]
+  159b7c:	f94023e9 	ldr	x9, [sp, #64]
+  159b80:	f9000268 	str	x8, [x19]
+  159b84:	f9001669 	str	x9, [x19, #40]
+  159b88:	3c808260 	stur	q0, [x19, #8]
+  159b8c:	3c818261 	stur	q1, [x19, #24]
+  159b90:	17ffffe9 	b	159b34 <<temiya::runtime::Object>::try_get_own_property+0x5a4>
+  159b94:	394126c9 	ldrb	w9, [x22, #73]
+  159b98:	394006aa 	ldrb	w10, [x21, #1]
+  159b9c:	6b0a013f 	cmp	w9, w10
+  159ba0:	540001c1 	b.ne	159bd8 <<temiya::runtime::Object>::try_get_own_property+0x648>  // b.any
+  159ba4:	f844a2c9 	ldur	x9, [x22, #74]
+  159ba8:	f84022aa 	ldur	x10, [x21, #2]
+  159bac:	f84522cb 	ldur	x11, [x22, #82]
+  159bb0:	f840a2ac 	ldur	x12, [x21, #10]
+  159bb4:	b845a2cd 	ldur	w13, [x22, #90]
+  159bb8:	b84122ae 	ldur	w14, [x21, #18]
+  159bbc:	eb0a013f 	cmp	x9, x10
+  159bc0:	fa4c0160 	ccmp	x11, x12, #0x0, eq	// eq = none
+  159bc4:	fa4e01a0 	ccmp	x13, x14, #0x0, eq	// eq = none
+  159bc8:	54000081 	b.ne	159bd8 <<temiya::runtime::Object>::try_get_own_property+0x648>  // b.any
+  159bcc:	17ffff4c 	b	1598fc <<temiya::runtime::Object>::try_get_own_property+0x36c>
+  159bd0:	f9406728 	ldr	x8, [x25, #200]
+  159bd4:	b4000948 	cbz	x8, 159cfc <<temiya::runtime::Object>::try_get_own_property+0x76c>
+  159bd8:	52800c09 	mov	w9, #0x60                  	// #96
+  159bdc:	f9406320 	ldr	x0, [x25, #192]
+  159be0:	394002bb 	ldrb	w27, [x21]
+  159be4:	9b090117 	madd	x23, x8, x9, x0
+  159be8:	7103ff7f 	cmp	w27, #0xff
+  159bec:	540001e1 	b.ne	159c28 <<temiya::runtime::Object>::try_get_own_property+0x698>  // b.any
+  159bf0:	f94006a8 	ldr	x8, [x21, #8]
+  159bf4:	aa1f03fa 	mov	x26, xzr
+  159bf8:	14000005 	b	159c0c <<temiya::runtime::Object>::try_get_own_property+0x67c>
+  159bfc:	91018000 	add	x0, x0, #0x60
+  159c00:	9100075a 	add	x26, x26, #0x1
+  159c04:	eb17001f 	cmp	x0, x23
+  159c08:	540007a0 	b.eq	159cfc <<temiya::runtime::Object>::try_get_own_property+0x76c>  // b.none
+  159c0c:	39412009 	ldrb	w9, [x0, #72]
+  159c10:	7103fd3f 	cmp	w9, #0xff
+  159c14:	54ffff41 	b.ne	159bfc <<temiya::runtime::Object>::try_get_own_property+0x66c>  // b.any
+  159c18:	f9402809 	ldr	x9, [x0, #80]
+  159c1c:	eb08013f 	cmp	x9, x8
+  159c20:	54fffee1 	b.ne	159bfc <<temiya::runtime::Object>::try_get_own_property+0x66c>  // b.any
+  159c24:	14000022 	b	159cac <<temiya::runtime::Object>::try_get_own_property+0x71c>
+  159c28:	394006bc 	ldrb	w28, [x21, #1]
+  159c2c:	aa1f03fa 	mov	x26, xzr
+  159c30:	91012016 	add	x22, x0, #0x48
+  159c34:	14000006 	b	159c4c <<temiya::runtime::Object>::try_get_own_property+0x6bc>
+  159c38:	910062c8 	add	x8, x22, #0x18
+  159c3c:	910182d6 	add	x22, x22, #0x60
+  159c40:	9100075a 	add	x26, x26, #0x1
+  159c44:	eb17011f 	cmp	x8, x23
+  159c48:	540005a0 	b.eq	159cfc <<temiya::runtime::Object>::try_get_own_property+0x76c>  // b.none
+  159c4c:	394002c8 	ldrb	w8, [x22]
+  159c50:	7103fd1f 	cmp	w8, #0xff
+  159c54:	54ffff20 	b.eq	159c38 <<temiya::runtime::Object>::try_get_own_property+0x6a8>  // b.none
+  159c58:	2a080368 	orr	w8, w27, w8
+  159c5c:	340000c8 	cbz	w8, 159c74 <<temiya::runtime::Object>::try_get_own_property+0x6e4>
+  159c60:	aa1603e0 	mov	x0, x22
+  159c64:	aa1503e1 	mov	x1, x21
+  159c68:	97fc03c8 	bl	5ab88 <<temiya::runtime::string::JsString>::eq_other>
+  159c6c:	3607fe60 	tbz	w0, #0, 159c38 <<temiya::runtime::Object>::try_get_own_property+0x6a8>
+  159c70:	1400000e 	b	159ca8 <<temiya::runtime::Object>::try_get_own_property+0x718>
+  159c74:	394006c8 	ldrb	w8, [x22, #1]
+  159c78:	6b1c011f 	cmp	w8, w28
+  159c7c:	54fffde1 	b.ne	159c38 <<temiya::runtime::Object>::try_get_own_property+0x6a8>  // b.any
+  159c80:	f84022c8 	ldur	x8, [x22, #2]
+  159c84:	f84022a9 	ldur	x9, [x21, #2]
+  159c88:	f840a2ca 	ldur	x10, [x22, #10]
+  159c8c:	f840a2ab 	ldur	x11, [x21, #10]
+  159c90:	b84122cc 	ldur	w12, [x22, #18]
+  159c94:	b84122ad 	ldur	w13, [x21, #18]
+  159c98:	eb09011f 	cmp	x8, x9
+  159c9c:	fa4b0140 	ccmp	x10, x11, #0x0, eq	// eq = none
+  159ca0:	fa4d0180 	ccmp	x12, x13, #0x0, eq	// eq = none
+  159ca4:	54fffca1 	b.ne	159c38 <<temiya::runtime::Object>::try_get_own_property+0x6a8>  // b.any
+  159ca8:	d10122c0 	sub	x0, x22, #0x48
+  159cac:	f900873a 	str	x26, [x25, #264]
+  159cb0:	910123e8 	add	x8, sp, #0x48
+  159cb4:	aa1403e1 	mov	x1, x20
+  159cb8:	97fd11ba 	bl	9e3a0 <<temiya::runtime::stored::StoredDescriptor>::load>
+  159cbc:	ad4287e0 	ldp	q0, q1, [sp, #80]
+  159cc0:	f94027e8 	ldr	x8, [sp, #72]
+  159cc4:	f9403be9 	ldr	x9, [sp, #112]
+  159cc8:	3cc783e2 	ldur	q2, [sp, #120]
+  159ccc:	f94047ea 	ldr	x10, [sp, #136]
+  159cd0:	f100091f 	cmp	x8, #0x2
+  159cd4:	ad0107e0 	stp	q0, q1, [sp, #32]
+  159cd8:	f90023e9 	str	x9, [sp, #64]
+  159cdc:	3d8003e2 	str	q2, [sp]
+  159ce0:	f9000bea 	str	x10, [sp, #16]
+  159ce4:	3c808260 	stur	q0, [x19, #8]
+  159ce8:	3c818261 	stur	q1, [x19, #24]
+  159cec:	f9001669 	str	x9, [x19, #40]
+  159cf0:	54000201 	b.ne	159d30 <<temiya::runtime::Object>::try_get_own_property+0x7a0>  // b.any
+  159cf4:	92800008 	mov	x8, #0xffffffffffffffff    	// #-1
+  159cf8:	14000002 	b	159d00 <<temiya::runtime::Object>::try_get_own_property+0x770>
+  159cfc:	52800048 	mov	w8, #0x2                   	// #2
+  159d00:	f9400309 	ldr	x9, [x24]
+  159d04:	f9000268 	str	x8, [x19]
+  159d08:	d1000528 	sub	x8, x9, #0x1
+  159d0c:	f9000308 	str	x8, [x24]
+  159d10:	a94e4ff4 	ldp	x20, x19, [sp, #224]
+  159d14:	a94d57f6 	ldp	x22, x21, [sp, #208]
+  159d18:	a94c5ff8 	ldp	x24, x23, [sp, #192]
+  159d1c:	a94b67fa 	ldp	x26, x25, [sp, #176]
+  159d20:	a94a6ffc 	ldp	x28, x27, [sp, #160]
+  159d24:	a9497bfd 	ldp	x29, x30, [sp, #144]
+  159d28:	9103c3ff 	add	sp, sp, #0xf0
+  159d2c:	d65f03c0 	ret
+  159d30:	3dc003e0 	ldr	q0, [sp]
+  159d34:	f9400be9 	ldr	x9, [sp, #16]
+  159d38:	3d800e60 	str	q0, [x19, #48]
+  159d3c:	f9002269 	str	x9, [x19, #64]
+  159d40:	17fffff0 	b	159d00 <<temiya::runtime::Object>::try_get_own_property+0x770>
+  159d44:	d0000c80 	adrp	x0, 2eb000 <anon.647b6d9f3eed594c2adfc99cd588ec18.46.llvm.8901467068136198215+0x20>
+  159d48:	91206000 	add	x0, x0, #0x818
+  159d4c:	97fbd4eb 	bl	4f0f8 <core::cell::panic_already_mutably_borrowed>
+  159d50:	d0000c80 	adrp	x0, 2eb000 <anon.647b6d9f3eed594c2adfc99cd588ec18.46.llvm.8901467068136198215+0x20>
+  159d54:	9120c000 	add	x0, x0, #0x830
+  159d58:	97fbd4e8 	bl	4f0f8 <core::cell::panic_already_mutably_borrowed>
+  159d5c:	d0000c83 	adrp	x3, 2eb000 <anon.647b6d9f3eed594c2adfc99cd588ec18.46.llvm.8901467068136198215+0x20>
+  159d60:	91128063 	add	x3, x3, #0x4a0
+  159d64:	aa1f03e0 	mov	x0, xzr
+  159d68:	52800142 	mov	w2, #0xa                   	// #10
+  159d6c:	97fbd58a 	bl	4f394 <core::slice::index::slice_index_fail>
+  159d70:	14000004 	b	159d80 <<temiya::runtime::Object>::try_get_own_property+0x7f0>
+  159d74:	52800040 	mov	w0, #0x2                   	// #2
+  159d78:	52800041 	mov	w1, #0x2                   	// #2
+  159d7c:	97fbd47e 	bl	4ef74 <alloc::alloc::handle_alloc_error>
+  159d80:	d4200020 	brk	#0x1
+  159d84:	aa0003f3 	mov	x19, x0
+  159d88:	910123e0 	add	x0, sp, #0x48
+  159d8c:	97ffe387 	bl	152ba8 <core::ptr::drop_glue::<temiya::runtime::string::JsString>>
+  159d90:	14000004 	b	159da0 <<temiya::runtime::Object>::try_get_own_property+0x810>
+  159d94:	97fbd513 	bl	4f1e0 <core::panicking::panic_in_cleanup>
+  159d98:	14000001 	b	159d9c <<temiya::runtime::Object>::try_get_own_property+0x80c>
+  159d9c:	aa0003f3 	mov	x19, x0
+  159da0:	f9400308 	ldr	x8, [x24]
+  159da4:	aa1303e0 	mov	x0, x19
+  159da8:	d1000508 	sub	x8, x8, #0x1
+  159dac:	f9000308 	str	x8, [x24]
+  159db0:	97fba590 	bl	433f0 <_Unwind_Resume@plt>

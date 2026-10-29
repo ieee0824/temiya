@@ -1,0 +1,64 @@
+
+/home/runner/work/_temp/measured-target/release/examples/measure_workload:     file format elf64-x86-64
+
+
+Disassembly of section .text:
+
+00000000001a0c60 <<temiya::runtime::Object>::own_element_value>:
+  1a0c60:	41 57                	push   %r15
+  1a0c62:	41 56                	push   %r14
+  1a0c64:	53                   	push   %rbx
+  1a0c65:	48 83 ec 20          	sub    $0x20,%rsp
+  1a0c69:	48 8b 06             	mov    (%rsi),%rax
+  1a0c6c:	4c 8b 78 30          	mov    0x30(%rax),%r15
+  1a0c70:	49 8b 47 60          	mov    0x60(%r15),%rax
+  1a0c74:	48 b9 ff ff ff ff ff 	movabs $0x7fffffffffffffff,%rcx
+  1a0c7b:	ff ff 7f 
+  1a0c7e:	48 39 c8             	cmp    %rcx,%rax
+  1a0c81:	0f 83 8c 00 00 00    	jae    1a0d13 <<temiya::runtime::Object>::own_element_value+0xb3>
+  1a0c87:	48 89 fb             	mov    %rdi,%rbx
+  1a0c8a:	48 ff c0             	inc    %rax
+  1a0c8d:	49 89 47 60          	mov    %rax,0x60(%r15)
+  1a0c91:	41 80 bf b1 01 00 00 	cmpb   $0x0,0x1b1(%r15)
+  1a0c98:	00 
+  1a0c99:	74 28                	je     1a0cc3 <<temiya::runtime::Object>::own_element_value+0x63>
+  1a0c9b:	49 83 bf a8 01 00 00 	cmpq   $0x0,0x1a8(%r15)
+  1a0ca2:	00 
+  1a0ca3:	75 1e                	jne    1a0cc3 <<temiya::runtime::Object>::own_element_value+0x63>
+  1a0ca5:	41 80 bf f0 00 00 00 	cmpb   $0xff,0xf0(%r15)
+  1a0cac:	ff 
+  1a0cad:	75 14                	jne    1a0cc3 <<temiya::runtime::Object>::own_element_value+0x63>
+  1a0caf:	49 83 bf 48 01 00 00 	cmpq   $0x0,0x148(%r15)
+  1a0cb6:	00 
+  1a0cb7:	75 0a                	jne    1a0cc3 <<temiya::runtime::Object>::own_element_value+0x63>
+  1a0cb9:	49 83 bf 40 01 00 00 	cmpq   $0x0,0x140(%r15)
+  1a0cc0:	00 
+  1a0cc1:	74 18                	je     1a0cdb <<temiya::runtime::Object>::own_element_value+0x7b>
+  1a0cc3:	48 c7 03 fe ff ff ff 	movq   $0xfffffffffffffffe,(%rbx)
+  1a0cca:	49 ff 4f 60          	decq   0x60(%r15)
+  1a0cce:	48 89 d8             	mov    %rbx,%rax
+  1a0cd1:	48 83 c4 20          	add    $0x20,%rsp
+  1a0cd5:	5b                   	pop    %rbx
+  1a0cd6:	41 5e                	pop    %r14
+  1a0cd8:	41 5f                	pop    %r15
+  1a0cda:	c3                   	ret
+  1a0cdb:	49 89 f6             	mov    %rsi,%r14
+  1a0cde:	49 8b b7 38 01 00 00 	mov    0x138(%r15),%rsi
+  1a0ce5:	48 85 f6             	test   %rsi,%rsi
+  1a0ce8:	74 d9                	je     1a0cc3 <<temiya::runtime::Object>::own_element_value+0x63>
+  1a0cea:	48 89 e7             	mov    %rsp,%rdi
+  1a0ced:	e8 ee ba 04 00       	call   1ec7e0 <<temiya::runtime::elements::Elements<temiya::runtime::stored::StoredDescriptor>>::get>
+  1a0cf2:	83 3c 24 02          	cmpl   $0x2,(%rsp)
+  1a0cf6:	74 cb                	je     1a0cc3 <<temiya::runtime::Object>::own_element_value+0x63>
+  1a0cf8:	0f 10 04 24          	movups (%rsp),%xmm0
+  1a0cfc:	0f 29 44 24 10       	movaps %xmm0,0x10(%rsp)
+  1a0d01:	48 8d 74 24 10       	lea    0x10(%rsp),%rsi
+  1a0d06:	48 89 df             	mov    %rbx,%rdi
+  1a0d09:	4c 89 f2             	mov    %r14,%rdx
+  1a0d0c:	e8 ff de 04 00       	call   1eec10 <<temiya::runtime::elements::ElementRef<temiya::runtime::stored::StoredDescriptor>>::value>
+  1a0d11:	eb b7                	jmp    1a0cca <<temiya::runtime::Object>::own_element_value+0x6a>
+  1a0d13:	48 8d 3d 4e 78 18 00 	lea    0x18784e(%rip),%rdi        # 328568 <anon.89375868c6c0056181d506f1f1901fbb.116.llvm.13781879552028967708>
+  1a0d1a:	ff 15 30 e9 1b 00    	call   *0x1be930(%rip)        # 35f650 <_DYNAMIC+0x868>
+  1a0d20:	49 ff 4f 60          	decq   0x60(%r15)
+  1a0d24:	48 89 c7             	mov    %rax,%rdi
+  1a0d27:	e8 c4 30 18 00       	call   323df0 <_Unwind_Resume@plt>

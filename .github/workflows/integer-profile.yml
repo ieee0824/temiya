@@ -1,8 +1,22 @@
-name: Arithmetic dispatch diagnostic
+name: Runtime dispatch diagnostics
 on:
   push:
     branches: [bench/integer-dispatch-profile]
   workflow_dispatch:
+    inputs:
+      diagnostic:
+        description: Diagnostic suite; instrumented results never qualify native speed
+        type: choice
+        options: [arithmetic, managed-numeric-storage]
+        default: arithmetic
+      measured_revision:
+        description: Full measured commit for managed storage diagnosis
+        type: string
+        default: 6fb3160be6d966b7b0c35fb7b5da06ddb33b3583
+      baseline_revision:
+        description: Full reference commit for managed storage diagnosis
+        type: string
+        default: c7c4f265c4002de1d90223eccaa64aaafdada52a
 permissions:
   contents: read
 concurrency:
@@ -10,7 +24,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   inspect:
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' && inputs.diagnostic != 'managed-numeric-storage'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
@@ -77,5 +91,66 @@ jobs:
         with:
           name: integer-profile-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/profile
+          if-no-files-found: error
+          retention-days: 30
+
+  managed-storage:
+    if: github.event_name == 'workflow_dispatch' && inputs.diagnostic == 'managed-numeric-storage'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      CARGO_BUILD_JOBS: 2
+      CARGO_INCREMENTAL: 0
+      EXPECTED_MEASURED: ${{ inputs.measured_revision }}
+      EXPECTED_BASELINE: ${{ inputs.baseline_revision }}
+    defaults:
+      run:
+        working-directory: profile-tools
+        shell: bash
+    steps:
+      - name: Check out profiling tools
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          path: profile-tools
+          persist-credentials: false
+      - name: Check out measured runtime
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ inputs.measured_revision }}
+          path: temiya-current
+          persist-credentials: false
+      - name: Check out reference runtime
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ inputs.baseline_revision }}
+          path: temiya-baseline
+          persist-credentials: false
+      - name: Check out pinned workload source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: ieee0824/omoikane
+          ref: 007556adccb8fb4329236932ca8175f8e8d119d2
+          path: omoikane
+          persist-credentials: false
+      - name: Prepare diagnostic tools and original fixtures
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes valgrind binutils
+          rustup toolchain install 1.99.1 --profile minimal
+          rustup default 1.99.1
+          mkdir "$RUNNER_TEMP/numeric-profile"
+          node scripts/extract-omoikane-workloads.mjs "$GITHUB_WORKSPACE/omoikane" "$RUNNER_TEMP/original"
+      - name: Build unchanged release workers
+        run: |
+          cargo build --manifest-path ../temiya-baseline/Cargo.toml --locked --release --no-default-features --example measure_workload --target-dir "$RUNNER_TEMP/baseline-target" > "$RUNNER_TEMP/numeric-profile/baseline-build.log" 2>&1
+          cargo build --manifest-path ../temiya-current/Cargo.toml --locked --release --no-default-features --example measure_workload --target-dir "$RUNNER_TEMP/measured-target" > "$RUNNER_TEMP/numeric-profile/measured-build.log" 2>&1
+      - name: Diagnose original string and property regressions
+        run: node scripts/profile-managed-number-regressions.mjs "$GITHUB_WORKSPACE/temiya-baseline" "$GITHUB_WORKSPACE/temiya-current" "$RUNNER_TEMP/original" "$RUNNER_TEMP/numeric-profile" "$RUNNER_TEMP/baseline-target" "$RUNNER_TEMP/measured-target"
+      - name: Retain complete diagnostics including failures
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: managed-storage-profile-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/numeric-profile
           if-no-files-found: error
           retention-days: 30

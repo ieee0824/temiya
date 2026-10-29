@@ -1,0 +1,65 @@
+
+/tmp/temiya-managed-packed-baseline-frozen-worker:     file format elf64-littleaarch64
+
+
+Disassembly of section .text:
+
+0000000000066388 <<temiya::runtime::elements::Elements<temiya::runtime::stored::StoredDescriptor>>::get>:
+   66388:	f9400008 	ldr	x8, [x0]
+   6638c:	d2410109 	eor	x9, x8, #0x8000000000000000
+   66390:	f100011f 	cmp	x8, #0x0
+   66394:	9a9f4528 	csinc	x8, x9, xzr, mi	// mi = first
+   66398:	b40001c8 	cbz	x8, 663d0 <<temiya::runtime::elements::Elements<temiya::runtime::stored::StoredDescriptor>>::get+0x48>
+   6639c:	f100051f 	cmp	x8, #0x1
+   663a0:	54000281 	b.ne	663f0 <<temiya::runtime::elements::Elements<temiya::runtime::stored::StoredDescriptor>>::get+0x68>  // b.any
+   663a4:	f9400809 	ldr	x9, [x0, #16]
+   663a8:	2a0103e8 	mov	w8, w1
+   663ac:	eb08013f 	cmp	x9, x8
+   663b0:	540005c9 	b.ls	66468 <<temiya::runtime::elements::Elements<temiya::runtime::stored::StoredDescriptor>>::get+0xe0>  // b.plast
+   663b4:	52800909 	mov	w9, #0x48                  	// #72
+   663b8:	f940040a 	ldr	x10, [x0, #8]
+   663bc:	9ba92908 	umaddl	x8, w8, w9, x10
+   663c0:	f9400109 	ldr	x9, [x8]
+   663c4:	b100053f 	cmn	x9, #0x1
+   663c8:	9a8803e0 	csel	x0, xzr, x8, eq	// eq = none
+   663cc:	d65f03c0 	ret
+   663d0:	f9400c09 	ldr	x9, [x0, #24]
+   663d4:	2a0103e8 	mov	w8, w1
+   663d8:	eb08013f 	cmp	x9, x8
+   663dc:	54000469 	b.ls	66468 <<temiya::runtime::elements::Elements<temiya::runtime::stored::StoredDescriptor>>::get+0xe0>  // b.plast
+   663e0:	52800909 	mov	w9, #0x48                  	// #72
+   663e4:	f940080a 	ldr	x10, [x0, #16]
+   663e8:	9ba92900 	umaddl	x0, w8, w9, x10
+   663ec:	d65f03c0 	ret
+   663f0:	f9400408 	ldr	x8, [x0, #8]
+   663f4:	b40003a8 	cbz	x8, 66468 <<temiya::runtime::elements::Elements<temiya::runtime::stored::StoredDescriptor>>::get+0xe0>
+   663f8:	f9400809 	ldr	x9, [x0, #16]
+   663fc:	79469d0b 	ldrh	w11, [x8, #846]
+   66400:	b500010b 	cbnz	x11, 66420 <<temiya::runtime::elements::Elements<temiya::runtime::stored::StoredDescriptor>>::get+0x98>
+   66404:	aa0b03ea 	mov	x10, x11
+   66408:	b4000309 	cbz	x9, 66468 <<temiya::runtime::elements::Elements<temiya::runtime::stored::StoredDescriptor>>::get+0xe0>
+   6640c:	8b0a0d08 	add	x8, x8, x10, lsl #3
+   66410:	d1000529 	sub	x9, x9, #0x1
+   66414:	f941a908 	ldr	x8, [x8, #848]
+   66418:	79469d0b 	ldrh	w11, [x8, #846]
+   6641c:	b4ffff4b 	cbz	x11, 66404 <<temiya::runtime::elements::Elements<temiya::runtime::stored::StoredDescriptor>>::get+0x7c>
+   66420:	d37ef56c 	lsl	x12, x11, #2
+   66424:	aa1f03ea 	mov	x10, xzr
+   66428:	910c810d 	add	x13, x8, #0x320
+   6642c:	91002100 	add	x0, x8, #0x8
+   66430:	b84045ae 	ldr	w14, [x13], #4
+   66434:	6b0e003f 	cmp	w1, w14
+   66438:	1a9f97ee 	cset	w14, hi	// hi = pmore
+   6643c:	5a9f21ce 	csinv	w14, w14, wzr, cs	// cs = hs, nlast
+   66440:	12001dce 	and	w14, w14, #0xff
+   66444:	710005df 	cmp	w14, #0x1
+   66448:	540000c1 	b.ne	66460 <<temiya::runtime::elements::Elements<temiya::runtime::stored::StoredDescriptor>>::get+0xd8>  // b.any
+   6644c:	f100118c 	subs	x12, x12, #0x4
+   66450:	9100054a 	add	x10, x10, #0x1
+   66454:	91012000 	add	x0, x0, #0x48
+   66458:	54fffec1 	b.ne	66430 <<temiya::runtime::elements::Elements<temiya::runtime::stored::StoredDescriptor>>::get+0xa8>  // b.any
+   6645c:	17ffffea 	b	66404 <<temiya::runtime::elements::Elements<temiya::runtime::stored::StoredDescriptor>>::get+0x7c>
+   66460:	35fffd4e 	cbnz	w14, 66408 <<temiya::runtime::elements::Elements<temiya::runtime::stored::StoredDescriptor>>::get+0x80>
+   66464:	d65f03c0 	ret
+   66468:	aa1f03e0 	mov	x0, xzr
+   6646c:	d65f03c0 	ret

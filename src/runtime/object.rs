@@ -823,8 +823,7 @@ impl Object {
         {
             return None;
         }
-        let descriptor = state.elements.as_ref()?.get(index)?;
-        descriptor.value()?.load(self).ok()
+        state.elements.as_ref()?.get_value(index, self)
     }
 
     // A hint identifies a position, never a cached Value or assumed shape.
@@ -2288,7 +2287,7 @@ impl super::ObjectData {
             entry.descriptor.trace(tracer);
         }
         if let Some(elements) = &state.elements {
-            elements.for_each(|descriptor| descriptor.trace(tracer));
+            elements.for_each_traceable(|descriptor| descriptor.trace(tracer));
         }
     }
 }

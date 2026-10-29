@@ -1,0 +1,113 @@
+
+/tmp/temiya-managed-packed-view-profile/managed-storage-profile-40797282661-1/measured/worker.bin:     file format elf64-x86-64
+
+
+Disassembly of section .text:
+
+0000000000172ec0 <<temiya::runtime::environment::Binding>::write>:
+  172ec0:	41 57                	push   %r15
+  172ec2:	41 56                	push   %r14
+  172ec4:	53                   	push   %rbx
+  172ec5:	48 83 ec 70          	sub    $0x70,%rsp
+  172ec9:	49 89 ce             	mov    %rcx,%r14
+  172ecc:	48 89 fb             	mov    %rdi,%rbx
+  172ecf:	48 83 3e fe          	cmpq   $0xfffffffffffffffe,(%rsi)
+  172ed3:	75 39                	jne    172f0e <<temiya::runtime::environment::Binding>::write+0x4e>
+  172ed5:	48 83 c6 20          	add    $0x20,%rsi
+  172ed9:	48 8d 15 5c 5c f0 ff 	lea    -0xfa3a4(%rip),%rdx        # 78b3c <anon.cf3492041d9ed462482c8658bfd03b21.165.llvm.3479522628083057331>
+  172ee0:	48 8d 7c 24 28       	lea    0x28(%rsp),%rdi
+  172ee5:	b9 1c 00 00 00       	mov    $0x1c,%ecx
+  172eea:	e8 71 0d 00 00       	call   173c60 <temiya::runtime::environment::reference_error>
+  172eef:	48 8b 44 24 48       	mov    0x48(%rsp),%rax
+  172ef4:	48 89 43 20          	mov    %rax,0x20(%rbx)
+  172ef8:	0f 10 44 24 28       	movups 0x28(%rsp),%xmm0
+  172efd:	0f 10 4c 24 38       	movups 0x38(%rsp),%xmm1
+  172f02:	0f 11 4b 10          	movups %xmm1,0x10(%rbx)
+  172f06:	0f 11 03             	movups %xmm0,(%rbx)
+  172f09:	e9 d5 00 00 00       	jmp    172fe3 <<temiya::runtime::environment::Binding>::write+0x123>
+  172f0e:	80 7e 38 00          	cmpb   $0x0,0x38(%rsi)
+  172f12:	74 66                	je     172f7a <<temiya::runtime::environment::Binding>::write+0xba>
+  172f14:	49 89 f7             	mov    %rsi,%r15
+  172f17:	41 0f 10 06          	movups (%r14),%xmm0
+  172f1b:	41 0f 10 4e 10       	movups 0x10(%r14),%xmm1
+  172f20:	0f 29 4c 24 60       	movaps %xmm1,0x60(%rsp)
+  172f25:	0f 29 44 24 50       	movaps %xmm0,0x50(%rsp)
+  172f2a:	48 8d 7c 24 28       	lea    0x28(%rsp),%rdi
+  172f2f:	48 8d 44 24 50       	lea    0x50(%rsp),%rax
+  172f34:	48 89 d6             	mov    %rdx,%rsi
+  172f37:	48 89 c2             	mov    %rax,%rdx
+  172f3a:	e8 b1 f6 fe ff       	call   1625f0 <<temiya::runtime::stored::StoredValue>::store_owned::<temiya::runtime::environment::Environment>>
+  172f3f:	48 8b 44 24 28       	mov    0x28(%rsp),%rax
+  172f44:	0f 10 44 24 30       	movups 0x30(%rsp),%xmm0
+  172f49:	0f 29 04 24          	movaps %xmm0,(%rsp)
+  172f4d:	0f 10 44 24 40       	movups 0x40(%rsp),%xmm0
+  172f52:	0f 29 44 24 10       	movaps %xmm0,0x10(%rsp)
+  172f57:	48 83 f8 ff          	cmp    $0xffffffffffffffff,%rax
+  172f5b:	0f 84 93 00 00 00    	je     172ff4 <<temiya::runtime::environment::Binding>::write+0x134>
+  172f61:	0f 28 04 24          	movaps (%rsp),%xmm0
+  172f65:	0f 28 4c 24 10       	movaps 0x10(%rsp),%xmm1
+  172f6a:	0f 11 4b 18          	movups %xmm1,0x18(%rbx)
+  172f6e:	0f 11 43 08          	movups %xmm0,0x8(%rbx)
+  172f72:	48 89 03             	mov    %rax,(%rbx)
+  172f75:	e9 a1 00 00 00       	jmp    17301b <<temiya::runtime::environment::Binding>::write+0x15b>
+  172f7a:	45 84 c0             	test   %r8b,%r8b
+  172f7d:	75 0f                	jne    172f8e <<temiya::runtime::environment::Binding>::write+0xce>
+  172f7f:	80 7e 39 00          	cmpb   $0x0,0x39(%rsi)
+  172f83:	75 09                	jne    172f8e <<temiya::runtime::environment::Binding>::write+0xce>
+  172f85:	48 c7 03 ff ff ff ff 	movq   $0xffffffffffffffff,(%rbx)
+  172f8c:	eb 55                	jmp    172fe3 <<temiya::runtime::environment::Binding>::write+0x123>
+  172f8e:	ff 15 cc c0 1e 00    	call   *0x1ec0cc(%rip)        # 35f060 <_DYNAMIC+0x278>
+  172f94:	bf 22 00 00 00       	mov    $0x22,%edi
+  172f99:	be 01 00 00 00       	mov    $0x1,%esi
+  172f9e:	ff 15 c4 c0 1e 00    	call   *0x1ec0c4(%rip)        # 35f068 <_DYNAMIC+0x280>
+  172fa4:	48 85 c0             	test   %rax,%rax
+  172fa7:	74 7c                	je     173025 <<temiya::runtime::environment::Binding>::write+0x165>
+  172fa9:	0f 10 05 b8 5b f0 ff 	movups -0xfa448(%rip),%xmm0        # 78b68 <anon.cf3492041d9ed462482c8658bfd03b21.165.llvm.3479522628083057331+0x2c>
+  172fb0:	0f 11 40 10          	movups %xmm0,0x10(%rax)
+  172fb4:	0f 10 05 9d 5b f0 ff 	movups -0xfa463(%rip),%xmm0        # 78b58 <anon.cf3492041d9ed462482c8658bfd03b21.165.llvm.3479522628083057331+0x1c>
+  172fbb:	0f 11 00             	movups %xmm0,(%rax)
+  172fbe:	66 c7 40 20 6e 67    	movw   $0x676e,0x20(%rax)
+  172fc4:	48 c7 03 22 00 00 00 	movq   $0x22,(%rbx)
+  172fcb:	48 89 43 08          	mov    %rax,0x8(%rbx)
+  172fcf:	48 c7 43 10 22 00 00 	movq   $0x22,0x10(%rbx)
+  172fd6:	00 
+  172fd7:	48 c7 43 18 00 00 00 	movq   $0x0,0x18(%rbx)
+  172fde:	00 
+  172fdf:	c6 43 20 01          	movb   $0x1,0x20(%rbx)
+  172fe3:	4c 89 f7             	mov    %r14,%rdi
+  172fe6:	48 83 c4 70          	add    $0x70,%rsp
+  172fea:	5b                   	pop    %rbx
+  172feb:	41 5e                	pop    %r14
+  172fed:	41 5f                	pop    %r15
+  172fef:	e9 cc 18 ff ff       	jmp    1648c0 <core::ptr::drop_glue::<temiya::runtime::Value>>
+  172ff4:	49 83 3f fe          	cmpq   $0xfffffffffffffffe,(%r15)
+  172ff8:	74 08                	je     173002 <<temiya::runtime::environment::Binding>::write+0x142>
+  172ffa:	4c 89 ff             	mov    %r15,%rdi
+  172ffd:	e8 4e 21 ff ff       	call   165150 <core::ptr::drop_glue::<temiya::runtime::stored::StoredValue>>
+  173002:	0f 28 04 24          	movaps (%rsp),%xmm0
+  173006:	0f 28 4c 24 10       	movaps 0x10(%rsp),%xmm1
+  17300b:	41 0f 11 4f 10       	movups %xmm1,0x10(%r15)
+  173010:	41 0f 11 07          	movups %xmm0,(%r15)
+  173014:	48 c7 03 ff ff ff ff 	movq   $0xffffffffffffffff,(%rbx)
+  17301b:	48 83 c4 70          	add    $0x70,%rsp
+  17301f:	5b                   	pop    %rbx
+  173020:	41 5e                	pop    %r14
+  173022:	41 5f                	pop    %r15
+  173024:	c3                   	ret
+  173025:	bf 01 00 00 00       	mov    $0x1,%edi
+  17302a:	be 22 00 00 00       	mov    $0x22,%esi
+  17302f:	ff 15 1b c0 1e 00    	call   *0x1ec01b(%rip)        # 35f050 <_DYNAMIC+0x268>
+  173035:	0f 0b                	ud2
+  173037:	48 89 c3             	mov    %rax,%rbx
+  17303a:	0f 28 04 24          	movaps (%rsp),%xmm0
+  17303e:	0f 28 4c 24 10       	movaps 0x10(%rsp),%xmm1
+  173043:	41 0f 11 4f 10       	movups %xmm1,0x10(%r15)
+  173048:	41 0f 11 07          	movups %xmm0,(%r15)
+  17304c:	48 89 df             	mov    %rbx,%rdi
+  17304f:	e8 9c 0d 1b 00       	call   323df0 <_Unwind_Resume@plt>
+  173054:	48 89 c3             	mov    %rax,%rbx
+  173057:	4c 89 f7             	mov    %r14,%rdi
+  17305a:	e8 61 18 ff ff       	call   1648c0 <core::ptr::drop_glue::<temiya::runtime::Value>>
+  17305f:	48 89 df             	mov    %rbx,%rdi
+  173062:	e8 89 0d 1b 00       	call   323df0 <_Unwind_Resume@plt>
+  173067:	ff 15 c3 bf 1e 00    	call   *0x1ebfc3(%rip)        # 35f030 <_DYNAMIC+0x248>

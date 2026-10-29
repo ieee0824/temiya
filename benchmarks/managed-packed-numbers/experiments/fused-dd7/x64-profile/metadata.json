@@ -1,0 +1,377 @@
+{
+  "scope": "Diagnostic whole-process instrumented counters, including startup/setup, one checked warmup and one checked pass. Original workload bodies/counts/oracles unchanged. Cache/branch simulation is a model, not native hardware measurements; instrumented times never qualify speed.",
+  "recorded_at": "2026-10-29T01:28:08.549Z",
+  "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)\nbinary: rustc\ncommit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67\ncommit-date: 2026-10-13\nhost: x86_64-unknown-linux-gnu\nrelease: 1.99.1\nLLVM version: 23.1.1",
+  "valgrind": "valgrind-3.22.0",
+  "machine": "Architecture:                            x86_64\nCPU op-mode(s):                          32-bit, 64-bit\nAddress sizes:                           48 bits physical, 57 bits virtual\nByte Order:                              Little Endian\nCPU(s):                                  4\nOn-line CPU(s) list:                     0-3\nVendor ID:                               GenuineIntel\nModel name:                              INTEL(R) XEON(R) PLATINUM 8573C\nCPU family:                              6\nModel:                                   207\nThread(s) per core:                      2\nCore(s) per socket:                      2\nSocket(s):                               1\nStepping:                                2\nCPU(s) scaling MHz:                      134%\nCPU max MHz:                             2300.0000\nCPU min MHz:                             800.0000\nBogoMIPS:                                4600.00\nFlags:                                   fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush mmx fxsr sse sse2 ss ht syscall nx pdpe1gb rdtscp lm constant_tsc rep_good nopl xtopology tsc_reliable nonstop_tsc cpuid aperfmperf tsc_known_freq pni pclmulqdq vmx ssse3 fma cx16 pcid sse4_1 sse4_2 x2apic movbe popcnt tsc_deadline_timer aes xsave avx f16c rdrand hypervisor lahf_lm abm 3dnowprefetch tpr_shadow ept vpid fsgsbase tsc_adjust bmi1 hle avx2 smep bmi2 erms invpcid rtm avx512f avx512dq rdseed adx smap avx512ifma clflushopt clwb avx512cd sha_ni avx512bw avx512vl xsaveopt xsavec xgetbv1 xsaves vnmi avx512vbmi umip avx512_vbmi2 gfni vaes vpclmulqdq avx512_vnni avx512_bitalg avx512_vpopcntdq la57 rdpid fsrm arch_capabilities\nVirtualization:                          VT-x\nHypervisor vendor:                       Microsoft\nVirtualization type:                     full\nL1d cache:                               96 KiB (2 instances)\nL1i cache:                               64 KiB (2 instances)\nL2 cache:                                4 MiB (2 instances)\nL3 cache:                                260 MiB (1 instance)\nNUMA node(s):                            1\nNUMA node0 CPU(s):                       0-3\nVulnerability Gather data sampling:      Not affected\nVulnerability Ghostwrite:                Not affected\nVulnerability Indirect target selection: Mitigation; Aligned branch/return thunks\nVulnerability Itlb multihit:             Not affected\nVulnerability L1tf:                      Not affected\nVulnerability Mds:                       Not affected\nVulnerability Meltdown:                  Not affected\nVulnerability Mmio stale data:           Not affected\nVulnerability Old microcode:             Not affected\nVulnerability Reg file data sampling:    Not affected\nVulnerability Retbleed:                  Vulnerable\nVulnerability Spec rstack overflow:      Not affected\nVulnerability Spec store bypass:         Vulnerable\nVulnerability Spectre v1:                Mitigation; usercopy/swapgs barriers and __user pointer sanitization\nVulnerability Spectre v2:                Mitigation; Retpolines; STIBP disabled; RSB filling; PBRSB-eIBRS Not affected; BHI Retpoline\nVulnerability Srbds:                     Not affected\nVulnerability Tsa:                       Not affected\nVulnerability Tsx async abort:           Vulnerable: Clear CPU buffers attempted, no microcode; SMT Host state unknown\nVulnerability Vmscape:                   Not affected\n",
+  "original_manifest": {
+    "revision": "007556adccb8fb4329236932ca8175f8e8d119d2",
+    "fixture_version": 2,
+    "fixture_sha256": "177eb80ae73d1081eb620f747b4703e2a9f2731e0255bb60131b73b7dcac6464",
+    "oracle_sha256": "53741fc1f0ef7cd7a0a8a6887c8b376f2e27beef362646b03094a4617f67214d",
+    "shared_setup_sha256": "d8b8cbb72f3f08e2552cbb4b10b8e1831cb6f6e337c1395b014a857961a758ae",
+    "scope": "Unmodified bodies and iteration counts; original makeShapes/ProtoBase/protoReceiver setup instantiated once in a stable closure, with prototype identity checked; host timers replace the JS harness",
+    "workloads": [
+      {
+        "name": "arith",
+        "iterations": 2000000,
+        "expected": 64,
+        "body_sha256": "faeedc595cc9e0e6e538fb38b8e37c6a398ef2839f1ec74752cb73336fd6a30f",
+        "setup_sha256": "ae6dd05803b8a5872b5dda134efd00a0e4a9535885bf43bf2a6748d75f5c1534",
+        "invocation_sha256": "6b1ee5c02c443ecac20be8d7ec68e56c394ac46ed1193ea2fd8689830c9f38dd"
+      },
+      {
+        "name": "prop-mono",
+        "iterations": 1000000,
+        "expected": 500003500000,
+        "body_sha256": "26ca3445e71fa9404a35190207d609a96fb1125923ab153c1862a667e14978d8",
+        "setup_sha256": "ce309d8ec657505ee9804dacc73ed4242af59092770a085e7b58882f791149b4",
+        "invocation_sha256": "dd6494788ed61e4bfcbb8e2b471c1d8718681a5b078aa659012aee32784f889c"
+      },
+      {
+        "name": "prop-mega",
+        "iterations": 500000,
+        "expected": 1750000,
+        "body_sha256": "0ca572ff5bf9e484e90beac0c9d23e856d4dbe7ffb18f157bcecdef1864e5052",
+        "setup_sha256": "1cfab0881862549e8bbd96b5ef3c2ee4b4564300bab42ecf64725889e859f531",
+        "invocation_sha256": "bac54c49733ce3a9cc0a4b061ae894e4d3f967cdb7d108e9fc9c952b27bbc0cc"
+      },
+      {
+        "name": "call",
+        "iterations": 1000000,
+        "expected": 1000000,
+        "body_sha256": "f89805330cb19300f6052a0af8af8148b6482cf6a83f6477e7d714e618346227",
+        "setup_sha256": "330ddea2ea121e75c30d5046e8554e231242b93b201d94e196e06651d603a738",
+        "invocation_sha256": "dd6494788ed61e4bfcbb8e2b471c1d8718681a5b078aa659012aee32784f889c"
+      },
+      {
+        "name": "closure-alloc",
+        "iterations": 300000,
+        "expected": 715003,
+        "body_sha256": "07bc6bf48f75bcc3ef73a7be7c5047c3d22c97e13a87b9f0058b4a8fa817e5b0",
+        "setup_sha256": "ae3a8e79ebbe6314b9a12883ff8416bbdfc63363dad9352b62eeb5603e6eca33",
+        "invocation_sha256": "c9841aa3520571162b7268b88cbd7008dd0b907e56eafc56133e49feb3fa20d9"
+      },
+      {
+        "name": "object-alloc",
+        "iterations": 300000,
+        "expected": 730003,
+        "body_sha256": "3a41ed5c69574cf0428b88e287cf9818b90ea672fcf25b25733062cf6033afed",
+        "setup_sha256": "463375574e4932bd266aa00d218abee7ab67dc291a75868551d5d23b5866a924",
+        "invocation_sha256": "c9841aa3520571162b7268b88cbd7008dd0b907e56eafc56133e49feb3fa20d9"
+      },
+      {
+        "name": "string-concat",
+        "iterations": 200000,
+        "expected": 2494,
+        "body_sha256": "165b84b784fa64452c0d170e1ee169263176f0c9cd28ea24da2a9326d7f6e0ab",
+        "setup_sha256": "5632a9961c9665f01c646cc3afe8ebb9f7532766cdbd3152232ff3c33733506e",
+        "invocation_sha256": "77131e401a89abdd0299fdaa27ca6fabb44d9dde5996cbc4a0113f31d4019d10"
+      },
+      {
+        "name": "array",
+        "iterations": 500000,
+        "expected": 124999750000,
+        "body_sha256": "3ecf59ede15684c95040e9cabcb447f4e5cccab65a05ce130318d8da0b9111f3",
+        "setup_sha256": "1e59a056b31e2dc263720aab7d8e24ef48780f08cf6b10e2b124395cac25c079",
+        "invocation_sha256": "bac54c49733ce3a9cc0a4b061ae894e4d3f967cdb7d108e9fc9c952b27bbc0cc"
+      },
+      {
+        "name": "primitive-string-property",
+        "iterations": 500000,
+        "expected": 499997,
+        "body_sha256": "a40d5c9c03219dae3663a0b6b5222ac7228013ed6e5814b63c460da5078b4e89",
+        "setup_sha256": "96df0adfdd2abc9347bb0a9ec774afcce9d61fdbb24f64e1058545ef3808b1f2",
+        "invocation_sha256": "bac54c49733ce3a9cc0a4b061ae894e4d3f967cdb7d108e9fc9c952b27bbc0cc"
+      },
+      {
+        "name": "primitive-string-method",
+        "iterations": 500000,
+        "expected": 999856,
+        "body_sha256": "ee51ada52e9b8f60288f9edf6ab0fec04dcebfd81f1557b29029a27db9fc0c3a",
+        "setup_sha256": "ae33d49f35d9f6223f41f8cf6b5db130c61020afb287ad3af7225642d042e0bc",
+        "invocation_sha256": "bac54c49733ce3a9cc0a4b061ae894e4d3f967cdb7d108e9fc9c952b27bbc0cc"
+      },
+      {
+        "name": "proto-method",
+        "iterations": 500000,
+        "expected": 750000,
+        "body_sha256": "1ea33b21d90f83972ff0490f2857c011fd8f3f014d9c70eec37bd8ca5e75a9de",
+        "setup_sha256": "32d2d1497ced6394e803eebba65de2c29606c58fd88eb2effebf04467db01ab5",
+        "invocation_sha256": "bac54c49733ce3a9cc0a4b061ae894e4d3f967cdb7d108e9fc9c952b27bbc0cc"
+      }
+    ]
+  },
+  "runs": [
+    {
+      "label": "baseline",
+      "name": "primitive-string-property",
+      "args": [
+        "--tool=callgrind",
+        "--dump-instr=yes",
+        "--collect-jumps=yes",
+        "--cache-sim=yes",
+        "--branch-sim=yes",
+        "--I1=32768,8,64",
+        "--D1=32768,8,64",
+        "--LL=8388608,16,64",
+        "--callgrind-out-file=/home/runner/work/_temp/numeric-profile/baseline/primitive-string-property.callgrind",
+        "--log-file=/home/runner/work/_temp/numeric-profile/baseline/primitive-string-property.valgrind.log",
+        "/home/runner/work/_temp/baseline-target/release/examples/measure_workload",
+        "/home/runner/work/_temp/original/primitive-string-property.json",
+        "1"
+      ],
+      "input_sha256": "ebcf256204766a9ae873b649f678cf6e682c2e9efe4f215ba638585e3257e17b",
+      "exit_status": 0,
+      "signal": null,
+      "error": null,
+      "counters": {
+        "Ir": 2010912281,
+        "Dr": 656694234,
+        "Dw": 313414649,
+        "I1mr": 15635,
+        "D1mr": 12196,
+        "D1mw": 9862,
+        "ILmr": 6935,
+        "DLmr": 6245,
+        "DLmw": 8286,
+        "Bc": 192511664,
+        "Bcm": 1026935,
+        "Bi": 35030818,
+        "Bim": 22003190
+      },
+      "validated_passes": 2,
+      "annotation_exit": 0
+    },
+    {
+      "label": "baseline",
+      "name": "string-concat",
+      "args": [
+        "--tool=callgrind",
+        "--dump-instr=yes",
+        "--collect-jumps=yes",
+        "--cache-sim=yes",
+        "--branch-sim=yes",
+        "--I1=32768,8,64",
+        "--D1=32768,8,64",
+        "--LL=8388608,16,64",
+        "--callgrind-out-file=/home/runner/work/_temp/numeric-profile/baseline/string-concat.callgrind",
+        "--log-file=/home/runner/work/_temp/numeric-profile/baseline/string-concat.valgrind.log",
+        "/home/runner/work/_temp/baseline-target/release/examples/measure_workload",
+        "/home/runner/work/_temp/original/string-concat.json",
+        "1"
+      ],
+      "input_sha256": "c39f530ee4ba3f74a8cd8c0e151f04473b0b14ef075cc1e215e30498388b5360",
+      "exit_status": 0,
+      "signal": null,
+      "error": null,
+      "counters": {
+        "Ir": 747355898,
+        "Dr": 243297820,
+        "Dw": 112560106,
+        "I1mr": 15956,
+        "D1mr": 12348,
+        "D1mw": 10236,
+        "ILmr": 6990,
+        "DLmr": 6240,
+        "DLmw": 8533,
+        "Bc": 83009408,
+        "Bcm": 1234254,
+        "Bi": 12440645,
+        "Bim": 6805423
+      },
+      "validated_passes": 2,
+      "annotation_exit": 0
+    },
+    {
+      "label": "baseline",
+      "name": "prop-mega",
+      "args": [
+        "--tool=callgrind",
+        "--dump-instr=yes",
+        "--collect-jumps=yes",
+        "--cache-sim=yes",
+        "--branch-sim=yes",
+        "--I1=32768,8,64",
+        "--D1=32768,8,64",
+        "--LL=8388608,16,64",
+        "--callgrind-out-file=/home/runner/work/_temp/numeric-profile/baseline/prop-mega.callgrind",
+        "--log-file=/home/runner/work/_temp/numeric-profile/baseline/prop-mega.valgrind.log",
+        "/home/runner/work/_temp/baseline-target/release/examples/measure_workload",
+        "/home/runner/work/_temp/original/prop-mega.json",
+        "1"
+      ],
+      "input_sha256": "5a3045e0491743c199c223a0c8d0d28471f7619934e9fce1cfcc0be775f94147",
+      "exit_status": 0,
+      "signal": null,
+      "error": null,
+      "counters": {
+        "Ir": 3195065024,
+        "Dr": 1050508393,
+        "Dw": 539402010,
+        "I1mr": 24692,
+        "D1mr": 13363,
+        "D1mw": 10527,
+        "ILmr": 7155,
+        "DLmr": 6250,
+        "DLmw": 8664,
+        "Bc": 344088677,
+        "Bcm": 7406480,
+        "Bi": 47915484,
+        "Bim": 24006739
+      },
+      "validated_passes": 2,
+      "annotation_exit": 0
+    },
+    {
+      "label": "measured",
+      "name": "primitive-string-property",
+      "args": [
+        "--tool=callgrind",
+        "--dump-instr=yes",
+        "--collect-jumps=yes",
+        "--cache-sim=yes",
+        "--branch-sim=yes",
+        "--I1=32768,8,64",
+        "--D1=32768,8,64",
+        "--LL=8388608,16,64",
+        "--callgrind-out-file=/home/runner/work/_temp/numeric-profile/measured/primitive-string-property.callgrind",
+        "--log-file=/home/runner/work/_temp/numeric-profile/measured/primitive-string-property.valgrind.log",
+        "/home/runner/work/_temp/measured-target/release/examples/measure_workload",
+        "/home/runner/work/_temp/original/primitive-string-property.json",
+        "1"
+      ],
+      "input_sha256": "ebcf256204766a9ae873b649f678cf6e682c2e9efe4f215ba638585e3257e17b",
+      "exit_status": 0,
+      "signal": null,
+      "error": null,
+      "counters": {
+        "Ir": 1934918658,
+        "Dr": 638694919,
+        "Dw": 291415425,
+        "I1mr": 14843,
+        "D1mr": 12142,
+        "D1mw": 9874,
+        "ILmr": 6947,
+        "DLmr": 6249,
+        "DLmw": 8286,
+        "Bc": 188513213,
+        "Bcm": 3027040,
+        "Bi": 35030806,
+        "Bim": 23003307
+      },
+      "validated_passes": 2,
+      "annotation_exit": 0
+    },
+    {
+      "label": "measured",
+      "name": "string-concat",
+      "args": [
+        "--tool=callgrind",
+        "--dump-instr=yes",
+        "--collect-jumps=yes",
+        "--cache-sim=yes",
+        "--branch-sim=yes",
+        "--I1=32768,8,64",
+        "--D1=32768,8,64",
+        "--LL=8388608,16,64",
+        "--callgrind-out-file=/home/runner/work/_temp/numeric-profile/measured/string-concat.callgrind",
+        "--log-file=/home/runner/work/_temp/numeric-profile/measured/string-concat.valgrind.log",
+        "/home/runner/work/_temp/measured-target/release/examples/measure_workload",
+        "/home/runner/work/_temp/original/string-concat.json",
+        "1"
+      ],
+      "input_sha256": "c39f530ee4ba3f74a8cd8c0e151f04473b0b14ef075cc1e215e30498388b5360",
+      "exit_status": 0,
+      "signal": null,
+      "error": null,
+      "counters": {
+        "Ir": 731366297,
+        "Dr": 239300068,
+        "Dw": 107762247,
+        "I1mr": 15743,
+        "D1mr": 12278,
+        "D1mw": 10236,
+        "ILmr": 7007,
+        "DLmr": 6244,
+        "DLmw": 8533,
+        "Bc": 82211312,
+        "Bcm": 1635661,
+        "Bi": 12440634,
+        "Bim": 7205543
+      },
+      "validated_passes": 2,
+      "annotation_exit": 0
+    },
+    {
+      "label": "measured",
+      "name": "prop-mega",
+      "args": [
+        "--tool=callgrind",
+        "--dump-instr=yes",
+        "--collect-jumps=yes",
+        "--cache-sim=yes",
+        "--branch-sim=yes",
+        "--I1=32768,8,64",
+        "--D1=32768,8,64",
+        "--LL=8388608,16,64",
+        "--callgrind-out-file=/home/runner/work/_temp/numeric-profile/measured/prop-mega.callgrind",
+        "--log-file=/home/runner/work/_temp/numeric-profile/measured/prop-mega.valgrind.log",
+        "/home/runner/work/_temp/measured-target/release/examples/measure_workload",
+        "/home/runner/work/_temp/original/prop-mega.json",
+        "1"
+      ],
+      "input_sha256": "5a3045e0491743c199c223a0c8d0d28471f7619934e9fce1cfcc0be775f94147",
+      "exit_status": 0,
+      "signal": null,
+      "error": null,
+      "counters": {
+        "Ir": 3114068075,
+        "Dr": 1031508437,
+        "Dw": 515401854,
+        "I1mr": 26636,
+        "D1mr": 13299,
+        "D1mw": 10518,
+        "ILmr": 7183,
+        "DLmr": 6253,
+        "DLmw": 8664,
+        "Bc": 338090106,
+        "Bcm": 8406220,
+        "Bi": 48915486,
+        "Bim": 26006958
+      },
+      "validated_passes": 2,
+      "annotation_exit": 0
+    }
+  ],
+  "builds": [
+    {
+      "label": "baseline",
+      "revision": "c7c4f265c4002de1d90223eccaa64aaafdada52a",
+      "executable_sha256": "519f63a4cfc4adf3bbc782b4d9e9dde3be7ac195b9cfbf2ec47303f559955d7a",
+      "profile": "release",
+      "features": [],
+      "source_objects": {
+        "src": "cf43915ad88ffd5e049bb45ed6bf4b0c9c0cfe8f",
+        "examples": "ffdda6d7c05676adbd99a47b9866e6f25b911e69",
+        "Cargo.toml": "f863e0d9af0b72db8c8fdf59a244a7e9cbd56dae",
+        "Cargo.lock": "e0e7f6ac7e4abfa3c12c3af30d305bbb87af50fc",
+        "scripts/omoikane-benchmark-reference.mjs": "b052eb90ac1cb61e73c6241b597ef6a3b6a275b5"
+      }
+    },
+    {
+      "label": "measured",
+      "revision": "dd7df4455bbcfcf8764464ff2185eb4650f1372a",
+      "executable_sha256": "d371649b943c83d8cb100eea6ec767dd86ab5ffc0008af934ef1bf658e5896fb",
+      "profile": "release",
+      "features": [],
+      "source_objects": {
+        "src": "33178d6e9d4480e6d497098b47cc09d55c5e18e2",
+        "examples": "25251279be8f58260d135f0d9c90a774d10eb9a0",
+        "Cargo.toml": "f863e0d9af0b72db8c8fdf59a244a7e9cbd56dae",
+        "Cargo.lock": "e0e7f6ac7e4abfa3c12c3af30d305bbb87af50fc",
+        "scripts/omoikane-benchmark-reference.mjs": "b052eb90ac1cb61e73c6241b597ef6a3b6a275b5"
+      }
+    }
+  ]
+}

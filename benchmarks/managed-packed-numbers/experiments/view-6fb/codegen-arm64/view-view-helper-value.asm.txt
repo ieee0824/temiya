@@ -1,0 +1,70 @@
+
+/tmp/temiya-managed-packed-view-frozen-worker:     file format elf64-littleaarch64
+
+
+Disassembly of section .text:
+
+00000000000e1e20 <<temiya::runtime::elements::ElementRef<temiya::runtime::stored::StoredDescriptor>>::value>:
+   e1e20:	d10143ff 	sub	sp, sp, #0x50
+   e1e24:	a9037bfd 	stp	x29, x30, [sp, #48]
+   e1e28:	a9044ff4 	stp	x20, x19, [sp, #64]
+   e1e2c:	9100c3fd 	add	x29, sp, #0x30
+   e1e30:	f9400009 	ldr	x9, [x0]
+   e1e34:	b40003c9 	cbz	x9, e1eac <<temiya::runtime::elements::ElementRef<temiya::runtime::stored::StoredDescriptor>>::value+0x8c>
+   e1e38:	f9400409 	ldr	x9, [x0, #8]
+   e1e3c:	f940012a 	ldr	x10, [x9]
+   e1e40:	f100095f 	cmp	x10, #0x2
+   e1e44:	54000461 	b.ne	e1ed0 <<temiya::runtime::elements::ElementRef<temiya::runtime::stored::StoredDescriptor>>::value+0xb0>  // b.any
+   e1e48:	aa0803f3 	mov	x19, x8
+   e1e4c:	910023e8 	add	x8, sp, #0x8
+   e1e50:	91002120 	add	x0, x9, #0x8
+   e1e54:	97feb5d1 	bl	8f598 <<temiya::runtime::stored::StoredValue>::load::<temiya::runtime::Object>>
+   e1e58:	f94007e1 	ldr	x1, [sp, #8]
+   e1e5c:	b100043f 	cmn	x1, #0x1
+   e1e60:	54000440 	b.eq	e1ee8 <<temiya::runtime::elements::ElementRef<temiya::runtime::stored::StoredDescriptor>>::value+0xc8>  // b.none
+   e1e64:	92800028 	mov	x8, #0xfffffffffffffffe    	// #-2
+   e1e68:	f9000268 	str	x8, [x19]
+   e1e6c:	b4000081 	cbz	x1, e1e7c <<temiya::runtime::elements::ElementRef<temiya::runtime::stored::StoredDescriptor>>::value+0x5c>
+   e1e70:	f9400be0 	ldr	x0, [sp, #16]
+   e1e74:	52800022 	mov	w2, #0x1                   	// #1
+   e1e78:	97fdd382 	bl	56c80 <__rustc::__rust_dealloc>
+   e1e7c:	f94013f3 	ldr	x19, [sp, #32]
+   e1e80:	b40000f3 	cbz	x19, e1e9c <<temiya::runtime::elements::ElementRef<temiya::runtime::stored::StoredDescriptor>>::value+0x7c>
+   e1e84:	aa1303e0 	mov	x0, x19
+   e1e88:	97ffeabe 	bl	dc980 <core::ptr::drop_glue::<temiya::runtime::Value>>
+   e1e8c:	aa1303e0 	mov	x0, x19
+   e1e90:	52800401 	mov	w1, #0x20                  	// #32
+   e1e94:	52800102 	mov	w2, #0x8                   	// #8
+   e1e98:	97fdd37a 	bl	56c80 <__rustc::__rust_dealloc>
+   e1e9c:	a9444ff4 	ldp	x20, x19, [sp, #64]
+   e1ea0:	a9437bfd 	ldp	x29, x30, [sp, #48]
+   e1ea4:	910143ff 	add	sp, sp, #0x50
+   e1ea8:	d65f03c0 	ret
+   e1eac:	fd400400 	ldr	d0, [x0, #8]
+   e1eb0:	d28000a9 	mov	x9, #0x5                   	// #5
+   e1eb4:	f2f00009 	movk	x9, #0x8000, lsl #48
+   e1eb8:	f9000109 	str	x9, [x8]
+   e1ebc:	fd000500 	str	d0, [x8, #8]
+   e1ec0:	a9444ff4 	ldp	x20, x19, [sp, #64]
+   e1ec4:	a9437bfd 	ldp	x29, x30, [sp, #48]
+   e1ec8:	910143ff 	add	sp, sp, #0x50
+   e1ecc:	d65f03c0 	ret
+   e1ed0:	92800029 	mov	x9, #0xfffffffffffffffe    	// #-2
+   e1ed4:	f9000109 	str	x9, [x8]
+   e1ed8:	a9444ff4 	ldp	x20, x19, [sp, #64]
+   e1edc:	a9437bfd 	ldp	x29, x30, [sp, #48]
+   e1ee0:	910143ff 	add	sp, sp, #0x50
+   e1ee4:	d65f03c0 	ret
+   e1ee8:	ad4087e0 	ldp	q0, q1, [sp, #16]
+   e1eec:	ad000660 	stp	q0, q1, [x19]
+   e1ef0:	a9444ff4 	ldp	x20, x19, [sp, #64]
+   e1ef4:	a9437bfd 	ldp	x29, x30, [sp, #48]
+   e1ef8:	910143ff 	add	sp, sp, #0x50
+   e1efc:	d65f03c0 	ret
+   e1f00:	aa0003f4 	mov	x20, x0
+   e1f04:	aa1303e0 	mov	x0, x19
+   e1f08:	52800401 	mov	w1, #0x20                  	// #32
+   e1f0c:	52800102 	mov	w2, #0x8                   	// #8
+   e1f10:	97fdd35c 	bl	56c80 <__rustc::__rust_dealloc>
+   e1f14:	aa1403e0 	mov	x0, x20
+   e1f18:	97fd8536 	bl	433f0 <_Unwind_Resume@plt>

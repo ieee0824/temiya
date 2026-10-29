@@ -1,0 +1,112 @@
+
+/tmp/temiya-managed-packed-frozen-worker:     file format elf64-littleaarch64
+
+
+Disassembly of section .text:
+
+000000000012fb30 <<temiya::runtime::Object>::own_element_value>:
+  12fb30:	d10343ff 	sub	sp, sp, #0xd0
+  12fb34:	a9097bfd 	stp	x29, x30, [sp, #144]
+  12fb38:	f90053f7 	str	x23, [sp, #160]
+  12fb3c:	a90b57f6 	stp	x22, x21, [sp, #176]
+  12fb40:	a90c4ff4 	stp	x20, x19, [sp, #192]
+  12fb44:	910243fd 	add	x29, sp, #0x90
+  12fb48:	f9400009 	ldr	x9, [x0]
+  12fb4c:	92f0000a 	mov	x10, #0x7fffffffffffffff    	// #9223372036854775807
+  12fb50:	f9401936 	ldr	x22, [x9, #48]
+  12fb54:	f94032c9 	ldr	x9, [x22, #96]
+  12fb58:	eb0a013f 	cmp	x9, x10
+  12fb5c:	540009c2 	b.cs	12fc94 <<temiya::runtime::Object>::own_element_value+0x164>  // b.hs, b.nlast
+  12fb60:	aa0803f3 	mov	x19, x8
+  12fb64:	3946c6c8 	ldrb	w8, [x22, #433]
+  12fb68:	91000529 	add	x9, x9, #0x1
+  12fb6c:	f90032c9 	str	x9, [x22, #96]
+  12fb70:	36000148 	tbz	w8, #0, 12fb98 <<temiya::runtime::Object>::own_element_value+0x68>
+  12fb74:	f940d6c8 	ldr	x8, [x22, #424]
+  12fb78:	b5000108 	cbnz	x8, 12fb98 <<temiya::runtime::Object>::own_element_value+0x68>
+  12fb7c:	3943c2c8 	ldrb	w8, [x22, #240]
+  12fb80:	7103fd1f 	cmp	w8, #0xff
+  12fb84:	540000a1 	b.ne	12fb98 <<temiya::runtime::Object>::own_element_value+0x68>  // b.any
+  12fb88:	f940a6c8 	ldr	x8, [x22, #328]
+  12fb8c:	b5000068 	cbnz	x8, 12fb98 <<temiya::runtime::Object>::own_element_value+0x68>
+  12fb90:	f940a2c8 	ldr	x8, [x22, #320]
+  12fb94:	b4000188 	cbz	x8, 12fbc4 <<temiya::runtime::Object>::own_element_value+0x94>
+  12fb98:	92800028 	mov	x8, #0xfffffffffffffffe    	// #-2
+  12fb9c:	f9000268 	str	x8, [x19]
+  12fba0:	f94032c8 	ldr	x8, [x22, #96]
+  12fba4:	d1000508 	sub	x8, x8, #0x1
+  12fba8:	f90032c8 	str	x8, [x22, #96]
+  12fbac:	a94c4ff4 	ldp	x20, x19, [sp, #192]
+  12fbb0:	f94053f7 	ldr	x23, [sp, #160]
+  12fbb4:	a94b57f6 	ldp	x22, x21, [sp, #176]
+  12fbb8:	a9497bfd 	ldp	x29, x30, [sp, #144]
+  12fbbc:	910343ff 	add	sp, sp, #0xd0
+  12fbc0:	d65f03c0 	ret
+  12fbc4:	aa0003f4 	mov	x20, x0
+  12fbc8:	f9409ec0 	ldr	x0, [x22, #312]
+  12fbcc:	b4fffe60 	cbz	x0, 12fb98 <<temiya::runtime::Object>::own_element_value+0x68>
+  12fbd0:	910123e8 	add	x8, sp, #0x48
+  12fbd4:	97ffc090 	bl	11fe14 <<temiya::runtime::elements::Elements<temiya::runtime::stored::StoredDescriptor>>::get>
+  12fbd8:	f94027e8 	ldr	x8, [sp, #72]
+  12fbdc:	b100091f 	cmn	x8, #0x2
+  12fbe0:	54fffde0 	b.eq	12fb9c <<temiya::runtime::Object>::own_element_value+0x6c>  // b.none
+  12fbe4:	3cc483e0 	ldur	q0, [sp, #72]
+  12fbe8:	3cc583e1 	ldur	q1, [sp, #88]
+  12fbec:	910003e9 	mov	x9, sp
+  12fbf0:	f94047e8 	ldr	x8, [sp, #136]
+  12fbf4:	b27d0135 	orr	x21, x9, #0x8
+  12fbf8:	ad0007e0 	stp	q0, q1, [sp]
+  12fbfc:	3cc683e0 	ldur	q0, [sp, #104]
+  12fc00:	3cc783e1 	ldur	q1, [sp, #120]
+  12fc04:	f90023e8 	str	x8, [sp, #64]
+  12fc08:	a94023f7 	ldp	x23, x8, [sp]
+  12fc0c:	ad0107e0 	stp	q0, q1, [sp, #32]
+  12fc10:	b10006ff 	cmn	x23, #0x1
+  12fc14:	9a89010a 	csel	x10, x8, x9, eq	// eq = none
+  12fc18:	f940014a 	ldr	x10, [x10]
+  12fc1c:	f100095f 	cmp	x10, #0x2
+  12fc20:	540001e1 	b.ne	12fc5c <<temiya::runtime::Object>::own_element_value+0x12c>  // b.any
+  12fc24:	91002108 	add	x8, x8, #0x8
+  12fc28:	b10006ff 	cmn	x23, #0x1
+  12fc2c:	9a950100 	csel	x0, x8, x21, eq	// eq = none
+  12fc30:	910123e8 	add	x8, sp, #0x48
+  12fc34:	aa1403e1 	mov	x1, x20
+  12fc38:	97fecc6e 	bl	e2df0 <<temiya::runtime::stored::StoredValue>::load::<temiya::runtime::Object>>
+  12fc3c:	f94027e8 	ldr	x8, [sp, #72]
+  12fc40:	b100051f 	cmn	x8, #0x1
+  12fc44:	540001a0 	b.eq	12fc78 <<temiya::runtime::Object>::own_element_value+0x148>  // b.none
+  12fc48:	92800028 	mov	x8, #0xfffffffffffffffe    	// #-2
+  12fc4c:	f9000268 	str	x8, [x19]
+  12fc50:	910123e0 	add	x0, sp, #0x48
+  12fc54:	97ffeb71 	bl	12aa18 <core::ptr::drop_glue::<core::result::Result<temiya::runtime::Value, temiya::runtime::RuntimeError>>>
+  12fc58:	1400000a 	b	12fc80 <<temiya::runtime::Object>::own_element_value+0x150>
+  12fc5c:	92800028 	mov	x8, #0xfffffffffffffffe    	// #-2
+  12fc60:	f1000aff 	cmp	x23, #0x2
+  12fc64:	f9000268 	str	x8, [x19]
+  12fc68:	54fff9c1 	b.ne	12fba0 <<temiya::runtime::Object>::own_element_value+0x70>  // b.any
+  12fc6c:	aa1503e0 	mov	x0, x21
+  12fc70:	97ffefbd 	bl	12bb64 <core::ptr::drop_glue::<temiya::runtime::stored::StoredValue>>
+  12fc74:	17ffffcb 	b	12fba0 <<temiya::runtime::Object>::own_element_value+0x70>
+  12fc78:	ad4287e0 	ldp	q0, q1, [sp, #80]
+  12fc7c:	ad000660 	stp	q0, q1, [x19]
+  12fc80:	f1000aff 	cmp	x23, #0x2
+  12fc84:	54fff8e1 	b.ne	12fba0 <<temiya::runtime::Object>::own_element_value+0x70>  // b.any
+  12fc88:	aa1503e0 	mov	x0, x21
+  12fc8c:	97ffefb6 	bl	12bb64 <core::ptr::drop_glue::<temiya::runtime::stored::StoredValue>>
+  12fc90:	17ffffc4 	b	12fba0 <<temiya::runtime::Object>::own_element_value+0x70>
+  12fc94:	90000de0 	adrp	x0, 2eb000 <anon.80fc3817957808acf7ab60faf1c24db1.78.llvm.10754634139719485614+0x100>
+  12fc98:	9103c000 	add	x0, x0, #0xf0
+  12fc9c:	97fc7d17 	bl	4f0f8 <core::cell::panic_already_mutably_borrowed>
+  12fca0:	f1000aff 	cmp	x23, #0x2
+  12fca4:	aa0003f3 	mov	x19, x0
+  12fca8:	540000c1 	b.ne	12fcc0 <<temiya::runtime::Object>::own_element_value+0x190>  // b.any
+  12fcac:	aa1503e0 	mov	x0, x21
+  12fcb0:	97ffefad 	bl	12bb64 <core::ptr::drop_glue::<temiya::runtime::stored::StoredValue>>
+  12fcb4:	14000003 	b	12fcc0 <<temiya::runtime::Object>::own_element_value+0x190>
+  12fcb8:	97fc7d4a 	bl	4f1e0 <core::panicking::panic_in_cleanup>
+  12fcbc:	aa0003f3 	mov	x19, x0
+  12fcc0:	f94032c8 	ldr	x8, [x22, #96]
+  12fcc4:	aa1303e0 	mov	x0, x19
+  12fcc8:	d1000508 	sub	x8, x8, #0x1
+  12fccc:	f90032c8 	str	x8, [x22, #96]
+  12fcd0:	97fc4dc4 	bl	433e0 <_Unwind_Resume@plt>

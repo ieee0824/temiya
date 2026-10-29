@@ -1,0 +1,23 @@
+
+/tmp/temiya-managed-packed-baseline-frozen-worker:     file format elf64-littleaarch64
+
+
+Disassembly of section .text:
+
+0000000000103ab0 <<temiya::runtime::Object>::get>:
+  103ab0:	f9400009 	ldr	x9, [x0]
+  103ab4:	f940012a 	ldr	x10, [x9]
+  103ab8:	b100054a 	adds	x10, x10, #0x1
+  103abc:	f900012a 	str	x10, [x9]
+  103ac0:	54000162 	b.cs	103aec <<temiya::runtime::Object>::get+0x3c>  // b.hs, b.nlast
+  103ac4:	d100c3ff 	sub	sp, sp, #0x30
+  103ac8:	a9027bfd 	stp	x29, x30, [sp, #32]
+  103acc:	910083fd 	add	x29, sp, #0x20
+  103ad0:	b2410fea 	mov	x10, #0x8000000000000007    	// #-9223372036854775801
+  103ad4:	910003e2 	mov	x2, sp
+  103ad8:	a90027ea 	stp	x10, x9, [sp]
+  103adc:	97ffe2e4 	bl	fc66c <<temiya::runtime::Object>::get_with_receiver>
+  103ae0:	a9427bfd 	ldp	x29, x30, [sp, #32]
+  103ae4:	9100c3ff 	add	sp, sp, #0x30
+  103ae8:	d65f03c0 	ret
+  103aec:	d4200020 	brk	#0x1

@@ -1,5 +1,7 @@
 //! Engine-facing synchronous runner. Harness failures are never language errors.
 
+#[path = "test262_async.rs"]
+mod asynchronous;
 #[path = "test262_host.rs"]
 mod host;
 
@@ -152,6 +154,8 @@ pub struct EngineExecutor {
     path: String,
     backend: ScriptBackend,
     raw: bool,
+    async_mode: bool,
+    async_outcome: Option<String>,
     diagnostic: Option<String>,
     harness_cache: BTreeMap<String, String>,
 }
@@ -164,6 +168,8 @@ impl EngineExecutor {
             path: path.into(),
             backend,
             raw,
+            async_mode: false,
+            async_outcome: None,
             diagnostic: None,
             harness_cache: BTreeMap::new(),
         }
@@ -259,9 +265,11 @@ impl Executor for EngineExecutor {
         includes: &[String],
     ) -> Result<(), ObservedFailure> {
         self.diagnostic = None;
+        self.async_outcome = None;
+        let monitor = asynchronous::Monitor::new(self.async_mode);
         let engine = Rc::new(Engine::builder().script_backend(self.backend).build());
         let realm = engine.create_realm();
-        let _host = host::HostEnvironment::install(engine.clone(), realm.clone())
+        let _host = host::HostEnvironment::install(engine.clone(), realm.clone(), monitor.clone())
             .map_err(|error| self.failure(NegativePhase::Runtime, "HarnessError", error))?;
         let mut constructors = Vec::new();
         for name in [
@@ -361,6 +369,7 @@ impl Executor for EngineExecutor {
             for name in ["assert.js", "sta.js"]
                 .into_iter()
                 .map(str::to_owned)
+                .chain(self.async_mode.then(|| "doneprintHandle.js".to_owned()))
                 .chain(includes.iter().cloned())
             {
                 checked_relative(&name)
@@ -408,20 +417,58 @@ impl Executor for EngineExecutor {
                 constructors.push(("Test262Error".into(), object.clone()));
             }
         }
+        monitor
+            .start()
+            .map_err(|error| self.failure(NegativePhase::Runtime, "HarnessError", error))?;
         let result = if let Some(script) = script {
             engine.evaluate(&script).map(|_| ())
         } else {
-            let module = module.as_ref().expect("prepared module");
-            let result = engine.evaluate_module(module);
-            if result.is_ok() && module.record().status() != ModuleStatus::Evaluated {
-                return Err(self.failure(
-                    NegativePhase::Runtime,
-                    "PendingModule",
-                    "module evaluation did not complete",
-                ));
-            }
-            result
+            engine.evaluate_module(module.as_ref().expect("prepared module"))
         };
+        // Async jobs reach a checkpoint even after an abrupt Script completion.
+        // Preserve the primary exception; protocol errors have their own channel.
+        let jobs = if self.async_mode || result.is_ok() {
+            let mut first_error = None;
+            let mut count = 0;
+            loop {
+                match engine.drain_jobs(&realm) {
+                    Ok(drained) => count += drained,
+                    Err(error) => {
+                        if first_error.is_none() {
+                            first_error = Some(error);
+                        }
+                    }
+                }
+                if !self.async_mode || realm.record().job_queue().is_empty() {
+                    break;
+                }
+            }
+            first_error.map_or(Ok(count), Err)
+        } else {
+            Ok(0)
+        };
+        // Freeze before exception inspection can invoke a user getter.
+        let outcome = monitor.finish();
+        if self.async_mode {
+            self.async_outcome = Some(outcome.kind.into());
+            let kind = match outcome.kind {
+                "complete" => None,
+                "duplicate-completion" => Some("AsyncDuplicateCompletion"),
+                "failure" => Some("AsyncFailure"),
+                "rejected" => Some("AsyncRejection"),
+                _ => Some("AsyncIncomplete"),
+            };
+            if let Some(kind) = kind {
+                let diagnostic = if let Err(error) = &result {
+                    format!("{}; {error}", outcome.diagnostic)
+                } else if let Err(error) = &jobs {
+                    format!("{}; {error}", outcome.diagnostic)
+                } else {
+                    outcome.diagnostic
+                };
+                return Err(self.failure(NegativePhase::Runtime, kind, diagnostic));
+            }
+        }
         result.map_err(|error| {
             self.failure(
                 NegativePhase::Runtime,
@@ -429,13 +476,31 @@ impl Executor for EngineExecutor {
                 exception_diagnostic(&error),
             )
         })?;
-        engine.drain_jobs(&realm).map_err(|error| {
+        jobs.map_err(|error| {
             self.failure(
                 NegativePhase::Runtime,
                 &exception_type(&error, &constructors),
                 exception_diagnostic(&error),
             )
         })?;
+        if module
+            .as_ref()
+            .is_some_and(|module| module.record().status() != ModuleStatus::Evaluated)
+        {
+            if self.async_mode {
+                self.async_outcome = Some("incomplete".into());
+            }
+            return Err(self.failure(
+                NegativePhase::Runtime,
+                if self.async_mode {
+                    "AsyncIncomplete"
+                } else {
+                    "PendingModule"
+                },
+                "module evaluation did not complete",
+            ));
+        }
+
         Ok(())
     }
 }
@@ -443,6 +508,8 @@ impl Executor for EngineExecutor {
 /// One classified Engine execution and its original diagnostic, if any.
 #[derive(Clone, Debug)]
 pub struct EngineTestResult {
+    /// Frozen async protocol outcome; absent for synchronous/pre-execution cases.
+    pub async_outcome: Option<String>,
     /// Existing path/variant/status contract.
     pub result: TestResult,
     /// Original engine or harness diagnostic; never used as an error type.
@@ -461,11 +528,32 @@ pub fn run_with_engine(
     corpus: &Corpus,
     backend: ScriptBackend,
 ) -> Vec<EngineTestResult> {
+    run_selected(test, manifest, corpus, backend, None, false)
+}
+
+/// Internal worker entry. The CLI supervisor supplies the finite process deadline.
+pub fn run_worker_variant(
+    test: &TestCase,
+    manifest: &Manifest,
+    corpus: &Corpus,
+    backend: ScriptBackend,
+    variant: TestVariant,
+) -> Vec<EngineTestResult> {
+    run_selected(test, manifest, corpus, backend, Some(variant), true)
+}
+
+/// Metadata/manifest policy, without starting an Engine or worker process.
+pub fn preflight(
+    test: &TestCase,
+    manifest: &Manifest,
+    supervised: bool,
+) -> Option<Vec<EngineTestResult>> {
     let unsupported = test.metadata.flags.iter().find(|flag| {
-        !matches!(
-            flag.as_str(),
-            "raw" | "module" | "onlyStrict" | "noStrict" | "generated" | "non-deterministic"
-        )
+        !(supervised && flag.as_str() == "async")
+            && !matches!(
+                flag.as_str(),
+                "raw" | "module" | "onlyStrict" | "noStrict" | "generated" | "non-deterministic"
+            )
     });
     let has = |flag: &str| test.metadata.flags.iter().any(|value| value == flag);
     let conflicting_flags = (has("onlyStrict") && (has("noStrict") || has("raw")))
@@ -486,24 +574,45 @@ pub fn run_with_engine(
         None
     };
     if let Some(status) = gated {
-        return test
-            .variants()
+        return Some(
+            test.variants()
+                .into_iter()
+                .map(|variant| EngineTestResult {
+                    async_outcome: None,
+                    result: TestResult {
+                        path: test.path.clone(),
+                        variant,
+                        status: status.clone(),
+                    },
+                    diagnostic: None,
+                    observed_failure: None,
+                })
+                .collect(),
+        );
+    }
+    None
+}
+
+fn run_selected(
+    test: &TestCase,
+    manifest: &Manifest,
+    corpus: &Corpus,
+    backend: ScriptBackend,
+    selected: Option<TestVariant>,
+    supervised: bool,
+) -> Vec<EngineTestResult> {
+    if let Some(gated) = preflight(test, manifest, supervised) {
+        return gated
             .into_iter()
-            .map(|variant| EngineTestResult {
-                result: TestResult {
-                    path: test.path.clone(),
-                    variant,
-                    status: status.clone(),
-                },
-                diagnostic: None,
-                observed_failure: None,
-            })
+            .filter(|r| selected.is_none_or(|v| v == r.result.variant))
             .collect();
     }
-    type Observation = (Option<String>, Option<ObservedFailure>);
+    let has = |flag: &str| test.metadata.flags.iter().any(|value| value == flag);
+    type Observation = (Option<String>, Option<ObservedFailure>, Option<String>);
     struct RecordingExecutor {
         runner: EngineExecutor,
         observations: BTreeMap<TestVariant, Observation>,
+        selected: Option<TestVariant>,
     }
     impl Executor for RecordingExecutor {
         fn execute(
@@ -512,12 +621,19 @@ pub fn run_with_engine(
             variant: TestVariant,
             includes: &[String],
         ) -> Result<(), ObservedFailure> {
+            if self.selected.is_some_and(|wanted| wanted != variant) {
+                return Err(ObservedFailure {
+                    phase: NegativePhase::Runtime,
+                    error_type: "WorkerVariantNotSelected".into(),
+                });
+            }
             let observed = self.runner.execute(source, variant, includes);
             self.observations.insert(
                 variant,
                 (
                     self.runner.diagnostic().map(str::to_owned),
                     observed.as_ref().err().cloned(),
+                    self.runner.async_outcome.clone(),
                 ),
             );
             observed
@@ -526,27 +642,33 @@ pub fn run_with_engine(
     let mut executor = RecordingExecutor {
         runner: EngineExecutor::new(corpus.clone(), &test.path, backend, has("raw")),
         observations: BTreeMap::new(),
+        selected,
     };
+    executor.runner.async_mode = supervised && has("async");
     // Classification stays in the core's existing public harness API; the
     // concrete Engine/filesystem adapter is compiled only into its CLI client.
     run_test(test, manifest, &mut executor)
         .into_iter()
+        .filter(|result| selected.is_none_or(|wanted| wanted == result.variant))
         .map(|mut result| {
-            let Some((diagnostic, observed_failure)) =
+            let Some((diagnostic, observed_failure, async_outcome)) =
                 executor.observations.remove(&result.variant)
             else {
                 result.status = ResultStatus::Failed("missing Engine execution observation".into());
                 return EngineTestResult {
+                    async_outcome: None,
                     result,
                     diagnostic: None,
                     observed_failure: None,
                 };
             };
             if let Some(error) = &observed_failure {
-                if matches!(
-                    error.error_type.as_str(),
-                    "HarnessError" | "EngineError" | "UnsupportedBytecode" | "PendingModule"
-                ) {
+                if error.error_type.starts_with("Async")
+                    || matches!(
+                        error.error_type.as_str(),
+                        "HarnessError" | "EngineError" | "UnsupportedBytecode" | "PendingModule"
+                    )
+                {
                     result.status = ResultStatus::Failed(format!(
                         "runner/engine failure: {}",
                         error.error_type
@@ -554,6 +676,7 @@ pub fn run_with_engine(
                 }
             }
             EngineTestResult {
+                async_outcome,
                 result,
                 diagnostic,
                 observed_failure,

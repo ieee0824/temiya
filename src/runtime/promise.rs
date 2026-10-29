@@ -7,10 +7,7 @@ use super::{
     stored::{StoredObject, StoredOwner, StoredRuntimeError, StoredValue},
 };
 use crate::gc::{Trace, Tracer};
-use std::{
-    cell::RefCell,
-    rc::{Rc, Weak},
-};
+use std::{cell::RefCell, rc::Rc};
 
 /// Observable state of a Promise.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -315,8 +312,8 @@ impl Promise {
             })?;
         }
         if let Settlement::Rejected(error) = settlement {
-            self.queue.enqueue_traced(UnhandledJob {
-                data: Rc::downgrade(&self.data),
+            self.queue.enqueue_checkpoint(UnhandledJob {
+                data: self.data.clone(),
                 error,
             })?;
         }
@@ -451,20 +448,21 @@ impl TracedJob for ThenableJob {
     }
 }
 struct UnhandledJob {
-    data: Weak<RefCell<PromiseData>>,
+    // Keep the handled flag alive until the checkpoint, even if the public
+    // Promise facade and its object are collected. This is internal stored data,
+    // not an owning public facade; every managed edge is traced below.
+    data: Rc<RefCell<PromiseData>>,
     error: StoredRuntimeError,
 }
 impl Trace for UnhandledJob {
     fn trace(&self, tracer: &mut Tracer<'_>) {
+        self.data.borrow().trace(tracer);
         self.error.trace(tracer);
     }
 }
 impl TracedJob for UnhandledJob {
     fn run(&self, queue: &JobQueue) -> RuntimeResult<()> {
-        let report = self
-            .data
-            .upgrade()
-            .is_some_and(|data| !data.borrow().handled);
+        let report = !self.data.borrow().handled;
         if report {
             queue.report_unhandled(self.error.load(queue)?);
         }

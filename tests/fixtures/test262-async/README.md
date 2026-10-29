@@ -1,0 +1,1 @@
+Unmodified Test262 harness files from commit d53ebc8b1931d9f1541e43d59650776e4b766248 (BSD license in LICENSE). Normal integration tests use authored JS cases and make no upstream-case qualification claim. Ignored pinned-corpus tests exercise original upstream test files.

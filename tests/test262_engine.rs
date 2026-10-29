@@ -369,13 +369,16 @@ fn cli_runs_real_cases_and_keeps_setup_failures_and_skips_out_of_pass_counts() {
         "test/parse.js",
         "/*---\nnegative:\n  phase: parse\n  type: SyntaxError\n---*/\nlet = ;",
     );
-    fixture.write("test/async.js", "/*---\nflags: [async]\n---*/\nthrow 42;");
+    fixture.write(
+        "test/unsupported.js",
+        "/*---\nflags: [CanBlockIsTrue]\n---*/\nthrow 42;",
+    );
     fixture.write("test/bad.js", "/*---\nflags: [raw]\n---*/\nthrow 42;");
     let (output, report) = fixture.cli(&[
         "test/pass.js",
         "test/negative.js",
         "test/parse.js",
-        "test/async.js",
+        "test/unsupported.js",
     ]);
     assert_eq!(
         output.status.code(),
@@ -388,7 +391,7 @@ fn cli_runs_real_cases_and_keeps_setup_failures_and_skips_out_of_pass_counts() {
         report["counts"],
         serde_json::json!({"pass":6,"fail":0,"skip":2})
     );
-    let (output, report) = fixture.cli(&["test/async.js"]);
+    let (output, report) = fixture.cli(&["test/unsupported.js"]);
     assert_eq!(output.status.code(), Some(3));
     assert_eq!(report["counts"]["pass"], 0);
     let (output, report) = fixture.cli(&["test/bad.js", "test/missing.js"]);
@@ -658,4 +661,27 @@ fn pinned_host_hooks_execute_original_cases() {
         assert_eq!(report["corpus_revision"], temiya::test262::TEST262_REVISION);
         println!("{}", serde_json::to_string_pretty(&report).unwrap());
     }
+}
+
+#[test]
+fn supervised_worker_selects_the_requested_strict_variant() {
+    let fixture = Fixture::new();
+    fixture.write(
+        "harness/doneprintHandle.js",
+        include_str!("fixtures/test262-async/harness/doneprintHandle.js"),
+    );
+    let case=parse_case("test/case.js","/*---\nflags: [async]\n---*/\nfunction f(){return this;} if(f()!==undefined)throw 1; $DONE();").unwrap();
+    let results = engine::run_worker_variant(
+        &case,
+        &manifest(),
+        &fixture.corpus(),
+        ScriptBackend::Auto,
+        temiya::test262::TestVariant::Strict,
+    );
+    pass(&results, 1);
+    assert_eq!(
+        results[0].result.variant,
+        temiya::test262::TestVariant::Strict
+    );
+    assert_eq!(results[0].async_outcome.as_deref(), Some("complete"));
 }

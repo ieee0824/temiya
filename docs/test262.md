@@ -51,7 +51,8 @@ rejected. Module fixtures resolve relative to their importing file; unsupported
 bare specifiers, attributes and source-read failures remain runner failures.
 
 For non-raw tests the adapter evaluates the unchanged corpus `assert.js`, then
-`sta.js`, then additional includes in metadata order. The strict directive applies
+`sta.js`, then (for async tests) the original `doneprintHandle.js`, then
+additional includes in metadata order. The strict directive applies
 to the test source, not the harness files. Raw source is unmodified and loads no
 harness, including when metadata lists an include. A missing, unparsable or throwing
 include is a `HarnessError`; it cannot satisfy a negative JavaScript expectation.
@@ -68,23 +69,59 @@ constructor. Thrown objects are compared against captured constructor identities
 a forged `.name` string or a second error from a constructor getter does not
 replace the original throw. Engine errors, unavailable host hooks, unsupported
 Bytecode and incomplete module evaluation cannot match a negative expectation.
-The runner drains synchronous jobs after successful evaluation; this is not an
-implementation of asynchronous Test262 completion.
+The runner drains queued jobs and checks async completion after the queue reaches
+quiescence. Rejection notifications run after ordinary queued reactions, so a
+handler attached by another job can suppress an unhandled rejection.
 
 Exit codes are 0 for completed successful selections, 1 for test/setup failures,
 2 for usage errors, and 3 when all selected variants were skipped. Counts separate
 pass, fail and skip. File/frontmatter failures are reported as failed setup records
 without inventing an executed variant. The checked-in exact-path skip manifest is
-honored before execution. Async/agent and unknown runner flags get explicit skips;
+honored before execution. Agent and unknown runner flags get explicit skips;
 conflicting strict/raw/module flags fail instead of silently choosing a variant.
 
 The integrated runner and include/strict/raw handling cover #145/#146. The
 `$262` realm, evalScript and detach hooks are connected by #147.
-`$DONE`/async completion (#148),
-broader module fixture/negative audits (#149), process isolation/resource limits
-(#150), feature baselines (#151) and regression selection (#152) remain separate
-work. It does not currently impose per-test time or memory limits. A small
-selection does not qualify the whole corpus or a complete language feature.
+Async completion and a hard async worker deadline are connected by #148.
+Broader module fixture/negative audits (#149), general process isolation/resource
+limits (#150), feature baselines (#151) and regression selection (#152) remain
+separate work. Synchronous tests have no execution deadline; neither mode imposes
+a memory limit. A small selection does not qualify the whole corpus or a complete
+language feature.
+
+Async variants run in separate CLI child processes. `--timeout-ms` accepts
+1..120000 milliseconds (default 10000) per variant, including worker startup,
+harness loading and execution. The parent kills and reaps a nonreturning worker;
+a worker watchdog also terminates an infinite body or job. Missing completion
+waits until the deadline and fails as `AsyncIncomplete`; a nonreturning worker
+fails as `AsyncTimeout`. Neither counts as pass or skip. Metadata/manifest policy
+gates run before spawning a worker. The source/manifest snapshot is sent over
+stdin; pinned workers verify source against the immutable corpus again. Input
+is bounded at 32 MiB, report output at 1 MiB and stderr at 64 KiB. Output overflow
+fails as a harness error, while readers keep draining to avoid pipe deadlock.
+
+The original harness calls host `print` with `Test262:AsyncTestComplete` or
+`Test262:AsyncTestFailure:`. The runner records `async_outcome` as `complete`,
+`failure`, `rejected`, `duplicate-completion`, `incomplete`, `timeout`, or `worker-error`;
+expired records also have `timed_out: true`. A failure, duplicate notification,
+unhandled rejection or missing notification cannot satisfy a runtime negative.
+Parse/resolution negatives that finish before execution require no `$DONE`.
+Notifications from setup cannot complete a test, and completion is frozen before
+exception-inspection getters execute. Raw tests load no harness and may use
+host print directly. The standalone synchronous `run_with_engine` adapter still
+skips async tests; hard deadlines are supplied by the actual CLI supervisor.
+
+```sh
+TEST262_DIR=target/test262 cargo test --locked --test test262_async \
+  pinned_ -- --ignored --nocapture
+```
+
+This regression verifies the original harness bytes and executes the original
+async-function return/throw cases: four variants in each of AST and Auto.
+Cases requiring the missing global `Promise.resolve` remain failures (#179);
+these focused passes do not qualify the Promise constructor or the whole async
+language feature. Authored CLI regressions additionally cover FIFO across child
+Realms, rejection handling, duplicates, raw/setup boundaries and infinite jobs.
 
 ```sh
 TEST262_DIR=target/test262 cargo test --locked --test test262_engine \

@@ -2184,3 +2184,27 @@ impl RealmHandle {
         &self.realm
     }
 }
+
+impl Engine {
+    /// Creates an isolated Realm in the same Agent job queue as `parent`.
+    /// Cross-Realm reactions retain enqueue order at one microtask checkpoint.
+    pub fn create_realm_sharing_jobs(
+        &self,
+        parent: &RealmHandle,
+    ) -> Result<RealmHandle, EmbedError> {
+        self.require_realm(parent)?;
+        let global = Object::new_in(&self.runtime);
+        let realm = Realm::try_new_with_host_and_queue(
+            global.clone(),
+            Value::Object(global),
+            parent.realm.host_hooks().clone(),
+            parent.realm.job_queue(),
+        )
+        .map_err(EmbedError::Host)?;
+        Ok(RealmHandle {
+            engine_id: self.id,
+            realm_id: realm.identity(),
+            realm,
+        })
+    }
+}

@@ -38,6 +38,7 @@ impl<F: FnOnce() -> RuntimeResult<()> + 'static> TracedJob for HostJob<F> {
 pub(super) struct JobQueueData {
     pub(super) facade: Weak<JobQueueRoot>,
     jobs: VecDeque<Rc<dyn TracedJob>>,
+    checkpoints: VecDeque<Rc<dyn TracedJob>>,
     active: Vec<Rc<dyn TracedJob>>,
     draining: bool,
     unhandled_hook: Option<UnhandledHook>,
@@ -46,7 +47,12 @@ pub(super) type ManagedJobQueue = RefCell<JobQueueData>;
 impl Trace for RefCell<JobQueueData> {
     fn trace(&self, tracer: &mut Tracer<'_>) {
         let data = self.borrow();
-        for job in data.jobs.iter().chain(&data.active) {
+        for job in data
+            .jobs
+            .iter()
+            .chain(&data.checkpoints)
+            .chain(&data.active)
+        {
             job.trace(tracer);
         }
     }
@@ -159,17 +165,31 @@ impl JobQueue {
     }
 
     pub(super) fn enqueue_traced(&self, job: impl TracedJob + 'static) -> RuntimeResult<()> {
+        self.enqueue_into(job, false)
+    }
+
+    pub(super) fn enqueue_checkpoint(&self, job: impl TracedJob + 'static) -> RuntimeResult<()> {
+        self.enqueue_into(job, true)
+    }
+
+    fn enqueue_into(&self, job: impl TracedJob + 'static, checkpoint: bool) -> RuntimeResult<()> {
         if let Some(runtime) = self.runtime() {
             runtime.record_job_edges(self.handle().expect("managed queue"), &job)?;
         }
-        self.0.borrow_mut().jobs.push_back(Rc::new(job));
+        let mut data = self.0.borrow_mut();
+        if checkpoint {
+            data.checkpoints.push_back(Rc::new(job));
+        } else {
+            data.jobs.push_back(Rc::new(job));
+        }
         Ok(())
     }
 
     /// Returns the number of jobs waiting to run.
     #[must_use]
     pub fn len(&self) -> usize {
-        self.0.borrow().jobs.len()
+        let data = self.0.borrow();
+        data.jobs.len() + data.checkpoints.len()
     }
     /// Returns whether the queue has no pending jobs.
     #[must_use]
@@ -181,7 +201,13 @@ impl JobQueue {
     pub fn run_one(&self) -> RuntimeResult<bool> {
         let job = {
             let mut data = self.0.borrow_mut();
-            let Some(job) = data.jobs.pop_front() else {
+            // Rejection checks observe the end of the microtask checkpoint,
+            // after queued reactions have had a chance to attach a handler.
+            let Some(job) = data
+                .jobs
+                .pop_front()
+                .or_else(|| data.checkpoints.pop_front())
+            else {
                 return Ok(false);
             };
             data.active.push(job.clone());

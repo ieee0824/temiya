@@ -60,6 +60,17 @@ jobs:
           set -e
           printf '%s\n' "$discovery_exit" > target/differential-results/discovery-exit.txt
           node -e 'const r=require("./target/differential-results/discovery/report.json");if(r.results.some(x=>!["match","mismatch"].includes(x.classification)))throw Error("native observation failed");console.log(JSON.stringify(r.counts))'
+      - name: Verify exact known difference and line-minimal witness
+        run: |
+          node scripts/compare-js-engines.mjs --temiya target/release/temiya-differential-worker \
+            --spidermonkey target/shell/bin/js --spidermonkey-info target/shell-evidence/target-check.json \
+            --cases testing/differential/discovery-cases.json --known testing/differential/known-differences.json \
+            --output target/differential-results/known --mode interpreter --timeout-ms 2000
+          node scripts/compare-js-engines.mjs --temiya target/release/temiya-differential-worker \
+            --spidermonkey target/shell/bin/js --spidermonkey-info target/shell-evidence/target-check.json \
+            --cases testing/differential/reducer-witnesses.json \
+            --output target/differential-results/reducer-witness --mode interpreter --timeout-ms 2000
+          node -e 'const k=require("./target/differential-results/known/report.json"),w=require("./target/differential-results/reducer-witness/report.json");if(k.counts["known-difference"]!==1||w.counts.match!==1)throw Error("known signature or minimal witness changed")'
       - name: Preserve raw observations and reproducers
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

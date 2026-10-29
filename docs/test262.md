@@ -307,3 +307,70 @@ execution provenance, all per-variant outcomes, feature/untagged totals and
 reported-attempt rates. A corrupted summary or missing result cannot establish
 a complete validated capture. These integrity checks do not declare language
 features implemented.
+
+## Known-pass regression comparison
+
+`scripts/check-test262-regressions.mjs` compares actual captures after running
+the independent raw-report verifier on both directories. The reference must use
+a pinned corpus, have exact metadata and execute every variant in its universe.
+The candidate must execute exactly the required file selection. Corpus and
+manifest identities, backend, ModuleGraph path and execution resource bounds
+must match. Changing the worker or host is allowed; changing the timeout to
+hide a regression is not.
+
+A policy JSON has `schema: 1`, `reference_baseline_sha256` (the SHA-256 of the
+reference's exact `baseline.json` bytes), sorted unique `pr_selection` paths,
+an explicit `skip_reasons` array and `update.reason`. Each PR file must contain
+at least one actually passing reference variant. All variants in those files
+are compared, including existing failures. A known pass changing to fail or
+timeout fails the gate. Missing, unreported or unexecuted results also fail;
+an improvement in another variant cannot compensate for a regression.
+
+Every new skip requires an entry with its exact `path`, `variant` and nonempty
+`reason`. This is an explicit exception recorded for review, not a pass.
+Existing skip results remain skip. Stale exceptions within the current selection
+are rejected. When comparing a changed policy against the previous policy,
+changes to the reference, selection, exceptions or other baseline fields require
+a different nonempty update reason. Changing only a date cannot reuse the old
+reason. Reviewers should assess whether the stated reason justifies the change.
+
+Given a complete reference directory and a policy describing it, run a PR capture
+and gate with:
+
+```sh
+node scripts/run-test262-regression.mjs target/release/temiya-test262 \
+  target/test262 target/reference target/policy.json target/regression-pr \
+  pr 0 1 target/previous-policy.json
+```
+
+The previous policy is optional for an initial baseline, and must be supplied
+when reviewing an update. All output directories must be new. The runner derives
+the backend and bounds from the reference, captures raw reports and saves gate
+stdout/stderr and exit information even on failure. The comparison CLI exits 0
+for an accepted comparison, 1 for recorded regressions and 2 for invalid inputs
+or capture integrity failures; the runner exits unsuccessfully for either failure.
+
+For a periodic full run, use `full SHARD SHARDS` in place of `pr 0 1`. For example,
+eight jobs use shard indices 0 through 7 with count 8. Sorted corpus paths are
+partitioned by index modulo the shard count, so uneven boundaries still cover
+each file exactly once. Each shard retains every expected variant of its files.
+The gate reconstructs the required partition rather than trusting a caller's
+selection file. A full result requires every shard to finish; one passing shard
+does not qualify the whole run. Existing conformance failures remain visible
+data; the regression gate only claims preservation of known passes and explained
+new skips.
+
+The actual CLI integration test is:
+
+```sh
+node --test tests/test262-regression-policy.test.mjs
+node scripts/test-test262-regression-gate.mjs target/debug/temiya-test262 \
+  target/test262 target/gate-integration
+```
+
+CI runs the integration on stable and MSRV using unchanged pinned String `at`
+and `charAt` originals (four strict/sloppy variants), and uploads the raw capture
+artifacts. It checks accepted PR/full comparisons, full partitions, changed
+resource bounds, forged pass counts and unexplained policy updates. These focused
+integration cases do not qualify the entire corpus. The production PR selection
+and periodic workflow remain pending the completed full reference capture in #151.

@@ -3,21 +3,25 @@ use serde_json::{Value, json};
 use std::{env, fs, io::Read, path::PathBuf, process::ExitCode, time::Duration};
 #[path = "support/test262_engine.rs"]
 mod engine;
+#[path = "support/test262_resources.rs"]
+mod resources;
 #[path = "support/test262_supervisor.rs"]
 mod supervisor;
-use engine::{Corpus, EngineTestResult, parse_case, run_with_engine};
+use engine::{Corpus, EngineTestResult, parse_case};
 use temiya::{
     embedding::ScriptBackend,
     test262::{Manifest, ResultStatus, TestVariant},
 };
 
 const HELP: &str = "Usage: temiya-test262 --corpus DIR [--pinned] [--backend auto|ast|bytecode]
-                      [--timeout-ms 10000] [--manifest FILE] [--output FILE] TEST_PATH [...]
+                      [--timeout-ms 10000] [--memory-mb 512] [--stack-kb 8192]
+                      [--manifest FILE] [--output FILE] TEST_PATH [...]
 
 TEST_PATH is corpus-relative. Each test/variant gets a fresh Engine and Realm.
 --pinned reads every source/harness file from the fixed Git commit.
-Async variants use separate workers with a finite wall-clock deadline (1..120000 ms).
-JSON distinguishes completion, rejection, duplicate notification, incomplete and timeout.
+Every executable variant uses a separate worker with a finite deadline (1..120000 ms).
+Linux workers have address-space/RSS and stack limits; the core-file limit is zero.
+JSON distinguishes timeout, memory exhaustion, stack overflow, crash and async completion.
 Exit: 0 success, 1 test/setup failure, 2 usage error, 3 all variants skipped.";
 struct Options {
     corpus: PathBuf,
@@ -27,6 +31,7 @@ struct Options {
     output: Option<PathBuf>,
     tests: Vec<String>,
     timeout_ms: u64,
+    limits: resources::Limits,
     worker: Option<TestVariant>,
 }
 fn parse() -> Result<Option<Options>, String> {
@@ -36,6 +41,10 @@ fn parse() -> Result<Option<Options>, String> {
     let mut backend = ScriptBackend::Auto;
     let mut tests = Vec::new();
     let mut timeout_ms = 10_000;
+    let mut limits = resources::Limits {
+        memory_mb: 512,
+        stack_kb: 8192,
+    };
     let mut worker = None;
     while let Some(arg) = args.next() {
         match arg.as_str() {
@@ -70,6 +79,26 @@ fn parse() -> Result<Option<Options>, String> {
                     return Err("--timeout-ms must be 1..120000".into());
                 }
             }
+            "--memory-mb" => {
+                limits.memory_mb = args
+                    .next()
+                    .ok_or("missing --memory-mb value")?
+                    .parse()
+                    .map_err(|_| "invalid --memory-mb")?;
+                if !(16..=65_536).contains(&limits.memory_mb) {
+                    return Err("--memory-mb must be 16..65536".into());
+                }
+            }
+            "--stack-kb" => {
+                limits.stack_kb = args
+                    .next()
+                    .ok_or("missing --stack-kb value")?
+                    .parse()
+                    .map_err(|_| "invalid --stack-kb")?;
+                if !(128..=65_536).contains(&limits.stack_kb) {
+                    return Err("--stack-kb must be 128..65536".into());
+                }
+            }
             "--internal-worker" => {
                 worker = Some(match args.next().as_deref() {
                     Some("Sloppy") => TestVariant::Sloppy,
@@ -100,6 +129,7 @@ fn parse() -> Result<Option<Options>, String> {
         output,
         tests,
         timeout_ms,
+        limits,
         worker,
     }))
 }
@@ -182,7 +212,7 @@ fn execute(options: Options) -> Result<u8, String> {
                     .into_iter()
                     .map(record),
             );
-        } else if test.metadata.flags.iter().any(|flag| flag == "async") {
+        } else {
             if let Some(gated) = engine::preflight(&test, &manifest, true) {
                 records.extend(gated.into_iter().map(record));
                 continue;
@@ -202,14 +232,10 @@ fn execute(options: Options) -> Result<u8, String> {
                     source: &test.source,
                     manifest: &manifest_text,
                     timeout_ms: options.timeout_ms,
+                    limits: options.limits,
+                    async_mode: test.metadata.flags.iter().any(|flag| flag == "async"),
                 }));
             }
-        } else {
-            records.extend(
-                run_with_engine(&test, &manifest, &corpus, options.backend)
-                    .into_iter()
-                    .map(record),
-            );
         }
     }
     let passed = records.iter().filter(|r| r["status"] == "pass").count();

@@ -86,8 +86,11 @@ Run selected original cases with `cargo run --locked --bin temiya-test262 --
 --corpus target/test262 --pinned TEST_PATH`; `$262` provides real child Realms,
 Script evaluation and ArrayBuffer detachment. The runner reports pass, fail and
 skip separately after actual Engine execution. It does not qualify the full
-corpus. Async variants use the original `$DONE` harness, drive the job queue,
-and have a finite worker deadline (`--timeout-ms`, default 10000).
+corpus. Each executable variant runs in a separate process with a finite worker
+deadline (`--timeout-ms`, default 10000). Linux workers also have memory and stack
+bounds (`--memory-mb`, default 512; `--stack-kb`, default 8192). Async variants use
+the original `$DONE` harness and drive the job queue. See the harness documentation
+for host failure classification and platform limits.
 Cross-engine result normalization and reproducer reduction are documented in
 [differential testing](docs/differential-testing.md).
 Lexer/parser fuzz targets, limits, corpus, and regression handling are described

@@ -11696,9 +11696,10 @@
       ],
       "tests": [
         "tests/test262_engine.rs",
-        "tests/test262_harness.rs"
+        "tests/test262_harness.rs",
+        "tests/test262_isolation.rs"
       ],
-      "rationale": "Public Engine-backed CLI and Executor run actual parse/link/evaluate phases with fresh Realms, unchanged harness sources and strict/raw/quoted-list handling. Original CLI cases and all 30 prior #146 dependency files are tested. The real $262 realm/evalScript/detach/gc hooks are connected. Async completion has a supervised worker path; general process limits and corpus baselines remain separate; no whole-suite qualification."
+      "rationale": "Public Engine-backed CLI and Executor run actual parse/link/evaluate phases with fresh Realms, unchanged harness sources and strict/raw/quoted-list handling. Original CLI cases and all 30 prior #146 dependency files are tested. The real $262 realm/evalScript/detach/gc hooks are connected. All executable variants have supervised Linux workers with finite wall, address-space/RSS and stack bounds. Host resource failures remain distinct from language negatives. Corpus baselines and whole-suite qualification remain separate."
     },
     {
       "id": "component.test262-host-hooks",
@@ -11728,7 +11729,7 @@
         "tests/async_embedding_jobs.rs",
         "tests/promise_job_queue.rs"
       ],
-      "rationale": "The actual CLI loads the original doneprintHandle harness, drives shared Agent jobs and distinguishes completion, rejection, duplicates and missing completion. A worker supervisor enforces finite async deadlines including infinite bodies/jobs. Original pinned return/throw cases pass in AST and Auto. Global Promise APIs, broader async conformance and synchronous/resource limits remain unqualified."
+      "rationale": "The actual CLI loads the original doneprintHandle harness, drives shared Agent jobs and distinguishes completion, rejection, duplicates and missing completion. A worker supervisor enforces finite async deadlines including infinite bodies/jobs. Original pinned return/throw cases pass in AST and Auto. Global Promise APIs, broader async conformance remain unqualified; general Linux process bounds are recorded separately."
     },
     {
       "id": "component.test262-module-fixtures",
@@ -11746,6 +11747,19 @@
         "tests/fixtures/test262-module/selection.json"
       ],
       "rationale": "The real CLI uses canonical corpus-relative fixture resolution, preserves dependency identities and rejects lossy UTF-16 path aliases. Module linking validates indirect re-exports before body execution. Original cyclic/missing-export/basic-await cases are executed at the fixed corpus pin; broader instantiation and TLA failures remain recorded. Pending async module graphs and incomplete globals/namespace behavior are not qualified."
+    },
+    {
+      "id": "component.test262-process-isolation",
+      "status": "partial",
+      "issues": [
+        150
+      ],
+      "tests": [
+        "tests/test262_isolation.rs",
+        "tests/test262_async.rs",
+        "tests/test262_engine.rs"
+      ],
+      "rationale": "Linux CLI runs each executable variant in a fresh child with finite deadline, pre-exec address-space/stack limits, RSS monitoring and a zero core-file limit. Actual timeout, stack/allocation exhaustion, fatal signals, global/job isolation and ordinary negative cases are tested. Host failures cannot satisfy JavaScript negatives. Parent corpus metadata loading, non-Linux resource enforcement and general security sandboxing are not qualified."
     }
   ]
 }

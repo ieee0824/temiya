@@ -106,3 +106,10 @@ each of AST and Auto with the original `propertyHelper.js` and other includes.
 Historical audit records are preserved; they do not describe the current runner.
 Failures from other incomplete APIs remain failures in the broader follow-up,
 without replacement harness functions or success inferred from a loaded name.
+
+The [qualification record](../benchmarks/test262-runner/README.md) retains the
+original CLI reports, native/Clippy/Miri/CI logs, exact implementation inputs and
+every performance experiment. Its verifier independently checks original
+workload oracles, raw samples, statistical decisions and worker identities.
+Inconclusive ARM64 comparisons remain inconclusive; the record does not turn
+them into speed passes or qualify the whole Test262 corpus.

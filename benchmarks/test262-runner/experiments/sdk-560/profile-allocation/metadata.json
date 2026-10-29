@@ -1,0 +1,220 @@
+{
+  "scope": "Diagnostic whole-process instrumented counters, including startup/setup, one checked warmup and one checked pass. Original workload bodies/counts/oracles unchanged. Cache/branch simulation is a model, not native hardware measurements; instrumented times never qualify speed.",
+  "recorded_at": "2026-10-29T06:13:06.890Z",
+  "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)\nbinary: rustc\ncommit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67\ncommit-date: 2026-10-13\nhost: x86_64-unknown-linux-gnu\nrelease: 1.99.1\nLLVM version: 23.1.1",
+  "valgrind": "valgrind-3.22.0",
+  "machine": "Architecture:                            x86_64\nCPU op-mode(s):                          32-bit, 64-bit\nAddress sizes:                           48 bits physical, 48 bits virtual\nByte Order:                              Little Endian\nCPU(s):                                  4\nOn-line CPU(s) list:                     0-3\nVendor ID:                               AuthenticAMD\nModel name:                              AMD EPYC 9V74 80-Core Processor\nCPU family:                              25\nModel:                                   17\nThread(s) per core:                      2\nCore(s) per socket:                      2\nSocket(s):                               1\nStepping:                                1\nBogoMIPS:                                5192.27\nFlags:                                   fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush mmx fxsr sse sse2 ht syscall nx mmxext fxsr_opt pdpe1gb rdtscp lm constant_tsc rep_good nopl tsc_reliable nonstop_tsc cpuid extd_apicid aperfmperf tsc_known_freq pni pclmulqdq ssse3 fma cx16 pcid sse4_1 sse4_2 movbe popcnt aes xsave avx f16c rdrand hypervisor lahf_lm cmp_legacy svm cr8_legacy abm sse4a misalignsse 3dnowprefetch osvw topoext vmmcall fsgsbase bmi1 avx2 smep bmi2 erms invpcid rdseed adx smap clflushopt clwb sha_ni xsaveopt xsavec xgetbv1 xsaves user_shstk clzero xsaveerptr rdpru arat npt nrip_save tsc_scale vmcb_clean flushbyasid decodeassists pausefilter pfthreshold v_vmsave_vmload umip vaes vpclmulqdq rdpid fsrm\nVirtualization:                          AMD-V\nHypervisor vendor:                       Microsoft\nVirtualization type:                     full\nL1d cache:                               64 KiB (2 instances)\nL1i cache:                               64 KiB (2 instances)\nL2 cache:                                2 MiB (2 instances)\nL3 cache:                                32 MiB (1 instance)\nNUMA node(s):                            1\nNUMA node0 CPU(s):                       0-3\nVulnerability Gather data sampling:      Not affected\nVulnerability Ghostwrite:                Not affected\nVulnerability Indirect target selection: Not affected\nVulnerability Itlb multihit:             Not affected\nVulnerability L1tf:                      Not affected\nVulnerability Mds:                       Not affected\nVulnerability Meltdown:                  Not affected\nVulnerability Mmio stale data:           Not affected\nVulnerability Old microcode:             Not affected\nVulnerability Reg file data sampling:    Not affected\nVulnerability Retbleed:                  Not affected\nVulnerability Spec rstack overflow:      Vulnerable: Safe RET, no microcode\nVulnerability Spec store bypass:         Vulnerable\nVulnerability Spectre v1:                Mitigation; usercopy/swapgs barriers and __user pointer sanitization\nVulnerability Spectre v2:                Mitigation; Retpolines; STIBP disabled; RSB filling; PBRSB-eIBRS Not affected; BHI Not affected\nVulnerability Srbds:                     Not affected\nVulnerability Tsa:                       Vulnerable: No microcode\nVulnerability Tsx async abort:           Not affected\nVulnerability Vmscape:                   Not affected\n",
+  "original_manifest": {
+    "revision": "007556adccb8fb4329236932ca8175f8e8d119d2",
+    "fixture_version": 2,
+    "fixture_sha256": "177eb80ae73d1081eb620f747b4703e2a9f2731e0255bb60131b73b7dcac6464",
+    "oracle_sha256": "53741fc1f0ef7cd7a0a8a6887c8b376f2e27beef362646b03094a4617f67214d",
+    "shared_setup_sha256": "d8b8cbb72f3f08e2552cbb4b10b8e1831cb6f6e337c1395b014a857961a758ae",
+    "scope": "Unmodified bodies and iteration counts; original makeShapes/ProtoBase/protoReceiver setup instantiated once in a stable closure, with prototype identity checked; host timers replace the JS harness",
+    "workloads": [
+      {
+        "name": "arith",
+        "iterations": 2000000,
+        "expected": 64,
+        "body_sha256": "faeedc595cc9e0e6e538fb38b8e37c6a398ef2839f1ec74752cb73336fd6a30f",
+        "setup_sha256": "ae6dd05803b8a5872b5dda134efd00a0e4a9535885bf43bf2a6748d75f5c1534",
+        "invocation_sha256": "6b1ee5c02c443ecac20be8d7ec68e56c394ac46ed1193ea2fd8689830c9f38dd"
+      },
+      {
+        "name": "prop-mono",
+        "iterations": 1000000,
+        "expected": 500003500000,
+        "body_sha256": "26ca3445e71fa9404a35190207d609a96fb1125923ab153c1862a667e14978d8",
+        "setup_sha256": "ce309d8ec657505ee9804dacc73ed4242af59092770a085e7b58882f791149b4",
+        "invocation_sha256": "dd6494788ed61e4bfcbb8e2b471c1d8718681a5b078aa659012aee32784f889c"
+      },
+      {
+        "name": "prop-mega",
+        "iterations": 500000,
+        "expected": 1750000,
+        "body_sha256": "0ca572ff5bf9e484e90beac0c9d23e856d4dbe7ffb18f157bcecdef1864e5052",
+        "setup_sha256": "1cfab0881862549e8bbd96b5ef3c2ee4b4564300bab42ecf64725889e859f531",
+        "invocation_sha256": "bac54c49733ce3a9cc0a4b061ae894e4d3f967cdb7d108e9fc9c952b27bbc0cc"
+      },
+      {
+        "name": "call",
+        "iterations": 1000000,
+        "expected": 1000000,
+        "body_sha256": "f89805330cb19300f6052a0af8af8148b6482cf6a83f6477e7d714e618346227",
+        "setup_sha256": "330ddea2ea121e75c30d5046e8554e231242b93b201d94e196e06651d603a738",
+        "invocation_sha256": "dd6494788ed61e4bfcbb8e2b471c1d8718681a5b078aa659012aee32784f889c"
+      },
+      {
+        "name": "closure-alloc",
+        "iterations": 300000,
+        "expected": 715003,
+        "body_sha256": "07bc6bf48f75bcc3ef73a7be7c5047c3d22c97e13a87b9f0058b4a8fa817e5b0",
+        "setup_sha256": "ae3a8e79ebbe6314b9a12883ff8416bbdfc63363dad9352b62eeb5603e6eca33",
+        "invocation_sha256": "c9841aa3520571162b7268b88cbd7008dd0b907e56eafc56133e49feb3fa20d9"
+      },
+      {
+        "name": "object-alloc",
+        "iterations": 300000,
+        "expected": 730003,
+        "body_sha256": "3a41ed5c69574cf0428b88e287cf9818b90ea672fcf25b25733062cf6033afed",
+        "setup_sha256": "463375574e4932bd266aa00d218abee7ab67dc291a75868551d5d23b5866a924",
+        "invocation_sha256": "c9841aa3520571162b7268b88cbd7008dd0b907e56eafc56133e49feb3fa20d9"
+      },
+      {
+        "name": "string-concat",
+        "iterations": 200000,
+        "expected": 2494,
+        "body_sha256": "165b84b784fa64452c0d170e1ee169263176f0c9cd28ea24da2a9326d7f6e0ab",
+        "setup_sha256": "5632a9961c9665f01c646cc3afe8ebb9f7532766cdbd3152232ff3c33733506e",
+        "invocation_sha256": "77131e401a89abdd0299fdaa27ca6fabb44d9dde5996cbc4a0113f31d4019d10"
+      },
+      {
+        "name": "array",
+        "iterations": 500000,
+        "expected": 124999750000,
+        "body_sha256": "3ecf59ede15684c95040e9cabcb447f4e5cccab65a05ce130318d8da0b9111f3",
+        "setup_sha256": "1e59a056b31e2dc263720aab7d8e24ef48780f08cf6b10e2b124395cac25c079",
+        "invocation_sha256": "bac54c49733ce3a9cc0a4b061ae894e4d3f967cdb7d108e9fc9c952b27bbc0cc"
+      },
+      {
+        "name": "primitive-string-property",
+        "iterations": 500000,
+        "expected": 499997,
+        "body_sha256": "a40d5c9c03219dae3663a0b6b5222ac7228013ed6e5814b63c460da5078b4e89",
+        "setup_sha256": "96df0adfdd2abc9347bb0a9ec774afcce9d61fdbb24f64e1058545ef3808b1f2",
+        "invocation_sha256": "bac54c49733ce3a9cc0a4b061ae894e4d3f967cdb7d108e9fc9c952b27bbc0cc"
+      },
+      {
+        "name": "primitive-string-method",
+        "iterations": 500000,
+        "expected": 999856,
+        "body_sha256": "ee51ada52e9b8f60288f9edf6ab0fec04dcebfd81f1557b29029a27db9fc0c3a",
+        "setup_sha256": "ae33d49f35d9f6223f41f8cf6b5db130c61020afb287ad3af7225642d042e0bc",
+        "invocation_sha256": "bac54c49733ce3a9cc0a4b061ae894e4d3f967cdb7d108e9fc9c952b27bbc0cc"
+      },
+      {
+        "name": "proto-method",
+        "iterations": 500000,
+        "expected": 750000,
+        "body_sha256": "1ea33b21d90f83972ff0490f2857c011fd8f3f014d9c70eec37bd8ca5e75a9de",
+        "setup_sha256": "32d2d1497ced6394e803eebba65de2c29606c58fd88eb2effebf04467db01ab5",
+        "invocation_sha256": "bac54c49733ce3a9cc0a4b061ae894e4d3f967cdb7d108e9fc9c952b27bbc0cc"
+      }
+    ]
+  },
+  "diagnostic_workloads": [
+    "object-alloc"
+  ],
+  "runs": [
+    {
+      "label": "baseline",
+      "name": "object-alloc",
+      "args": [
+        "--tool=callgrind",
+        "--dump-instr=yes",
+        "--collect-jumps=yes",
+        "--cache-sim=yes",
+        "--branch-sim=yes",
+        "--I1=32768,8,64",
+        "--D1=32768,8,64",
+        "--LL=8388608,16,64",
+        "--callgrind-out-file=/home/runner/work/_temp/numeric-profile/baseline/object-alloc.callgrind",
+        "--log-file=/home/runner/work/_temp/numeric-profile/baseline/object-alloc.valgrind.log",
+        "/home/runner/work/_temp/baseline-target/release/examples/measure_workload",
+        "/home/runner/work/_temp/original/object-alloc.json",
+        "1"
+      ],
+      "input_sha256": "80af01376a87f1d08d2546ab038825ca4a4bd38bc8346243f31a37b3a514e55f",
+      "exit_status": 0,
+      "signal": null,
+      "error": null,
+      "counters": {
+        "Ir": 4779297981,
+        "Dr": 1446626554,
+        "Dw": 874393027,
+        "I1mr": 13532443,
+        "D1mr": 9187962,
+        "D1mw": 9005195,
+        "ILmr": 7224,
+        "DLmr": 11772,
+        "DLmw": 75861,
+        "Bc": 548471888,
+        "Bcm": 11117667,
+        "Bi": 56578497,
+        "Bim": 21610507
+      },
+      "validated_passes": 2,
+      "annotation_exit": 0
+    },
+    {
+      "label": "measured",
+      "name": "object-alloc",
+      "args": [
+        "--tool=callgrind",
+        "--dump-instr=yes",
+        "--collect-jumps=yes",
+        "--cache-sim=yes",
+        "--branch-sim=yes",
+        "--I1=32768,8,64",
+        "--D1=32768,8,64",
+        "--LL=8388608,16,64",
+        "--callgrind-out-file=/home/runner/work/_temp/numeric-profile/measured/object-alloc.callgrind",
+        "--log-file=/home/runner/work/_temp/numeric-profile/measured/object-alloc.valgrind.log",
+        "/home/runner/work/_temp/measured-target/release/examples/measure_workload",
+        "/home/runner/work/_temp/original/object-alloc.json",
+        "1"
+      ],
+      "input_sha256": "80af01376a87f1d08d2546ab038825ca4a4bd38bc8346243f31a37b3a514e55f",
+      "exit_status": 0,
+      "signal": null,
+      "error": null,
+      "counters": {
+        "Ir": 4745543008,
+        "Dr": 1441245237,
+        "Dw": 863582594,
+        "I1mr": 4730660,
+        "D1mr": 9223947,
+        "D1mw": 9059316,
+        "ILmr": 7284,
+        "DLmr": 11776,
+        "DLmw": 75862,
+        "Bc": 547237347,
+        "Bcm": 11070531,
+        "Bi": 56578486,
+        "Bim": 23411544
+      },
+      "validated_passes": 2,
+      "annotation_exit": 0
+    }
+  ],
+  "builds": [
+    {
+      "label": "baseline",
+      "revision": "1d664b67bf7bbaf6aa517febca1267f81f6b944e",
+      "executable_sha256": "d371649b943c83d8cb100eea6ec767dd86ab5ffc0008af934ef1bf658e5896fb",
+      "profile": "release",
+      "features": [],
+      "source_objects": {
+        "src": "33178d6e9d4480e6d497098b47cc09d55c5e18e2",
+        "examples": "25251279be8f58260d135f0d9c90a774d10eb9a0",
+        "Cargo.toml": "f863e0d9af0b72db8c8fdf59a244a7e9cbd56dae",
+        "Cargo.lock": "e0e7f6ac7e4abfa3c12c3af30d305bbb87af50fc",
+        "scripts/omoikane-benchmark-reference.mjs": "b052eb90ac1cb61e73c6241b597ef6a3b6a275b5"
+      }
+    },
+    {
+      "label": "measured",
+      "revision": "ee6bf8c5874fc1b9a8fcbb4ae9af11b167bcbbf9",
+      "executable_sha256": "91bd8b1aeb6c11eb28794cda17fcf56a7e9607040940365799f85bb7d05080b1",
+      "profile": "release",
+      "features": [],
+      "source_objects": {
+        "src": "8b768ad631303cd2353c9281d43d33b5f1ad1513",
+        "examples": "25251279be8f58260d135f0d9c90a774d10eb9a0",
+        "Cargo.toml": "11fda2a00dea45a7bb3c7b29ac7521202cada39b",
+        "Cargo.lock": "e0e7f6ac7e4abfa3c12c3af30d305bbb87af50fc",
+        "scripts/omoikane-benchmark-reference.mjs": "b052eb90ac1cb61e73c6241b597ef6a3b6a275b5"
+      }
+    }
+  ]
+}

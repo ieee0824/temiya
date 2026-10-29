@@ -57,3 +57,29 @@ backend reports for [#537](https://github.com/ieee0824/temiya/issues/537). Expli
 Ast loses per-iteration for-let header captures while Auto's verified body
 preserves them at source d818832. This pre-existing loop gap remains open and is
 not original Test262 evidence or a failure fixed by the primitive-slot change.
+
+`lexical-v1` retains source `2f2e61d` after private lexical slots, empty block
+elision and avoiding unused call-local roots. Its fixed class comparisons record
+two faster and ten within-noise decisions against Boa, three faster and nine
+within noise against d818, and twelve within noise for the same executable.
+These observations do not establish the all-class speed goal. The correctness
+archive preserves every raw class/PR/for-loop capture, all 391 selected original
+for-loop inputs and harness/license files, plus the 731-test run. The complete
+385-file/758-variant for selection has unchanged outcomes and failure signatures:
+Ast 196 pass/562 fail, Auto 200 pass/558 fail, no skips/timeouts/missing variants.
+These existing failures remain failures.
+
+```sh
+node benchmarks/base-classes/verify-lexical.mjs
+```
+
+The verifier reconstructs all class measurements, safely extracts the hashed
+correctness archive, independently verifies its Test262 reports and per-variant
+before/after comparison, and checks original input hashes and test counts.
+
+Hosted measurements can include the same separate class suite with the
+`include_classes` dispatch input to `omoikane-benchmark.yml`. The selected
+`baseline_revision` must support these classes (for example d818832). Enabling
+`include_controls` retains baseline/Boa and identical-binary controls for both
+suites. `two_runners` records both machines without selecting a CPU or discarding
+unfavorable results. CI success means valid observations, not a speed pass.

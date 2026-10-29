@@ -47,6 +47,8 @@ jobs:
         run: node benchmarks/base-classes/verify-initial.mjs
       - name: Verify intermediate class optimization evidence including slower results
         run: node benchmarks/base-classes/verify-auto-functions.mjs
+      - name: Verify private lexical class optimization and raw original suites
+        run: node benchmarks/base-classes/verify-lexical.mjs
       - name: Check external benchmark adapter formatting
         run: rustfmt +stable --edition 2024 --check benchmarks/omoikane-worker/main.rs
       - name: Check authored RegExp input contracts

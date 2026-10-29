@@ -40,7 +40,12 @@ jobs:
       - name: Build actual Temiya worker
         run: |
           rustup toolchain install stable --profile minimal
-          cargo +stable build --locked --release --no-default-features --bin temiya-differential-worker
+          cargo +stable build --locked --release --no-default-features --bin temiya-differential-worker --bin temiya-test262
+      - name: Prepare unchanged fixed Test262 originals
+        run: |
+          scripts/test262
+          node scripts/prepare-differential-test262.mjs target/release/temiya-test262 \
+            target/test262 target/differential-results/test262-cases.json
       - name: Compare actual native observations in both selected modes
         run: |
           for mode in interpreter default; do
@@ -49,6 +54,14 @@ jobs:
               --cases testing/differential/adapter-cases.json --known testing/differential/known-differences.json \
               --output "target/differential-results/$mode" \
               --mode "$mode" --timeout-ms 2000
+          done
+      - name: Compare fixed original Test262 variants through both real engines
+        run: |
+          for mode in interpreter default; do
+            node scripts/compare-js-engines.mjs --temiya target/release/temiya-differential-worker \
+              --spidermonkey target/shell/bin/js --spidermonkey-info target/shell-evidence/target-check.json \
+              --cases target/differential-results/test262-cases.json \
+              --output "target/differential-results/test262-$mode" --mode "$mode" --timeout-ms 2000
           done
       - name: Record semantic discovery without suppressing mismatches
         run: |

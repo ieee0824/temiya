@@ -50,6 +50,7 @@ for (const row of known) {
 const output = path.resolve(options.output);
 assert(!fs.existsSync(output), 'output must be new');
 fs.mkdirSync(output, {recursive: true});
+fs.copyFileSync(options.cases, path.join(output, 'cases.json'));
 const worker = fileURLToPath(new URL('./spidermonkey-differential-worker.js', import.meta.url));
 function invoke(executable, args, input, stem) {
   const result = spawnSync(executable, args, {input, detached: process.platform !== 'win32',
@@ -102,13 +103,13 @@ for (const row of cases) {
       }
     }
   }
-  results.push({id: row.id, source_sha256: sha(row.source), classification,
+  results.push({id: row.id, source_sha256: sha(row.source), provenance: row.provenance ?? null, classification,
     observation_sha256: signature, known_id: knownId, temiya: a, spidermonkey: b});
 }
 const counts = {};
 for (const row of results) counts[row.classification] = (counts[row.classification] ?? 0) + 1;
 const report = {schema: 1, kind: 'native-engine-differential', target, mode: options.mode,
-  backend: options.backend, timeout_ms: timeout, temiya_sha256: sha(fs.readFileSync(temiya)),
+  backend: options.backend, timeout_ms: timeout, cases_sha256: sha(fs.readFileSync(options.cases)), temiya_sha256: sha(fs.readFileSync(temiya)),
   spidermonkey_sha256: smInfo.binary_sha256, provided_spidermonkey_build_info: smInfo,
   controller_sha256: sha(fs.readFileSync(fileURLToPath(import.meta.url))), worker_sha256: sha(fs.readFileSync(worker)),
   host: {platform: os.platform(), architecture: os.arch(), kernel: os.release(), node: process.version},

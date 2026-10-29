@@ -50,6 +50,24 @@ const accepted = JSON.parse(run('check-test262-regressions.mjs', gateArgs).stdou
 assert.equal(accepted.passed, true);
 assert.equal(accepted.observed_variants, 4);
 run('check-test262-regressions.mjs', ['--full', ...gateArgs]);
+const runnerOutput = path.join(root, 'runner-pr');
+run('run-test262-regression.mjs', [engine, corpus, reference, policyFile,
+  runnerOutput, 'pr', '0', '1', policyFile]);
+assert.equal(JSON.parse(fs.readFileSync(path.join(runnerOutput,
+  'check-test262-regressions.mjs.stdout'))).passed, true);
+
+const stalePolicy = {...policy, update: {reason: 'Integration checks stale skip diagnostics'},
+  skip_reasons: [{path: selection[0], variant: 'Sloppy', reason: 'This case actually passes, so this exception is stale'}]};
+const stalePolicyFile = path.join(root, 'stale-policy.json');
+fs.writeFileSync(stalePolicyFile, JSON.stringify(stalePolicy));
+const failedRunnerOutput = path.join(root, 'runner-rejected');
+run('run-test262-regression.mjs', [engine, corpus, reference, stalePolicyFile,
+  failedRunnerOutput, 'pr', '0', '1', policyFile], 1);
+assert(fs.existsSync(path.join(failedRunnerOutput, 'capture', 'baseline.json')));
+assert.equal(JSON.parse(fs.readFileSync(path.join(failedRunnerOutput,
+  'check-test262-regressions.mjs.exit.json'))).status, 2);
+assert.match(fs.readFileSync(path.join(failedRunnerOutput,
+  'check-test262-regressions.mjs.stderr'), 'utf8'), /stale or out-of-scope/);
 for (let shard = 0; shard < 2; shard++) {
   const selectedFile = path.join(root, 'shard-' + shard + '.json');
   run('prepare-test262-regression-selection.mjs',
@@ -76,5 +94,6 @@ fs.writeFileSync(changedPolicyFile, JSON.stringify({...policy, pr_selection: sel
 assert.match(run('check-test262-regressions.mjs', [reference, candidate, changedPolicyFile, policyFile], 2).stderr,
   /fresh update reason/);
 console.log(JSON.stringify({integration: 'pass', original_variants: 4,
-  checks: ['pr pass', 'full pass', 'all full shards pass', 'budget mismatch rejected', 'forged count rejected',
+  checks: ['pr pass', 'full pass', 'PR runner pass', 'failed runner preserves raw capture and diagnostics',
+    'all full shards pass', 'budget mismatch rejected', 'forged count rejected',
     'baseline change without fresh reason rejected'], output: root}));

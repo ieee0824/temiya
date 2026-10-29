@@ -68,6 +68,19 @@ within their gates. Full runtime security passes119 exact Miri tests/0 ignored
 and all19 jobs, including ASan/audit. This candidate is not
 qualified for merge; all unfavorable observations are retained for investigation.
 
+The x64 diagnostic rebuilt the exact native benchmark binaries and localized
+extra general binding-write work in `Binding::write` and its function-binding
+caller. A following candidate directly overwrites an existing Number with an
+incoming Number after the existing TDZ/mutability checks. That scalar overwrite
+has no managed edge or owned payload; all other type changes continue through
+`StoredValue::store_owned`, its context checks and barriers, and the ordinary
+destruction of the old value. The independent public binding test checks exact
+numeric bits, TDZ, immutable strict/sloppy writes, rejected foreign-context
+objects, live/released managed children and string/number transitions. No cache
+eligibility, GC schedule or workload input changes accompany this optimization.
+Its performance qualification is separate and pending; the source6fb3160
+measurements and failures above remain unchanged.
+
 Performance qualification is pending. Keep the original eleven workload bodies,
 counts, oracles,15 samples/3 alternating pairs,512MiB/180-second watchdogs and
 the existing10%/MAD gate for candidate/main and actual pinned omoikane modified

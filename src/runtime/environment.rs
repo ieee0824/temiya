@@ -1296,7 +1296,13 @@ impl Binding {
             return Err(reference_error(&self.name, "is in the temporal dead zone"));
         }
         if self.mutable {
-            self.value = Some(StoredValue::store_owned(owner, value)?);
+            match (&mut self.value, value) {
+                // Same-type scalar writes have neither managed edges nor a
+                // payload to drop. Keep the TDZ/mutability checks above and
+                // avoid general Value conversion/copy/drop work on this path.
+                (Some(StoredValue::Number(current)), Value::Number(next)) => *current = next,
+                (_, value) => self.value = Some(StoredValue::store_owned(owner, value)?),
+            }
             Ok(())
         } else if strict || self.strict {
             Err(RuntimeError::type_error(

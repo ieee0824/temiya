@@ -1,5 +1,5 @@
 use std::{
-    cell::Cell,
+    cell::{Cell, RefCell},
     fs,
     path::{Path, PathBuf},
     process::{Command, Output},
@@ -90,6 +90,188 @@ fn fail(results: &[EngineTestResult]) {
             .all(|r| matches!(r.result.status, ResultStatus::Failed(_))),
         "{results:?}"
     );
+}
+
+#[test]
+fn string_host_module_loader_never_receives_lossy_specifier_aliases() {
+    for specifier in ["./\\uD800.js", "./\\uDC00.js"] {
+        let engine = Engine::default();
+        let realm = engine.create_realm();
+        let calls = Rc::new(RefCell::new(Vec::new()));
+        let observed = calls.clone();
+        let root = format!("import {{answer}} from '{specifier}';");
+        let error = engine
+            .load_module(&realm, "root", move |name| {
+                observed.borrow_mut().push(name.to_owned());
+                Ok(if name == "root" {
+                    root.clone()
+                } else {
+                    "export var answer=42;".into()
+                })
+            })
+            .unwrap_err();
+        assert!(
+            matches!(error, temiya::embedding::EmbedError::Host(ref error) if error.kind()==temiya::runtime::RuntimeErrorKind::TypeError)
+        );
+        assert_eq!(&*calls.borrow(), &["root"]);
+        engine.collect_garbage().unwrap();
+    }
+    for (specifier, expected) in [
+        ("./\u{fffd}.js", "./\u{fffd}.js"),
+        ("./\\uFFFD.js", "./\u{fffd}.js"),
+        ("./\\uD83D\\uDE00.js", "./\u{1f600}.js"),
+    ] {
+        let engine = Engine::default();
+        let realm = engine.create_realm();
+        let calls = Rc::new(RefCell::new(Vec::new()));
+        let observed = calls.clone();
+        let root = format!("export {{answer}} from '{specifier}';");
+        let module = engine
+            .load_module(&realm, "root", move |name| {
+                observed.borrow_mut().push(name.to_owned());
+                Ok(if name == "root" {
+                    root.clone()
+                } else {
+                    "export var answer=42;".into()
+                })
+            })
+            .unwrap();
+        engine.evaluate_module(&module).unwrap();
+        assert_eq!(&*calls.borrow(), &["root", expected]);
+        assert!(
+            module
+                .record()
+                .get_export(&"answer".into())
+                .unwrap()
+                .same_value(&Value::Number(42.0))
+        );
+    }
+}
+
+#[test]
+fn cli_module_specifiers_preserve_unicode_and_reject_lossy_aliases() {
+    let fixture = Fixture::new();
+    fixture.write("test/\u{fffd}.js", "export var answer=42;");
+    fixture.write("test/\u{1f600}.js", "export var answer=42;");
+    for backend in ["ast", "auto"] {
+        for specifier in ["./\u{fffd}.js", "./\\uFFFD.js", "./\\uD83D\\uDE00.js"] {
+            fixture.write(
+                "test/case.js",
+                &format!(
+                    "/*---\nflags: [module]\n---*/\nimport {{answer}} from '{specifier}';assert(answer===42);"
+                ),
+            );
+            let (output, report) = fixture.cli(&["--backend", backend, "test/case.js"]);
+            assert_eq!(output.status.code(), Some(0), "{report}");
+            assert_eq!(report["counts"]["pass"], 1);
+            assert_eq!(report["counts"]["skip"], 0);
+        }
+        for specifier in ["./\\uD800.js", "./\\uDC00.js"] {
+            for negative in ["", "negative:\n  phase: resolution\n  type: TypeError\n"] {
+                fixture.write(
+                    "test/case.js",
+                    &format!(
+                        "/*---\nflags: [module]\n{negative}---*/\nimport {{answer}} from '{specifier}';assert(answer===42);"
+                    ),
+                );
+                let (output, report) = fixture.cli(&["--backend", backend, "test/case.js"]);
+                assert_eq!(output.status.code(), Some(1), "{report}");
+                assert_eq!(report["counts"]["pass"], 0);
+                assert_eq!(report["counts"]["skip"], 0);
+                assert_eq!(
+                    report["results"][0]["observed_failure"]["phase"],
+                    "Resolution"
+                );
+                assert_eq!(
+                    report["results"][0]["observed_failure"]["type"],
+                    "HarnessError"
+                );
+                assert!(
+                    report["results"][0]["diagnostic"]
+                        .as_str()
+                        .unwrap()
+                        .contains("unpaired UTF-16")
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn cli_resolves_canonical_fixture_identity_and_circular_dependencies() {
+    let fixture = Fixture::new();
+    fixture.write("harness/extra.js", "var moduleLoads=0;");
+    fixture.write("test/dep.js", "moduleLoads+=1; export var answer=42;");
+    fixture.write(
+        "test/a.js",
+        "import {b} from './b.js'; export var a=40; export function answer(){return a+b;}",
+    );
+    fixture.write(
+        "test/b.js",
+        "import {a} from './a.js'; export var b=2; export function read(){return a;}",
+    );
+    for backend in ["ast", "auto"] {
+        for body in [
+            "import {answer as first} from './dep.js'; import {answer as second} from './sub/../dep.js'; assert(first===42 && second===42 && moduleLoads===1);",
+            "import {answer} from './a.js'; import {read} from './b.js'; assert(answer()===42 && read()===40);",
+        ] {
+            fixture.write(
+                "test/case.js",
+                &format!("/*---\nflags: [module]\nincludes: [extra.js]\n---*/\n{body}"),
+            );
+            let (output, report) = fixture.cli(&["--backend", backend, "test/case.js"]);
+            assert_eq!(output.status.code(), Some(0), "{report}");
+            assert_eq!(report["counts"]["pass"], 1);
+            assert_eq!(report["results"][0]["variant"], "Module");
+        }
+    }
+}
+
+#[test]
+fn public_engine_rejects_missing_and_circular_reexports_before_evaluation() {
+    for (root, dependency) in [
+        (
+            "export {missing} from 'dep'; mark();",
+            "export var present=1; mark();",
+        ),
+        (
+            "export {missing as renamed} from 'dep'; mark();",
+            "export var present=1; mark();",
+        ),
+        (
+            "export {missing} from 'dep'; mark();",
+            "export {missing} from 'root'; mark();",
+        ),
+    ] {
+        let engine = Engine::default();
+        let realm = engine.create_realm();
+        let calls = Rc::new(Cell::new(0));
+        let observed = calls.clone();
+        engine
+            .register_global_function(&realm, "mark", move |context, _, _| {
+                observed.set(observed.get() + 1);
+                Ok(context.value(Value::Undefined))
+            })
+            .unwrap();
+        let module = engine
+            .load_module(&realm, "root", move |name| {
+                Ok(if name == "root" { root } else { dependency }.into())
+            })
+            .unwrap();
+        for _ in 0..2 {
+            assert_eq!(
+                module.record().link().unwrap_err().kind(),
+                temiya::runtime::RuntimeErrorKind::SyntaxError
+            );
+            assert_eq!(module.record().status(), ModuleStatus::Errored);
+            assert_eq!(calls.get(), 0);
+        }
+        assert_eq!(
+            engine.evaluate_module(&module).unwrap_err().kind(),
+            ExceptionKind::SyntaxError
+        );
+        assert_eq!(calls.get(), 0);
+    }
 }
 
 #[test]
@@ -684,4 +866,44 @@ fn supervised_worker_selects_the_requested_strict_variant() {
         temiya::test262::TestVariant::Strict
     );
     assert_eq!(results[0].async_outcome.as_deref(), Some("complete"));
+}
+
+#[test]
+#[ignore = "requires immutable Test262 corpus; original module fixtures, cycles, negatives and TLA"]
+fn pinned_module_fixtures_cycles_missing_exports_and_top_level_await() {
+    let corpus = std::env::var("TEST262_DIR").expect("set TEST262_DIR");
+    let selection: serde_json::Value =
+        serde_json::from_str(include_str!("fixtures/test262-module/selection.json")).unwrap();
+    assert_eq!(selection["revision"], temiya::test262::TEST262_REVISION);
+    let paths: Vec<_> = selection["paths"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|p| p.as_str().unwrap())
+        .collect();
+    assert_eq!(paths.len(), 19);
+    for backend in ["ast", "auto"] {
+        let output = Command::new(env!("CARGO_BIN_EXE_temiya-test262"))
+            .arg("--corpus")
+            .arg(&corpus)
+            .args(["--pinned", "--backend", backend, "--timeout-ms", "3000"])
+            .args(&paths)
+            .output()
+            .unwrap();
+        let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+        println!("{report:#}");
+        assert_eq!(output.status.code(), Some(0), "{report}");
+        assert_eq!(report["corpus_revision"], selection["revision"]);
+        assert_eq!(
+            report["counts"],
+            serde_json::json!({"pass":19,"fail":0,"skip":0})
+        );
+        assert!(
+            report["results"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|r| r["variant"] == "Module")
+        );
+    }
 }

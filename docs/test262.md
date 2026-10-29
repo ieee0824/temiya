@@ -47,8 +47,12 @@ enter a pinned result. The manifest revision must match the consumed pin.
 `Corpus::directory` (the CLI without `--pinned`) supports authored local fixtures;
 its JSON `corpus_revision` is null and makes no upstream qualification claim.
 Absolute paths, parent traversal and filesystem links escaping the corpus are
-rejected. Module fixtures resolve relative to their importing file; unsupported
-bare specifiers, attributes and source-read failures remain runner failures.
+rejected. Module fixtures resolve relative to their importing file; `.` and `..`
+are canonicalized inside the corpus root, and canonical identities share one
+module record. Unsupported bare specifiers, attributes and source-read failures
+remain runner failures. The UTF-8 file adapter rejects unpaired UTF-16 module
+specifiers without substituting U+FFFD or loading a different file. Valid
+replacement-character and supplementary-code-point filenames remain supported.
 
 For non-raw tests the adapter evaluates the unchanged corpus `assert.js`, then
 `sta.js`, then (for async tests) the original `doneprintHandle.js`, then
@@ -83,11 +87,26 @@ conflicting strict/raw/module flags fail instead of silently choosing a variant.
 The integrated runner and include/strict/raw handling cover #145/#146. The
 `$262` realm, evalScript and detach hooks are connected by #147.
 Async completion and a hard async worker deadline are connected by #148.
-Broader module fixture/negative audits (#149), general process isolation/resource
-limits (#150), feature baselines (#151) and regression selection (#152) remain
+Relative module fixtures and resolution-negative audits are connected by #149.
+General process isolation/resource limits (#150), feature baselines (#151) and regression selection (#152) remain
 separate work. Synchronous tests have no execution deadline; neither mode imposes
 a memory limit. A small selection does not qualify the whole corpus or a complete
 language feature.
+
+The module selection in `tests/fixtures/test262-module/selection.json` reads
+nineteen original files and their original dependencies at the fixed pin. Each
+of AST and Auto executes nineteen Module variants, covering cyclic import and
+re-export graphs, missing/renamed exports, resolution SyntaxErrors and basic
+top-level await. Module bodies use the ModuleGraph AST path for both selections;
+these are not Bytecode module qualifications. Named indirect exports are resolved
+while linking, so an invalid re-export fails before any module body executes.
+Link failures retain their phase and cannot be replaced by a later body throw.
+
+The broader instantiation and top-level-await audits retain failures from missing
+constructors, class evaluation, function initialization and pending await. The
+focused cases do not qualify those APIs or the full async module lifecycle
+(#179/#195/#196). Harness files are unchanged; no replacement Promise or global
+function is inserted to turn an incomplete API into a pass.
 
 Async variants run in separate CLI child processes. `--timeout-ms` accepts
 1..120000 milliseconds (default 10000) per variant, including worker startup,

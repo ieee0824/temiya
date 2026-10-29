@@ -11669,15 +11669,17 @@
       "id": "component.modules",
       "status": "partial",
       "issues": [
+        149,
         193,
         195,
         197,
         200
       ],
       "tests": [
-        "tests/script_module_pipeline.rs"
+        "tests/script_module_pipeline.rs",
+        "tests/test262_engine.rs"
       ],
-      "rationale": "Host ModuleGraph exercises actual linking and evaluation. Script probes do not execute module source; dynamic import and pending top-level await remain incomplete."
+      "rationale": "Host ModuleGraph exercises actual linking and evaluation. Script probes do not execute module source; dynamic import and pending top-level await remain incomplete. Named indirect exports are checked at link time, with cached failures before body execution."
     },
     {
       "id": "component.test262-engine-runner",
@@ -11727,6 +11729,23 @@
         "tests/promise_job_queue.rs"
       ],
       "rationale": "The actual CLI loads the original doneprintHandle harness, drives shared Agent jobs and distinguishes completion, rejection, duplicates and missing completion. A worker supervisor enforces finite async deadlines including infinite bodies/jobs. Original pinned return/throw cases pass in AST and Auto. Global Promise APIs, broader async conformance and synchronous/resource limits remain unqualified."
+    },
+    {
+      "id": "component.test262-module-fixtures",
+      "status": "partial",
+      "issues": [
+        149,
+        179,
+        195,
+        196,
+        197,
+        198
+      ],
+      "tests": [
+        "tests/test262_engine.rs",
+        "tests/fixtures/test262-module/selection.json"
+      ],
+      "rationale": "The real CLI uses canonical corpus-relative fixture resolution, preserves dependency identities and rejects lossy UTF-16 path aliases. Module linking validates indirect re-exports before body execution. Original cyclic/missing-export/basic-await cases are executed at the fixed corpus pin; broader instantiation and TLA failures remain recorded. Pending async module graphs and incomplete globals/namespace behavior are not qualified."
     }
   ]
 }

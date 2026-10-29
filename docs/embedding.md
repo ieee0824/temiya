@@ -146,6 +146,8 @@ identity and links automatically when needed. `record().status()` returns the
 current `runtime::ModuleStatus` without running JavaScript, so a host need not
 mistake incomplete evaluation for completion. The borrowed record belongs to the
 handle's original Engine and Realm; keep the handle alive while inspecting it.
+Linking validates named indirect exports, including renamed and circular missing
+exports. A failed link is cached as an error and never executes a module body.
 
 `Engine::load_module_with_resolver` adds a separate referrer-aware identity
 resolver and source loader. The resolver receives `None` for the root, then the
@@ -154,7 +156,11 @@ static dependency. It returns the canonical cache/source name; import attributes
 remain part of identity. Hosts should reject unsupported attributes and validate
 specifiers before accessing files. Both callbacks are panic-isolated and handles
 retain the existing engine/Realm checks. The original `load_module` callback and
-per-specifier behavior remain unchanged. The [CLI](cli.md) uses this API for
+per-specifier behavior remain unchanged for representable names. Its UTF-8 source
+callback rejects unpaired UTF-16 specifiers before invoking the host, rather than
+silently substituting another name. The referrer-aware resolver can inspect the
+original UTF-16 request and choose a host-defined UTF-8 canonical identity.
+The [CLI](cli.md) uses this API for
 nested relative imports and canonical file caching in one graph.
 
 `RealmHandle::record` similarly borrows the rooted runtime Realm. A host that

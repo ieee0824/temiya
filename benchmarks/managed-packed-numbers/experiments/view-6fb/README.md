@@ -99,6 +99,9 @@ comparison pin. Thus the vendored Boa/regress and dependency configuration did
 not change. Application JS/DOM code did change; this is not a timing or rebuild
 of that newer application embedding. The comparison remains explicitly pinned.
 
+Raw Callgrind records use lossless gzip; `provenance.json` retains each
+uncompressed SHA256 and the compressed file hash. Decompress before re-annotation.
+
 The completed x64 diagnostic40797282661 is retained in `x64-profile`. All6
 instrumented runs preserve original inputs/counts/oracles and validate warmup
 and one pass. Both rebuilt executable hashes exactly match the native reports

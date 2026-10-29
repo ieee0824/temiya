@@ -148,7 +148,7 @@ fn resolve_module(referrer: Option<&str>, specifier: &str) -> Result<String, Hos
 
 /// Concrete [`Executor`] over fresh public Engine/Realm instances per variant.
 ///
-/// Use [`run_with_engine`] to apply manifest policy and metadata capability gates.
+/// Use [`run_worker_variant`] to apply metadata and manifest capability gates.
 pub struct EngineExecutor {
     corpus: Corpus,
     path: String,
@@ -527,6 +527,9 @@ pub struct EngineTestResult {
 ///
 /// Async/agent completion is deliberately unqualified until #148/#150. Manifest
 /// skips never execute. Includes are original corpus files, not replacement stubs.
+#[cfg(test)]
+// Included by integration tests; the binary's unit-test build has no callers.
+#[allow(dead_code)]
 pub fn run_with_engine(
     test: &TestCase,
     manifest: &Manifest,

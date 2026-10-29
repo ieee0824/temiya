@@ -1,5 +1,6 @@
-//! Bounded async variant execution. The Engine stays in a child process; one
+//! Bounded variant execution. The Engine stays in a child process; one
 //! non-returning Script/job cannot disable the parent's wall-clock deadline.
+use crate::resources;
 use serde_json::{Value, json};
 use std::{
     io::{Read, Write},
@@ -74,6 +75,8 @@ pub struct Request<'a> {
     pub source: &'a str,
     pub manifest: &'a str,
     pub timeout_ms: u64,
+    pub limits: resources::Limits,
+    pub async_mode: bool,
 }
 
 pub fn run(request: Request<'_>) -> Value {
@@ -86,10 +89,15 @@ pub fn run(request: Request<'_>) -> Value {
         source,
         manifest,
         timeout_ms,
+        limits,
+        async_mode,
     } = request;
     let started = Instant::now();
     let budget = Duration::from_millis(timeout_ms);
-    let execute = || -> Result<Value, String> {
+    let mut exit_details = Value::Null;
+    let mut peak_rss_kib = 0;
+    let mut limits_applied = false;
+    let mut execute = || -> Result<Value, String> {
         let executable = std::env::current_exe().map_err(|e| e.to_string())?;
         let mut command = Command::new(executable);
         command.arg("--corpus").arg(corpus).args([
@@ -99,6 +107,10 @@ pub fn run(request: Request<'_>) -> Value {
             variant,
             "--timeout-ms",
             &timeout_ms.to_string(),
+            "--memory-mb",
+            &limits.memory_mb.to_string(),
+            "--stack-kb",
+            &limits.stack_kb.to_string(),
         ]);
         if pinned {
             command.arg("--pinned");
@@ -109,7 +121,11 @@ pub fn run(request: Request<'_>) -> Value {
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
+        limits
+            .configure(&mut command)
+            .map_err(|e| format!("worker resource limits: {e}"))?;
         let mut child = Worker(command.spawn().map_err(|e| e.to_string())?);
+        limits_applied = true;
         let output = capture(
             child.stdout.take().ok_or("missing worker stdout")?,
             1024 * 1024,
@@ -123,8 +139,19 @@ pub fn run(request: Request<'_>) -> Value {
             .map_err(|e| e.to_string())?;
         let writer = thread::spawn(move || input.write_all(&request));
         let mut expired = false;
+        let mut memory_exceeded = false;
         let status = loop {
             let status = child.try_wait().map_err(|e| e.to_string())?;
+            if let Some(rss) = resources::resident_kib(child.id()) {
+                peak_rss_kib = peak_rss_kib.max(rss);
+                if rss > limits.memory_bytes() / 1024 {
+                    memory_exceeded = true;
+                    if status.is_none() {
+                        let _ = child.kill();
+                    }
+                    break child.wait().map_err(|e| e.to_string())?;
+                }
+            }
             if started.elapsed() >= budget {
                 expired = true;
                 if status.is_none() {
@@ -141,14 +168,50 @@ pub fn run(request: Request<'_>) -> Value {
         let (output, overflow) = output.join().map_err(|_| "worker stdout reader panicked")?;
         let (errors, error_overflow) =
             errors.join().map_err(|_| "worker stderr reader panicked")?;
+        exit_details = json!({"code":status.code(),"signal":resources::signal(status)});
+        let diagnostic = String::from_utf8_lossy(&errors);
+        if memory_exceeded {
+            return Ok(failure(
+                path,
+                variant,
+                "OutOfMemory",
+                format!("worker RSS exceeded {} MiB", limits.memory_mb),
+                "worker-error",
+                false,
+            ));
+        }
         if expired || status.code() == Some(124) {
             return Ok(failure(
                 path,
                 variant,
-                "AsyncTimeout",
-                format!("async worker exceeded {timeout_ms} ms"),
+                if async_mode {
+                    "AsyncTimeout"
+                } else {
+                    "ExecutionTimeout"
+                },
+                format!("worker exceeded {timeout_ms} ms"),
                 "timeout",
                 true,
+            ));
+        }
+        if !matches!(status.code(), Some(0 | 1 | 3)) {
+            // Signals alone do not establish memory or stack exhaustion. Rust's
+            // fatal diagnostic must accompany the abnormal process termination.
+            let kind =
+                if diagnostic.contains("memory allocation of ") && diagnostic.contains(" failed") {
+                    "OutOfMemory"
+                } else if diagnostic.contains("has overflowed its stack") {
+                    "StackOverflow"
+                } else {
+                    "WorkerCrash"
+                };
+            return Ok(failure(
+                path,
+                variant,
+                kind,
+                format!("worker terminated ({exit_details}): {diagnostic}"),
+                "worker-error",
+                false,
             ));
         }
         if overflow || error_overflow {
@@ -184,7 +247,8 @@ pub fn run(request: Request<'_>) -> Value {
         }
         let mut record = results[0].clone();
         let kind = record["status"].as_str().ok_or("missing worker status")?;
-        if kind == "pass"
+        if async_mode
+            && kind == "pass"
             && record["async_outcome"] != "complete"
             && !matches!(
                 record["observed_failure"]["phase"].as_str(),
@@ -215,8 +279,14 @@ pub fn run(request: Request<'_>) -> Value {
         }
         Ok(record)
     };
-    match execute() {
+    let mut record = match execute() {
         Ok(record) => record,
         Err(error) => failure(path, variant, "HarnessError", error, "worker-error", false),
+    };
+    if !async_mode {
+        record["async_outcome"] = Value::Null;
     }
+    record["worker_exit"] = exit_details;
+    record["resources"] = json!({"applied":limits_applied,"timeout_ms":timeout_ms,"memory_limit_bytes":limits.memory_bytes(),"stack_limit_bytes":limits.stack_bytes(),"peak_rss_kib":peak_rss_kib});
+    record
 }

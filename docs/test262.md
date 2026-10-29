@@ -88,10 +88,9 @@ The integrated runner and include/strict/raw handling cover #145/#146. The
 `$262` realm, evalScript and detach hooks are connected by #147.
 Async completion and a hard async worker deadline are connected by #148.
 Relative module fixtures and resolution-negative audits are connected by #149.
-General process isolation/resource limits (#150), feature baselines (#151) and regression selection (#152) remain
-separate work. Synchronous tests have no execution deadline; neither mode imposes
-a memory limit. A small selection does not qualify the whole corpus or a complete
-language feature.
+General process isolation/resource limits are connected by #150 on Linux.
+Feature baselines (#151) and regression selection (#152) remain separate work.
+A small selection does not qualify the whole corpus or a complete language feature.
 
 The module selection in `tests/fixtures/test262-module/selection.json` reads
 nineteen original files and their original dependencies at the fixed pin. Each
@@ -108,16 +107,35 @@ focused cases do not qualify those APIs or the full async module lifecycle
 (#179/#195/#196). Harness files are unchanged; no replacement Promise or global
 function is inserted to turn an incomplete API into a pass.
 
-Async variants run in separate CLI child processes. `--timeout-ms` accepts
+Every executable variant runs in a separate CLI child process. `--timeout-ms` accepts
 1..120000 milliseconds (default 10000) per variant, including worker startup,
 harness loading and execution. The parent kills and reaps a nonreturning worker;
 a worker watchdog also terminates an infinite body or job. Missing completion
 waits until the deadline and fails as `AsyncIncomplete`; a nonreturning worker
-fails as `AsyncTimeout`. Neither counts as pass or skip. Metadata/manifest policy
+fails as `AsyncTimeout` (async) or `ExecutionTimeout` (synchronous). Neither counts
+as pass or skip. Metadata/manifest policy
 gates run before spawning a worker. The source/manifest snapshot is sent over
 stdin; pinned workers verify source against the immutable corpus again. Input
 is bounded at 32 MiB, report output at 1 MiB and stderr at 64 KiB. Output overflow
 fails as a harness error, while readers keep draining to avoid pipe deadlock.
+
+Linux workers apply `RLIMIT_AS` and `RLIMIT_STACK` before exec and set the core-file limit to zero. `--memory-mb` accepts 16..65536 MiB (default 512); `--stack-kb` accepts
+128..65536 KiB (default 8192). The parent also polls worker RSS and kills/reaps a
+worker exceeding the memory bound. These limits include worker startup, parsing,
+harness and Engine execution; they do not bound the parent's corpus metadata
+loading or turn the runner into a security sandbox. Other platforms report that
+resource limits are unsupported rather than silently running without them.
+
+Reports retain `worker_exit` (exit code and signal) and `resources` (whether limits
+were applied, requested bounds and peak observed RSS). An observed RSS violation
+or abnormal termination with Rust's allocation-failure diagnostic is
+`OutOfMemory`; an abnormal termination with Rust's stack-overflow diagnostic is
+`StackOverflow`. Other abnormal exits are `WorkerCrash`. A signal alone does not
+establish OOM or stack exhaustion. These host failures never satisfy language
+negative expectations. Ordinary JavaScript `RangeError`, including the call-depth
+and ArrayBuffer guards, retains its language semantics. Following tests still run
+after a timeout, OOM, stack overflow or crash. Fresh processes isolate both globals
+and pending jobs, including jobs left behind by an abrupt Script completion.
 
 The original harness calls host `print` with `Test262:AsyncTestComplete` or
 `Test262:AsyncTestFailure:`. The runner records `async_outcome` as `complete`,
@@ -127,7 +145,7 @@ unhandled rejection or missing notification cannot satisfy a runtime negative.
 Parse/resolution negatives that finish before execution require no `$DONE`.
 Notifications from setup cannot complete a test, and completion is frozen before
 exception-inspection getters execute. Raw tests load no harness and may use
-host print directly. The standalone synchronous `run_with_engine` adapter still
+host print directly. The test-only synchronous `run_with_engine` adapter still
 skips async tests; hard deadlines are supplied by the actual CLI supervisor.
 
 ```sh

@@ -137,7 +137,7 @@ for a language TypeError negative. Optional IsHTMLDDA is not provided.
 The current Script parser accepts UTF-8 source. An evalScript input containing
 unpaired UTF-16 code units is reported as an Engine failure rather than silently
 replacing source characters or satisfying a language SyntaxError negative. Full
-UTF-16 Script input remains unqualified. The fixed host regression selects 17
+UTF-16 Script input remains unqualified and is tracked by #527. The fixed host regression selects 17
 original files / 34 variants in each of AST and Auto, including the previously
 tracked Array length cross-Realm case. Broader byteLength and global-code audits
 retain missing typed globals, class declarations and direct-eval failures; they

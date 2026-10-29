@@ -58,6 +58,25 @@ for (const archive of evidence.archives) {
       assert.deepEqual(result, capture.verification);
       captureCount++;
     }
+    if (archive.production) {
+      const runner = 'test262-regression';
+      const conditions = read(runner + '/capture/conditions.json');
+      assert.deepEqual(conditions.provided_engine_build_info, read('test262-build-info.json'));
+      assert.equal(conditions.engine_sha256, conditions.provided_engine_build_info.executable_sha256);
+      assert.deepEqual(read(runner + '/check-test262-regressions.mjs.exit.json'),
+        {status: 0, signal: null, error: null});
+      const reference = path.join(temporary, 'decoded-reference');
+      execFileSync(process.execPath, [path.join(repo, 'scripts/verify-test262-archive.mjs'),
+        path.join(repo, 'benchmarks/test262-feature-baseline'), reference]);
+      const gate = JSON.parse(execFileSync(process.execPath,
+        [path.join(repo, 'scripts/check-test262-regressions.mjs'), reference,
+          path.join(temporary, runner, 'capture'), path.join(repo, 'test262/regression-policy.json')],
+        {encoding: 'utf8'}));
+      assert.deepEqual(gate, read(runner + '/check-test262-regressions.mjs.stdout'));
+      assert.equal(gate.passed, true); assert.equal(gate.selected_files, 128);
+      assert.equal(gate.observed_variants, 214);
+      continue;
+    }
     for (const runner of ['runner-pr', 'runner-rejected']) {
       const conditions = read(runner + '/capture/conditions.json');
       assert.deepEqual(conditions.provided_engine_build_info, read('engine-info.json'));

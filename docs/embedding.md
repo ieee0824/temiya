@@ -129,12 +129,14 @@ the public header/example and compares exported symbols with the ABI allowlist.
 
 ### Canonical module resolution
 
-`Engine::link_module` links a loaded handle without executing module bodies.
-It preserves the Engine identity check and is idempotent after successful linking.
-Hosts can distinguish linking errors from errors returned later by
-`Engine::evaluate_module`; evaluation still links automatically when needed.
-`ModuleHandle::status` returns the current `runtime::ModuleStatus` without running
-JavaScript, so a host need not mistake incomplete evaluation for completion.
+`ModuleHandle::record` borrows the handle's rooted `runtime::SourceTextModule`.
+Calling `record().link()` links that record without executing module bodies and
+is idempotent after successful linking. Hosts can distinguish linking errors from
+errors returned later by `Engine::evaluate_module`; evaluation still checks Engine
+identity and links automatically when needed. `record().status()` returns the
+current `runtime::ModuleStatus` without running JavaScript, so a host need not
+mistake incomplete evaluation for completion. The borrowed record belongs to the
+handle's original Engine and Realm; keep the handle alive while inspecting it.
 
 `Engine::load_module_with_resolver` adds a separate referrer-aware identity
 resolver and source loader. The resolver receives `None` for the root, then the

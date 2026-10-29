@@ -336,12 +336,13 @@ impl Executor for EngineExecutor {
                     return Err(self.failure(NegativePhase::Resolution, "HarnessError", error));
                 }
             };
-            engine.link_module(&loaded).map_err(|error| {
-                self.failure(
-                    NegativePhase::Resolution,
-                    &exception_type(&error, &constructors),
-                    error,
-                )
+            loaded.record().link().map_err(|error| {
+                let kind = match error.kind() {
+                    temiya::runtime::RuntimeErrorKind::InternalError => "EngineError".into(),
+                    temiya::runtime::RuntimeErrorKind::ThrownValue => "ThrownValue".into(),
+                    kind => format!("{kind:?}"),
+                };
+                self.failure(NegativePhase::Resolution, &kind, error)
             })?;
             module = Some(loaded);
         } else {
@@ -407,7 +408,7 @@ impl Executor for EngineExecutor {
         } else {
             let module = module.as_ref().expect("prepared module");
             let result = engine.evaluate_module(module);
-            if result.is_ok() && module.status() != ModuleStatus::Evaluated {
+            if result.is_ok() && module.record().status() != ModuleStatus::Evaluated {
                 return Err(self.failure(
                     NegativePhase::Runtime,
                     "PendingModule",
@@ -554,4 +555,92 @@ pub fn run_with_engine(
             }
         })
         .collect()
+}
+
+/// Parses original source, extending the foundation's metadata lists in the CLI.
+/// The JavaScript source bytes are retained without normalization.
+pub fn parse_case(
+    path: impl Into<String>,
+    source: impl Into<String>,
+) -> Result<TestCase, HarnessError> {
+    let mut case = TestCase::parse(path, source)?;
+    let start = case.source.find("/*---").expect("validated frontmatter") + 5;
+    let end = start
+        + case.source[start..]
+            .find("---*/")
+            .expect("validated frontmatter");
+    for line in case.source[start..end].lines().map(str::trim) {
+        if let Some(value) = line.strip_prefix("includes:") {
+            case.metadata.includes = parse_flow_list(value)?;
+        }
+        if let Some(value) = line.strip_prefix("features:") {
+            case.metadata.features = parse_flow_list(value)?;
+        }
+        if let Some(value) = line.strip_prefix("flags:") {
+            case.metadata.flags = parse_flow_list(value)?;
+        }
+    }
+    Ok(case)
+}
+
+fn parse_flow_list(source: &str) -> Result<Vec<String>, HarnessError> {
+    let source = source.trim();
+    let content = source
+        .strip_prefix('[')
+        .and_then(|value| value.strip_suffix(']'))
+        .ok_or_else(|| HarnessError("metadata lists must use inline [item, ...] syntax".into()))?;
+    fn item(source: &str) -> Result<String, HarnessError> {
+        let source = source.trim();
+        if source.is_empty() {
+            return Err(HarnessError("empty metadata list item".into()));
+        }
+        if source.starts_with('"') {
+            return serde_json::from_str(source)
+                .map_err(|e| HarnessError(format!("invalid double-quoted metadata item: {e}")));
+        }
+        if let Some(inner) = source.strip_prefix('\'').and_then(|s| s.strip_suffix('\'')) {
+            if inner.replace("''", "").contains('\'') {
+                return Err(HarnessError("invalid single-quoted metadata item".into()));
+            }
+            return Ok(inner.replace("''", "'"));
+        }
+        if source.starts_with('\'') {
+            return Err(HarnessError("invalid single-quoted metadata item".into()));
+        }
+        Ok(source.to_owned())
+    }
+    if content.trim().is_empty() {
+        return Ok(Vec::new());
+    }
+    let mut values = Vec::new();
+    let mut start = 0;
+    let mut quote = None;
+    let mut escaped = false;
+    let mut chars = content.char_indices().peekable();
+    while let Some((index, ch)) = chars.next() {
+        match quote {
+            Some('"') if escaped => escaped = false,
+            Some('"') if ch == '\\' => escaped = true,
+            Some('\'') if ch == '\'' && chars.peek().is_some_and(|(_, next)| *next == '\'') => {
+                chars.next();
+            }
+            Some(delimiter) if ch == delimiter => quote = None,
+            Some(_) => {}
+            None if matches!(ch, '\'' | '"') && content[start..index].trim().is_empty() => {
+                quote = Some(ch)
+            }
+            None if ch == ',' => {
+                values.push(item(&content[start..index])?);
+                start = index + 1;
+            }
+            None => {}
+        }
+    }
+    if quote.is_some() {
+        return Err(HarnessError("unterminated quoted metadata item".into()));
+    }
+    if !content[start..].trim().is_empty() {
+        values.push(item(&content[start..])?);
+    }
+    Ok(values)
 }

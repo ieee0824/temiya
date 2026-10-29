@@ -36,10 +36,10 @@ cargo run --locked --bin temiya-test262 -- \
 Paths are normalized, corpus-relative file paths. Multiple selected files run in
 argument order; every required variant gets a fresh Engine and Realm. The default
 backend is Auto; `ast` and `bytecode` explicitly select Script execution. Module
-source runs through `Engine::load_module_with_resolver`, `link_module` and
-`evaluate_module`, independently of the Script backend. `link_module` executes no
-module body, and `ModuleHandle::status` lets the runner reject incomplete module
-evaluation instead of treating it as success.
+source runs through `Engine::load_module_with_resolver`,
+`ModuleHandle::record().link()` and `Engine::evaluate_module`, independently of the
+Script backend. Linking executes no module body, and `record().status()` lets the
+runner reject incomplete module evaluation instead of treating it as success.
 
 `Corpus::pinned` / `--pinned` reads tests, harness files and relative module fixtures
 with `git show` at the fixed commit. Dirty and untracked working-tree files do not
@@ -55,7 +55,8 @@ For non-raw tests the adapter evaluates the unchanged corpus `assert.js`, then
 to the test source, not the harness files. Raw source is unmodified and loads no
 harness, including when metadata lists an include. A missing, unparsable or throwing
 include is a `HarnessError`; it cannot satisfy a negative JavaScript expectation.
-Inline lists accept plain names, single-quoted names and JSON-style double-quoted
+The CLI adapter extends the foundation parser through `parse_case`, retaining the
+original JavaScript source bytes. Its inline lists accept plain names, single-quoted names and JSON-style double-quoted
 strings; commas inside quoted include filenames are preserved. Malformed lists
 fail rather than silently losing items. Unsupported broader YAML remains an
 explicit frontmatter failure, not a successful execution.

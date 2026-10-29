@@ -9,12 +9,12 @@ use std::{
 
 #[path = "../src/bin/support/test262_engine.rs"]
 mod engine;
-use engine::{Corpus, EngineTestResult, run_with_engine};
+use engine::{Corpus, EngineTestResult, parse_case, run_with_engine};
 use temiya::{
     Engine,
     embedding::{ExceptionKind, ScriptBackend},
     runtime::{ModuleStatus, Value},
-    test262::{Manifest, ResultStatus, TestCase},
+    test262::{Manifest, ResultStatus},
 };
 
 struct Fixture(PathBuf);
@@ -48,7 +48,7 @@ impl Fixture {
     }
     fn run(&self, source: &str, backend: ScriptBackend) -> Vec<EngineTestResult> {
         run_with_engine(
-            &TestCase::parse("test/case.js", source).unwrap(),
+            &parse_case("test/case.js", source).unwrap(),
             &manifest(),
             &self.corpus(),
             backend,
@@ -109,19 +109,22 @@ fn public_engine_links_without_running_bodies_and_rejects_foreign_handles() {
             Ok("export var answer=42; mark();".into())
         })
         .unwrap();
-    assert_eq!(module.status(), ModuleStatus::Unlinked);
+    assert_eq!(module.record().status(), ModuleStatus::Unlinked);
     assert_eq!(
-        Engine::default().link_module(&module).unwrap_err().kind(),
+        Engine::default()
+            .evaluate_module(&module)
+            .unwrap_err()
+            .kind(),
         ExceptionKind::Engine
     );
-    engine.link_module(&module).unwrap();
-    engine.link_module(&module).unwrap();
-    assert_eq!(module.status(), ModuleStatus::Linked);
+    module.record().link().unwrap();
+    module.record().link().unwrap();
+    assert_eq!(module.record().status(), ModuleStatus::Linked);
     assert_eq!(calls.get(), 0);
     engine.evaluate_module(&module).unwrap();
-    assert_eq!(module.status(), ModuleStatus::Evaluated);
+    assert_eq!(module.record().status(), ModuleStatus::Evaluated);
     assert_eq!(calls.get(), 1);
-    engine.link_module(&module).unwrap();
+    module.record().link().unwrap();
     assert_eq!(calls.get(), 1);
     let bad = engine
         .load_module(&realm, "root", |name| {
@@ -134,8 +137,8 @@ fn public_engine_links_without_running_bodies_and_rejects_foreign_handles() {
         })
         .unwrap();
     assert_eq!(
-        engine.link_module(&bad).unwrap_err().kind(),
-        ExceptionKind::SyntaxError
+        bad.record().link().unwrap_err().kind(),
+        temiya::runtime::RuntimeErrorKind::SyntaxError
     );
     assert_eq!(calls.get(), 1);
 }
@@ -372,7 +375,7 @@ fn unknown_protocols_and_conflicting_flags_do_not_become_passes() {
             detail: "authored skip regression".into(),
         },
     );
-    let case = TestCase::parse("test/case.js", "/*---\nflags: []\n---*/\nthrow 42;").unwrap();
+    let case = parse_case("test/case.js", "/*---\nflags: []\n---*/\nthrow 42;").unwrap();
     let result = run_with_engine(&case, &policy, &fixture.corpus(), ScriptBackend::Auto);
     assert_eq!(result.len(), 2);
     assert!(
@@ -392,7 +395,7 @@ fn quoted_flow_lists_preserve_flags_and_include_filenames() {
     pass(&fixture.run("/*---\nflags: ['noStrict', generated,]\n---*/\nfunction f(){return this;} if(f()!==this)throw 42;",ScriptBackend::Auto),1);
     for flags in ["[\"raw]", "[raw,,noStrict]", "['raw' junk]", "[,raw]"] {
         assert!(
-            TestCase::parse("bad.js", format!("/*---\nflags: {flags}\n---*/\n1;")).is_err(),
+            parse_case("bad.js", format!("/*---\nflags: {flags}\n---*/\n1;")).is_err(),
             "{flags}"
         );
     }

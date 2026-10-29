@@ -5,10 +5,10 @@ use std::{env, fs, path::PathBuf, process::ExitCode};
 use serde_json::{Value, json};
 #[path = "support/test262_engine.rs"]
 mod engine;
-use engine::{Corpus, run_with_engine};
+use engine::{Corpus, parse_case, run_with_engine};
 use temiya::{
     embedding::ScriptBackend,
-    test262::{Manifest, ResultStatus, TestCase},
+    test262::{Manifest, ResultStatus},
 };
 
 const HELP: &str = "Usage: temiya-test262 --corpus DIR [--pinned] [--backend auto|ast|bytecode]
@@ -106,7 +106,7 @@ fn execute(options: Options) -> Result<u8, String> {
     for path in options.tests {
         let test = corpus
             .read(&path)
-            .and_then(|source| TestCase::parse(&path, source));
+            .and_then(|source| parse_case(&path, source));
         let test = match test {
             Ok(test) => test,
             Err(error) => {

@@ -33,12 +33,14 @@ const prepared = invoke('prepare-test262-regression-selection.mjs',
 assert.equal(prepared.status, 0, prepared.stderr);
 const conditions = read(path.join(reference, 'conditions.json'));
 const candidate = path.join(root, 'capture');
+const buildInfo = process.env.TEST262_ENGINE_INFO
+  ? ['--engine-info', path.resolve(process.env.TEST262_ENGINE_INFO)] : [];
 // Match actual baseline budgets; a slower case never receives a larger timeout.
 const capture = invoke('test262-baseline.mjs', ['--engine', path.resolve(engine),
   '--corpus', path.resolve(corpus), '--pinned', '--manifest', path.join(reference, 'manifest.json'),
   '--output', candidate, '--universe', selectedFile, '--backend', conditions.backend_requested,
   '--timeout-ms', String(conditions.timeout_ms), '--memory-mb', String(conditions.memory_mb),
-  '--stack-kb', String(conditions.stack_kb), '--batch-size', String(conditions.batch_size)],
+  '--stack-kb', String(conditions.stack_kb), '--batch-size', String(conditions.batch_size), ...buildInfo],
   mode === 'pr' ? 20 * 60 * 1000 : 5.5 * 60 * 60 * 1000);
 // Capture errors still reach the independent verifier, which rejects missing data.
 const args = mode === 'full' ? ['--full', '--shard', shardText + '/' + shardsText] : [];

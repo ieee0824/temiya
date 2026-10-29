@@ -14,7 +14,7 @@
   const ownKeys = Reflect.ownKeys, descriptorOf = Object.getOwnPropertyDescriptor;
   const extensible = Object.isExtensible, isArray = Array.isArray;
   const objectPrototype = Object.prototype, arrayPrototype = Array.prototype;
-  const errorTypes = [TypeError, SyntaxError, ReferenceError, RangeError, EvalError, URIError, Error]
+  const errorTypes = [TypeError, SyntaxError, ReferenceError, RangeError, EvalError, URIError, AggregateError, Error]
     .map(type => [type.name, type.prototype]);
   const effects = [], jobs = [], jobErrors = [], events = [], symbols = new Map(), objects = new Map();
   const numberBytes = new DataView(new ArrayBuffer(8));

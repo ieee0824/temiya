@@ -4,8 +4,8 @@ use serde_json::{Value as Json, json};
 use std::{cell::RefCell, io::Read, rc::Rc};
 use temiya::{
     Engine,
-    embedding::{EmbedError, Exception, HostError, ScriptBackend},
-    runtime::{ArrayObject, Object, PropertyKey, RuntimeError, Value},
+    embedding::{EmbedError, Exception, ExceptionKind, HostError, ScriptBackend},
+    runtime::{ArrayObject, Object, PropertyKey, RuntimeError, RuntimeErrorKind, Value},
 };
 
 #[derive(Default)]
@@ -165,10 +165,16 @@ impl Trace {
     }
 
     fn runtime_error(&mut self, error: &RuntimeError) -> Json {
+        if error.kind() == RuntimeErrorKind::InternalError {
+            self.unsupported = true;
+        }
         self.thrown(format!("{:?}", error.kind()), error.thrown_value())
     }
 
     fn exception(&mut self, error: &Exception) -> Json {
+        if error.kind() == ExceptionKind::Engine {
+            self.unsupported = true;
+        }
         self.thrown(
             format!("{:?}", error.kind()),
             error.thrown().map(|value| value.value()),
@@ -202,6 +208,7 @@ fn run() -> Result<Json, Box<dyn std::error::Error>> {
         "EvalError",
         "URIError",
         "Error",
+        "AggregateError",
     ] {
         if let Ok(script) = engine.compile(&realm, &format!("{name}.prototype")) {
             if let Ok(value) = engine.evaluate(&script) {

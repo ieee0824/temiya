@@ -45,6 +45,8 @@ jobs:
         run: rustfmt +stable --edition 2024 --check benchmarks/omoikane-worker/main.rs
       - name: Check authored RegExp input contracts
         run: node scripts/check-regexp-workloads.mjs
+      - name: Validate structured differential observation protocol
+        run: node --test tests/differential-observation.test.mjs
       - name: Verify retained fresh RegExp evidence
         run: node benchmarks/regexp-cold-ascii/verify-integrity.mjs
       - name: Verify original arithmetic Intel instruction evidence

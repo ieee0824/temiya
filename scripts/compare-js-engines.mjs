@@ -6,8 +6,10 @@ import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
-const options = {mode: 'interpreter', backend: 'auto', 'timeout-ms': '1000'};
-const names = new Set(['temiya', 'spidermonkey', 'spidermonkey-info', 'cases', 'known', 'output', 'mode', 'backend', 'timeout-ms']);
+import {validateObservation, canonicalObservation} from './differential-observation.mjs';
+const options = {mode: 'interpreter', backend: 'auto', 'timeout-ms': '1000',
+  'temiya-info': process.env.TEMIYA_DIFFERENTIAL_BUILD_INFO};
+const names = new Set(['temiya', 'temiya-info', 'spidermonkey', 'spidermonkey-info', 'cases', 'known', 'output', 'mode', 'backend', 'timeout-ms']);
 for (let i = 2; i < process.argv.length; i += 2) {
   const key = process.argv[i].replace(/^--/, '');
   assert(process.argv[i].startsWith('--') && names.has(key) && process.argv[i + 1], 'invalid option');
@@ -21,15 +23,16 @@ const timeout = Number(options['timeout-ms']);
 assert(Number.isInteger(timeout) && timeout >= 1 && timeout <= 120000);
 const sha = bytes => createHash('sha256').update(bytes).digest('hex');
 const read = file => JSON.parse(fs.readFileSync(file));
-const stable = value => JSON.stringify(value, (_, item) => item && typeof item === 'object' && !Array.isArray(item)
-  ? Object.fromEntries(Object.entries(item).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)) : item);
+const stable = canonicalObservation;
 const target = read(new URL('../benchmarks/targets/spidermonkey.json', import.meta.url));
 const smInfo = read(options['spidermonkey-info']);
 const sm = path.resolve(options.spidermonkey), temiya = path.resolve(options.temiya);
 assert.equal(smInfo.target.revision, target.revision);
 assert.equal(smInfo.source_clean, true);
 assert.equal(smInfo.binary_sha256, sha(fs.readFileSync(sm)), 'shell build-info binary mismatch');
-const cases = read(options.cases), known = options.known ? read(options.known) : [];
+const caseBytes = fs.readFileSync(options.cases);
+const knownBytes = options.known ? fs.readFileSync(options.known) : null;
+const cases = JSON.parse(caseBytes), known = knownBytes ? JSON.parse(knownBytes) : [];
 assert(Array.isArray(cases) && cases.length > 0 && Array.isArray(known));
 const ids = new Set();
 for (const row of cases) {
@@ -50,8 +53,14 @@ for (const row of known) {
 const output = path.resolve(options.output);
 assert(!fs.existsSync(output), 'output must be new');
 fs.mkdirSync(output, {recursive: true});
-fs.copyFileSync(options.cases, path.join(output, 'cases.json'));
+fs.writeFileSync(path.join(output, 'cases.json'), caseBytes);
+if (knownBytes) fs.writeFileSync(path.join(output, 'known-differences.json'), knownBytes);
 const worker = fileURLToPath(new URL('./spidermonkey-differential-worker.js', import.meta.url));
+const identityFiles = {temiya, spidermonkey: sm, worker,
+  controller: fileURLToPath(import.meta.url), protocol: fileURLToPath(new URL('./differential-observation.mjs', import.meta.url))};
+const identities = Object.fromEntries(Object.entries(identityFiles).map(([name, file]) => [name, sha(fs.readFileSync(file))]));
+const temiyaInfo = options['temiya-info'] ? read(options['temiya-info']) : null;
+if (temiyaInfo) assert.equal(temiyaInfo.executable_sha256, identities.temiya, 'Temiya build-info binary mismatch');
 function invoke(executable, args, input, stem) {
   const result = spawnSync(executable, args, {input, detached: process.platform !== 'win32',
     timeout, killSignal: 'SIGKILL', maxBuffer: 8 * 1024 * 1024});
@@ -68,10 +77,7 @@ function invoke(executable, args, input, stem) {
     const text = stdout.toString('utf8');
     assert(Buffer.from(text).equals(stdout), 'stdout is not valid UTF-8');
     const report = JSON.parse(text);
-    assert.equal(report.schema, 1); assert.equal(report.kind, 'differential-observation');
-    assert.equal(typeof report.comparison_eligible, 'boolean');
-    for (const name of ['effects', 'jobs', 'job_errors', 'events']) assert(Array.isArray(report[name]));
-    assert(report.completion && ['normal', 'throw', 'compile-error'].includes(report.completion.kind));
+    validateObservation(report);
     if (executable === sm) {
       assert.equal(report.engine, 'SpiderMonkey'); assert.equal(report.mode, options.mode);
       if (options.mode === 'interpreter')
@@ -108,12 +114,19 @@ for (const row of cases) {
 }
 const counts = {};
 for (const row of results) counts[row.classification] = (counts[row.classification] ?? 0) + 1;
+const captureErrors = [];
+for (const [name, file] of Object.entries(identityFiles)) {
+  try { if (sha(fs.readFileSync(file)) !== identities[name]) captureErrors.push(name + ' identity changed during capture'); }
+  catch (error) { captureErrors.push(name + ' identity unavailable: ' + error.message); }
+}
 const report = {schema: 1, kind: 'native-engine-differential', target, mode: options.mode,
-  backend: options.backend, timeout_ms: timeout, cases_sha256: sha(fs.readFileSync(options.cases)), temiya_sha256: sha(fs.readFileSync(temiya)),
-  spidermonkey_sha256: smInfo.binary_sha256, provided_spidermonkey_build_info: smInfo,
-  controller_sha256: sha(fs.readFileSync(fileURLToPath(import.meta.url))), worker_sha256: sha(fs.readFileSync(worker)),
+  backend: options.backend, timeout_ms: timeout, cases_sha256: sha(caseBytes), temiya_sha256: identities.temiya,
+  spidermonkey_sha256: identities.spidermonkey, provided_spidermonkey_build_info: smInfo, provided_temiya_build_info: temiyaInfo,
+  controller_sha256: identities.controller, worker_sha256: identities.worker, observation_protocol_sha256: identities.protocol,
+  known_policy_sha256: knownBytes ? sha(knownBytes) : null, known_differences: known, capture_errors: captureErrors,
   host: {platform: os.platform(), architecture: os.arch(), kernel: os.release(), node: process.version},
   counts, results, scope: 'Actual recorded observations; no timing or full language conformance qualification.'};
 fs.writeFileSync(path.join(output, 'report.json'), JSON.stringify(report, null, 2) + '\n');
 console.log(JSON.stringify({output, counts}));
-if (results.some(row => !['match', 'known-difference'].includes(row.classification))) process.exitCode = 1;
+if (captureErrors.length) process.exitCode = 2;
+else if (results.some(row => !['match', 'known-difference'].includes(row.classification))) process.exitCode = 1;

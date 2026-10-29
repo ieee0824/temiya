@@ -96,8 +96,15 @@ comparison is1 faster/32 noise/0 slower; all3 array decisions are noise. Actual
 modified Boa is slower beyond the fixed gate in all33 comparisons. Each ARM64
 report validates66 workers/1056 values with separate statistical and identity
 audits. See `benchmarks/managed-packed-numbers/experiments/fused-dd7`.
-Hosted two-machine observations and complete latest-runtime security remain
-pending; this ARM64 result alone does not qualify the follow-up for merge.
+Hosted run40800448415 also completes: AMD7763 has3 improvements/30 noise/0 slower
+before/after decisions, Intel8370C has33 noise/0 slower, and both qualify all33
+actual-Boa faster decisions. Baseline/Boa controls qualify33 each and identical-
+binary controls are33 noise each. The independently assigned machines were not
+filtered by CPU model. All8 hosted reports validate66 workers/1056 values and
+source/compiler/feature/lock/binary/control identities; diagnostic binaries
+match both native cohorts exactly. All9 ARM64/hosted array before/after pairs
+remain noise, so requested allocation savings must not be described as an array
+timing win. Full latest-runtime security and final merge remain pending.
 
 Performance qualification is pending. Keep the original eleven workload bodies,
 counts, oracles,15 samples/3 alternating pairs,512MiB/180-second watchdogs and

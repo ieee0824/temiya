@@ -32,8 +32,22 @@ are all noise; this does not establish an array speedup. The actual modified-Boa
 ARM64 report validates66 workers/1056 values and qualifies all33 faster decisions
 with the original fixed gates. Source/compiler/reference metadata and all frozen
 binary hashes are checked. Agent affinity was restored after both terminal
-reports. Hosted two-machine comparison40800448415 and full runtime security40800358738
-remain in progress. Each source
+reports. Hosted two-machine comparison40800448415 also completed and passed the
+native gates on both independently assigned machines, without a CPU-model filter:
+
+| Cohort | Candidate/main | Candidate/actual Boa | Baseline/Boa | Same binary |
+| --- | --- | --- | --- | --- |
+| ARM64 guestCPU0 |1 faster/32 noise/0 slower|33 faster|not measured|not measured|
+| AMD EPYC7763 copy1 |3 faster/30 noise/0 slower|33 faster|33 faster|33 noise|
+| Intel Xeon Platinum8370C copy2 |33 noise/0 slower|33 faster|33 faster|33 noise|
+
+All10 reports independently validate66 workers/1056 values each, every original
+input and oracle, alternating pair order and the unchanged10%/MAD/15-sample gates.
+All9 array before/after decisions are noise. The AMD improvements are all3
+primitive-string-method pairs (ratios0.8864–0.8977). Reported gains apply to these
+workloads in the observed environments, not arbitrary JavaScript. Earlier
+regressions remain preserved as distinct source trials. Full latest-runtime
+security40800358738 and final merge remain pending. Each source
 has separate evidence; earlier favorable or unfavorable results do not qualify
 this one. No speed or merge acceptance is implied by these validation logs.
 
@@ -44,5 +58,7 @@ conditional branch misses in all3 and L1 instruction misses in prop-mega. Retain
 the complete counter vectors; these models are not actual hardware counters and
 instrumented times are not native speed gates. Raw Callgrind files are lossless
 gzip with both hashes in provenance. Binaries remain in the workflow artifact;
-hashes/symbols/disassembly and raw profiles are retained here. Native binary
-matching will be checked once the hosted acceptance reports are available.
+hashes/symbols/disassembly and raw profiles are retained here. Both diagnostic
+executable hashes exactly match native acceptance on both hosted machines;
+the identity audit is retained. Instrumented/model counters do not replace the
+independently audited native results.

@@ -230,6 +230,34 @@ fn baseline_uses_actual_outcomes_and_separates_skip_timeout_and_unexecuted() {
         assert_eq!(r["conditions"]["engine_frozen_during_run"], true);
         assert_eq!(r["conditions"]["backend_requested"], backend);
         assert!(r["capture_errors"].as_array().unwrap().is_empty());
+        let verify = || {
+            Command::new("node")
+                .arg(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/scripts/verify-test262-baseline.mjs"
+                ))
+                .arg(&output_dir)
+                .output()
+                .unwrap()
+        };
+        let verified = verify();
+        assert!(
+            verified.status.success(),
+            "{}",
+            String::from_utf8_lossy(&verified.stderr)
+        );
+        let mut corrupted = r.clone();
+        corrupted["totals"]["pass"] = 999.into();
+        fs::write(
+            output_dir.join("baseline.json"),
+            serde_json::to_vec(&corrupted).unwrap(),
+        )
+        .unwrap();
+        assert!(
+            !verify().status.success(),
+            "forged pass total must not verify"
+        );
+        fs::write(output_dir.join("baseline.json"), &bytes).unwrap();
         let repeated = Command::new("node")
             .arg(concat!(
                 env!("CARGO_MANIFEST_DIR"),

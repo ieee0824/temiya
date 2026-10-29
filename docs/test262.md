@@ -295,3 +295,15 @@ exit/signal and hash remain available. `progress.json` records completed batches
 while a long capture runs. Every executable variant still uses the CLI's process
 and resource supervision. A feature's measured pass count does not declare that
 feature implemented or establish whole-corpus language conformance.
+
+Independently reconstruct the saved counts and raw-report identities with:
+
+```sh
+node scripts/verify-test262-baseline.mjs target/baseline-auto
+```
+
+This verifier checks manifest/universe/selection/report hashes, metadata and
+execution provenance, all per-variant outcomes, feature/untagged totals and
+reported-attempt rates. A corrupted summary or missing result cannot establish
+a complete validated capture. These integrity checks do not declare language
+features implemented.

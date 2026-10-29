@@ -387,10 +387,31 @@ CI runs the integration on stable and MSRV using unchanged pinned String `at`
 and `charAt` originals (four strict/sloppy variants), and uploads the raw capture
 artifacts. It checks accepted PR/full comparisons, full partitions, changed
 resource bounds, forged pass counts and unexplained policy updates. These focused
-integration cases do not qualify the entire corpus. The production PR selection
-and periodic workflow remain pending the completed full reference capture in #151.
+integration cases do not qualify the entire corpus. The production policy selects
+128 files (214 variants) from the verified full reference in #151.
+`.github/workflows/test262-regressions.yml` runs this sample for each PR and
+partitions the full corpus into eight jobs for the weekly run. Both modes
+retain raw outcomes and diagnostics for 30 days.
 
 ## Archived capture verification
+If a completed full capture has collection failures, retain that directory and
+recover only files whose variants are all unreported into a new directory:
+
+```sh
+node scripts/recover-test262-baseline.mjs target/baseline-auto \
+  path/to/original-temiya-test262 target/test262 target/baseline-recovered
+```
+
+Recovery requires the exact original executable hash, corpus, host, CPU affinity,
+locale and per-variant resource limits. It collects one missing file at a time;
+existing pass/fail/skip/timeout results are never retried or replaced. Original
+summaries and outcomes remain under `history/`, and failed raw reports remain
+alongside the recovery reports and their conditions. The independent verifier
+reconstructs both attempts and checks that only previously unreported identities
+changed. Resolved collection errors remain in `recovered_capture_errors`.
+If recovery itself loses reports, inspect `recovery/review-needed.json` and retain
+all newly observed outcomes before any further action; the helper refuses to
+blindly retry an existing recovery.
 
 For a preserved capture archive with its `capture.json` descriptor, verify the
 compressed identity, every decoded file and independently reconstructed outcomes:
@@ -404,3 +425,14 @@ verified decoded capture for further comparisons. Without it, temporary decoded
 files are removed after verification. Archive integrity preserves failures,
 timeouts, skips and unexecuted coverage as recorded; it does not qualify language
 features or turn those outcomes into passes.
+
+The retained capture in `benchmarks/test262-feature-baseline` measures all 52,133
+eligible files (100,211 variants, 197 feature tags) at the pinned revision. With
+Auto, 1,000 ms per variant, 512 MiB memory and 8,192 KiB stack, it records 24,554
+pass, 66,530 fail, 18 skip and 9,109 timeout, with zero not-run or unreported.
+The initial collector lost three batch reports to its outer deadline. Their
+original raw records and summaries remain archived; only the 96 unreported
+variants were recovered with the identical binary and per-variant conditions.
+Independent verification checks all 13,147 decoded files and recovery history.
+These are measured outcomes of this executable, not claims that all listed
+features conform to the specification.

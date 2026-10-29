@@ -2,6 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import assert from 'node:assert/strict';
+import {createHash} from 'node:crypto';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 
@@ -58,8 +59,16 @@ assert.equal(accepted.passed, true);
 assert.equal(accepted.observed_variants, 4);
 run('check-test262-regressions.mjs', ['--full', ...gateArgs]);
 const runnerOutput = path.join(root, 'runner-pr');
+const engineInfo = {executable_sha256: createHash('sha256')
+  .update(fs.readFileSync(engine)).digest('hex'), provenance: 'integration exact executable identity'};
+const engineInfoFile = path.join(root, 'engine-info.json');
+fs.writeFileSync(engineInfoFile, JSON.stringify(engineInfo));
+const previousEngineInfo = process.env.TEST262_ENGINE_INFO;
+process.env.TEST262_ENGINE_INFO = engineInfoFile;
 run('run-test262-regression.mjs', [engine, corpus, reference, policyFile,
   runnerOutput, 'pr', '0', '1', policyFile]);
+assert.deepEqual(JSON.parse(fs.readFileSync(path.join(runnerOutput, 'capture',
+  'conditions.json'))).provided_engine_build_info, engineInfo);
 assert.equal(JSON.parse(fs.readFileSync(path.join(runnerOutput,
   'check-test262-regressions.mjs.stdout'))).passed, true);
 
@@ -75,6 +84,8 @@ assert.equal(JSON.parse(fs.readFileSync(path.join(failedRunnerOutput,
   'check-test262-regressions.mjs.exit.json'))).status, 2);
 assert.match(fs.readFileSync(path.join(failedRunnerOutput,
   'check-test262-regressions.mjs.stderr'), 'utf8'), /stale or out-of-scope/);
+if (previousEngineInfo === undefined) delete process.env.TEST262_ENGINE_INFO;
+else process.env.TEST262_ENGINE_INFO = previousEngineInfo;
 for (let shard = 0; shard < 2; shard++) {
   const selectedFile = path.join(root, 'shard-' + shard + '.json');
   run('prepare-test262-regression-selection.mjs',

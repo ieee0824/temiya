@@ -5,7 +5,7 @@ use std::{cell::RefCell, io::Read, rc::Rc};
 use temiya::{
     Engine,
     embedding::{EmbedError, Exception, HostError, ScriptBackend},
-    runtime::{RuntimeError, Value},
+    runtime::{ArrayObject, Object, PropertyKey, RuntimeError, Value},
 };
 
 #[derive(Default)]
@@ -15,11 +15,17 @@ struct Trace {
     job_errors: Vec<Json>,
     events: Vec<Json>,
     symbols: Vec<u64>,
+    objects: Vec<u64>,
+    prototypes: Vec<(String, Object)>,
     unsupported: bool,
 }
 
 impl Trace {
     fn value(&mut self, value: &Value) -> Json {
+        self.value_at(value, &mut Vec::new(), &mut 4096)
+    }
+
+    fn value_at(&mut self, value: &Value, active: &mut Vec<u64>, remaining: &mut usize) -> Json {
         match value {
             Value::Undefined => json!({"type":"undefined"}),
             Value::Null => json!({"type":"null"}),
@@ -43,23 +49,130 @@ impl Trace {
                     });
                 json!({"type":"symbol","id":id,"description_utf16":value.description().map(|s|s.code_units())})
             }
-            Value::Object(_) => {
-                // Never silently equate opaque objects. Structured snapshots are
-                // a separate protocol extension, not lossy ToString/JSON hooks.
-                self.unsupported = true;
-                json!({"type":"unsupported","kind":"object"})
-            }
+            Value::Object(object) => self.object(object, active, remaining),
         }
     }
 
+    fn unsupported(&mut self, kind: &str) -> Json {
+        self.unsupported = true;
+        json!({"type":"unsupported","kind":kind})
+    }
+
+    fn object(&mut self, object: &Object, active: &mut Vec<u64>, remaining: &mut usize) -> Json {
+        if object.is_callable() {
+            return self.unsupported("function");
+        }
+        let identity = object.identity();
+        let id = match self.objects.iter().position(|item| *item == identity) {
+            Some(id) => id,
+            None if self.objects.len() < 1024 => {
+                self.objects.push(identity);
+                self.objects.len() - 1
+            }
+            None => return self.unsupported("identity-limit"),
+        };
+        if active.contains(&identity) {
+            return json!({"type":"reference","id":id});
+        }
+        if active.len() >= 32 {
+            return self.unsupported("depth-limit");
+        }
+        let prototype = match object.try_prototype() {
+            Ok(None) => None,
+            Ok(Some(prototype)) => {
+                let name = self
+                    .prototypes
+                    .iter()
+                    .find(|(_, known)| *known == prototype)
+                    .map(|(name, _)| name.clone());
+                match name.as_deref() {
+                    Some("Object" | "Array") => name,
+                    _ => return self.unsupported("object-prototype"),
+                }
+            }
+            Err(_) => return self.unsupported("prototype-reflection"),
+        };
+        let Ok(keys) = object.try_own_property_keys() else {
+            return self.unsupported("property-reflection");
+        };
+        if keys.len() > *remaining {
+            return self.unsupported("property-limit");
+        }
+        *remaining -= keys.len();
+        active.push(identity);
+        let mut properties = Vec::new();
+        for key in keys {
+            let observed_key = match &key {
+                PropertyKey::String(value) => {
+                    self.value_at(&Value::String(value.clone()), active, remaining)
+                }
+                PropertyKey::Symbol(value) => {
+                    self.value_at(&Value::Symbol(value.clone()), active, remaining)
+                }
+            };
+            let observed = match object.try_get_own_property(&key) {
+                Ok(Some(descriptor)) => {
+                    if descriptor.get.is_some() || descriptor.set.is_some() {
+                        self.unsupported("accessor");
+                        json!({"kind":"accessor","get":descriptor.get.flatten().is_some(),
+                            "set":descriptor.set.flatten().is_some()})
+                    } else if let (
+                        Some(value),
+                        Some(writable),
+                        Some(enumerable),
+                        Some(configurable),
+                    ) = (
+                        descriptor.value,
+                        descriptor.writable,
+                        descriptor.enumerable,
+                        descriptor.configurable,
+                    ) {
+                        json!({"kind":"data","value":self.value_at(&value,active,remaining),
+                            "writable":writable,"enumerable":enumerable,"configurable":configurable})
+                    } else {
+                        self.unsupported("incomplete-descriptor")
+                    }
+                }
+                _ => self.unsupported("descriptor-reflection"),
+            };
+            properties.push(json!({"key":observed_key,"descriptor":observed}));
+        }
+        active.pop();
+        let extensible = match object.try_is_extensible() {
+            Ok(value) => json!(value),
+            Err(_) => self.unsupported("extensibility-reflection"),
+        };
+        json!({"type":"object","id":id,"kind":if ArrayObject::from_object(object.clone()).is_some(){"array"}else{"ordinary"},
+            "prototype":prototype,"extensible":extensible,"properties":properties})
+    }
+
+    fn thrown(&mut self, kind: String, thrown: Option<&Value>) -> Json {
+        if let Some(Value::Object(object)) = thrown {
+            let mut current = object.clone();
+            for _ in 0..32 {
+                let Ok(Some(prototype)) = current.try_prototype() else {
+                    break;
+                };
+                if let Some((name, _)) = self.prototypes.iter().find(|(name, known)| {
+                    !matches!(name.as_str(), "Object" | "Array") && *known == prototype
+                }) {
+                    return json!({"type":name,"thrown":null});
+                }
+                current = prototype;
+            }
+        }
+        json!({"type":kind,"thrown":thrown.map(|value|self.value(value))})
+    }
+
     fn runtime_error(&mut self, error: &RuntimeError) -> Json {
-        json!({"type":format!("{:?}",error.kind()),
-            "thrown":error.thrown_value().map(|value|self.value(value))})
+        self.thrown(format!("{:?}", error.kind()), error.thrown_value())
     }
 
     fn exception(&mut self, error: &Exception) -> Json {
-        json!({"type":format!("{:?}",error.kind()),
-            "thrown":error.thrown().map(|value|self.value(value.value()))})
+        self.thrown(
+            format!("{:?}", error.kind()),
+            error.thrown().map(|value| value.value()),
+        )
     }
 }
 
@@ -78,7 +191,27 @@ fn run() -> Result<Json, Box<dyn std::error::Error>> {
     };
     let engine = Rc::new(Engine::builder().script_backend(backend).build());
     let realm = Rc::new(engine.create_realm());
-    let trace = Rc::new(RefCell::new(Trace::default()));
+    let mut initial_trace = Trace::default();
+    for name in [
+        "Object",
+        "Array",
+        "TypeError",
+        "SyntaxError",
+        "ReferenceError",
+        "RangeError",
+        "EvalError",
+        "URIError",
+        "Error",
+    ] {
+        if let Ok(script) = engine.compile(&realm, &format!("{name}.prototype")) {
+            if let Ok(value) = engine.evaluate(&script) {
+                if let Value::Object(object) = value.value() {
+                    initial_trace.prototypes.push((name.into(), object.clone()));
+                }
+            }
+        }
+    }
+    let trace = Rc::new(RefCell::new(initial_trace));
     let effects = trace.clone();
     engine.register_global_function(&realm, "record", move |context, _, arguments| {
         let mut trace = effects.borrow_mut();

@@ -11,9 +11,12 @@
   if (typeof request.source !== 'string') throw Error('source must be a string');
   const stringify = JSON.stringify, run = evaluate, checkpoint = drainJobQueue;
   const getPrototype = Object.getPrototypeOf;
+  const ownKeys = Reflect.ownKeys, descriptorOf = Object.getOwnPropertyDescriptor;
+  const extensible = Object.isExtensible, isArray = Array.isArray;
+  const objectPrototype = Object.prototype, arrayPrototype = Array.prototype;
   const errorTypes = [TypeError, SyntaxError, ReferenceError, RangeError, EvalError, URIError, Error]
     .map(type => [type.name, type.prototype]);
-  const effects = [], jobs = [], jobErrors = [], events = [], symbols = new Map();
+  const effects = [], jobs = [], jobErrors = [], events = [], symbols = new Map(), objects = new Map();
   const numberBytes = new DataView(new ArrayBuffer(8));
   const charCode = Function.call.bind(String.prototype.charCodeAt);
   let eligible = true;
@@ -23,6 +26,55 @@
     return units;
   }
   function value(item) {
+    return valueAt(item, [], {properties: 4096});
+  }
+  function unsupported(kind) {
+    eligible = false;
+    return {type: 'unsupported', kind};
+  }
+  function objectValue(item, active, budget) {
+    if (typeof item === 'function') return unsupported('function');
+    if (!objects.has(item)) {
+      if (objects.size >= 1024) return unsupported('identity-limit');
+      objects.set(item, objects.size);
+    }
+    const id = objects.get(item);
+    if (active.includes(item)) return {type: 'reference', id};
+    if (active.length >= 32) return unsupported('depth-limit');
+    let prototype, keys;
+    try {
+      const observed = getPrototype(item);
+      if (observed === null) prototype = null;
+      else if (observed === objectPrototype) prototype = 'Object';
+      else if (observed === arrayPrototype) prototype = 'Array';
+      else return unsupported('object-prototype');
+    } catch (_) { return unsupported('prototype-reflection'); }
+    try { keys = ownKeys(item); } catch (_) { return unsupported('property-reflection'); }
+    if (keys.length > budget.properties) return unsupported('property-limit');
+    budget.properties -= keys.length;
+    active.push(item);
+    const properties = [];
+    for (const key of keys) {
+      const observedKey = valueAt(key, active, budget);
+      let descriptor;
+      try {
+        const d = descriptorOf(item, key);
+        if (!d) descriptor = unsupported('descriptor-reflection');
+        else if ('get' in d || 'set' in d) {
+          unsupported('accessor');
+          descriptor = {kind: 'accessor', get: d.get !== undefined, set: d.set !== undefined};
+        } else descriptor = {kind: 'data', value: valueAt(d.value, active, budget),
+          writable: d.writable, enumerable: d.enumerable, configurable: d.configurable};
+      } catch (_) { descriptor = unsupported('descriptor-reflection'); }
+      properties.push({key: observedKey, descriptor});
+    }
+    active.pop();
+    let isExtensible;
+    try { isExtensible = extensible(item); } catch (_) { isExtensible = unsupported('extensibility-reflection'); }
+    return {type: 'object', id, kind: isArray(item) ? 'array' : 'ordinary',
+      prototype, extensible: isExtensible, properties};
+  }
+  function valueAt(item, active, budget) {
     if (item === undefined) return {type: 'undefined'};
     if (item === null) return {type: 'null'};
     switch (typeof item) {
@@ -42,8 +94,7 @@
           description_utf16: item.description === undefined ? null : utf16(item.description)};
       }
       default:
-        eligible = false;
-        return {type: 'unsupported', kind: 'object'};
+        return objectValue(item, active, budget);
     }
   }
   function exception(error) {

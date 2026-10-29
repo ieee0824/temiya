@@ -60,6 +60,32 @@ jobs:
           set -e
           printf '%s\n' "$discovery_exit" > target/differential-results/discovery-exit.txt
           node -e 'const r=require("./target/differential-results/discovery/report.json");if(r.results.some(x=>!["match","mismatch"].includes(x.classification)))throw Error("native observation failed");console.log(JSON.stringify(r.counts))'
+      - name: Verify unsupported snapshots and actual deadlines never pass
+        run: |
+          set +e
+          node scripts/compare-js-engines.mjs --temiya target/release/temiya-differential-worker \
+            --spidermonkey target/shell/bin/js --spidermonkey-info target/shell-evidence/target-check.json \
+            --cases testing/differential/unsupported-cases.json --output target/differential-results/unsupported \
+            --mode interpreter --timeout-ms 2000
+          unsupported_exit=$?
+          node scripts/compare-js-engines.mjs --temiya target/release/temiya-differential-worker \
+            --spidermonkey target/shell/bin/js --spidermonkey-info target/shell-evidence/target-check.json \
+            --cases testing/differential/timeout-cases.json --output target/differential-results/timeout \
+            --mode interpreter --timeout-ms 100
+          timeout_exit=$?
+          set -e
+          test "$unsupported_exit" -eq 1
+          test "$timeout_exit" -eq 1
+          node <<'NODE'
+          const u=require('./target/differential-results/unsupported/report.json');
+          const t=require('./target/differential-results/timeout/report.json');
+          if(u.counts['unsupported-observation']!==2||t.counts['infrastructure-failure']!==1)throw Error('invalid outcomes passed');
+          for(const worker of [t.results[0].temiya,t.results[0].spidermonkey])
+            if(!worker.record.error?.includes('ETIMEDOUT'))throw Error('actual process deadline was not observed');
+          const getter=u.results.find(r=>r.id==='accessor-snapshot');
+          for(const worker of [getter.temiya,getter.spidermonkey])
+            if(worker.observation.effects.length!==0)throw Error('snapshot invoked a getter');
+          NODE
       - name: Verify exact known difference and line-minimal witness
         run: |
           node scripts/compare-js-engines.mjs --temiya target/release/temiya-differential-worker \

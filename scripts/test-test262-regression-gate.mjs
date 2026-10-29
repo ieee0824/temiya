@@ -46,6 +46,12 @@ const policy = {schema: 1, update: {reason: 'Integration uses four actually pass
 const policyFile = path.join(root, 'policy.json');
 fs.writeFileSync(policyFile, JSON.stringify(policy));
 const gateArgs = [reference, candidate, policyFile];
+const invalidPolicyFile = path.join(root, 'invalid-outside-skip-policy.json');
+fs.writeFileSync(invalidPolicyFile, JSON.stringify({...policy,
+  update: {reason: 'Integration rejects reasonless exceptions outside the PR selection'},
+  skip_reasons: [{path: 'test/outside-pr.js', variant: 'Strict', reason: ''}]}));
+assert.match(run('check-test262-regressions.mjs',
+  [reference, candidate, invalidPolicyFile], 2).stderr, /nonempty reason/);
 const accepted = JSON.parse(run('check-test262-regressions.mjs', gateArgs).stdout);
 assert.equal(accepted.passed, true);
 assert.equal(accepted.observed_variants, 4);

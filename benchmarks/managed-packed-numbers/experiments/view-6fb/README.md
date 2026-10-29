@@ -81,7 +81,12 @@ establish why the old hosted x64 cohort had broad regressions. Native array
 before/after remains within its fixed gates. No old unfavorable report is
 replaced by this diagnostic.
 
-Full latest-runtime security(run40792515995) remains pending. Hosted regressions
+Full runtime security(run40792515995) passes all19 jobs:119 distinct exact Miri
+successes,0 ignored, the complete16-shard partition, ASan and dependency audit.
+Full source/status/log hashes and the independent audit are retained. The special-
+payload integration test was further strengthened at2ad5555 after timing and
+again passed native/Miri2/0 ignored, without changing runtime/worker/input code.
+Hosted regressions
 and the Boa gate miss require investigation; this candidate is not accepted for
 merge. The initial
 Cow trial and pre-GC regressions remain preserved separately and are not erased
@@ -93,3 +98,18 @@ the complete vendored engine tree, Cargo.toml, Cargo.lock and build.rs as the
 comparison pin. Thus the vendored Boa/regress and dependency configuration did
 not change. Application JS/DOM code did change; this is not a timing or rebuild
 of that newer application embedding. The comparison remains explicitly pinned.
+
+The completed x64 diagnostic40797282661 is retained in `x64-profile`. All6
+instrumented runs preserve original inputs/counts/oracles and validate warmup
+and one pass. Both rebuilt executable hashes exactly match the native reports
+on both hosted machines. Binaries remain in the workflow artifact; raw counters,
+exclusive annotations, symbols and relevant disassembly are retained here.
+For primitive-string-property, whole-process Ir rises0.896%; the largest exclusive
+deltas are Binding::write+14000049 and set_function_binding_at+4000016.
+The x64 write path adds a full32-byte incoming-Value copy and another initialized-
+slot check around general store_owned. String-concat likewise adds about2.8M
+exclusive Ir in Binding::write. This localizes unnecessary general binding-write
+work; it is not proof that those counts explain the entire native slowdown.
+Modeled cache/branch events are explicitly not hardware measurements. A guarded
+number-to-number binding overwrite will be evaluated as a distinct runtime
+change while preserving TDZ, mutability and all nonnumeric owner/barrier paths.

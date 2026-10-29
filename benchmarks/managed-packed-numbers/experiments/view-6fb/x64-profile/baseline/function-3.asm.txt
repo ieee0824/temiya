@@ -1,0 +1,469 @@
+
+/home/runner/work/_temp/baseline-target/release/examples/measure_workload:     file format elf64-x86-64
+
+
+Disassembly of section .text:
+
+0000000000168da0 <<temiya::runtime::Object>::try_get_own_property>:
+  168da0:	55                   	push   %rbp
+  168da1:	41 57                	push   %r15
+  168da3:	41 56                	push   %r14
+  168da5:	41 55                	push   %r13
+  168da7:	41 54                	push   %r12
+  168da9:	53                   	push   %rbx
+  168daa:	48 81 ec b8 00 00 00 	sub    $0xb8,%rsp
+  168db1:	49 bc ff ff ff ff ff 	movabs $0x7fffffffffffffff,%r12
+  168db8:	ff ff 7f 
+  168dbb:	48 8b 1e             	mov    (%rsi),%rbx
+  168dbe:	48 8b 6b 30          	mov    0x30(%rbx),%rbp
+  168dc2:	48 8b 45 60          	mov    0x60(%rbp),%rax
+  168dc6:	4c 39 e0             	cmp    %r12,%rax
+  168dc9:	0f 83 31 07 00 00    	jae    169500 <<temiya::runtime::Object>::try_get_own_property+0x760>
+  168dcf:	49 89 d7             	mov    %rdx,%r15
+  168dd2:	49 89 fe             	mov    %rdi,%r14
+  168dd5:	48 89 74 24 20       	mov    %rsi,0x20(%rsp)
+  168dda:	4c 8d 6d 60          	lea    0x60(%rbp),%r13
+  168dde:	48 8d 48 01          	lea    0x1(%rax),%rcx
+  168de2:	48 89 4d 60          	mov    %rcx,0x60(%rbp)
+  168de6:	48 83 bd a8 01 00 00 	cmpq   $0x0,0x1a8(%rbp)
+  168ded:	00 
+  168dee:	74 19                	je     168e09 <<temiya::runtime::Object>::try_get_own_property+0x69>
+  168df0:	49 89 45 00          	mov    %rax,0x0(%r13)
+  168df4:	4c 89 f7             	mov    %r14,%rdi
+  168df7:	48 8b 74 24 20       	mov    0x20(%rsp),%rsi
+  168dfc:	4c 89 fa             	mov    %r15,%rdx
+  168dff:	e8 bc d1 03 00       	call   1a5fc0 <temiya::runtime::proxy::get_own_property>
+  168e04:	e9 e2 06 00 00       	jmp    1694eb <<temiya::runtime::Object>::try_get_own_property+0x74b>
+  168e09:	80 bd 88 00 00 00 00 	cmpb   $0x0,0x88(%rbp)
+  168e10:	74 67                	je     168e79 <<temiya::runtime::Object>::try_get_own_property+0xd9>
+  168e12:	49 89 45 00          	mov    %rax,0x0(%r13)
+  168e16:	48 8d 7c 24 28       	lea    0x28(%rsp),%rdi
+  168e1b:	48 8b 74 24 20       	mov    0x20(%rsp),%rsi
+  168e20:	4c 89 fa             	mov    %r15,%rdx
+  168e23:	e8 68 49 00 00       	call   16d790 <<temiya::runtime::Object>::materialize_function_prototype>
+  168e28:	48 83 7c 24 28 ff    	cmpq   $0xffffffffffffffff,0x28(%rsp)
+  168e2e:	74 2d                	je     168e5d <<temiya::runtime::Object>::try_get_own_property+0xbd>
+  168e30:	48 8b 44 24 48       	mov    0x48(%rsp),%rax
+  168e35:	49 89 46 28          	mov    %rax,0x28(%r14)
+  168e39:	f3 0f 6f 44 24 28    	movdqu 0x28(%rsp),%xmm0
+  168e3f:	f3 0f 6f 4c 24 38    	movdqu 0x38(%rsp),%xmm1
+  168e45:	f3 41 0f 7f 4e 18    	movdqu %xmm1,0x18(%r14)
+  168e4b:	f3 41 0f 7f 46 08    	movdqu %xmm0,0x8(%r14)
+  168e51:	49 c7 06 ff ff ff ff 	movq   $0xffffffffffffffff,(%r14)
+  168e58:	e9 8e 06 00 00       	jmp    1694eb <<temiya::runtime::Object>::try_get_own_property+0x74b>
+  168e5d:	48 8b 6b 30          	mov    0x30(%rbx),%rbp
+  168e61:	48 8b 45 60          	mov    0x60(%rbp),%rax
+  168e65:	4c 39 e0             	cmp    %r12,%rax
+  168e68:	0f 83 9f 06 00 00    	jae    16950d <<temiya::runtime::Object>::try_get_own_property+0x76d>
+  168e6e:	4c 8d 6d 60          	lea    0x60(%rbp),%r13
+  168e72:	48 ff c0             	inc    %rax
+  168e75:	49 89 45 00          	mov    %rax,0x0(%r13)
+  168e79:	80 bd f0 00 00 00 ff 	cmpb   $0xff,0xf0(%rbp)
+  168e80:	0f 84 7b 02 00 00    	je     169101 <<temiya::runtime::Object>::try_get_own_property+0x361>
+  168e86:	41 0f b6 1f          	movzbl (%r15),%ebx
+  168e8a:	80 fb ff             	cmp    $0xff,%bl
+  168e8d:	0f 84 70 01 00 00    	je     169003 <<temiya::runtime::Object>::try_get_own_property+0x263>
+  168e93:	48 8d 35 72 ee f0 ff 	lea    -0xf118e(%rip),%rsi        # 77d0c <anon.4d8acd9a196ea1a6d917e4dfe258cb57.9.llvm.11570739192464274329+0x36d>
+  168e9a:	48 8d 7c 24 28       	lea    0x28(%rsp),%rdi
+  168e9f:	ba 06 00 00 00       	mov    $0x6,%edx
+  168ea4:	ff 15 e6 38 1f 00    	call   *0x1f38e6(%rip)        # 35c790 <_DYNAMIC+0x4c0>
+  168eaa:	0a 5c 24 28          	or     0x28(%rsp),%bl
+  168eae:	75 44                	jne    168ef4 <<temiya::runtime::Object>::try_get_own_property+0x154>
+  168eb0:	41 0f b6 47 01       	movzbl 0x1(%r15),%eax
+  168eb5:	3a 44 24 29          	cmp    0x29(%rsp),%al
+  168eb9:	0f 85 44 01 00 00    	jne    169003 <<temiya::runtime::Object>::try_get_own_property+0x263>
+  168ebf:	f3 41 0f 6f 47 02    	movdqu 0x2(%r15),%xmm0
+  168ec5:	f3 0f 6f 4c 24 2a    	movdqu 0x2a(%rsp),%xmm1
+  168ecb:	66 0f 74 c8          	pcmpeqb %xmm0,%xmm1
+  168ecf:	66 41 0f 6e 47 12    	movd   0x12(%r15),%xmm0
+  168ed5:	66 0f 6e 54 24 3a    	movd   0x3a(%rsp),%xmm2
+  168edb:	66 0f 74 d0          	pcmpeqb %xmm0,%xmm2
+  168edf:	66 0f db d1          	pand   %xmm1,%xmm2
+  168ee3:	66 0f d7 c2          	pmovmskb %xmm2,%eax
+  168ee7:	3d ff ff 00 00       	cmp    $0xffff,%eax
+  168eec:	0f 85 11 01 00 00    	jne    169003 <<temiya::runtime::Object>::try_get_own_property+0x263>
+  168ef2:	eb 7e                	jmp    168f72 <<temiya::runtime::Object>::try_get_own_property+0x1d2>
+  168ef4:	48 8d 74 24 28       	lea    0x28(%rsp),%rsi
+  168ef9:	4c 89 ff             	mov    %r15,%rdi
+  168efc:	ff 15 0e 3a 1f 00    	call   *0x1f3a0e(%rip)        # 35c910 <_DYNAMIC+0x640>
+  168f02:	0f b6 4c 24 28       	movzbl 0x28(%rsp),%ecx
+  168f07:	84 c0                	test   %al,%al
+  168f09:	74 21                	je     168f2c <<temiya::runtime::Object>::try_get_own_property+0x18c>
+  168f0b:	85 c9                	test   %ecx,%ecx
+  168f0d:	74 63                	je     168f72 <<temiya::runtime::Object>::try_get_own_property+0x1d2>
+  168f0f:	83 f9 01             	cmp    $0x1,%ecx
+  168f12:	75 48                	jne    168f5c <<temiya::runtime::Object>::try_get_own_property+0x1bc>
+  168f14:	48 8b 44 24 30       	mov    0x30(%rsp),%rax
+  168f19:	f0 48 ff 08          	lock decq (%rax)
+  168f1d:	75 53                	jne    168f72 <<temiya::runtime::Object>::try_get_own_property+0x1d2>
+  168f1f:	48 8d 7c 24 30       	lea    0x30(%rsp),%rdi
+  168f24:	ff 15 f6 35 1f 00    	call   *0x1f35f6(%rip)        # 35c520 <_DYNAMIC+0x250>
+  168f2a:	eb 46                	jmp    168f72 <<temiya::runtime::Object>::try_get_own_property+0x1d2>
+  168f2c:	85 c9                	test   %ecx,%ecx
+  168f2e:	0f 84 cf 00 00 00    	je     169003 <<temiya::runtime::Object>::try_get_own_property+0x263>
+  168f34:	83 f9 01             	cmp    $0x1,%ecx
+  168f37:	0f 85 b0 00 00 00    	jne    168fed <<temiya::runtime::Object>::try_get_own_property+0x24d>
+  168f3d:	48 8b 44 24 30       	mov    0x30(%rsp),%rax
+  168f42:	f0 48 ff 08          	lock decq (%rax)
+  168f46:	0f 85 b7 00 00 00    	jne    169003 <<temiya::runtime::Object>::try_get_own_property+0x263>
+  168f4c:	48 8d 7c 24 30       	lea    0x30(%rsp),%rdi
+  168f51:	ff 15 c9 35 1f 00    	call   *0x1f35c9(%rip)        # 35c520 <_DYNAMIC+0x250>
+  168f57:	e9 a7 00 00 00       	jmp    169003 <<temiya::runtime::Object>::try_get_own_property+0x263>
+  168f5c:	48 8b 44 24 30       	mov    0x30(%rsp),%rax
+  168f61:	f0 48 ff 08          	lock decq (%rax)
+  168f65:	75 0b                	jne    168f72 <<temiya::runtime::Object>::try_get_own_property+0x1d2>
+  168f67:	48 8d 7c 24 30       	lea    0x30(%rsp),%rdi
+  168f6c:	ff 15 b6 35 1f 00    	call   *0x1f35b6(%rip)        # 35c528 <_DYNAMIC+0x258>
+  168f72:	0f b6 85 f0 00 00 00 	movzbl 0xf0(%rbp),%eax
+  168f79:	85 c0                	test   %eax,%eax
+  168f7b:	74 12                	je     168f8f <<temiya::runtime::Object>::try_get_own_property+0x1ef>
+  168f7d:	83 f8 01             	cmp    $0x1,%eax
+  168f80:	75 16                	jne    168f98 <<temiya::runtime::Object>::try_get_own_property+0x1f8>
+  168f82:	48 8b 85 f8 00 00 00 	mov    0xf8(%rbp),%rax
+  168f89:	48 8b 40 20          	mov    0x20(%rax),%rax
+  168f8d:	eb 14                	jmp    168fa3 <<temiya::runtime::Object>::try_get_own_property+0x203>
+  168f8f:	0f b6 85 f1 00 00 00 	movzbl 0xf1(%rbp),%eax
+  168f96:	eb 0b                	jmp    168fa3 <<temiya::runtime::Object>::try_get_own_property+0x203>
+  168f98:	48 8b 85 f8 00 00 00 	mov    0xf8(%rbp),%rax
+  168f9f:	48 8b 40 40          	mov    0x40(%rax),%rax
+  168fa3:	66 48 0f 6e c0       	movq   %rax,%xmm0
+  168fa8:	66 0f 62 05 10 b9 f0 	punpckldq -0xf46f0(%rip),%xmm0        # 748c0 <anon.33800f63dee8df96ab21e9fa08cc82bf.4.llvm.6200979930598882828+0x1e0>
+  168faf:	ff 
+  168fb0:	66 0f 5c 05 f8 b6 f0 	subpd  -0xf4908(%rip),%xmm0        # 746b0 <anon.5b201c30fcbf3da20ac818d148a5d3a5.2427.llvm.13324509816258395044+0x148>
+  168fb7:	ff 
+  168fb8:	66 0f 28 c8          	movapd %xmm0,%xmm1
+  168fbc:	66 0f 15 c8          	unpckhpd %xmm0,%xmm1
+  168fc0:	f2 0f 58 c8          	addsd  %xmm0,%xmm1
+  168fc4:	49 c7 06 00 00 00 00 	movq   $0x0,(%r14)
+  168fcb:	49 c7 46 10 00 00 00 	movq   $0x0,0x10(%r14)
+  168fd2:	00 
+  168fd3:	49 83 c4 06          	add    $0x6,%r12
+  168fd7:	4d 89 66 20          	mov    %r12,0x20(%r14)
+  168fdb:	f2 41 0f 11 4e 28    	movsd  %xmm1,0x28(%r14)
+  168fe1:	66 41 c7 46 40 00 00 	movw   $0x0,0x40(%r14)
+  168fe8:	e9 0a 01 00 00       	jmp    1690f7 <<temiya::runtime::Object>::try_get_own_property+0x357>
+  168fed:	48 8b 44 24 30       	mov    0x30(%rsp),%rax
+  168ff2:	f0 48 ff 08          	lock decq (%rax)
+  168ff6:	75 0b                	jne    169003 <<temiya::runtime::Object>::try_get_own_property+0x263>
+  168ff8:	48 8d 7c 24 30       	lea    0x30(%rsp),%rdi
+  168ffd:	ff 15 25 35 1f 00    	call   *0x1f3525(%rip)        # 35c528 <_DYNAMIC+0x258>
+  169003:	4c 89 ff             	mov    %r15,%rdi
+  169006:	ff 15 e4 39 1f 00    	call   *0x1f39e4(%rip)        # 35c9f0 <_DYNAMIC+0x720>
+  16900c:	a8 01                	test   $0x1,%al
+  16900e:	0f 84 ed 00 00 00    	je     169101 <<temiya::runtime::Object>::try_get_own_property+0x361>
+  169014:	89 d3                	mov    %edx,%ebx
+  169016:	0f b6 85 f0 00 00 00 	movzbl 0xf0(%rbp),%eax
+  16901d:	83 f8 02             	cmp    $0x2,%eax
+  169020:	74 16                	je     169038 <<temiya::runtime::Object>::try_get_own_property+0x298>
+  169022:	83 f8 01             	cmp    $0x1,%eax
+  169025:	75 27                	jne    16904e <<temiya::runtime::Object>::try_get_own_property+0x2ae>
+  169027:	48 8b 8d f8 00 00 00 	mov    0xf8(%rbp),%rcx
+  16902e:	48 8b 41 18          	mov    0x18(%rcx),%rax
+  169032:	48 8b 71 20          	mov    0x20(%rcx),%rsi
+  169036:	eb 2e                	jmp    169066 <<temiya::runtime::Object>::try_get_own_property+0x2c6>
+  169038:	48 8b bd f8 00 00 00 	mov    0xf8(%rbp),%rdi
+  16903f:	48 83 c7 10          	add    $0x10,%rdi
+  169043:	ff 15 3f 37 1f 00    	call   *0x1f373f(%rip)        # 35c788 <_DYNAMIC+0x4b8>
+  169049:	48 89 d6             	mov    %rdx,%rsi
+  16904c:	eb 18                	jmp    169066 <<temiya::runtime::Object>::try_get_own_property+0x2c6>
+  16904e:	0f b6 b5 f1 00 00 00 	movzbl 0xf1(%rbp),%esi
+  169055:	48 83 fe 0b          	cmp    $0xb,%rsi
+  169059:	0f 83 bb 04 00 00    	jae    16951a <<temiya::runtime::Object>::try_get_own_property+0x77a>
+  16905f:	48 8d 85 f2 00 00 00 	lea    0xf2(%rbp),%rax
+  169066:	89 db                	mov    %ebx,%ebx
+  169068:	48 39 de             	cmp    %rbx,%rsi
+  16906b:	0f 86 90 00 00 00    	jbe    169101 <<temiya::runtime::Object>::try_get_own_property+0x361>
+  169071:	49 89 c7             	mov    %rax,%r15
+  169074:	ff 15 ce 34 1f 00    	call   *0x1f34ce(%rip)        # 35c548 <_DYNAMIC+0x278>
+  16907a:	bf 02 00 00 00       	mov    $0x2,%edi
+  16907f:	be 02 00 00 00       	mov    $0x2,%esi
+  169084:	ff 15 c6 34 1f 00    	call   *0x1f34c6(%rip)        # 35c550 <_DYNAMIC+0x280>
+  16908a:	48 85 c0             	test   %rax,%rax
+  16908d:	0f 84 9d 04 00 00    	je     169530 <<temiya::runtime::Object>::try_get_own_property+0x790>
+  169093:	41 0f b7 0c 5f       	movzwl (%r15,%rbx,2),%ecx
+  169098:	66 89 08             	mov    %cx,(%rax)
+  16909b:	48 c7 44 24 28 01 00 	movq   $0x1,0x28(%rsp)
+  1690a2:	00 00 
+  1690a4:	48 89 44 24 30       	mov    %rax,0x30(%rsp)
+  1690a9:	48 c7 44 24 38 01 00 	movq   $0x1,0x38(%rsp)
+  1690b0:	00 00 
+  1690b2:	48 8d 7c 24 70       	lea    0x70(%rsp),%rdi
+  1690b7:	48 8d 74 24 28       	lea    0x28(%rsp),%rsi
+  1690bc:	e8 2f b2 fa ff       	call   1142f0 <<temiya::runtime::string::JsString>::from_code_units::<alloc::vec::Vec<u16>>>
+  1690c1:	48 8b 84 24 80 00 00 	mov    0x80(%rsp),%rax
+  1690c8:	00 
+  1690c9:	49 89 46 38          	mov    %rax,0x38(%r14)
+  1690cd:	66 0f 10 44 24 70    	movupd 0x70(%rsp),%xmm0
+  1690d3:	66 41 0f 11 46 28    	movupd %xmm0,0x28(%r14)
+  1690d9:	49 c7 06 00 00 00 00 	movq   $0x0,(%r14)
+  1690e0:	49 c7 46 10 00 00 00 	movq   $0x0,0x10(%r14)
+  1690e7:	00 
+  1690e8:	49 83 c4 04          	add    $0x4,%r12
+  1690ec:	4d 89 66 20          	mov    %r12,0x20(%r14)
+  1690f0:	66 41 c7 46 40 00 01 	movw   $0x100,0x40(%r14)
+  1690f7:	41 c6 46 42 00       	movb   $0x0,0x42(%r14)
+  1690fc:	e9 e6 03 00 00       	jmp    1694e7 <<temiya::runtime::Object>::try_get_own_property+0x747>
+  169101:	48 83 bd 38 01 00 00 	cmpq   $0x0,0x138(%rbp)
+  169108:	00 
+  169109:	74 67                	je     169172 <<temiya::runtime::Object>::try_get_own_property+0x3d2>
+  16910b:	4c 89 ff             	mov    %r15,%rdi
+  16910e:	ff 15 dc 38 1f 00    	call   *0x1f38dc(%rip)        # 35c9f0 <_DYNAMIC+0x720>
+  169114:	a8 01                	test   $0x1,%al
+  169116:	74 5a                	je     169172 <<temiya::runtime::Object>::try_get_own_property+0x3d2>
+  169118:	48 8b bd 38 01 00 00 	mov    0x138(%rbp),%rdi
+  16911f:	89 54 24 28          	mov    %edx,0x28(%rsp)
+  169123:	48 8b 07             	mov    (%rdi),%rax
+  169126:	49 ff c4             	inc    %r12
+  169129:	49 31 c4             	xor    %rax,%r12
+  16912c:	48 85 c0             	test   %rax,%rax
+  16912f:	b8 01 00 00 00       	mov    $0x1,%eax
+  169134:	49 0f 48 c4          	cmovs  %r12,%rax
+  169138:	48 85 c0             	test   %rax,%rax
+  16913b:	0f 84 ea 00 00 00    	je     16922b <<temiya::runtime::Object>::try_get_own_property+0x48b>
+  169141:	48 83 f8 01          	cmp    $0x1,%rax
+  169145:	0f 85 f6 00 00 00    	jne    169241 <<temiya::runtime::Object>::try_get_own_property+0x4a1>
+  16914b:	89 d0                	mov    %edx,%eax
+  16914d:	48 39 47 10          	cmp    %rax,0x10(%rdi)
+  169151:	0f 86 14 01 00 00    	jbe    16926b <<temiya::runtime::Object>::try_get_own_property+0x4cb>
+  169157:	48 8b 4f 08          	mov    0x8(%rdi),%rcx
+  16915b:	48 8d 04 c0          	lea    (%rax,%rax,8),%rax
+  16915f:	83 3c c1 ff          	cmpl   $0xffffffff,(%rcx,%rax,8)
+  169163:	0f 84 02 01 00 00    	je     16926b <<temiya::runtime::Object>::try_get_own_property+0x4cb>
+  169169:	48 8d 34 c1          	lea    (%rcx,%rax,8),%rsi
+  16916d:	e9 e5 00 00 00       	jmp    169257 <<temiya::runtime::Object>::try_get_own_property+0x4b7>
+  169172:	48 8b 85 c8 00 00 00 	mov    0xc8(%rbp),%rax
+  169179:	48 8b 95 08 01 00 00 	mov    0x108(%rbp),%rdx
+  169180:	48 39 c2             	cmp    %rax,%rdx
+  169183:	73 61                	jae    1691e6 <<temiya::runtime::Object>::try_get_own_property+0x446>
+  169185:	48 8b 8d c0 00 00 00 	mov    0xc0(%rbp),%rcx
+  16918c:	48 8d 14 52          	lea    (%rdx,%rdx,2),%rdx
+  169190:	48 c1 e2 05          	shl    $0x5,%rdx
+  169194:	4c 8d 24 11          	lea    (%rcx,%rdx,1),%r12
+  169198:	0f b6 74 11 48       	movzbl 0x48(%rcx,%rdx,1),%esi
+  16919d:	41 0f b6 3f          	movzbl (%r15),%edi
+  1691a1:	40 80 fe ff          	cmp    $0xff,%sil
+  1691a5:	74 66                	je     16920d <<temiya::runtime::Object>::try_get_own_property+0x46d>
+  1691a7:	40 80 ff ff          	cmp    $0xff,%dil
+  1691ab:	0f 84 06 01 00 00    	je     1692b7 <<temiya::runtime::Object>::try_get_own_property+0x517>
+  1691b1:	40 08 f7             	or     %sil,%dil
+  1691b4:	0f 84 bb 00 00 00    	je     169275 <<temiya::runtime::Object>::try_get_own_property+0x4d5>
+  1691ba:	48 8d 3c 11          	lea    (%rcx,%rdx,1),%rdi
+  1691be:	48 83 c7 48          	add    $0x48,%rdi
+  1691c2:	4c 89 fe             	mov    %r15,%rsi
+  1691c5:	ff 15 45 37 1f 00    	call   *0x1f3745(%rip)        # 35c910 <_DYNAMIC+0x640>
+  1691cb:	84 c0                	test   %al,%al
+  1691cd:	0f 85 8c 02 00 00    	jne    16945f <<temiya::runtime::Object>::try_get_own_property+0x6bf>
+  1691d3:	4c 89 6c 24 10       	mov    %r13,0x10(%rsp)
+  1691d8:	4c 89 74 24 18       	mov    %r14,0x18(%rsp)
+  1691dd:	48 8b 85 c8 00 00 00 	mov    0xc8(%rbp),%rax
+  1691e4:	eb 0a                	jmp    1691f0 <<temiya::runtime::Object>::try_get_own_property+0x450>
+  1691e6:	4c 89 6c 24 10       	mov    %r13,0x10(%rsp)
+  1691eb:	4c 89 74 24 18       	mov    %r14,0x18(%rsp)
+  1691f0:	48 85 c0             	test   %rax,%rax
+  1691f3:	0f 85 c8 00 00 00    	jne    1692c1 <<temiya::runtime::Object>::try_get_own_property+0x521>
+  1691f9:	b9 02 00 00 00       	mov    $0x2,%ecx
+  1691fe:	4c 8b 74 24 18       	mov    0x18(%rsp),%r14
+  169203:	4c 8b 6c 24 10       	mov    0x10(%rsp),%r13
+  169208:	e9 d7 02 00 00       	jmp    1694e4 <<temiya::runtime::Object>::try_get_own_property+0x744>
+  16920d:	40 80 ff ff          	cmp    $0xff,%dil
+  169211:	0f 85 a0 00 00 00    	jne    1692b7 <<temiya::runtime::Object>::try_get_own_property+0x517>
+  169217:	49 8b 4c 24 50       	mov    0x50(%r12),%rcx
+  16921c:	49 3b 4f 08          	cmp    0x8(%r15),%rcx
+  169220:	0f 85 91 00 00 00    	jne    1692b7 <<temiya::runtime::Object>::try_get_own_property+0x517>
+  169226:	e9 34 02 00 00       	jmp    16945f <<temiya::runtime::Object>::try_get_own_property+0x6bf>
+  16922b:	89 d0                	mov    %edx,%eax
+  16922d:	48 39 47 18          	cmp    %rax,0x18(%rdi)
+  169231:	76 38                	jbe    16926b <<temiya::runtime::Object>::try_get_own_property+0x4cb>
+  169233:	48 8d 34 c0          	lea    (%rax,%rax,8),%rsi
+  169237:	48 c1 e6 03          	shl    $0x3,%rsi
+  16923b:	48 03 77 10          	add    0x10(%rdi),%rsi
+  16923f:	eb 16                	jmp    169257 <<temiya::runtime::Object>::try_get_own_property+0x4b7>
+  169241:	48 83 c7 08          	add    $0x8,%rdi
+  169245:	48 8d 74 24 28       	lea    0x28(%rsp),%rsi
+  16924a:	e8 51 83 09 00       	call   2015a0 <<alloc::collections::btree::map::BTreeMap<u32, temiya::runtime::stored::StoredDescriptor>>::get::<u32>>
+  16924f:	48 89 c6             	mov    %rax,%rsi
+  169252:	48 85 c0             	test   %rax,%rax
+  169255:	74 14                	je     16926b <<temiya::runtime::Object>::try_get_own_property+0x4cb>
+  169257:	48 8d 7c 24 28       	lea    0x28(%rsp),%rdi
+  16925c:	48 8b 54 24 20       	mov    0x20(%rsp),%rdx
+  169261:	e8 3a 9c 03 00       	call   1a2ea0 <<temiya::runtime::stored::StoredDescriptor>::load>
+  169266:	e9 67 01 00 00       	jmp    1693d2 <<temiya::runtime::Object>::try_get_own_property+0x632>
+  16926b:	b9 02 00 00 00       	mov    $0x2,%ecx
+  169270:	e9 6f 02 00 00       	jmp    1694e4 <<temiya::runtime::Object>::try_get_own_property+0x744>
+  169275:	41 0f b6 4c 24 49    	movzbl 0x49(%r12),%ecx
+  16927b:	41 3a 4f 01          	cmp    0x1(%r15),%cl
+  16927f:	75 36                	jne    1692b7 <<temiya::runtime::Object>::try_get_own_property+0x517>
+  169281:	f3 41 0f 6f 44 24 4a 	movdqu 0x4a(%r12),%xmm0
+  169288:	f3 41 0f 6f 4f 02    	movdqu 0x2(%r15),%xmm1
+  16928e:	66 0f 74 c8          	pcmpeqb %xmm0,%xmm1
+  169292:	66 41 0f 6e 44 24 5a 	movd   0x5a(%r12),%xmm0
+  169299:	66 41 0f 6e 57 12    	movd   0x12(%r15),%xmm2
+  16929f:	66 0f 74 d0          	pcmpeqb %xmm0,%xmm2
+  1692a3:	66 0f db d1          	pand   %xmm1,%xmm2
+  1692a7:	66 0f d7 ca          	pmovmskb %xmm2,%ecx
+  1692ab:	81 f9 ff ff 00 00    	cmp    $0xffff,%ecx
+  1692b1:	0f 84 a8 01 00 00    	je     16945f <<temiya::runtime::Object>::try_get_own_property+0x6bf>
+  1692b7:	4c 89 6c 24 10       	mov    %r13,0x10(%rsp)
+  1692bc:	4c 89 74 24 18       	mov    %r14,0x18(%rsp)
+  1692c1:	4c 8b a5 c0 00 00 00 	mov    0xc0(%rbp),%r12
+  1692c8:	4c 8d 2c 40          	lea    (%rax,%rax,2),%r13
+  1692cc:	49 c1 e5 05          	shl    $0x5,%r13
+  1692d0:	4d 01 e5             	add    %r12,%r13
+  1692d3:	45 0f b6 37          	movzbl (%r15),%r14d
+  1692d7:	41 80 fe ff          	cmp    $0xff,%r14b
+  1692db:	0f 84 a2 00 00 00    	je     169383 <<temiya::runtime::Object>::try_get_own_property+0x5e3>
+  1692e1:	41 0f b6 47 01       	movzbl 0x1(%r15),%eax
+  1692e6:	88 44 24 0f          	mov    %al,0xf(%rsp)
+  1692ea:	49 83 c4 48          	add    $0x48,%r12
+  1692ee:	31 db                	xor    %ebx,%ebx
+  1692f0:	eb 26                	jmp    169318 <<temiya::runtime::Object>::try_get_own_property+0x578>
+  1692f2:	66 66 66 66 66 2e 0f 	data16 data16 data16 data16 cs nopw 0x0(%rax,%rax,1)
+  1692f9:	1f 84 00 00 00 00 00 
+  169300:	48 ff c3             	inc    %rbx
+  169303:	49 8d 44 24 60       	lea    0x60(%r12),%rax
+  169308:	49 83 c4 18          	add    $0x18,%r12
+  16930c:	4d 39 ec             	cmp    %r13,%r12
+  16930f:	49 89 c4             	mov    %rax,%r12
+  169312:	0f 84 e1 fe ff ff    	je     1691f9 <<temiya::runtime::Object>::try_get_own_property+0x459>
+  169318:	41 0f b6 04 24       	movzbl (%r12),%eax
+  16931d:	3c ff                	cmp    $0xff,%al
+  16931f:	74 df                	je     169300 <<temiya::runtime::Object>::try_get_own_property+0x560>
+  169321:	44 08 f0             	or     %r14b,%al
+  169324:	74 1a                	je     169340 <<temiya::runtime::Object>::try_get_own_property+0x5a0>
+  169326:	4c 89 e7             	mov    %r12,%rdi
+  169329:	4c 89 fe             	mov    %r15,%rsi
+  16932c:	ff 15 de 35 1f 00    	call   *0x1f35de(%rip)        # 35c910 <_DYNAMIC+0x640>
+  169332:	84 c0                	test   %al,%al
+  169334:	74 ca                	je     169300 <<temiya::runtime::Object>::try_get_own_property+0x560>
+  169336:	eb 45                	jmp    16937d <<temiya::runtime::Object>::try_get_own_property+0x5dd>
+  169338:	0f 1f 84 00 00 00 00 	nopl   0x0(%rax,%rax,1)
+  16933f:	00 
+  169340:	0f b6 44 24 0f       	movzbl 0xf(%rsp),%eax
+  169345:	41 38 44 24 01       	cmp    %al,0x1(%r12)
+  16934a:	75 b4                	jne    169300 <<temiya::runtime::Object>::try_get_own_property+0x560>
+  16934c:	f3 41 0f 6f 44 24 02 	movdqu 0x2(%r12),%xmm0
+  169353:	f3 41 0f 6f 4f 02    	movdqu 0x2(%r15),%xmm1
+  169359:	66 0f 74 c8          	pcmpeqb %xmm0,%xmm1
+  16935d:	66 41 0f 6e 44 24 12 	movd   0x12(%r12),%xmm0
+  169364:	66 41 0f 6e 57 12    	movd   0x12(%r15),%xmm2
+  16936a:	66 0f 74 d0          	pcmpeqb %xmm0,%xmm2
+  16936e:	66 0f db d1          	pand   %xmm1,%xmm2
+  169372:	66 0f d7 c2          	pmovmskb %xmm2,%eax
+  169376:	3d ff ff 00 00       	cmp    $0xffff,%eax
+  16937b:	75 83                	jne    169300 <<temiya::runtime::Object>::try_get_own_property+0x560>
+  16937d:	49 83 c4 b8          	add    $0xffffffffffffffb8,%r12
+  169381:	eb 2c                	jmp    1693af <<temiya::runtime::Object>::try_get_own_property+0x60f>
+  169383:	49 8b 47 08          	mov    0x8(%r15),%rax
+  169387:	31 db                	xor    %ebx,%ebx
+  169389:	eb 15                	jmp    1693a0 <<temiya::runtime::Object>::try_get_own_property+0x600>
+  16938b:	0f 1f 44 00 00       	nopl   0x0(%rax,%rax,1)
+  169390:	49 83 c4 60          	add    $0x60,%r12
+  169394:	48 ff c3             	inc    %rbx
+  169397:	4d 39 ec             	cmp    %r13,%r12
+  16939a:	0f 84 59 fe ff ff    	je     1691f9 <<temiya::runtime::Object>::try_get_own_property+0x459>
+  1693a0:	41 80 7c 24 48 ff    	cmpb   $0xff,0x48(%r12)
+  1693a6:	75 e8                	jne    169390 <<temiya::runtime::Object>::try_get_own_property+0x5f0>
+  1693a8:	49 39 44 24 50       	cmp    %rax,0x50(%r12)
+  1693ad:	75 e1                	jne    169390 <<temiya::runtime::Object>::try_get_own_property+0x5f0>
+  1693af:	4c 8b 74 24 18       	mov    0x18(%rsp),%r14
+  1693b4:	4c 8b 6c 24 10       	mov    0x10(%rsp),%r13
+  1693b9:	48 89 9d 08 01 00 00 	mov    %rbx,0x108(%rbp)
+  1693c0:	48 8d 7c 24 28       	lea    0x28(%rsp),%rdi
+  1693c5:	4c 89 e6             	mov    %r12,%rsi
+  1693c8:	48 8b 54 24 20       	mov    0x20(%rsp),%rdx
+  1693cd:	e8 ce 9a 03 00       	call   1a2ea0 <<temiya::runtime::stored::StoredDescriptor>::load>
+  1693d2:	48 8b 44 24 28       	mov    0x28(%rsp),%rax
+  1693d7:	f3 0f 6f 44 24 30    	movdqu 0x30(%rsp),%xmm0
+  1693dd:	66 0f 7f 44 24 70    	movdqa %xmm0,0x70(%rsp)
+  1693e3:	f3 0f 6f 4c 24 40    	movdqu 0x40(%rsp),%xmm1
+  1693e9:	66 0f 7f 8c 24 80 00 	movdqa %xmm1,0x80(%rsp)
+  1693f0:	00 00 
+  1693f2:	48 8b 4c 24 50       	mov    0x50(%rsp),%rcx
+  1693f7:	48 89 8c 24 90 00 00 	mov    %rcx,0x90(%rsp)
+  1693fe:	00 
+  1693ff:	f3 0f 6f 54 24 58    	movdqu 0x58(%rsp),%xmm2
+  169405:	66 0f 7f 94 24 a0 00 	movdqa %xmm2,0xa0(%rsp)
+  16940c:	00 00 
+  16940e:	48 8b 54 24 68       	mov    0x68(%rsp),%rdx
+  169413:	48 89 94 24 b0 00 00 	mov    %rdx,0xb0(%rsp)
+  16941a:	00 
+  16941b:	49 89 4e 28          	mov    %rcx,0x28(%r14)
+  16941f:	f3 41 0f 7f 4e 18    	movdqu %xmm1,0x18(%r14)
+  169425:	f3 41 0f 7f 46 08    	movdqu %xmm0,0x8(%r14)
+  16942b:	48 c7 c1 ff ff ff ff 	mov    $0xffffffffffffffff,%rcx
+  169432:	48 83 f8 02          	cmp    $0x2,%rax
+  169436:	0f 84 a8 00 00 00    	je     1694e4 <<temiya::runtime::Object>::try_get_own_property+0x744>
+  16943c:	48 8b 8c 24 b0 00 00 	mov    0xb0(%rsp),%rcx
+  169443:	00 
+  169444:	49 89 4e 40          	mov    %rcx,0x40(%r14)
+  169448:	66 0f 6f 84 24 a0 00 	movdqa 0xa0(%rsp),%xmm0
+  16944f:	00 00 
+  169451:	f3 41 0f 7f 46 30    	movdqu %xmm0,0x30(%r14)
+  169457:	48 89 c1             	mov    %rax,%rcx
+  16945a:	e9 85 00 00 00       	jmp    1694e4 <<temiya::runtime::Object>::try_get_own_property+0x744>
+  16945f:	48 8d 7c 24 28       	lea    0x28(%rsp),%rdi
+  169464:	4c 89 e6             	mov    %r12,%rsi
+  169467:	48 8b 54 24 20       	mov    0x20(%rsp),%rdx
+  16946c:	e8 2f 9a 03 00       	call   1a2ea0 <<temiya::runtime::stored::StoredDescriptor>::load>
+  169471:	48 8b 44 24 28       	mov    0x28(%rsp),%rax
+  169476:	0f 10 44 24 30       	movups 0x30(%rsp),%xmm0
+  16947b:	0f 29 44 24 70       	movaps %xmm0,0x70(%rsp)
+  169480:	0f 10 44 24 40       	movups 0x40(%rsp),%xmm0
+  169485:	0f 29 84 24 80 00 00 	movaps %xmm0,0x80(%rsp)
+  16948c:	00 
+  16948d:	48 8b 4c 24 50       	mov    0x50(%rsp),%rcx
+  169492:	48 89 8c 24 90 00 00 	mov    %rcx,0x90(%rsp)
+  169499:	00 
+  16949a:	48 c7 c1 ff ff ff ff 	mov    $0xffffffffffffffff,%rcx
+  1694a1:	48 83 f8 02          	cmp    $0x2,%rax
+  1694a5:	74 16                	je     1694bd <<temiya::runtime::Object>::try_get_own_property+0x71d>
+  1694a7:	48 8b 4c 24 68       	mov    0x68(%rsp),%rcx
+  1694ac:	49 89 4e 40          	mov    %rcx,0x40(%r14)
+  1694b0:	0f 10 44 24 58       	movups 0x58(%rsp),%xmm0
+  1694b5:	41 0f 11 46 30       	movups %xmm0,0x30(%r14)
+  1694ba:	48 89 c1             	mov    %rax,%rcx
+  1694bd:	48 8b 84 24 90 00 00 	mov    0x90(%rsp),%rax
+  1694c4:	00 
+  1694c5:	49 89 46 28          	mov    %rax,0x28(%r14)
+  1694c9:	66 0f 6f 44 24 70    	movdqa 0x70(%rsp),%xmm0
+  1694cf:	66 0f 6f 8c 24 80 00 	movdqa 0x80(%rsp),%xmm1
+  1694d6:	00 00 
+  1694d8:	f3 41 0f 7f 4e 18    	movdqu %xmm1,0x18(%r14)
+  1694de:	f3 41 0f 7f 46 08    	movdqu %xmm0,0x8(%r14)
+  1694e4:	49 89 0e             	mov    %rcx,(%r14)
+  1694e7:	49 ff 4d 00          	decq   0x0(%r13)
+  1694eb:	4c 89 f0             	mov    %r14,%rax
+  1694ee:	48 81 c4 b8 00 00 00 	add    $0xb8,%rsp
+  1694f5:	5b                   	pop    %rbx
+  1694f6:	41 5c                	pop    %r12
+  1694f8:	41 5d                	pop    %r13
+  1694fa:	41 5e                	pop    %r14
+  1694fc:	41 5f                	pop    %r15
+  1694fe:	5d                   	pop    %rbp
+  1694ff:	c3                   	ret
+  169500:	48 8d 3d b1 bf 1b 00 	lea    0x1bbfb1(%rip),%rdi        # 3254b8 <anon.33081e7d466d5c5988a99c90e098ed80.146.llvm.4462660743599316643+0x30>
+  169507:	ff 15 4b 35 1f 00    	call   *0x1f354b(%rip)        # 35ca58 <_DYNAMIC+0x788>
+  16950d:	48 8d 3d bc bf 1b 00 	lea    0x1bbfbc(%rip),%rdi        # 3254d0 <anon.33081e7d466d5c5988a99c90e098ed80.146.llvm.4462660743599316643+0x48>
+  169514:	ff 15 3e 35 1f 00    	call   *0x1f353e(%rip)        # 35ca58 <_DYNAMIC+0x788>
+  16951a:	48 8d 0d 1f bc 1b 00 	lea    0x1bbc1f(%rip),%rcx        # 325140 <anon.33081e7d466d5c5988a99c90e098ed80.79.llvm.4462660743599316643+0xb8>
+  169521:	ba 0a 00 00 00       	mov    $0xa,%edx
+  169526:	31 ff                	xor    %edi,%edi
+  169528:	ff 15 6a 30 1f 00    	call   *0x1f306a(%rip)        # 35c598 <_DYNAMIC+0x2c8>
+  16952e:	eb 10                	jmp    169540 <<temiya::runtime::Object>::try_get_own_property+0x7a0>
+  169530:	bf 02 00 00 00       	mov    $0x2,%edi
+  169535:	be 02 00 00 00       	mov    $0x2,%esi
+  16953a:	ff 15 50 30 1f 00    	call   *0x1f3050(%rip)        # 35c590 <_DYNAMIC+0x2c0>
+  169540:	0f 0b                	ud2
+  169542:	4c 89 6c 24 10       	mov    %r13,0x10(%rsp)
+  169547:	48 89 c3             	mov    %rax,%rbx
+  16954a:	48 8d 7c 24 28       	lea    0x28(%rsp),%rdi
+  16954f:	e8 fc 70 ff ff       	call   160650 <core::ptr::drop_glue::<temiya::runtime::string::JsString>>
+  169554:	eb 10                	jmp    169566 <<temiya::runtime::Object>::try_get_own_property+0x7c6>
+  169556:	ff 15 bc 2f 1f 00    	call   *0x1f2fbc(%rip)        # 35c518 <_DYNAMIC+0x248>
+  16955c:	eb 05                	jmp    169563 <<temiya::runtime::Object>::try_get_own_property+0x7c3>
+  16955e:	4c 89 6c 24 10       	mov    %r13,0x10(%rsp)
+  169563:	48 89 c3             	mov    %rax,%rbx
+  169566:	48 8b 44 24 10       	mov    0x10(%rsp),%rax
+  16956b:	48 ff 08             	decq   (%rax)
+  16956e:	48 89 df             	mov    %rbx,%rdi
+  169571:	e8 9a 7d 1b 00       	call   321310 <_Unwind_Resume@plt>

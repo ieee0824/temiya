@@ -36,6 +36,8 @@ meet the performance objective. Its unfavorable reports remain preserved in
 original recording snapshot; subsequent results are in the experiment folders.
 The view trial qualifies all33 actual-Boa pairs on ARM64, but hosted cohorts have
 4 and5 before/after regressions and one actual-Boa noise decision. Full runtime
-security remains pending and the view is not accepted for merge. Keep original11 counts/oracles/
+security passes119 exact Miri tests and all19 jobs; the view is still not accepted
+for merge. The x64 diagnostic localizes extra work in general binding writes.
+Keep original11 counts/oracles/
 15samples/3pairs/512MiB/180seconds/10%-MAD gates and all observations, including
 unfavorable/noise outcomes. Allocation bytes are not timing or peak memory.

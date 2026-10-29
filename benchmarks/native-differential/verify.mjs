@@ -4,6 +4,7 @@ import os from 'node:os';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {execFileSync} from 'node:child_process';
+import {gunzipSync} from 'node:zlib';
 import {fileURLToPath} from 'node:url';
 import {validateObservation, canonicalObservation} from '../../scripts/differential-observation.mjs';
 
@@ -13,6 +14,12 @@ const sha = b => createHash('sha256').update(b).digest('hex');
 const canonical = n => typeof n === 'string' && /^[a-zA-Z0-9_./-]+$/.test(n) &&
   !path.isAbsolute(n) && !n.split('/').some(p => !p || p === '.' || p === '..');
 assert.equal(evidence.schema, 1);
+assert(canonical(evidence.ci.file) && !evidence.ci.file.includes('/'));
+const ciBytes = gunzipSync(fs.readFileSync(path.join(root, evidence.ci.file)));
+assert.equal(ciBytes.length, evidence.ci.decoded_bytes);
+assert.equal(sha(ciBytes), evidence.ci.decoded_sha256);
+for (const hash of [evidence.ci.stable_worker_sha256, evidence.ci.msrv_worker_sha256])
+  assert(ciBytes.toString('utf8').includes(hash + '  target/release/examples/measure_workload'));
 assert(canonical(evidence.archive.file) && !evidence.archive.file.includes('/'));
 const archive = path.join(root, evidence.archive.file), compressed = fs.readFileSync(archive);
 assert.equal(compressed.length, evidence.archive.bytes); assert.equal(sha(compressed), evidence.archive.sha256);

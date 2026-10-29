@@ -32,12 +32,22 @@ Initial recorded checks:
 - The first eighteen-case audit before the link fix had fourteen pass/four fail
   for each backend. The two missing-indirect-export failures motivate the real
   linker fix; the TLA thenable/Promise gaps remain separately unqualified.
+- Repeating those eighteen cases after the fix gives sixteen pass/two fail for
+  each backend. Both missing-indirect-export cases now pass; both TLA failures
+  remain recorded.
+- The complete 251-file top-level-await subtree audit executes 253 variants
+  through Auto: 171 pass, 82 fail, zero skip. Every requested path has a result;
+  all eleven chunk processes completed. The unchanged pinned harness and a
+  1000 ms async deadline are used. Promise, thenable assimilation, dynamic import
+  and other missing language support remain failures, including incomplete
+  async notifications. This is an audit, not full TLA qualification.
 
 The fixed pin is d53ebc8b1931d9f1541e43d59650776e4b766248. Includes and fixtures
 are read unchanged from Git objects. Gzip files preserve raw command/report bytes;
 `evidence.json` records compressed and uncompressed SHA-256 values.
 
-Strict Miri with collection at every allocation, the wider TLA audit, final CI
-and new performance qualification are pending. The freshly built default Engine
+CI passed at source 67f428322c5249c0422ad4b7e6be4bcb1951dab2. Strict Miri
+with collection at every allocation and new performance qualification are
+pending. The freshly built default Engine
 worker differs from the previous source, so earlier Boa timing reports do not
 qualify this candidate's speed. This draft is not ready to merge.

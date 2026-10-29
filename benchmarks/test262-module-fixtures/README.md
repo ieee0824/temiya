@@ -1,4 +1,4 @@
-# Module fixture qualification (in progress)
+# Module fixture qualification
 
 Issue #149 validates real module resolution/link/evaluation through the public
 Engine and the actual Test262 CLI. This candidate rejects unpaired UTF-16
@@ -54,6 +54,31 @@ Strict-provenance, symbolic-alignment Miri passed all five module graph GC tests
 (including allocation-by-allocation collection) and both public API regressions.
 Their terminal logs and CI output are preserved and checked by `verify.mjs`.
 
-New performance qualification is pending. The freshly built default Engine
-worker differs from the previous source, so earlier Boa timing reports do not
-qualify this candidate's speed. This draft is not ready to merge.
+The new default Engine worker is qualified independently in
+[`performance/`](performance/). Sixteen complete reports preserve four
+comparisons per environment: candidate/main, candidate/actual Boa, main/actual
+Boa, and identical candidate executables. Inputs, oracles, 15 samples, three
+alternating pairs, limits and thresholds are unchanged. All reports pass the
+independent 66-worker/1056-value integrity and statistical checks.
+
+| Environment | Candidate vs actual Boa | Candidate vs main | Identical executable control |
+| --- | --- | --- | --- |
+| ARM64 | 26 faster / 7 noise | 31 noise / 1 slower / 1 faster | 30 noise / 1 slower / 2 faster |
+| x64 copy 1 | 33 faster | 30 noise / 3 slower | 32 noise / 1 faster |
+| x64 copy 2 | 33 faster | 33 noise | 32 noise / 1 faster |
+| One planned x64 repeat | 33 faster | 31 noise / 2 slower | 33 noise |
+
+All three x64 cohorts report AMD EPYC 7763. No CPU model filter was used.
+The repeat preserves the initial ELF hashes and follows the documented second-run
+policy. The initial copy 1 primitive-string-method slowdown reproduces in two
+repeat pairs (ratios 1.111175 and 1.104713, threshold 0.10); the third is within
+noise (1.080293). The initial three slower pairs, repeat two slower pairs and ARM
+call pair 2 slowdown remain unchanged in the records. Their physical cause is
+unknown; neither Boa superiority nor variability in another control proves a fix.
+The fixed eleven workloads qualify candidate/Boa speed on the three recorded
+x64 cohorts only. ARM and whole-engine superiority are not qualified.
+
+Run `node benchmarks/test262-module-fixtures/performance/verify.mjs` to verify
+all sixteen reports, compiler/features/locks/binary identities and source hashes,
+along with the functional evidence. Performance follow-up is tracked separately;
+these module resolution/link fixes do not claim to eliminate baseline regressions.

@@ -77,9 +77,9 @@ three pairs on both machines; primitive string-property access is approximately
 1.28–1.31 times baseline. Property megamorphism also regresses in all three
 pairs on both machines. These repeatable losses, alongside clean same-binary
 controls, cannot be dismissed by pointing to the successful Boa comparisons.
-An additional full-input diagnostic of string-concat, primitive-string-property,
-prop-mega and array is in progress. No extra timing replay replaces these
-observations.
+An additional eight full-input diagnostics of string-concat,
+primitive-string-property, prop-mega and array completed successfully. No extra
+timing replay replaces these observations.
 
 ## Matched instruction diagnostics
 
@@ -90,6 +90,18 @@ ratios are 1.496275 and 1.992703; every event counter and raw vector is retained
 These models include startup/setup and are not hardware events or native speed.
 They do not establish the cause of the ARM64 timing differences. The candidate
 ELF hash matches the initial stable CI worker and both hosted native cohorts.
+
+The additional eight runs retain the same ELF identities and exact full inputs.
+Their instruction ratios are 0.999974634 (string-concat), 0.999991517
+(primitive-string-property), 0.999993815 (prop-mega) and 0.999996849 (array).
+Read/write totals also remain close. The array cache model changes include
+I1-read misses at 2.244331 times baseline, D1-read misses at 2.618102 and
+conditional-branch misses at 1.626503. Full counts, denominators and vectors are
+retained; these ratios do not establish native hardware behavior or causation.
+
+A [follow-up candidate](signals-followup.md) makes checkpoint/hook storage lazy.
+Its new native qualification is pending; these initial-candidate measurements
+continue to refer only to abbeac6.
 
 ## Nayuta
 

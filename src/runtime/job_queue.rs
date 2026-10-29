@@ -38,22 +38,33 @@ impl<F: FnOnce() -> RuntimeResult<()> + 'static> TracedJob for HostJob<F> {
 pub(super) struct JobQueueData {
     pub(super) facade: Weak<JobQueueRoot>,
     jobs: VecDeque<Rc<dyn TracedJob>>,
-    checkpoints: VecDeque<Rc<dyn TracedJob>>,
     active: Vec<Rc<dyn TracedJob>>,
     draining: bool,
+    // Ordinary synchronous Realms need neither a rejection hook nor checkpoint
+    // storage. Keep both out of the always-allocated queue record.
+    signals: Option<Box<JobQueueSignals>>,
+}
+#[derive(Default)]
+struct JobQueueSignals {
+    checkpoints: VecDeque<Rc<dyn TracedJob>>,
     unhandled_hook: Option<UnhandledHook>,
+}
+impl JobQueueData {
+    fn signals_mut(&mut self) -> &mut JobQueueSignals {
+        self.signals.get_or_insert_with(Box::default)
+    }
 }
 pub(super) type ManagedJobQueue = RefCell<JobQueueData>;
 impl Trace for RefCell<JobQueueData> {
     fn trace(&self, tracer: &mut Tracer<'_>) {
         let data = self.borrow();
-        for job in data
-            .jobs
-            .iter()
-            .chain(&data.checkpoints)
-            .chain(&data.active)
-        {
+        for job in data.jobs.iter().chain(&data.active) {
             job.trace(tracer);
+        }
+        if let Some(signals) = &data.signals {
+            for job in &signals.checkpoints {
+                job.trace(tracer);
+            }
         }
     }
 }
@@ -178,7 +189,7 @@ impl JobQueue {
         }
         let mut data = self.0.borrow_mut();
         if checkpoint {
-            data.checkpoints.push_back(Rc::new(job));
+            data.signals_mut().checkpoints.push_back(Rc::new(job));
         } else {
             data.jobs.push_back(Rc::new(job));
         }
@@ -189,7 +200,11 @@ impl JobQueue {
     #[must_use]
     pub fn len(&self) -> usize {
         let data = self.0.borrow();
-        data.jobs.len() + data.checkpoints.len()
+        data.jobs.len()
+            + data
+                .signals
+                .as_ref()
+                .map_or(0, |signals| signals.checkpoints.len())
     }
     /// Returns whether the queue has no pending jobs.
     #[must_use]
@@ -203,11 +218,11 @@ impl JobQueue {
             let mut data = self.0.borrow_mut();
             // Rejection checks observe the end of the microtask checkpoint,
             // after queued reactions have had a chance to attach a handler.
-            let Some(job) = data
-                .jobs
-                .pop_front()
-                .or_else(|| data.checkpoints.pop_front())
-            else {
+            let Some(job) = data.jobs.pop_front().or_else(|| {
+                data.signals
+                    .as_mut()
+                    .and_then(|signals| signals.checkpoints.pop_front())
+            }) else {
                 return Ok(false);
             };
             data.active.push(job.clone());
@@ -239,12 +254,22 @@ impl JobQueue {
 
     /// Installs the host callback used for still-unhandled rejections.
     pub fn set_unhandled_rejection_hook(&self, hook: impl Fn(RuntimeError) + 'static) {
-        let retired = self.0.borrow_mut().unhandled_hook.replace(Rc::new(hook));
+        let retired = self
+            .0
+            .borrow_mut()
+            .signals_mut()
+            .unhandled_hook
+            .replace(Rc::new(hook));
         drop(retired);
     }
 
     pub(super) fn report_unhandled(&self, error: RuntimeError) {
-        let hook = self.0.borrow().unhandled_hook.clone();
+        let hook = self
+            .0
+            .borrow()
+            .signals
+            .as_ref()
+            .and_then(|signals| signals.unhandled_hook.clone());
         if let Some(hook) = hook {
             hook(error);
         }
@@ -258,27 +283,34 @@ mod tests {
 
     #[test]
     fn allocation_safepoints_trace_unpublished_queue_payloads() {
-        let runtime = Runtime::new();
-        runtime.set_allocation_collection_interval(0);
-        let object = Object::new_in(&runtime);
-        object
-            .create_data_property("answer".into(), Value::Number(42.0))
-            .unwrap();
-        let weak = object.downgrade();
-        let mut incoming = JobQueueData::default();
-        incoming.jobs.push_back(Rc::new(ReadJob {
-            capture: StoredObject::initial(Some(&runtime), &object).unwrap(),
-            nested: None,
-            fail: false,
-        }));
-        drop(object);
-        assert_eq!(runtime.diagnostics().rooted, 0);
-        let queue = runtime.allocate_job_queue(incoming);
-        assert!(weak.upgrade().is_some());
-        assert!(queue.run_one().unwrap());
-        drop(queue);
-        assert_eq!(runtime.collect_migration_graph().unwrap().retained, 0);
-        assert!(weak.upgrade().is_none());
+        for checkpoint in [false, true] {
+            let runtime = Runtime::new();
+            runtime.set_allocation_collection_interval(0);
+            let object = Object::new_in(&runtime);
+            object
+                .create_data_property("answer".into(), Value::Number(42.0))
+                .unwrap();
+            let weak = object.downgrade();
+            let mut incoming = JobQueueData::default();
+            let job = Rc::new(ReadJob {
+                capture: StoredObject::initial(Some(&runtime), &object).unwrap(),
+                nested: None,
+                fail: false,
+            });
+            if checkpoint {
+                incoming.signals_mut().checkpoints.push_back(job);
+            } else {
+                incoming.jobs.push_back(job);
+            }
+            drop(object);
+            assert_eq!(runtime.diagnostics().rooted, 0);
+            let queue = runtime.allocate_job_queue(incoming);
+            assert!(weak.upgrade().is_some());
+            assert!(queue.run_one().unwrap());
+            drop(queue);
+            assert_eq!(runtime.collect_migration_graph().unwrap().retained, 0);
+            assert!(weak.upgrade().is_none());
+        }
     }
 
     struct ReadJob {

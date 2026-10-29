@@ -77,6 +77,12 @@ impl StoredFunctionClosure {
         this: Value,
         arguments: &[Value],
     ) -> RuntimeResult<Value> {
+        if self.kind == FunctionKind::Method(MethodKind::Constructor) {
+            return Err(self
+                .realm
+                .load(owner)?
+                .bind_exception(RuntimeError::type_error("class constructor requires new")));
+        }
         let closure = self.load(owner)?;
         if closure.code.generator {
             create_generator_object(&closure, owner.clone(), this, arguments).map(Value::Object)
@@ -179,7 +185,7 @@ pub(super) fn create_function(
         function
             .create_data_property("name".into(), Value::String(JsString::from(name.as_str())))?;
     }
-    if constructable {
+    if constructable && kind != FunctionKind::Method(MethodKind::Constructor) {
         function.install_lazy_function_prototype(
             evaluator
                 .realm
@@ -226,7 +232,7 @@ fn call_function(
         this_value.clone(),
         closure.code.strict,
     )
-    .with_new_target(new_target);
+    .with_new_target(new_target.clone());
     bind_parameters(
         &evaluator,
         &environment,
@@ -243,7 +249,8 @@ fn call_function(
                 environment,
                 this_value,
                 closure.code.strict,
-            );
+            )
+            .with_new_target(new_target);
             match statements.evaluate_statement(body)? {
                 Completion::Return(value) => Ok(value),
                 Completion::Normal(_) => Ok(Value::Undefined),

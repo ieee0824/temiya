@@ -501,6 +501,20 @@ pub struct ExpressionEvaluator {
 }
 
 impl ExpressionEvaluator {
+    pub(super) fn evaluate_named(
+        &self,
+        expression: &Expr,
+        name: &JsString,
+    ) -> RuntimeResult<Value> {
+        match &expression.kind {
+            ExprKind::Class(class) if class.name.is_none() => {
+                super::class::evaluate(class, self, Some(name.clone())).map(Value::Object)
+            }
+            ExprKind::Parenthesized(inner) => self.evaluate_named(inner, name),
+            _ => self.evaluate(expression),
+        }
+    }
+
     /// Creates an evaluator in the Realm's global environment.
     #[must_use]
     pub fn new(realm: Realm) -> Self {
@@ -663,9 +677,8 @@ impl ExpressionEvaluator {
                 create_function(function, FunctionKind::Method(*kind), self, None)
                     .map(|function| Evaluation::Value(Value::Object(function)))
             }
-            ExprKind::Class(_) => Err(RuntimeError::internal_error(
-                "class evaluation is not yet implemented",
-            )),
+            ExprKind::Class(class) => super::class::evaluate(class, self, None)
+                .map(|constructor| Evaluation::Value(Value::Object(constructor))),
             ExprKind::Yield { .. } => Err(RuntimeError::internal_error(
                 "yield evaluation is implemented by milestone #28",
             )),
@@ -817,7 +830,14 @@ impl ExpressionEvaluator {
     fn assignment(&self, operator: &str, target: &Expr, value: &Expr) -> RuntimeResult<Value> {
         let reference = self.evaluate_reference(target)?;
         let assigned = if operator == "=" {
-            self.evaluate(value)?
+            match &reference.name {
+                ReferenceName::Plain(ReferencedName::PropertyKey(PropertyKey::String(name)))
+                    if matches!(target.kind, ExprKind::Identifier(_)) =>
+                {
+                    self.evaluate_named(value, name)?
+                }
+                _ => self.evaluate(value)?,
+            }
         } else {
             let left = reference.get_value()?;
             if (operator == "&&=" && !left.to_boolean())

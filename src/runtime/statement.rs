@@ -84,6 +84,11 @@ pub struct StatementEvaluator {
 }
 
 impl StatementEvaluator {
+    pub(super) fn with_new_target(mut self, new_target: Option<Object>) -> Self {
+        self.expression.new_target = new_target;
+        self
+    }
+
     /// Creates an evaluator in a Realm's global environment.
     #[must_use]
     pub fn new(realm: Realm) -> Self {
@@ -288,11 +293,22 @@ impl StatementEvaluator {
                 self.evaluate_declarations(*kind, declarations)
             }
             StmtKind::FunctionDeclaration(_) => Ok(Completion::Normal(None)),
-            StmtKind::ClassDeclaration(_)
-            | StmtKind::ImportDeclaration(_)
-            | StmtKind::ExportDeclaration(_) => Err(RuntimeError::internal_error(
-                "function, class, and module declaration execution belongs to later milestones",
-            )),
+            StmtKind::ClassDeclaration(class) => {
+                let name = class.name.as_ref().ok_or_else(|| {
+                    RuntimeError::syntax_error("class declaration requires a name")
+                })?;
+                let name = binding_name(name)?;
+                let constructor = super::class::evaluate(class, &self.expression, None)?;
+                self.expression
+                    .environment
+                    .initialize_binding(&name, Value::Object(constructor))?;
+                Ok(Completion::Normal(None))
+            }
+            StmtKind::ImportDeclaration(_) | StmtKind::ExportDeclaration(_) => {
+                Err(RuntimeError::internal_error(
+                    "function, class, and module declaration execution belongs to later milestones",
+                ))
+            }
         }
     }
 
@@ -538,6 +554,15 @@ impl StatementEvaluator {
         let mut vars = vec![];
         collect_var_names(statements, &mut vars)?;
         for statement in statements {
+            if let StmtKind::ClassDeclaration(class) = &statement.kind {
+                let name = binding_name(class.name.as_ref().ok_or_else(|| {
+                    RuntimeError::syntax_error("class declaration requires a name")
+                })?)?;
+                if lexical.iter().any(|(other, _)| *other == name) {
+                    return Err(RuntimeError::syntax_error("duplicate lexical declaration"));
+                }
+                lexical.push((name, false));
+            }
             if let StmtKind::Variable { kind, declarations } = &statement.kind {
                 if *kind != VariableKind::Var {
                     for declaration in declarations {
@@ -620,6 +645,12 @@ impl StatementEvaluator {
         environment: &Environment,
     ) -> RuntimeResult<()> {
         for statement in statements {
+            if let StmtKind::ClassDeclaration(class) = &statement.kind {
+                let name = binding_name(class.name.as_ref().ok_or_else(|| {
+                    RuntimeError::syntax_error("class declaration requires a name")
+                })?)?;
+                environment.create_mutable_binding(name, false)?;
+            }
             if let StmtKind::Variable { kind, declarations } = &statement.kind {
                 if *kind != VariableKind::Var {
                     for declaration in declarations {
@@ -706,7 +737,7 @@ impl StatementEvaluator {
                             && self.variable_environment.kind() == EnvironmentKind::Function
                             && self.variable_environment.has_binding(&name)?
                         {
-                            let value = self.expression.evaluate(init)?;
+                            let value = self.expression.evaluate_named(init, &name)?;
                             self.variable_environment.set_mutable_binding(
                                 &name,
                                 value,
@@ -715,7 +746,7 @@ impl StatementEvaluator {
                         } else {
                             let reference =
                                 self.expression.evaluate_reference(&declaration.binding)?;
-                            let value = self.expression.evaluate(init)?;
+                            let value = self.expression.evaluate_named(init, &name)?;
                             reference.put_value(value)?;
                         }
                     }
@@ -724,7 +755,9 @@ impl StatementEvaluator {
                     let value = declaration
                         .init
                         .as_ref()
-                        .map_or(Ok(Value::Undefined), |init| self.expression.evaluate(init))?;
+                        .map_or(Ok(Value::Undefined), |init| {
+                            self.expression.evaluate_named(init, &name)
+                        })?;
                     self.expression
                         .environment
                         .initialize_binding(&name, value)?;

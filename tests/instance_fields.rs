@@ -125,3 +125,10 @@ fn symbol_initializer_names_use_the_actual_key_description() {
         "let key=Symbol.iterator;let other=Symbol.toStringTag;class C{[key]=function(){};[other]=class {};}let c=new C();typeof key==='symbol' && key!==other && c[key].name==='[Symbol.iterator]' && c[other].name==='[Symbol.toStringTag]';",
     );
 }
+
+#[test]
+fn get_and_set_fields_before_generators_remain_own_data_properties() {
+    check(
+        "class C{get\n*a(){return 42;}set\n*b(value){return value;}}let c=new C();let d=Object.getOwnPropertyDescriptor(c,'get');class D{get\nvalue(){return 42;}}c.hasOwnProperty('get') && c.hasOwnProperty('set') && c.get===undefined && c.set===undefined && d.writable && d.enumerable && d.configurable && c.a().next().value===42 && c.b(99).next().value===99 && new D().value===42 && !new D().hasOwnProperty('get');",
+    );
+}

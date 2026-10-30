@@ -21,6 +21,13 @@ evaluate heritage and computed keys in strict mode with the enclosing `this`
 and new target. Methods retain traced access to captured outer bindings even
 when garbage collection runs during construction or method execution.
 
+Class functions initialize their complete `length` and `name` descriptors
+together while the ordinary function object is still fresh. This reuses the
+existing internal function-property initializer rather than validating and
+reviving descriptors for independent updates. Descriptor flags and own-key
+order remain unchanged, including inferred names, symbol method names,
+accessor prefixes and the length cut-off at default/rest parameters.
+
 ```js
 class Point {
   constructor(x) { this.x = x; }

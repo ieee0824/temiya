@@ -161,3 +161,58 @@ fn object_initializer_bindings_and_home_objects_survive_reentrant_collection() {
         assert_eq!(engine.collect_garbage().unwrap().retained, 0);
     }
 }
+
+#[test]
+fn super_reference_bytecode_checks_scope_stack_and_runtime_function_operands() {
+    let mut body = function_body("function(){return 1;}").into_bytecode();
+    let enter = body.instructions[0];
+    let undefined = body.constants.len() as u32;
+    body.constants.push(Constant::Undefined);
+    let invalid_function = body.constants.len() as u32;
+    body.constants.push(Constant::Number(42.0));
+    let key = body.constants.len() as u32;
+    body.constants.push(Constant::String("value".into()));
+    body.instructions = vec![
+        enter,
+        Instruction::LoadSuperBinding,
+        Instruction::LoadConstant(key),
+        Instruction::ResolveSuperProperty { strict: true },
+        Instruction::LoadReference,
+        Instruction::DiscardReference,
+        Instruction::Return,
+    ];
+    let code = body.clone().verify().unwrap();
+    let realm = Realm::ordinary();
+    let frame = Environment::function(
+        Some(realm.global_environment()),
+        realm.intrinsic(IntrinsicId::Object),
+        None,
+        ThisBindingStatus::Uninitialized,
+    );
+    assert_eq!(
+        VirtualMachine::execute_in_function(&code, &realm, &frame)
+            .unwrap_err()
+            .kind(),
+        RuntimeErrorKind::ReferenceError
+    );
+    let mut no_scope = body.clone();
+    no_scope.instructions.remove(0);
+    assert!(no_scope.verify().is_err());
+    let mut underflow = body.clone();
+    underflow.instructions.remove(1);
+    assert!(underflow.verify().is_err());
+    body.instructions.splice(
+        1..2,
+        [
+            Instruction::LoadConstant(undefined),
+            Instruction::LoadConstant(invalid_function),
+        ],
+    );
+    let invalid = body.verify().unwrap();
+    assert_eq!(
+        VirtualMachine::execute_in_function(&invalid, &realm, &frame)
+            .unwrap_err()
+            .kind(),
+        RuntimeErrorKind::TypeError
+    );
+}

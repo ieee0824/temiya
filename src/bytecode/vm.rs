@@ -672,6 +672,31 @@ impl VirtualMachine {
                             .clone(),
                     )?));
                 }
+                Instruction::LoadSuperBinding => {
+                    let (receiver, function) = scopes
+                        .last()
+                        .expect("verified super scope")
+                        .environment
+                        .nearest_super_binding()?;
+                    stack.push(receiver);
+                    stack.push(Value::Object(function));
+                }
+                Instruction::ResolveSuperProperty { strict } => {
+                    let name = ReferencedName::Value(pop(&mut stack)?);
+                    let Value::Object(function) = pop(&mut stack)? else {
+                        return Err(RuntimeError::type_error(
+                            "super reference requires a function",
+                        ));
+                    };
+                    let receiver = pop(&mut stack)?;
+                    references.push(Reference::super_property_in_realm(
+                        realm.expect("verified super Realm"),
+                        function.super_base()?,
+                        name,
+                        strict,
+                        receiver,
+                    ));
+                }
                 Instruction::LoadNewTarget => {
                     let mut environment = scopes
                         .last()

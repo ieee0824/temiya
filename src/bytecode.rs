@@ -348,6 +348,10 @@ pub enum Instruction {
     CreateClass(u32),
     /// Evaluate a fresh object initializer in the current environment.
     CreateObjectLiteral(u32),
+    /// Push the initialized super receiver and its owning function before the key.
+    LoadSuperBinding,
+    /// Consume receiver, owning function and key; retain a super property Reference.
+    ResolveSuperProperty { strict: bool },
     /// Push the nearest non-arrow function newTarget, or undefined.
     LoadNewTarget,
     /// Push the current lexical this binding.
@@ -393,6 +397,8 @@ pub enum Instruction {
 impl Instruction {
     fn required_stack(self) -> usize {
         match self {
+            Self::LoadSuperBinding => 0,
+            Self::ResolveSuperProperty { .. } => 3,
             Self::CreateObject => 0,
             Self::CoercePropertyKey => 1,
             Self::DefineObjectProperty { .. } => 3,
@@ -451,6 +457,8 @@ impl Instruction {
 
     fn stack_delta(self) -> isize {
         match self {
+            Self::LoadSuperBinding => 2,
+            Self::ResolveSuperProperty { .. } => -3,
             Self::CreateObject => 1,
             Self::CoercePropertyKey => 0,
             Self::DefineObjectProperty { .. } => -2,
@@ -552,12 +560,17 @@ impl VerifiedBytecode {
         arguments: &[crate::runtime::Value],
         this: &crate::runtime::Value,
         realm: &crate::runtime::Realm,
+        function: &crate::runtime::Object,
+        environment: &crate::runtime::Environment,
     ) -> Option<crate::runtime::RuntimeResult<crate::runtime::Value>> {
-        Some(
-            self.leaf_function
-                .as_ref()?
-                .execute(parameters, arguments, this, realm),
-        )
+        Some(self.leaf_function.as_ref()?.execute(
+            parameters,
+            arguments,
+            this,
+            realm,
+            function,
+            environment,
+        ))
     }
     pub(crate) fn try_numeric_return(
         &self,
@@ -696,7 +709,9 @@ fn loop_bindings_are_unobserved(code: &Bytecode, states: &[Option<FlowState>]) -
         .all(|(offset, instruction)| match *instruction {
             Instruction::CreateFunction(_)
             | Instruction::CreateClass(_)
-            | Instruction::CreateObjectLiteral(_) => false,
+            | Instruction::CreateObjectLiteral(_)
+            | Instruction::LoadSuperBinding
+            | Instruction::ResolveSuperProperty { .. } => false,
             Instruction::EnterScope(index) => {
                 let Constant::Scope(plan) = &code.constants[index as usize] else {
                     return false;
@@ -962,6 +977,16 @@ fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
                     instruction,
                     Instruction::ResolveName { .. } | Instruction::ResolveNamedProperty { .. }
                 ) {
+                    state.references.push(
+                        u32::try_from(offset).map_err(|_| error(VerifyErrorKind::ScopeMismatch))?,
+                    );
+                }
+            }
+            Instruction::LoadSuperBinding | Instruction::ResolveSuperProperty { .. } => {
+                if !state.scopes.iter().any(|(_, index)| matches!(&bytecode.constants[*index as usize], Constant::Scope(plan) if plan.kind == ScopeKind::Function)) {
+                    return Err(error(VerifyErrorKind::ScopeMismatch));
+                }
+                if matches!(instruction, Instruction::ResolveSuperProperty { .. }) {
                     state.references.push(
                         u32::try_from(offset).map_err(|_| error(VerifyErrorKind::ScopeMismatch))?,
                     );

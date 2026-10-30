@@ -537,8 +537,12 @@ impl Compiler {
                         computed,
                         optional: false,
                     } => {
-                        self.expression(object)?;
-                        self.member_property(property, *computed, true)?;
+                        if matches!(object.kind, ExprKind::Super) {
+                            self.super_reference(property, *computed)?;
+                        } else {
+                            self.expression(object)?;
+                            self.member_property(property, *computed, true)?;
+                        }
                         None
                     }
                     _ => return Err(self.unsupported("assignment target", target.span)),
@@ -887,8 +891,12 @@ impl Compiler {
                 computed,
                 optional: false,
             } => {
-                self.expression(object)?;
-                self.member_property(property, *computed, true)?;
+                if matches!(object.kind, ExprKind::Super) {
+                    self.super_reference(property, *computed)?;
+                } else {
+                    self.expression(object)?;
+                    self.member_property(property, *computed, true)?;
+                }
             }
             _ => return Err(self.unsupported("update target", target.span)),
         }
@@ -1044,6 +1052,28 @@ impl Compiler {
         }
     }
 
+    fn super_reference(&mut self, property: &Expr, computed: bool) -> Result<(), CompileError> {
+        if !self
+            .constants
+            .iter()
+            .any(|c| matches!(c, Constant::Scope(s) if s.kind == ScopeKind::Function))
+        {
+            return Err(self.unsupported("super outside function", property.span));
+        }
+        self.code.push(Instruction::LoadSuperBinding);
+        if computed {
+            self.expression(property)?;
+        } else if let ExprKind::Identifier(name) = &property.kind {
+            self.constant(Constant::String(JsString::from(name.as_str())))?;
+        } else {
+            return Err(self.unsupported("super property", property.span));
+        }
+        self.code.push(Instruction::ResolveSuperProperty {
+            strict: self.strict,
+        });
+        Ok(())
+    }
+
     fn member_property(
         &mut self,
         property: &Expr,
@@ -1133,6 +1163,21 @@ impl Compiler {
                 computed,
                 optional,
             } => {
+                if matches!(object.kind, ExprKind::Super) {
+                    if *optional {
+                        return Err(self.unsupported("optional super base", expression.span));
+                    }
+                    self.super_reference(property, *computed)?;
+                    match usage {
+                        ChainUse::Callee => self.code.push(Instruction::LoadReferenceCallTarget),
+                        ChainUse::Delete => self.code.push(Instruction::DeleteReference),
+                        ChainUse::Value => {
+                            self.code.push(Instruction::LoadReference);
+                            self.code.push(Instruction::DiscardReference);
+                        }
+                    }
+                    return Ok(());
+                }
                 if matches!(object.kind, ExprKind::Member { .. } | ExprKind::Call { .. }) {
                     self.chain_inner(object, ChainUse::Value, shortcuts)?;
                 } else {

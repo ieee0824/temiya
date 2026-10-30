@@ -4,8 +4,8 @@ use super::{
     BinaryOperator, BindingKind, Bytecode, Constant, Instruction, ScopeKind, UnaryNumericOperator,
 };
 use crate::runtime::{
-    JsString, PropertyKey, PropertyReferenceContext, Realm, Reference, ReferencedName,
-    RuntimeResult, Value, binary_number, binary_values_in_realm,
+    Environment, JsString, Object, PropertyKey, PropertyReferenceContext, Realm, Reference,
+    ReferencedName, RuntimeError, RuntimeResult, Value, binary_number, binary_values_in_realm,
 };
 
 const LIMIT: usize = 8;
@@ -13,7 +13,12 @@ const LIMIT: usize = 8;
 #[derive(Clone, Debug, PartialEq)]
 enum Step {
     Literal(Constant),
-    Binding(JsString),
+    Local(usize),
+    StoreLocal(usize, bool),
+    GetName(JsString, bool),
+    ResolveName(JsString, bool),
+    SuperBinding,
+    SuperReference(bool),
     This,
     Get(JsString, bool),
     Resolve(JsString, bool),
@@ -30,7 +35,17 @@ enum Step {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub(super) struct LeafFunctionPlan(Vec<Step>);
+pub(super) struct LeafFunctionPlan {
+    steps: Vec<Step>,
+    bindings: Vec<Local>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct Local {
+    name: JsString,
+    kind: BindingKind,
+    parameter: bool,
+}
 
 impl LeafFunctionPlan {
     pub(super) fn compile(code: &Bytecode, max_stack: usize) -> Option<Self> {
@@ -43,12 +58,22 @@ impl LeafFunctionPlan {
         let Constant::Scope(scope) = code.constants.get(index as usize)? else {
             return None;
         };
-        if scope.kind != ScopeKind::Function
-            || !scope.functions.is_empty()
-            || scope.bindings.iter().any(|b| b.kind != BindingKind::Var)
-        {
+        if scope.kind != ScopeKind::Function || !scope.functions.is_empty() {
             return None;
         }
+        let mut bindings = scope
+            .bindings
+            .iter()
+            .map(|b| Local {
+                name: b.name.clone(),
+                kind: b.kind,
+                parameter: b.kind == BindingKind::Var,
+            })
+            .collect::<Vec<_>>();
+        if bindings.len() > LIMIT {
+            return None;
+        }
+        let mut starts = std::collections::HashMap::from([(0_u32, 0_usize)]);
         let mut steps = Vec::new();
         let mut depth = 0_usize;
         let mut references = 0_usize;
@@ -58,10 +83,16 @@ impl LeafFunctionPlan {
                     let Constant::Scope(block) = code.constants.get(index as usize)? else {
                         return None;
                     };
-                    if block.kind != ScopeKind::Block
-                        || !block.bindings.is_empty()
-                        || !block.functions.is_empty()
-                    {
+                    if block.kind != ScopeKind::Block || !block.functions.is_empty() {
+                        return None;
+                    }
+                    starts.insert(offset as u32, bindings.len());
+                    bindings.extend(block.bindings.iter().map(|b| Local {
+                        name: b.name.clone(),
+                        kind: b.kind,
+                        parameter: false,
+                    }));
+                    if bindings.len() > LIMIT {
                         return None;
                     }
                     continue;
@@ -81,9 +112,42 @@ impl LeafFunctionPlan {
                     depth += 1;
                     Step::Literal(value.clone())
                 }
-                Instruction::LoadBinding { scope: 0, slot } => {
+                Instruction::LoadBinding { scope, slot } => {
                     depth += 1;
-                    Step::Binding(scope.bindings.get(slot as usize)?.name.clone())
+                    Step::Local(starts.get(&scope)? + slot as usize)
+                }
+                Instruction::InitializeBinding { scope, slot }
+                | Instruction::StoreBinding { scope, slot } => {
+                    depth = depth.checked_sub(1)?;
+                    Step::StoreLocal(
+                        starts.get(&scope)? + slot as usize,
+                        matches!(instruction, Instruction::InitializeBinding { .. }),
+                    )
+                }
+                Instruction::GetName { name, strict }
+                | Instruction::ResolveName { name, strict } => {
+                    let Constant::String(name) = code.constants.get(name as usize)? else {
+                        return None;
+                    };
+                    if name == &JsString::from("arguments") || name == &JsString::from("eval") {
+                        return None;
+                    }
+                    if matches!(instruction, Instruction::GetName { .. }) {
+                        depth += 1;
+                        Step::GetName(name.clone(), strict)
+                    } else {
+                        references += 1;
+                        Step::ResolveName(name.clone(), strict)
+                    }
+                }
+                Instruction::LoadSuperBinding => {
+                    depth += 2;
+                    Step::SuperBinding
+                }
+                Instruction::ResolveSuperProperty { strict } => {
+                    depth = depth.checked_sub(3)?;
+                    references += 1;
+                    Step::SuperReference(strict)
                 }
                 Instruction::LoadThis => {
                     depth += 1;
@@ -155,9 +219,9 @@ impl LeafFunctionPlan {
                 Instruction::Return
                     if depth == 1 && references == 0 && offset + 1 == code.instructions.len() =>
                 {
-                    return Some(Self(steps));
+                    return Some(Self { steps, bindings });
                 }
-                // No captures, binding writes, calls, closures, branches, new.target,
+                // No calls, closures, branches, new.target,
                 // arguments object or other operation may expose this activation.
                 _ => return None,
             };
@@ -175,28 +239,106 @@ impl LeafFunctionPlan {
         arguments: &[Value],
         this: &Value,
         realm: &Realm,
+        function: &Object,
+        environment: &Environment,
     ) -> RuntimeResult<Value> {
         let _roots = realm.enter_object_root_region();
         let mut context = PropertyReferenceContext::new(realm);
         let mut stack: [Value; LIMIT] = std::array::from_fn(|_| Value::Undefined);
         let mut refs: [Option<Reference>; LIMIT] = std::array::from_fn(|_| None);
+        let mut locals: [Option<Value>; LIMIT] = std::array::from_fn(|_| None);
+        for (index, binding) in self.bindings.iter().enumerate() {
+            if binding.kind == BindingKind::Var {
+                locals[index] = Some(if binding.parameter {
+                    parameters
+                        .iter()
+                        .rposition(|p| p == &binding.name)
+                        .and_then(|i| arguments.get(i))
+                        .cloned()
+                        .unwrap_or(Value::Undefined)
+                } else {
+                    Value::Undefined
+                });
+            }
+        }
         let mut depth = 0;
         let mut reference_depth = 0;
         fn pop(stack: &mut [Value; LIMIT], depth: &mut usize) -> Value {
             *depth -= 1;
             std::mem::replace(&mut stack[*depth], Value::Undefined)
         }
-        for step in &self.0 {
+        for step in &self.steps {
             let pushed = match step {
                 Step::Literal(value) => Some(super::vm::constant(value)),
-                Step::Binding(name) => Some(
-                    parameters
-                        .iter()
-                        .rposition(|p| p == name)
-                        .and_then(|i| arguments.get(i))
-                        .cloned()
-                        .unwrap_or(Value::Undefined),
-                ),
+                Step::Local(index) => Some(locals[*index].clone().ok_or_else(|| {
+                    RuntimeError::reference_error(format!(
+                        "{} is in the temporal dead zone",
+                        self.bindings[*index].name.to_string_lossy()
+                    ))
+                })?),
+                Step::StoreLocal(index, initialize) => {
+                    let value = pop(&mut stack, &mut depth);
+                    let binding = &self.bindings[*index];
+                    if *initialize {
+                        if locals[*index].is_some() {
+                            return Err(RuntimeError::type_error("binding is already initialized"));
+                        }
+                    } else {
+                        if locals[*index].is_none() {
+                            return Err(RuntimeError::reference_error(format!(
+                                "{} is in the temporal dead zone",
+                                binding.name.to_string_lossy()
+                            )));
+                        }
+                        if binding.kind == BindingKind::Const {
+                            return Err(RuntimeError::type_error(
+                                "assignment to an immutable binding",
+                            ));
+                        }
+                    }
+                    locals[*index] = Some(value);
+                    None
+                }
+                Step::GetName(name, strict) | Step::ResolveName(name, strict) => {
+                    let reference = match environment.resolve_binding(name)? {
+                        Some(environment) => {
+                            Reference::environment(environment, name.clone(), *strict)
+                        }
+                        None => {
+                            Reference::unresolvable(realm.global_object(), name.clone(), *strict)
+                        }
+                    };
+                    if matches!(step, Step::GetName(..)) {
+                        Some(reference.get_value()?)
+                    } else {
+                        refs[reference_depth] = Some(reference);
+                        reference_depth += 1;
+                        None
+                    }
+                }
+                Step::SuperBinding => {
+                    stack[depth] = this.clone();
+                    depth += 1;
+                    Some(Value::Object(function.clone()))
+                }
+                Step::SuperReference(strict) => {
+                    let name = ReferencedName::Value(pop(&mut stack, &mut depth));
+                    let Value::Object(function) = pop(&mut stack, &mut depth) else {
+                        return Err(RuntimeError::type_error(
+                            "super reference requires a function",
+                        ));
+                    };
+                    let receiver = pop(&mut stack, &mut depth);
+                    refs[reference_depth] = Some(Reference::super_property_in_realm(
+                        realm,
+                        function.super_base()?,
+                        name,
+                        *strict,
+                        receiver,
+                    ));
+                    reference_depth += 1;
+                    None
+                }
                 Step::This => Some(this.clone()),
                 Step::Get(name, strict) | Step::Resolve(name, strict) => {
                     let base = pop(&mut stack, &mut depth);
@@ -304,11 +446,11 @@ mod tests {
             ("function f(x){this.value=x;return this.value;}", true),
             (
                 "function f(x){'use strict';this.value=x;let y=1;return y;}",
-                false,
+                true,
             ),
             (
                 "function f(x){'use strict';this.value=x;return outside;}",
-                false,
+                true,
             ),
             (
                 "function f(x){'use strict';this.value=x;return function(){return x;};}",
@@ -329,6 +471,40 @@ mod tests {
             };
             let template = BytecodeCompiler::compile_function_template(function).unwrap();
             assert_eq!(template.body.leaf_function.is_some(), eligible, "{source}");
+        }
+    }
+
+    #[test]
+    fn super_leaf_eligibility_covers_complete_local_and_capture_operations() {
+        for (body, eligible) in [
+            ("let next=super.value+1;super.value=next;return next;", true),
+            ("return ++super[(calls++,'value')];", true),
+            ("let value=super.value;return ()=>value;", false),
+            ("let next=super.value;other();return next;", false),
+            ("return super[choose()];", false),
+            ("return arguments[0]+super.value;", false),
+        ] {
+            let expression = crate::parser::parse_expression(&format!(
+                "class extends Object{{read(){{{body}}}}}"
+            ))
+            .unwrap();
+            let crate::ast::ExprKind::Class(class) = expression.kind else {
+                panic!("class")
+            };
+            let crate::ast::ClassElementKind::Method { function, .. } = &class.elements[0].kind
+            else {
+                panic!("method")
+            };
+            let template = BytecodeCompiler::compile_function_template(function).unwrap();
+            assert!(
+                template
+                    .body
+                    .bytecode()
+                    .instructions
+                    .iter()
+                    .any(|op| matches!(op, Instruction::LoadSuperBinding))
+            );
+            assert_eq!(template.body.leaf_function.is_some(), eligible, "{body}");
         }
     }
 

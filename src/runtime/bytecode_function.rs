@@ -276,6 +276,8 @@ impl Closure {
                 arguments,
                 &receiver,
                 &self.realm,
+                &function,
+                &self.environment,
             ) {
                 // Function, newTarget, receiver and outer-environment roots
                 // remain live during property/coercion callbacks. Never retry.

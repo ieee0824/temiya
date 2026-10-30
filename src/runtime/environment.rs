@@ -1084,6 +1084,19 @@ impl Environment {
         })
     }
 
+    pub(crate) fn nearest_super_binding(&self) -> RuntimeResult<(Value, Object)> {
+        let mut current = Some(self.clone());
+        while let Some(environment) = current {
+            if let Some(binding) = environment.super_reference_binding()? {
+                return Ok(binding);
+            }
+            current = environment.outer();
+        }
+        Err(RuntimeError::reference_error(
+            "super property has no function environment",
+        ))
+    }
+
     // Resolve a non-lexical super receiver and its immutable function edge in
     // one record borrow. No key expression or prototype operation runs here.
     pub(super) fn super_reference_binding(&self) -> RuntimeResult<Option<(Value, Object)>> {

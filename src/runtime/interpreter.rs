@@ -303,6 +303,18 @@ impl Reference {
         Self::property_with_prototypes(realm, base, name, strict, |id, _| realm.intrinsic(id))
     }
 
+    pub(crate) fn super_property_in_realm(
+        realm: &Realm,
+        base: Value,
+        name: ReferencedName,
+        strict: bool,
+        receiver: Value,
+    ) -> Self {
+        let mut reference = Self::property_in_realm(realm, base, name, strict);
+        reference.this_value = Some(receiver);
+        reference
+    }
+
     fn property_with_prototypes(
         realm: &Realm,
         base: Value,

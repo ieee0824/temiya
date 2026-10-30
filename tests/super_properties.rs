@@ -133,6 +133,11 @@ fn captured_home_objects_and_receivers_survive_reentrant_collection() {
                 engine.evaluate(&script).unwrap().value(),
                 Value::Boolean(true)
             ));
+            let script = engine.compile(&realm, "let leaf={__proto__:{get value(){gcNow();return this.saved;},set value(value){this.saved=value;gcNow();}},read(value){let previous=super.value;super.value=value;return previous;}};let holder={saved:{value:42}};let prior=leaf.read.call(holder,{value:99});gcNow();prior.value===42 && holder.saved.value===99;").unwrap();
+            assert!(matches!(
+                engine.evaluate(&script).unwrap().value(),
+                Value::Boolean(true)
+            ));
             let script = engine.compile(&realm, "function makeGenerator(receiver){return {__proto__:{read(){gcNow();return this.value;}},*values(){gcNow();yield super.read();gcNow();return super.read()+1;}}.values.call(receiver);}let iterator=makeGenerator({value:42});gcNow();let first=iterator.next();first.value===42 && first.done===false;").unwrap();
             assert!(matches!(
                 engine.evaluate(&script).unwrap().value(),
@@ -247,5 +252,21 @@ fn sole_super_calls_keep_getter_target_and_propagate_one_throw() {
     );
     check(
         "let effects=0;let base={get read(){effects++;return 42;}};let object={__proto__:base,read(){return super.read();}};let caught=false;try{object.read();}catch(e){caught=e instanceof TypeError;}caught && effects===1;",
+    );
+}
+
+#[test]
+fn super_leaf_locals_keep_captures_parameter_writes_and_lexical_errors() {
+    check(
+        "let calls=0;let base={get value(){return this.stored;},set value(value){this.stored=value;}};let object={__proto__:base,stored:0,step(value){let next=super.value+value;value=99;super.value=next;calls++;return next+value;}};object.step(42)===141 && object.stored===42 && calls===1;",
+    );
+    check(
+        "let base={value:1};let object={__proto__:base,read(){return super.value+next;let next=42;}};let caught=false;try{object.read();}catch(e){caught=e instanceof ReferenceError;}caught;",
+    );
+    check(
+        "let effects=0;let object={__proto__:{value:1},read(){const next=super.value;next=(effects++,42);return next;}};let caught=false;try{object.read();}catch(e){caught=e instanceof TypeError;}caught && effects===1;",
+    );
+    check(
+        "let calls=0;let first={value:1},next={value:42};let key={toString(){calls++;Object.setPrototypeOf(object,next);return 'value';}};let object={__proto__:first,read(){let value=super[key];return value;}};object.read()===1 && object.read()===42 && calls===2;",
     );
 }

@@ -34,3 +34,11 @@ but still has6 slower Boa comparisons. Both retain the full120 worker runs and
 Neither candidate is speed-qualified. Run verify-performance.mjs to reconstruct
 all raw values and statistics and independently replay both601-variant captures
 against their preceding outcomes and failed diagnostic signatures.
+
+The normalized non-strict leaf follow-up is retained in sloppy-leaf-v1. It
+improves11 of15 comparisons against the arguments-elision candidate, with
+3 significant Boa wins,9 within noise and3 slower. It is still not qualified.
+All791 native tests pass, with26 ignored. The archive also retains base and
+derived originals and the216-variant PR gate. The first receiver test used an
+unavailable globalThis builtin; its rejected log is retained, and the corrected
+test compares against captured top-level this.

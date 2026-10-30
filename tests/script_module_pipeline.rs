@@ -179,3 +179,21 @@ fn evaluation_failure_is_cached_and_not_reexecuted() {
     assert_eq!(first, second);
     assert_eq!(&*loads.borrow(), &["broken"]);
 }
+
+#[test]
+fn namespace_membership_does_not_read_uninitialized_exports() {
+    use temiya::{Engine, embedding::ScriptBackend};
+    for backend in [ScriptBackend::Ast, ScriptBackend::Auto] {
+        let engine = Engine::builder().script_backend(backend).build();
+        let realm = engine.create_realm();
+        let module=engine.load_module(&realm,"self", |_| Ok("import * as ns from 'self';export var observed=('value' in ns) && Reflect.has(ns,'value') && ('alias' in ns) && Reflect.has(ns,'default') && !('missing' in ns);let getTDZ=false;let descriptorTDZ=false;try{ns.value;}catch(e){getTDZ=e instanceof ReferenceError;}try{Object.getOwnPropertyDescriptor(ns,'value');}catch(e){descriptorTDZ=e instanceof ReferenceError;}if(!observed || !getTDZ || !descriptorTDZ)throw 99;export let value=42;export {value as alias};export default null;".into())).unwrap();
+        engine.evaluate_module(&module).unwrap();
+        assert!(
+            module
+                .record()
+                .get_export(&"observed".into())
+                .unwrap()
+                .same_value(&Value::Boolean(true))
+        );
+    }
+}

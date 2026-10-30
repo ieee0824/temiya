@@ -79,8 +79,8 @@ impl VirtualMachine {
     ) -> RuntimeResult<Completion> {
         let _object_roots = realm.and_then(Realm::enter_object_root_region);
         let mut property_context = realm.map(PropertyReferenceContext::new);
-        let mut class_context =
-            crate::runtime::bytecode_function::ClassEvaluationContext::default();
+        let mut definition_context =
+            crate::runtime::bytecode_function::DefinitionEvaluationContext::default();
         let body = bytecode.bytecode();
         let mut scalar_scopes: Vec<Option<ScalarScope<'_>>> = Vec::new();
         if SCALAR_LOCALS {
@@ -631,6 +631,19 @@ impl VirtualMachine {
                     let invocation = calls.pop().expect("verified call frame");
                     stack.push(invocation.invoke()?);
                 }
+                Instruction::CreateObjectLiteral(index) => {
+                    let Constant::ObjectLiteral { definition, strict } =
+                        &body.constants[index as usize]
+                    else {
+                        unreachable!()
+                    };
+                    stack.push(definition_context.evaluate_object_literal(
+                        definition,
+                        *strict,
+                        realm.expect("verified object initializer Realm"),
+                        &scopes.last().expect("verified active scope").environment,
+                    )?);
+                }
                 Instruction::CreateClass(index) => {
                     let Constant::Class {
                         definition,
@@ -639,7 +652,7 @@ impl VirtualMachine {
                     else {
                         unreachable!()
                     };
-                    stack.push(Value::Object(class_context.evaluate(
+                    stack.push(Value::Object(definition_context.evaluate(
                         definition,
                         inferred_name.clone(),
                         realm.expect("verified class Realm"),
@@ -659,6 +672,31 @@ impl VirtualMachine {
                             .environment
                             .clone(),
                     )?));
+                }
+                Instruction::LoadSuperBinding => {
+                    let (receiver, function) = scopes
+                        .last()
+                        .expect("verified super scope")
+                        .environment
+                        .nearest_super_binding()?;
+                    stack.push(receiver);
+                    stack.push(Value::Object(function));
+                }
+                Instruction::ResolveSuperProperty { strict } => {
+                    let name = ReferencedName::Value(pop(&mut stack)?);
+                    let Value::Object(function) = pop(&mut stack)? else {
+                        return Err(RuntimeError::type_error(
+                            "super reference requires a function",
+                        ));
+                    };
+                    let receiver = pop(&mut stack)?;
+                    references.push(Reference::super_property_in_realm(
+                        realm.expect("verified super Realm"),
+                        function.super_base()?,
+                        name,
+                        strict,
+                        receiver,
+                    ));
                 }
                 Instruction::LoadNewTarget => {
                     let mut environment = scopes
@@ -789,7 +827,10 @@ fn indexed_value(base: &Value, key: &Value) -> Option<Value> {
 
 pub(super) fn constant(constant: &Constant) -> Value {
     match constant {
-        Constant::Scope(_) | Constant::Function(_) | Constant::Class { .. } => {
+        Constant::Scope(_)
+        | Constant::Function(_)
+        | Constant::Class { .. }
+        | Constant::ObjectLiteral { .. } => {
             unreachable!("verifier rejects metadata values")
         }
         Constant::BigInt(value) => Value::BigInt(value.clone()),

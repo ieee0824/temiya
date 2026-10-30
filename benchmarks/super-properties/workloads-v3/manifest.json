@@ -1,0 +1,66 @@
+{
+  "schema": 1,
+  "fixture_kind": "authored-super-properties",
+  "fixture_version": 3,
+  "reference_engine_revision": "007556adccb8fb4329236932ca8175f8e8d119d2",
+  "frozen_at": "2026-10-30T13:39:21.434Z",
+  "workloads": [
+    {
+      "name": "super-object-call",
+      "file": "super-object-call.json",
+      "iterations": 10000,
+      "expected": 50005000,
+      "oracle": "sum-one-to-n",
+      "sha256": "201dbd6b077f3536c8efde96c2f72813476ce469547cf629673083608d1e2832",
+      "setup_sha256": "2024daa82287e85aee35be81191d1ef2857be07f9bae68832516786bcf78efb6",
+      "invocation_sha256": "d0e3efdf9851dbde2f1f5c032f78b8ac15e066d907d82e7745927914215538b7"
+    },
+    {
+      "name": "super-class-call",
+      "file": "super-class-call.json",
+      "iterations": 10000,
+      "expected": 50005000,
+      "oracle": "sum-one-to-n",
+      "sha256": "0043545b5b1f34138ee0236b71f4da6e86b783159910870659ba18759e642545",
+      "setup_sha256": "cb1b97e88e0577f5148757656d6aee88e08c26b1f25cb590e63721f954e3afdb",
+      "invocation_sha256": "d0e3efdf9851dbde2f1f5c032f78b8ac15e066d907d82e7745927914215538b7"
+    },
+    {
+      "name": "super-accessor-receiver",
+      "file": "super-accessor-receiver.json",
+      "iterations": 10000,
+      "expected": 50005000,
+      "oracle": "sum-one-to-n-and-receiver-state",
+      "sha256": "db39f177da99948a2babaebbf24a1dc360aaf2df80be1e37dc4cea9da5e72d31",
+      "setup_sha256": "2c02324bbe8892fcb18ddddb5ae5080e89a6d287d61eeaeba44a79b1132bffab",
+      "invocation_sha256": "d0e3efdf9851dbde2f1f5c032f78b8ac15e066d907d82e7745927914215538b7"
+    },
+    {
+      "name": "super-computed-update",
+      "file": "super-computed-update.json",
+      "iterations": 10000,
+      "expected": 50005000,
+      "oracle": "sum-one-to-n-single-key-expression-evaluation-and-receiver-state",
+      "sha256": "8e5f3d1b8b8bb74ced965650cd13280c12bf92d595f75c28cfdbaf7bcd478cc1",
+      "setup_sha256": "d424cd5ae7dfb43f54690d13d452bdbc320d288fcd29280a97534922e97147ec",
+      "invocation_sha256": "d0e3efdf9851dbde2f1f5c032f78b8ac15e066d907d82e7745927914215538b7"
+    },
+    {
+      "name": "super-arrow-dynamic-parent",
+      "file": "super-arrow-dynamic-parent.json",
+      "iterations": 10000,
+      "expected": 630000,
+      "oracle": "half-n-times42-plus-half-n-times84",
+      "sha256": "78dea8fb4fa8bb177ed5f8ee668e6877af4e116c1e1291d43e7f6674cc322221",
+      "setup_sha256": "28e6bc6f2404933d8c4d14eda91b1ab4557c1ce368007911415d311975e8fc83",
+      "invocation_sha256": "d0e3efdf9851dbde2f1f5c032f78b8ac15e066d907d82e7745927914215538b7"
+    }
+  ],
+  "conditions": {
+    "samples": 15,
+    "pairs": 3,
+    "minimum_relative_difference": 0.1,
+    "noise_rule": "max(0.10, 3 * sum(relative MADs))",
+    "qualification": "Fixed before issue156 implementation; no timing from oracle validation is speed qualification."
+  }
+}

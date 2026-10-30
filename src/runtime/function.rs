@@ -1,5 +1,7 @@
 //! ECMAScript function objects, calls, constructors, and parameter binding.
 
+mod super_call;
+
 use super::{
     environment::StoredEnvironment,
     execution::StoredRealm,
@@ -51,6 +53,7 @@ pub(super) struct FunctionCode {
     compiled: Option<Rc<FunctionTemplate>>,
     may_observe_arguments: bool,
     delegated_parameters: Option<Box<[usize]>>,
+    super_call: Option<super_call::Plan>,
     auto_functions: bool,
     cache: Weak<RefCell<CodeCache>>,
 }
@@ -107,6 +110,7 @@ fn prepare_code(
         } else {
             None
         },
+        super_call: super_call::Plan::prepare(code, kind),
         auto_functions: cache.is_some(),
         cache: cache.as_ref().map_or_else(Weak::new, Rc::downgrade),
     });
@@ -196,8 +200,6 @@ pub(super) struct FunctionClosure {
     pub(super) lexical_this: Value,
     lexical_this_environment: Option<Environment>,
     constructor_kind: ConstructorKind,
-    #[allow(dead_code)]
-    home_object: Option<Object>,
 }
 
 pub(super) struct StoredFunctionClosure {
@@ -212,6 +214,15 @@ pub(super) struct StoredFunctionClosure {
     immutable_class_prototype: bool,
 }
 impl StoredFunctionClosure {
+    pub(super) fn super_base(&self, owner: &Object) -> RuntimeResult<Value> {
+        let home = self
+            .home_object
+            .as_ref()
+            .ok_or_else(|| RuntimeError::reference_error("function has no super binding"))?
+            .load(owner)?;
+        Ok(home.try_prototype()?.map_or(Value::Null, Value::Object))
+    }
+
     pub(super) fn has_legacy_properties(&self) -> bool {
         self.kind == FunctionKind::Normal
             && !self.code.strict
@@ -221,6 +232,9 @@ impl StoredFunctionClosure {
     pub(super) fn source_realm(&self) -> &StoredRealm {
         &self.realm
     }
+    // The live function argument (or its stored generator environment) roots
+    // HomeObject through this stored closure. The call facade never uses it;
+    // super resolves the traced edge from the owning function environment.
     fn load(&self, owner: &Object) -> RuntimeResult<FunctionClosure> {
         Ok(FunctionClosure {
             code: self.code.clone(),
@@ -234,20 +248,13 @@ impl StoredFunctionClosure {
             realm: self.realm.load(owner)?,
             environment: self.environment.load(owner)?,
             // Verified ordinary/method bodies use their prepared this binding;
-            // the compiler rejects arrows and super-dependent bodies here.
+            // direct super operations remain AST. Nested class evaluation resolves
+            // super through the function environment and stored HomeObject.
             // Retain stored GC edges without reviving unused call-local roots.
             lexical_this: if self.code.compiled.is_some() {
                 Value::Undefined
             } else {
                 self.lexical_this.load(owner)?
-            },
-            home_object: if self.code.compiled.is_some() {
-                None
-            } else {
-                self.home_object
-                    .as_ref()
-                    .map(|object| object.load(owner))
-                    .transpose()?
             },
         })
     }
@@ -271,18 +278,21 @@ impl StoredFunctionClosure {
                 .load(owner)?
                 .bind_exception(RuntimeError::type_error("class constructor requires new")));
         }
-        if let Some(template) = &self.code.compiled {
+        if let Some(plan) = &self.code.super_call {
             let realm = self.realm.load(owner)?;
-            return super::bytecode_function::execute_template(
-                template.clone(),
-                realm.clone(),
-                self.environment.load(owner)?,
-                owner.clone(),
+            return plan
+                .execute(self, owner, this, arguments, &realm)
+                .map_err(|error| realm.bind_exception(error));
+        }
+        if let Some(template) = &self.code.compiled {
+            return super::bytecode_function::execute_stored_template(
+                template,
+                &self.realm,
+                &self.environment,
+                owner,
                 this,
                 arguments,
-                None,
-            )
-            .map_err(|error| realm.bind_exception(error));
+            );
         }
         let closure = self.load(owner)?;
         if closure.code.generator {
@@ -493,7 +503,10 @@ fn call_function(
     if !lexical {
         environment.bind_this_value(this_value.clone())?;
     }
-    if !lexical {
+    // The complete syntax scan includes defaults, nested classes/functions,
+    // arrows and direct eval. Retain the actual object whenever any of those
+    // can observe arguments; otherwise this implicit binding is unreachable.
+    if !lexical && closure.code.may_observe_arguments {
         bind_arguments(&closure.realm, &environment, arguments)?;
     }
     let evaluator = ExpressionEvaluator::with_environment(

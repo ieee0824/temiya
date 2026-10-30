@@ -400,6 +400,22 @@ impl Compiler {
         match &expression.kind {
             ExprKind::Literal(literal) => self.literal(literal, expression.span),
             ExprKind::Object(properties) => {
+                if properties.iter().any(|property| {
+                    matches!(
+                        property.value.as_ref().map(|value| &value.kind),
+                        Some(ExprKind::Method { .. })
+                    )
+                }) {
+                    if !self.constants.iter().any(|c| matches!(c, Constant::Scope(scope) if scope.kind == ScopeKind::Function)) {
+                        return Err(self.unsupported("object method outside function", expression.span));
+                    }
+                    let index = self.pool(Constant::ObjectLiteral {
+                        definition: std::rc::Rc::new(expression.clone()),
+                        strict: self.strict,
+                    })?;
+                    self.code.push(Instruction::CreateObjectLiteral(index));
+                    return Ok(());
+                }
                 self.code.push(Instruction::CreateObject);
                 for property in properties {
                     if property.spread {
@@ -521,8 +537,12 @@ impl Compiler {
                         computed,
                         optional: false,
                     } => {
-                        self.expression(object)?;
-                        self.member_property(property, *computed, true)?;
+                        if matches!(object.kind, ExprKind::Super) {
+                            self.super_reference(property, *computed)?;
+                        } else {
+                            self.expression(object)?;
+                            self.member_property(property, *computed, true)?;
+                        }
                         None
                     }
                     _ => return Err(self.unsupported("assignment target", target.span)),
@@ -871,8 +891,12 @@ impl Compiler {
                 computed,
                 optional: false,
             } => {
-                self.expression(object)?;
-                self.member_property(property, *computed, true)?;
+                if matches!(object.kind, ExprKind::Super) {
+                    self.super_reference(property, *computed)?;
+                } else {
+                    self.expression(object)?;
+                    self.member_property(property, *computed, true)?;
+                }
             }
             _ => return Err(self.unsupported("update target", target.span)),
         }
@@ -981,6 +1005,18 @@ impl Compiler {
             _ => return Err(self.unsupported("function name", function.span)),
         };
         let body = compiler.finish()?;
+        // Keep lexical super arrows on their shared AST path until the VM can
+        // avoid recreating their activation. This rejects before any effects;
+        // the stored AST closure retains its existing delegation optimization.
+        if arrow
+            && body
+                .bytecode()
+                .instructions
+                .iter()
+                .any(|op| matches!(op, Instruction::LoadSuperBinding))
+        {
+            return Err(self.unsupported("lexical super arrow", function.span));
+        }
         Ok(FunctionTemplate {
             self_binding: name.is_some() && !arrow,
             arguments_object: !arrow
@@ -1026,6 +1062,28 @@ impl Compiler {
             }
             _ => Err(self.unsupported("property name", property.span)),
         }
+    }
+
+    fn super_reference(&mut self, property: &Expr, computed: bool) -> Result<(), CompileError> {
+        if !self
+            .constants
+            .iter()
+            .any(|c| matches!(c, Constant::Scope(s) if s.kind == ScopeKind::Function))
+        {
+            return Err(self.unsupported("super outside function", property.span));
+        }
+        self.code.push(Instruction::LoadSuperBinding);
+        if computed {
+            self.expression(property)?;
+        } else if let ExprKind::Identifier(name) = &property.kind {
+            self.constant(Constant::String(JsString::from(name.as_str())))?;
+        } else {
+            return Err(self.unsupported("super property", property.span));
+        }
+        self.code.push(Instruction::ResolveSuperProperty {
+            strict: self.strict,
+        });
+        Ok(())
     }
 
     fn member_property(
@@ -1117,6 +1175,21 @@ impl Compiler {
                 computed,
                 optional,
             } => {
+                if matches!(object.kind, ExprKind::Super) {
+                    if *optional {
+                        return Err(self.unsupported("optional super base", expression.span));
+                    }
+                    self.super_reference(property, *computed)?;
+                    match usage {
+                        ChainUse::Callee => self.code.push(Instruction::LoadReferenceCallTarget),
+                        ChainUse::Delete => self.code.push(Instruction::DeleteReference),
+                        ChainUse::Value => {
+                            self.code.push(Instruction::LoadReference);
+                            self.code.push(Instruction::DiscardReference);
+                        }
+                    }
+                    return Ok(());
+                }
                 if matches!(object.kind, ExprKind::Member { .. } | ExprKind::Call { .. }) {
                     self.chain_inner(object, ChainUse::Value, shortcuts)?;
                 } else {
@@ -1436,7 +1509,7 @@ fn bytecode_may_observe_arguments(body: &VerifiedBytecode) -> bool {
                     .eq("arguments".encode_utf16())
                     || name.code_units().iter().copied().eq("eval".encode_utf16())
             }
-            Constant::Class { .. } => true,
+            Constant::Class { .. } | Constant::ObjectLiteral { .. } => true,
             Constant::Function(template) => bytecode_may_observe_arguments(&template.body),
             Constant::Scope(scope) => {
                 scope.bindings.iter().any(|binding| {

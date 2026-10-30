@@ -6,8 +6,9 @@ import * as baseClassSuite from './class-benchmark-reference.mjs';
 
 const args = process.argv.slice(2);
 const derived = args[0] === '--derived';
-if (derived) args.shift();
-const {classFixtureVersion, classManifestSha256, classReferenceRevision, classWorkloads} = derived
+const superProperties = args[0] === '--super';
+if (derived || superProperties) args.shift();
+const {classFixtureVersion, classManifestSha256, classReferenceRevision, classWorkloads} = superProperties ? await import('./super-property-benchmark-reference.mjs') : derived
   ? await import('./derived-class-benchmark-reference.mjs') : baseClassSuite;
 assert(args.length > 0, 'provide authored class comparison reports');
 const sha = b => createHash('sha256').update(b).digest('hex');
@@ -19,7 +20,7 @@ for (const file of args) {
   const before = r.comparison_kind === 'Temiya class before/after or control';
   assert(before || r.comparison_kind === 'Temiya class versus actual Boa');
   assert.equal(sha(JSON.stringify(r.manifest, null, 2) + '\n'), classManifestSha256);
-  assert.equal(r.manifest.fixture_kind, derived ? 'authored-derived-classes' : 'authored-base-classes');
+  assert.equal(r.manifest.fixture_kind, superProperties ? 'authored-super-properties' : derived ? 'authored-derived-classes' : 'authored-base-classes');
   assert.equal(r.manifest.fixture_version, classFixtureVersion);
   assert.equal(r.manifest.reference_engine_revision, classReferenceRevision);
   assert.deepEqual(r.capture_errors, []);

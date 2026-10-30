@@ -12,6 +12,13 @@ class object-property values and logical assignments require preexecution AST
 fallback. See [class execution](classes.md) for the bridge's this/new.target and
 ownership contracts.
 
+Function-body object literals containing methods/accessors use verified
+`CreateObjectLiteral` metadata and the same definition context. The metadata
+must contain an object expression and cannot be loaded as a Value. The shared
+evaluator preserves lexical captures, strictness, HomeObjects, computed keys,
+spreads and prototype setters. Top-level object methods still require AST
+selection. See [super references](super-properties.md) for scope and tests.
+
 
 ## Guarded numeric returns
 

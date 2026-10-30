@@ -1,0 +1,8 @@
+{
+  "name": "super-object-call",
+  "iterations": 10000,
+  "oracle": "sum-one-to-n",
+  "setup": "function bench(n) { let base = { step() { this.value += 1; return this.value; } }; let object = { __proto__: base, value: 0, step() { return super.step(); } }; let total = 0; for (let i = 0; i < n; i++) total += object.step(); return total; }",
+  "invocation": "bench(10000);",
+  "expected": 50005000
+}

@@ -598,6 +598,11 @@ impl BoundFunction {
     }
 }
 
+enum OwnGet {
+    Value(Value),
+    Accessor(Option<Object>),
+}
+
 #[derive(Clone)]
 struct PropertyEntry {
     key: PropertyKey,
@@ -693,6 +698,18 @@ impl Object {
     pub(super) fn source_realm(&self) -> Option<StoredRealm> {
         self.0.runtime()?;
         self.stored_source_realm()
+    }
+
+    pub(crate) fn super_base(&self) -> RuntimeResult<Value> {
+        // Release the function-state borrow before following the traced home
+        // object or invoking its potentially observable prototype operation.
+        let callable = self.0.state.borrow().managed_callable.clone();
+        match callable.as_ref().map(|callable| &callable.body) {
+            Some(ManagedCallable::Ast(closure)) => closure.super_base(self),
+            _ => Err(RuntimeError::reference_error(
+                "function has no super binding",
+            )),
+        }
     }
 
     fn stored_source_realm(&self) -> Option<StoredRealm> {
@@ -1542,6 +1559,19 @@ impl Object {
             drop(state);
             return super::proxy::get_own_property(self, key);
         }
+        if state.module_namespace.is_some() {
+            // Export getters are internal storage for live bindings. Expose
+            // the namespace's data descriptor and propagate an export's TDZ
+            // error rather than treating the binding as an accessor property.
+            if let Some(entry) = state.properties.iter().find(|entry| entry.key == *key) {
+                let descriptor = entry.descriptor.load(self)?;
+                if let Some(getter) = descriptor.get.flatten() {
+                    drop(state);
+                    let value = getter.call(Value::Object(self.clone()), &[])?;
+                    return Ok(Some(PropertyDescriptor::data(value, true, true, false)));
+                }
+            }
+        }
         if Self::legacy_property_key(key) {
             drop(state);
             self.materialize_legacy_function_properties();
@@ -1953,14 +1983,100 @@ impl Object {
 
     /// Implements `HasProperty`, including the prototype chain.
     pub fn has_property(&self, key: &PropertyKey) -> RuntimeResult<bool> {
-        if self.0.state.borrow().proxy.is_some() {
-            return super::proxy::has(self, key);
+        {
+            let state = self.0.state.borrow();
+            if state.proxy.is_some() {
+                drop(state);
+                return super::proxy::has(self, key);
+            }
+            if state.module_namespace.is_some() && matches!(key, PropertyKey::String(_)) {
+                // Namespace [[HasProperty]] tests the export names, without
+                // GetBindingValue. An uninitialized export still exists; only
+                // Get and GetOwnProperty consume its value and observe TDZ.
+                return Ok(state.properties.iter().any(|entry| entry.key == *key));
+            }
         }
         if self.get_own_property(key).is_some() {
             return Ok(true);
         }
         self.prototype()
             .map_or(Ok(false), |prototype| prototype.has_property(key))
+    }
+
+    // Select the needed edge under one ordinary-property borrow. Root the
+    // current value/getter before releasing it; no user code runs under borrow.
+    fn own_get_value(&self, key: &PropertyKey) -> RuntimeResult<Option<OwnGet>> {
+        let state = self.0.state.borrow();
+        if state.proxy.is_some()
+            || state.module_namespace.is_some()
+            || state.lazy_function_prototype.is_some()
+            || (state.string_data.is_some()
+                && (matches!(key, PropertyKey::String(name) if name.code_units().iter().copied().eq("length".encode_utf16()))
+                    || key.array_index().is_some()))
+            || (state.elements.is_some() && key.array_index().is_some())
+            || state.view.is_some()
+            || state.buffer.is_some()
+        {
+            return Ok(None);
+        }
+        let entry = state
+            .properties
+            .get(state.last_property.get())
+            .filter(|entry| entry.key == *key)
+            .map(|entry| (state.last_property.get(), entry))
+            .or_else(|| {
+                state
+                    .properties
+                    .iter()
+                    .enumerate()
+                    .find(|(_, entry)| entry.key == *key)
+            });
+        let Some((index, entry)) = entry else {
+            return Ok(None);
+        };
+        let value = match &entry.descriptor {
+            StoredDescriptor::Data { value, .. } => OwnGet::Value(value.load(self)?),
+            StoredDescriptor::Accessor { get, .. } => {
+                if Self::legacy_property_key(key) {
+                    return Ok(None);
+                }
+                OwnGet::Accessor(get.as_ref().map(|method| method.load(self)).transpose()?)
+            }
+        };
+        state.last_property.set(index);
+        Ok(Some(value))
+    }
+
+    fn own_accessor_setter(&self, key: &PropertyKey) -> RuntimeResult<Option<Option<Object>>> {
+        if Self::legacy_property_key(key) {
+            return Ok(None);
+        }
+        let state = self.0.state.borrow();
+        if state.proxy.is_some()
+            || state.module_namespace.is_some()
+            || state.lazy_function_prototype.is_some()
+            || state.array
+            || state.string_data.is_some()
+            || state.view.is_some()
+            || state.buffer.is_some()
+        {
+            return Ok(None);
+        }
+        let entry = state
+            .properties
+            .get(state.last_property.get())
+            .filter(|entry| entry.key == *key)
+            .or_else(|| state.properties.iter().find(|entry| entry.key == *key));
+        let Some(PropertyEntry {
+            descriptor: StoredDescriptor::Accessor { set, .. },
+            ..
+        }) = entry
+        else {
+            return Ok(None);
+        };
+        Ok(Some(
+            set.as_ref().map(|method| method.load(self)).transpose()?,
+        ))
     }
 
     /// Implements ordinary `[[Get]]` with this object as the receiver.
@@ -1970,16 +2086,18 @@ impl Object {
 
     /// Implements ordinary `[[Get]]` with an explicit receiver.
     pub fn get_with_receiver(&self, key: &PropertyKey, receiver: Value) -> RuntimeResult<Value> {
-        // Ordinary own data reads ignore the receiver. Preserve the generic
-        // path for accessors, proxies and virtual/exotic properties, and revive
-        // only the current stored value rather than a complete descriptor.
-        if let Some((value, _)) = self.own_data_value_with_hint(key, None) {
-            return Ok(value);
+        if let Some(property) = self.own_get_value(key)? {
+            return match property {
+                OwnGet::Value(value) => Ok(value),
+                OwnGet::Accessor(getter) => {
+                    getter.map_or(Ok(Value::Undefined), |getter| getter.call(receiver, &[]))
+                }
+            };
         }
         if self.0.state.borrow().proxy.is_some() {
             return super::proxy::get(self, key, receiver);
         }
-        let Some(descriptor) = self.get_own_property(key) else {
+        let Some(descriptor) = self.try_get_own_property(key)? else {
             return self.prototype().map_or(Ok(Value::Undefined), |prototype| {
                 prototype.get_with_receiver(key, receiver)
             });
@@ -2008,17 +2126,21 @@ impl Object {
         if self.0.state.borrow().proxy.is_some() {
             return super::proxy::set(self, key, value, receiver);
         }
+        if self.0.state.borrow().module_namespace.is_some() {
+            return Ok(false);
+        }
         // An own writable data property shadows every prototype. With the same
         // ordinary receiver, Set changes only its value; no descriptor needs to
         // be loaded into rooted facades and then rebuilt by DefineOwnProperty.
+        let mut ordinary_accessor = true;
         if matches!(&receiver, Value::Object(receiver) if self.0.same_object(&receiver.0)) {
             let mut state = self.0.state.borrow_mut();
-            if !state.array
+            ordinary_accessor = !state.array
                 && state.lazy_function_prototype.is_none()
                 && state.string_data.is_none()
                 && state.view.is_none()
-                && state.buffer.is_none()
-            {
+                && state.buffer.is_none();
+            if ordinary_accessor {
                 if let Some(index) = state.properties.iter().position(|entry| entry.key == *key) {
                     if state.properties[index].descriptor.writable() == Some(true) {
                         // Check heap ownership and record the strong edge before
@@ -2031,15 +2153,25 @@ impl Object {
                 }
             }
         }
-        let descriptor = self.get_own_property(key);
-        let Some(descriptor) = descriptor else {
+        if let Some(setter) = if ordinary_accessor {
+            self.own_accessor_setter(key)?
+        } else {
+            None
+        } {
+            let Some(setter) = setter else {
+                return Ok(false);
+            };
+            setter.call(receiver, &[value])?;
+            return Ok(true);
+        }
+        let descriptor = self.try_get_own_property(key)?;
+        let descriptor = if let Some(descriptor) = descriptor {
+            descriptor
+        } else {
             if let Some(prototype) = self.prototype() {
                 return prototype.set_with_receiver(key, value, receiver);
             }
-            let Value::Object(receiver) = receiver else {
-                return Ok(false);
-            };
-            return receiver.create_data_property(key.clone(), value);
+            PropertyDescriptor::data(Value::Undefined, true, true, true)
         };
         if descriptor.is_data_descriptor() {
             if descriptor.writable != Some(true) {
@@ -2048,7 +2180,7 @@ impl Object {
             let Value::Object(receiver) = receiver else {
                 return Ok(false);
             };
-            if let Some(existing) = receiver.get_own_property(key) {
+            if let Some(existing) = receiver.try_get_own_property(key)? {
                 if existing.is_accessor_descriptor() || existing.writable != Some(true) {
                     return Ok(false);
                 }
@@ -2429,6 +2561,44 @@ impl super::ObjectData {
 #[cfg(test)]
 mod own_data_hint_tests {
     use super::*;
+
+    #[cfg(not(miri))]
+    #[test]
+    fn accessor_operations_only_revive_the_invoked_method() {
+        let runtime = crate::runtime::Runtime::new();
+        let object = Object::new_in(&runtime);
+        let getter = Object::native_function_in(&runtime, |_, _| Ok(Value::Number(42.0)));
+        let setter = Object::native_function_in(&runtime, |_, args| {
+            assert!(args[0].same_value(&Value::Number(42.0)));
+            Ok(Value::Undefined)
+        });
+        object
+            .define_own_property(
+                "value".into(),
+                PropertyDescriptor::accessor(Some(getter), Some(setter), true, true),
+            )
+            .unwrap();
+        runtime.collect_garbage().unwrap();
+        let (_, before, _) = runtime.profile_snapshot();
+        for _ in 0..100 {
+            assert!(
+                object
+                    .get(&"value".into())
+                    .unwrap()
+                    .same_value(&Value::Number(42.0))
+            );
+            assert!(object.set(&"value".into(), Value::Number(42.0)).unwrap());
+        }
+        let (_, after, _) = runtime.profile_snapshot();
+        assert_eq!(
+            after[0] - before[0],
+            200,
+            "Get must not revive setter, Set must not revive getter"
+        );
+        assert_eq!(after[1] - before[1], 200);
+        drop(object);
+        assert_eq!(runtime.collect_garbage().unwrap().retained, 0);
+    }
 
     #[test]
     fn descriptor_lookup_hint_rechecks_keys_and_reads_current_descriptors() {

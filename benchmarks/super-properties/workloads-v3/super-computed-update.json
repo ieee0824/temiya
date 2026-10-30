@@ -1,0 +1,8 @@
+{
+  "name": "super-computed-update",
+  "iterations": 10000,
+  "oracle": "sum-one-to-n-single-key-expression-evaluation-and-receiver-state",
+  "setup": "function bench(n) { let calls = 0; let base = { get value() { return this.stored; }, set value(value) { this.stored = value; } }; let object = { __proto__: base, stored: 0, step() { return ++super[(calls++, 'value')]; } }; let total = 0; for (let i = 0; i < n; i++) total += object.step(); if (calls !== n || object.stored !== n || base.stored !== undefined) throw 42; return total; }",
+  "invocation": "bench(10000);",
+  "expected": 50005000
+}

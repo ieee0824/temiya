@@ -104,6 +104,13 @@ pub enum Constant {
     Scope(ScopeDescriptor),
     /// Immutable nested code, usable only by CreateFunction.
     Function(Rc<FunctionTemplate>),
+    /// Object initializer source for the shared evaluator, never a Value.
+    ObjectLiteral {
+        /// Parsed object expression with no runtime values.
+        definition: Rc<crate::ast::Expr>,
+        /// Strictness of the containing code.
+        strict: bool,
+    },
     /// Immutable class source for the shared class evaluator.
     Class {
         /// Parsed definition, containing no runtime values.
@@ -339,6 +346,12 @@ pub enum Instruction {
     CreateFunction(u32),
     /// Evaluate a fresh class in the current function environment.
     CreateClass(u32),
+    /// Evaluate a fresh object initializer in the current environment.
+    CreateObjectLiteral(u32),
+    /// Push the initialized super receiver and its owning function before the key.
+    LoadSuperBinding,
+    /// Consume receiver, owning function and key; retain a super property Reference.
+    ResolveSuperProperty { strict: bool },
     /// Push the nearest non-arrow function newTarget, or undefined.
     LoadNewTarget,
     /// Push the current lexical this binding.
@@ -384,6 +397,8 @@ pub enum Instruction {
 impl Instruction {
     fn required_stack(self) -> usize {
         match self {
+            Self::LoadSuperBinding => 0,
+            Self::ResolveSuperProperty { .. } => 3,
             Self::CreateObject => 0,
             Self::CoercePropertyKey => 1,
             Self::DefineObjectProperty { .. } => 3,
@@ -397,6 +412,7 @@ impl Instruction {
             Self::BeginMethodCall => 2,
             Self::CreateFunction(_)
             | Self::CreateClass(_)
+            | Self::CreateObjectLiteral(_)
             | Self::LoadNewTarget
             | Self::BeginReferenceCall
             | Self::Invoke
@@ -441,6 +457,8 @@ impl Instruction {
 
     fn stack_delta(self) -> isize {
         match self {
+            Self::LoadSuperBinding => 2,
+            Self::ResolveSuperProperty { .. } => -3,
             Self::CreateObject => 1,
             Self::CoercePropertyKey => 0,
             Self::DefineObjectProperty { .. } => -2,
@@ -461,6 +479,7 @@ impl Instruction {
             | Self::SpreadArguments => -1,
             Self::CreateFunction(_)
             | Self::CreateClass(_)
+            | Self::CreateObjectLiteral(_)
             | Self::LoadNewTarget
             | Self::Invoke
             | Self::LoadThis
@@ -503,7 +522,7 @@ impl Instruction {
 /// Untrusted portable bytecode plus its constant pool and local-slot count.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Bytecode {
-    /// Pointer-free literals referenced by `LoadConstant`.
+    /// Literals and immutable code/source metadata referenced by operands.
     pub constants: Vec<Constant>,
     /// Instructions addressed by zero-based absolute indices.
     pub instructions: Vec<Instruction>,
@@ -531,18 +550,33 @@ pub struct VerifiedBytecode {
 }
 
 impl VerifiedBytecode {
+    pub(crate) fn has_leaf_function(&self) -> bool {
+        self.leaf_function.is_some()
+    }
+
+    pub(crate) fn leaf_needs_environment(&self) -> bool {
+        self.leaf_function
+            .as_ref()
+            .is_some_and(|plan| plan.needs_environment())
+    }
+
     pub(crate) fn try_leaf_function(
         &self,
         parameters: &[JsString],
         arguments: &[crate::runtime::Value],
         this: &crate::runtime::Value,
         realm: &crate::runtime::Realm,
+        function: &crate::runtime::Object,
+        environment: Option<&crate::runtime::Environment>,
     ) -> Option<crate::runtime::RuntimeResult<crate::runtime::Value>> {
-        Some(
-            self.leaf_function
-                .as_ref()?
-                .execute(parameters, arguments, this, realm),
-        )
+        Some(self.leaf_function.as_ref()?.execute(
+            parameters,
+            arguments,
+            this,
+            realm,
+            function,
+            environment,
+        ))
     }
     pub(crate) fn try_numeric_return(
         &self,
@@ -692,6 +726,32 @@ fn class_does_not_observe_loop_bindings(
     !observed
 }
 
+// A complete object initializer may create methods without observing cloned
+// header cells. Inspect keys, spreads, defaults and all nested syntax. Reject
+// unsupported class elements conservatively, as the class proof does.
+fn object_does_not_observe_loop_bindings(
+    expression: &crate::ast::Expr,
+    loop_names: &std::collections::HashSet<Vec<u16>>,
+) -> bool {
+    let mut observed = false;
+    expression.visit(&mut |expression| match &expression.kind {
+        crate::ast::ExprKind::Identifier(name) => {
+            observed |=
+                name == "eval" || loop_names.contains(&name.encode_utf16().collect::<Vec<_>>());
+        }
+        crate::ast::ExprKind::Class(class) => {
+            observed |= class.elements.iter().any(|element| {
+                !matches!(element.kind, crate::ast::ClassElementKind::Method { .. })
+                    || element.key.as_ref().is_some_and(|key| {
+                        matches!(key.kind, crate::ast::ExprKind::PrivateIdentifier(_))
+                    })
+            });
+        }
+        _ => {}
+    });
+    !observed
+}
+
 // Reuse requires that no closure/eval observer can read these cells and that
 // no reference or pending invocation spans a clone. This exhaustive instruction
 // match requires a fresh review whenever an opcode is added.
@@ -705,7 +765,7 @@ fn loop_bindings_are_unobserved(code: &Bytecode, states: &[Option<FlowState>]) -
     {
         return false;
     }
-    // A class may capture its surrounding scope without observing these loop
+    // Source metadata may capture its surrounding scope without observing these loop
     // cells. Collect every cloned header's names; rejecting shadowed uses is
     // deliberately conservative, and applies to nested loops as well.
     let mut loop_names = std::collections::HashSet::new();
@@ -732,7 +792,16 @@ fn loop_bindings_are_unobserved(code: &Bytecode, states: &[Option<FlowState>]) -
         .iter()
         .enumerate()
         .all(|(offset, instruction)| match *instruction {
-            Instruction::CreateFunction(_) => false,
+            Instruction::CreateFunction(_)
+            | Instruction::LoadSuperBinding
+            | Instruction::ResolveSuperProperty { .. } => false,
+            Instruction::CreateObjectLiteral(index) => {
+                let Constant::ObjectLiteral { definition, .. } = &code.constants[index as usize]
+                else {
+                    return false;
+                };
+                object_does_not_observe_loop_bindings(definition, &loop_names)
+            }
             Instruction::CreateClass(index) => {
                 let Constant::Class { definition, .. } = &code.constants[index as usize] else {
                     return false;
@@ -1009,6 +1078,25 @@ fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
                     );
                 }
             }
+            Instruction::LoadSuperBinding | Instruction::ResolveSuperProperty { .. } => {
+                if !state.scopes.iter().any(|(_, index)| matches!(&bytecode.constants[*index as usize], Constant::Scope(plan) if plan.kind == ScopeKind::Function)) {
+                    return Err(error(VerifyErrorKind::ScopeMismatch));
+                }
+                if matches!(instruction, Instruction::ResolveSuperProperty { .. }) {
+                    state.references.push(
+                        u32::try_from(offset).map_err(|_| error(VerifyErrorKind::ScopeMismatch))?,
+                    );
+                }
+            }
+            Instruction::CreateObjectLiteral(index) => {
+                if !matches!(constant(index)?, Constant::ObjectLiteral { definition, .. } if matches!(definition.kind, crate::ast::ExprKind::Object(_)))
+                {
+                    return Err(error(VerifyErrorKind::InvalidConstantKind));
+                }
+                if state.scopes.is_empty() {
+                    return Err(error(VerifyErrorKind::ScopeMismatch));
+                }
+            }
             Instruction::CreateClass(index) => {
                 if !matches!(constant(index)?, Constant::Class { .. }) {
                     return Err(error(VerifyErrorKind::InvalidConstantKind));
@@ -1111,7 +1199,10 @@ fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
             Instruction::LoadConstant(index) => {
                 if matches!(
                     constant(index)?,
-                    Constant::Scope(_) | Constant::Function(_) | Constant::Class { .. }
+                    Constant::Scope(_)
+                        | Constant::Function(_)
+                        | Constant::Class { .. }
+                        | Constant::ObjectLiteral { .. }
                 ) {
                     return Err(error(VerifyErrorKind::InvalidConstantKind));
                 }

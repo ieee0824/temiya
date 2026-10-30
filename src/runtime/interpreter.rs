@@ -303,6 +303,18 @@ impl Reference {
         Self::property_with_prototypes(realm, base, name, strict, |id, _| realm.intrinsic(id))
     }
 
+    pub(crate) fn super_property_in_realm(
+        realm: &Realm,
+        base: Value,
+        name: ReferencedName,
+        strict: bool,
+        receiver: Value,
+    ) -> Self {
+        let mut reference = Self::property_in_realm(realm, base, name, strict);
+        reference.this_value = Some(receiver);
+        reference
+    }
+
     fn property_with_prototypes(
         realm: &Realm,
         base: Value,
@@ -384,11 +396,15 @@ impl Reference {
             ReferenceBase::Property(Value::Undefined | Value::Null) => Err(
                 RuntimeError::type_error("cannot access a property of null or undefined"),
             ),
-            ReferenceBase::Property(base) => get_property(
-                base,
-                &self.name.property_key()?,
-                self.primitive_prototype.as_ref(),
-            ),
+            ReferenceBase::Property(base) => {
+                let key = self.name.property_key()?;
+                match (base, &self.this_value) {
+                    (Value::Object(object), Some(receiver)) => {
+                        object.get_with_receiver(&key, receiver.clone())
+                    }
+                    _ => get_property(base, &key, self.primitive_prototype.as_ref()),
+                }
+            }
         }
     }
 
@@ -424,7 +440,12 @@ impl Reference {
             ),
             ReferenceBase::Property(base) => {
                 let key = self.name.property_key()?;
-                let succeeded = set_property(base, &key, value, self.primitive_prototype.as_ref())?;
+                let succeeded = match (base, &self.this_value) {
+                    (Value::Object(object), Some(receiver)) => {
+                        object.set_with_receiver(&key, value, receiver.clone())?
+                    }
+                    _ => set_property(base, &key, value, self.primitive_prototype.as_ref())?,
+                };
                 if !succeeded && self.strict {
                     Err(RuntimeError::type_error("property assignment was rejected"))
                 } else {
@@ -436,6 +457,11 @@ impl Reference {
 
     /// Implements deletion of the referenced binding or property.
     pub fn delete(&self) -> RuntimeResult<bool> {
+        if self.is_property_reference() && self.this_value.is_some() {
+            return Err(RuntimeError::reference_error(
+                "cannot delete a super property",
+            ));
+        }
         match &self.base {
             ReferenceBase::Unresolvable(_) => Ok(true),
             ReferenceBase::Environment(environment)
@@ -730,6 +756,9 @@ impl ExpressionEvaluator {
         computed: bool,
         optional: bool,
     ) -> RuntimeResult<Evaluation> {
+        if matches!(object.kind, ExprKind::Super) {
+            return self.super_member(property, computed);
+        }
         let base = match self.eval(object)? {
             Evaluation::ShortCircuit => return Ok(Evaluation::ShortCircuit),
             value => value.value()?,
@@ -748,6 +777,40 @@ impl ExpressionEvaluator {
             name,
             self.strict,
         )))
+    }
+
+    fn super_member(&self, property: &Expr, computed: bool) -> RuntimeResult<Evaluation> {
+        // Arrows share the nearest non-lexical function's this/super binding.
+        // Resolve lazily so ordinary calls retain their existing fast path.
+        let (receiver, function) = if let Some(environment) = &self.this_environment {
+            environment.super_reference_binding()?.ok_or_else(|| {
+                RuntimeError::reference_error("super property has no function environment")
+            })?
+        } else {
+            let mut current = Some(self.environment.clone());
+            loop {
+                let environment = current.ok_or_else(|| {
+                    RuntimeError::reference_error("super property has no function environment")
+                })?;
+                if let Some(binding) = environment.super_reference_binding()? {
+                    break binding;
+                }
+                current = environment.outer();
+            }
+        };
+        // GetThisBinding above throws before evaluating the key. Only the
+        // immutable function edge is loaded early, never HomeObject's parent.
+        let name = if computed {
+            ReferencedName::Value(self.evaluate(property)?)
+        } else {
+            ReferencedName::PropertyKey(PropertyKey::String(member_name(property)?))
+        };
+        // Key expression effects may change HomeObject's prototype. Capture
+        // that current base before the deferred ToPropertyKey conversion.
+        let base = function.super_base()?;
+        let mut reference = Reference::property_in_realm(&self.realm, base, name, self.strict);
+        reference.this_value = Some(receiver);
+        Ok(Evaluation::Reference(reference))
     }
 
     fn call(&self, callee: &Expr, arguments: &[Expr], optional: bool) -> RuntimeResult<Evaluation> {

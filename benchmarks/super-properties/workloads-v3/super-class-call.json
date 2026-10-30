@@ -1,0 +1,8 @@
+{
+  "name": "super-class-call",
+  "iterations": 10000,
+  "oracle": "sum-one-to-n",
+  "setup": "class Base { constructor() { this.value = 0; } step() { this.value += 1; return this.value; } } class Derived extends Base { step() { return super.step(); } } function bench(n) { let object = new Derived(); let total = 0; for (let i = 0; i < n; i++) total += object.step(); return total; }",
+  "invocation": "bench(10000);",
+  "expected": 50005000
+}

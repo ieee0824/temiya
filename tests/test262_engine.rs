@@ -358,7 +358,7 @@ fn public_runner_executes_bodies_and_matches_error_phase_and_constructor() {
             backend,
         ));
         fail(&fixture.run("/*---\nflags: []\n---*/\nthrow 42;", backend));
-        fail(&fixture.run("/*---\nflags: []\n---*/\nclass C { field; }", backend));
+        fail(&fixture.run("/*---\nflags: []\n---*/\nclass C { static field; }", backend));
     }
 }
 
@@ -390,7 +390,7 @@ fn harness_failures_and_unavailable_hooks_never_satisfy_negative_tests() {
             ));
         }
         fail(&fixture.run(
-            "/*---\nnegative:\n  phase: runtime\n  type: EngineError\n---*/\nclass C { field; }",
+            "/*---\nnegative:\n  phase: runtime\n  type: EngineError\n---*/\nclass C { static field; }",
             backend,
         ));
         for source in ["$262.agent.start('');", "$262.AbstractModuleSource();"] {

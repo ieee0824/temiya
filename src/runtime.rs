@@ -16,6 +16,7 @@ mod array_methods;
 mod builtins;
 pub(crate) mod bytecode_function;
 mod class;
+mod class_fields;
 mod coercion;
 mod collections;
 mod elements;

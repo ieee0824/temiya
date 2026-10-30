@@ -569,6 +569,7 @@ fn construct_function(
     };
     let instance = Object::new_for(&new_target);
     instance.initialize_prototype(Some(prototype));
+    function.initialize_instance_fields(&instance)?;
     let result = call_function(
         closure,
         function,
@@ -595,12 +596,14 @@ fn construct_derived(
             .try_prototype()?
             .filter(Object::is_constructor)
             .ok_or_else(|| RuntimeError::type_error("super constructor is not a constructor"))?;
-        return parent.construct(arguments, new_target);
+        let instance = parent.construct(arguments, new_target)?;
+        function.initialize_instance_fields(&instance)?;
+        return Ok(instance);
     }
     if let Some(parameters) = &closure.code.delegated_parameters {
         // No this/arguments/eval, defaults, spread, closures or later statements
-        // can observe BindThisValue in this shape. Class fields are still
-        // rejected by class evaluation, so no instance initializer is omitted.
+        // can observe BindThisValue in this shape. Initialize own fields after
+        // the parent returns, before exposing the initialized receiver.
         let parent = function.try_prototype()?;
         let arguments: Cow<'_, [Value]> = if arguments.len() >= parameters.len()
             && parameters.iter().copied().eq(0..parameters.len())
@@ -617,7 +620,9 @@ fn construct_derived(
         let parent = parent
             .filter(Object::is_constructor)
             .ok_or_else(|| RuntimeError::type_error("super constructor is not a constructor"))?;
-        return parent.construct(&arguments, new_target);
+        let instance = parent.construct(&arguments, new_target)?;
+        function.initialize_instance_fields(&instance)?;
+        return Ok(instance);
     }
     let environment = Environment::function(
         Some(closure.environment.clone()),

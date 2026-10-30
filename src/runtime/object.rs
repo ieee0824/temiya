@@ -413,6 +413,7 @@ pub(super) enum ManagedCallable {
     CapturedObject(CapturedObjectCall),
     Bytecode(super::bytecode_function::StoredClosure),
     Ast(super::function::StoredFunctionClosure),
+    FieldInitializer(super::class_fields::Initializer),
     Bound(BoundFunction),
     ProxyRevoker(std::cell::RefCell<Option<StoredObject>>),
 }
@@ -428,6 +429,7 @@ impl ManagedCallable {
             Self::Bound(bound) => bound.target.load(owner).map(Some),
             Self::ProxyRevoker(_) => Ok(None),
             Self::Ast(_) => Ok(None),
+            Self::FieldInitializer(_) => Ok(None),
             Self::Bytecode(_) => Ok(None),
             Self::CapturedObject(_) => Ok(None),
             Self::Array(_) => Ok(None),
@@ -451,6 +453,7 @@ impl ManagedCallable {
             Self::ObjectFactory(_) => true,
             Self::Bound(bound) => bound.constructor,
             Self::Ast(closure) => closure.is_constructor(),
+            Self::FieldInitializer(_) => false,
             Self::Bytecode(closure) => closure.is_constructor(),
             Self::ProxyRevoker(_) => false,
             Self::CapturedObject(_) => false,
@@ -491,6 +494,7 @@ impl ManagedCallable {
                 }
             },
             Self::Ast(closure) => closure.call(owner, this, arguments),
+            Self::FieldInitializer(initializer) => initializer.call(owner, this),
             Self::Bytecode(closure) => closure.call(owner, this, arguments),
             Self::Bound(bound) => {
                 let target = bound.target.load(owner)?;
@@ -563,6 +567,7 @@ impl ManagedCallable {
             Self::ProxyRevocable(factory) => factory.trace(tracer),
             Self::ObjectFactory(factory) => factory.trace(tracer),
             Self::Ast(closure) => closure.trace(tracer),
+            Self::FieldInitializer(initializer) => initializer.trace(tracer),
             Self::Bytecode(closure) => closure.trace(tracer),
             Self::CapturedObject(call) => call.object.trace(tracer),
             Self::Array(call) => call.trace(tracer),
@@ -618,6 +623,7 @@ pub(super) struct ObjectState {
     // read, so deleting/reordering properties never returns a stale descriptor.
     last_property: Cell<usize>,
     callable: Option<NativeCall>,
+    pub(super) instance_fields: Vec<super::class_fields::Field>,
     pub(super) managed_callable: Option<Rc<FunctionPayload<ManagedCallable>>>,
     construct: Option<NativeConstruct>,
     // The own data property already exists. Only its initial object value is
@@ -706,6 +712,7 @@ impl Object {
         let callable = self.0.state.borrow().managed_callable.clone();
         match callable.as_ref().map(|callable| &callable.body) {
             Some(ManagedCallable::Ast(closure)) => closure.super_base(self),
+            Some(ManagedCallable::FieldInitializer(initializer)) => initializer.super_base(self),
             _ => Err(RuntimeError::reference_error(
                 "function has no super binding",
             )),
@@ -718,6 +725,9 @@ impl Object {
             return match &call.body {
                 ManagedCallable::Ast(closure) => Some(closure.source_realm().clone()),
                 ManagedCallable::Bytecode(closure) => Some(closure.source_realm().clone()),
+                ManagedCallable::FieldInitializer(initializer) => {
+                    Some(initializer.source_realm().clone())
+                }
                 _ => call.source.clone(),
             };
         }
@@ -2483,6 +2493,9 @@ impl super::ObjectData {
     // non-owning, typed captures and active evaluator roots.
     pub(super) fn trace_object_edges(&self, tracer: &mut crate::gc::Tracer<'_>) {
         let state = self.state.borrow();
+        for field in &state.instance_fields {
+            field.trace(tracer);
+        }
         if let Some(module) = &state.module_namespace {
             module.trace(tracer);
         }

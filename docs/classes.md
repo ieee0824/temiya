@@ -82,8 +82,8 @@ does not implement general legacy caller introspection.
 
 Super-property get/set/call in object and class methods execute through Ast
 and Auto; see [super references](super-properties.md) for scope and ordering.
-Public fields (#157), static initialization (#158) and private elements
-(#159/#160) are separate work.
+[Public instance fields](instance-fields.md) initialize through Ast and Auto.
+Static initialization (#158) and private elements (#159/#160) remain separate work.
 Unsupported elements produce explicit Engine failures; they are never silently
 dropped. General parameter-environment behavior (#165), arrow new.target (#168)
 and eval (#169) also remain incomplete. No whole-class or whole-corpus conformance
@@ -118,8 +118,8 @@ consulting an array iterator. Arrows created before super retain the owning
 `this` binding and observe its later initialization. Captured environments are
 traced through stored closures and suspended evaluators. General derived bodies use
 the AST evaluator in both Ast and Auto; the bytecode leaf/activation-elision paths
-do not model uninitialized constructor `this`. Fields/private elements and
-complete builtin subclassing remain separate work.
+do not model uninitialized constructor `this`. Private elements and complete
+builtin subclassing remain separate work.
 
 Run `cargo test --locked --test derived_classes --test base_classes` for the
 public Engine tests. Fixed upstream coverage retains every recorded dependency
@@ -141,8 +141,8 @@ This shape cannot observe or capture its constructor activation, so it needs no
 managed function environment. Parent lookup and construction still occur on
 each call with the original new target. Defaults, spread, eval, arguments,
 closures, this accesses and additional statements retain general evaluation;
-runtime errors never retry another path. Class fields remain explicitly rejected,
-so this specialization does not silently omit instance initializers.
+runtime errors never retry another path. Delegated construction initializes its
+own instance fields after the parent returns, before returning the instance.
 
 Instance allocation reads the actual new target's `prototype` once. A
 non-object result selects the appropriate intrinsic prototype from that

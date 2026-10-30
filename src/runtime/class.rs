@@ -19,13 +19,14 @@ pub(super) fn evaluate(
     // Never execute a partial class while silently discarding unsupported elements.
     for element in &class.elements {
         if !matches!(element.kind, ClassElementKind::Method { .. })
+            && !(matches!(element.kind, ClassElementKind::Field(_)) && !element.is_static)
             || element
                 .key
                 .as_ref()
                 .is_some_and(|key| matches!(key.kind, ExprKind::PrivateIdentifier(_)))
         {
             return Err(RuntimeError::internal_error(
-                "class fields and private elements are not yet implemented",
+                "static class fields, static blocks and private elements are not yet implemented",
             ));
         }
     }
@@ -137,12 +138,6 @@ pub(super) fn evaluate(
         PropertyDescriptor::data(Value::Object(constructor.clone()), true, false, true),
     )?;
     for element in &class.elements {
-        let ClassElementKind::Method { function, kind } = &element.kind else {
-            unreachable!()
-        };
-        if *kind == MethodKind::Constructor && !element.is_static {
-            continue;
-        }
         let key = element
             .key
             .as_ref()
@@ -156,6 +151,22 @@ pub(super) fn evaluate(
         } else {
             super::object_literal::property_key(&outer.realm, evaluator.evaluate(key)?)?
         };
+        if let ClassElementKind::Field(expression) = &element.kind {
+            super::class_fields::add(
+                &constructor,
+                &prototype,
+                &evaluator,
+                key,
+                expression.as_ref(),
+            )?;
+            continue;
+        }
+        let ClassElementKind::Method { function, kind } = &element.kind else {
+            unreachable!()
+        };
+        if *kind == MethodKind::Constructor && !element.is_static {
+            continue;
+        }
         let home = if element.is_static {
             &constructor
         } else {

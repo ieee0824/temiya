@@ -10,17 +10,18 @@ import * as baseClassSuite from './class-benchmark-reference.mjs';
 const args = process.argv.slice(2);
 const derived = args[0] === '--derived';
 const superProperties = args[0] === '--super';
-if (derived || superProperties) args.shift();
-const {classFixtureVersion, classManifestSha256, classReferenceRevision, classWorkloads} = superProperties ? await import('./super-property-benchmark-reference.mjs') : derived
+const instanceFields = args[0] === '--fields';
+if (derived || superProperties || instanceFields) args.shift();
+const {classFixtureVersion, classManifestSha256, classReferenceRevision, classWorkloads} = instanceFields ? await import('./instance-field-benchmark-reference.mjs') : superProperties ? await import('./super-property-benchmark-reference.mjs') : derived
   ? await import('./derived-class-benchmark-reference.mjs') : baseClassSuite;
-const fixtureKind = superProperties ? 'authored-super-properties' : derived ? 'authored-derived-classes' : 'authored-base-classes';
+const fixtureKind = instanceFields ? 'authored-instance-fields' : superProperties ? 'authored-super-properties' : derived ? 'authored-derived-classes' : 'authored-base-classes';
 const beforeAfter = args[0] === '--temiya-baseline';
 if (beforeAfter) args.shift();
 const [directory, temiya, referenceFile, samplesText = '15', pairsText = '3'] = args;
 const samples = Number(samplesText), pairs = Number(pairsText), spiderMonkey = false;
 if (args.length < 3 || args.length > 5 || !Number.isInteger(samples) || samples < 1 || samples > 1000 ||
     !Number.isInteger(pairs) || pairs < 1 || pairs > 10 || !/^[a-f0-9]{40}$/.test(process.env.TEMIYA_REVISION ?? ''))
-  throw Error('set TEMIYA_REVISION; usage: compare-class-workloads.mjs [--derived|--super] [--temiya-baseline] WORKLOAD_DIR TEMIYA_WORKER REFERENCE_INFO [SAMPLES=15] [PAIRS=3]');
+  throw Error('set TEMIYA_REVISION; usage: compare-class-workloads.mjs [--derived|--super|--fields] [--temiya-baseline] WORKLOAD_DIR TEMIYA_WORKER REFERENCE_INFO [SAMPLES=15] [PAIRS=3]');
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 if (os.platform() !== 'linux') throw Error('Linux /proc watchdog required');
 const manifestPath = join(directory, 'manifest.json'), manifestBytes = readFileSync(manifestPath);
@@ -51,7 +52,7 @@ const workloads = manifest.workloads.map((entry, index) => {
       entry.iterations !== fixed.iterations || entry.expected !== fixed.expected || entry.oracle !== fixed.oracle)
     throw Error('class input identity/oracle changed');
   const workload = JSON.parse(bytes);
-  const expected = superProperties
+  const expected = instanceFields ? fixed.iterations * (fixed.iterations + 1) / 2 : superProperties
     ? fixed.oracle === 'half-n-times42-plus-half-n-times84'
       ? (fixed.iterations / 2) * 42 + (fixed.iterations / 2) * 84
       : fixed.iterations * (fixed.iterations + 1) / 2
@@ -63,7 +64,7 @@ const workloads = manifest.workloads.map((entry, index) => {
 });
 const timeout_ms = 180000, rss_limit_kib = 512 * 1024;
 const identities = [manifestPath, ...workloads.map(row => row.path), ...workers.map(row => row.executable),
-  fileURLToPath(import.meta.url), fileURLToPath(new URL(superProperties ? './super-property-benchmark-reference.mjs' : './class-benchmark-reference.mjs', import.meta.url))]
+  fileURLToPath(import.meta.url), fileURLToPath(new URL(instanceFields ? './instance-field-benchmark-reference.mjs' : superProperties ? './super-property-benchmark-reference.mjs' : './class-benchmark-reference.mjs', import.meta.url))]
   .map(file => ({file, sha256: hash(readFileSync(file))}));
 const report = {comparison_kind: beforeAfter ? 'Temiya class before/after or control' : 'Temiya class versus actual Boa',
   recorded_at: new Date().toISOString(), rustc, manifest, workers, samples, pairs, identities,

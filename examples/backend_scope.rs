@@ -35,16 +35,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     ));
     assert!(BytecodeCompiler::compile(class).is_err());
 
-    // Derived construction is connected; fields still expose a runtime boundary.
+    // Derived construction and public instance fields execute through Auto.
     let derived = "class Parent { constructor(x) { this.x = x; } } class Child extends Parent {} (new Child(42)).x;";
     let script = engine.compile(&realm, derived)?;
     assert!(matches!(
         engine.evaluate(&script)?.value(),
         Value::Number(42.0)
     ));
-    let fields = "(class { field; });";
+    let fields = "(new (class { field = 42; })).field;";
     assert!(parse_script(fields).is_ok());
     let script = engine.compile(&realm, fields)?;
+    assert!(matches!(
+        engine.evaluate(&script)?.value(),
+        Value::Number(42.0)
+    ));
+
+    // Static fields remain a separate unsupported runtime boundary.
+    let script = engine.compile(&realm, "(class { static field; });")?;
     assert!(engine.evaluate(&script).is_err());
 
     let bytecode = BytecodeCompiler::compile("40 + 2;")?;

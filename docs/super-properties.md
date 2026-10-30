@@ -69,3 +69,23 @@ AST metadata and create fresh runtime objects, with no retry after an error.
 Top-level object methods remain outside the whole-Script compiler subset. This
 does not introduce general super-reference bytecode instructions or complete
 #299.
+
+A method or arrow whose complete body only returns a named super-method call
+can omit its own activation when every formal parameter is simple and every
+forwarded argument is one of those parameters. Missing arguments become
+undefined; reordered arguments and omitted extra actuals follow the explicit
+argument list. Defaults, spread, computed keys, extra statements, async/generator
+bodies and constructors retain the ordinary path. Arrow calls resolve the
+owning function's live this binding, including the uninitialized derived case.
+The current HomeObject parent, getter/Proxy behavior, receiver and call-depth
+limit remain observable. Errors from property lookup or the target are never
+retried through the AST evaluator.
+
+Source df1a206 retains 120 native worker runs and 1920 checked values in
+`benchmarks/super-properties/super-delegation-v1`. Object/class/arrow super-call
+workloads each have three significant wins against both Boa and the previous
+runtime; the same-binary control has fifteen noisy comparisons. The accessor
+and computed-update workloads remain noisy, so the complete issue is still not
+speed-qualified. Run `node benchmarks/super-properties/verify-performance.mjs`
+to independently reconstruct all intermediate records, including adverse
+observations and unchanged fixed upstream failures.

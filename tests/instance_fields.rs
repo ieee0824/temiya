@@ -45,7 +45,7 @@ fn computed_keys_run_once_and_initializers_run_per_instance_in_order() {
         "let log='';let key={toString(){log+='K';return 'x';}};class C{[(log+='E',key)]=(log+='X',1);y=(log+='Y',this.x+1);[(log+='L','x')]=(log+='Z',3);}let before=log;let a=new C();let b=new C();before==='EKL' && log==='EKLXYZXYZ' && a.x===3 && a.y===2 && b.x===3;",
     );
     check(
-        "let key=Symbol('key');class C{[key]=42;['__proto__']=99;}let c=new C();c[key]===42 && c.hasOwnProperty('__proto__') && c.__proto__===99 && Object.getPrototypeOf(c)===C.prototype;",
+        "let key=Symbol.iterator;let other=Symbol.toStringTag;class C{[key]=42;[other];['__proto__']=99;}let c=new C();typeof key==='symbol' && typeof other==='symbol' && key!==other && c[key]===42 && c[other]===undefined && c.hasOwnProperty(other) && c.hasOwnProperty('__proto__') && c.__proto__===99 && Object.getPrototypeOf(c)===C.prototype;",
     );
 }
 
@@ -117,4 +117,11 @@ fn initializer_closures_and_home_objects_survive_reentrant_gc_and_collect() {
         }
         assert_eq!(engine.collect_garbage().unwrap().retained, 0);
     }
+}
+
+#[test]
+fn symbol_initializer_names_use_the_actual_key_description() {
+    check(
+        "let key=Symbol.iterator;let other=Symbol.toStringTag;class C{[key]=function(){};[other]=class {};}let c=new C();typeof key==='symbol' && key!==other && c[key].name==='[Symbol.iterator]' && c[other].name==='[Symbol.toStringTag]';",
+    );
 }

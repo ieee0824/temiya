@@ -358,7 +358,10 @@ fn public_runner_executes_bodies_and_matches_error_phase_and_constructor() {
             backend,
         ));
         fail(&fixture.run("/*---\nflags: []\n---*/\nthrow 42;", backend));
-        fail(&fixture.run("/*---\nflags: []\n---*/\nclass C { static field; }", backend));
+        fail(&fixture.run(
+            "/*---\nflags: []\n---*/\nclass C { static field; }",
+            backend,
+        ));
     }
 }
 

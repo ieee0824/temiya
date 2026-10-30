@@ -296,3 +296,12 @@ before/after original comparisons are all within noise, and all identical-worker
 controls are within noise on both machines. Every result is retained. The
 new derived-workload criterion is met, but this is not unconditional performance
 qualification or a reason to omit the base-class and array observations.
+
+Direct construction of a base class can reuse its traced instance-prototype
+object: the class evaluator defines the constructor's own prototype as that
+same object, non-writable and non-configurable, before publishing it. This path
+requires the actual new target to be the class constructor itself. Ordinary
+functions and alternate new targets, including Proxy wrappers and subclasses,
+retain GetPrototypeFromConstructor and all observable property access. Bound
+construction follows its normal new-target substitution before this check.
+Changing the instance prototype's parent remains observable by new instances.

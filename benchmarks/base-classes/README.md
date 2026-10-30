@@ -83,3 +83,29 @@ Hosted measurements can include the same separate class suite with the
 `include_controls` retains baseline/Boa and identical-binary controls for both
 suites. `two_runners` records both machines without selecting a CPU or discarding
 unfavorable results. CI success means valid observations, not a speed pass.
+
+`hosted-f1c` retains both machines from run40960178364 and all eight reports per
+machine. Both report three class-method comparisons slower than actual Boa. The
+original eleven have 33 faster comparisons against Boa on each machine, but the
+before/after comparisons retain one slower closure-allocation pair on each
+machine. The identical-binary controls do not establish a source change. These
+outcomes are not relabeled as passing class performance.
+
+`full-f1c` retains all eight complete production shards from run40960620020:
+52,133 files, 100,211 variants, 25,887 pass, 65,363 fail, 18 skip, 8,943 timeout,
+zero missing/unexecuted variants. Its gate correctly rejects the known-pass
+Sloppy variant of function/S13.2.2_A12.js. This exposed bytecode `this` lookup
+incorrectly calling a Function-record operation on a declarative block; source
+551d925 fixes the lookup and adds real Engine coverage. The original is now
+included in the expanded 129-file/216-variant PR policy. Neither the old failure
+nor any timeout/skip is a pass. This historical full snapshot is not a current
+language conformance claim.
+
+```sh
+node benchmarks/base-classes/verify-hosted-f1c.mjs
+node benchmarks/base-classes/verify-full-f1c.mjs
+```
+
+The full verifier safely decodes the retained capture and original reference,
+independently checks every raw shard, proves complete nonoverlapping file/variant
+coverage and reruns the production per-variant gate, including its rejection.

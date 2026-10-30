@@ -405,3 +405,14 @@ Tests verify zero managed activation allocations, original accessor/coercion
 order and thrown-value identity, source-Realm errors, BigInt updates and GC
 inside nested accessor execution. No JIT or benchmark-specific recognition is
 involved.
+
+Fresh internal function frames can reuse per-iteration let binding identities
+when a complete verified-body proof excludes closure creation, hoisted functions
+and eval references/bindings. No retained Reference or pending invocation may
+span a clone instruction. The opcode match is exhaustive, so new instructions
+require a review. Variable writes and lexical checks still use ordinary
+Environments; callbacks and property operations retain their usual semantics.
+Bodies that can expose iteration cells and the public prepared-frame API retain
+cloning. Tests cover escaped closures, closures returned by external factories,
+abrupt loop control, constant managed-allocation growth and handwritten verified
+code that holds a binding Reference across a clone.

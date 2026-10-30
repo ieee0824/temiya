@@ -249,3 +249,13 @@ fn straight_line_methods_preserve_accessor_coercion_order_and_never_retry_errors
         "class C{write(value){this.value=value;return this.value;}}let target={};let result=C.prototype.write.call(target);result===undefined && target.hasOwnProperty('value');",
     );
 }
+
+#[test]
+fn noncapturing_callback_loops_keep_values_and_abrupt_control_flow() {
+    check(
+        "function make(value){return function(){return value;};}function run(n){let list=[];for(let i=0;i<n;i++){list.push(make(i));}return list[0]()+list[1]()+list[2]();}run(3)===3;",
+    );
+    check(
+        "function run(n){let values=[];for(let i=0;i<n;i++){if(i===2)continue;if(i===5)break;values.push(i);}return values.length===4 && values[0]+values[1]+values[2]+values[3]===8;}run(10);",
+    );
+}

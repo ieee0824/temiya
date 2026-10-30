@@ -24,7 +24,7 @@ impl VirtualMachine {
         {
             return Self::execute_in_realm(bytecode, &Realm::ordinary());
         }
-        Self::run::<false>(bytecode, None, None)
+        Self::run::<false>(bytecode, None, None, false)
     }
 
     /// Executes Script bytecode in a persistent host-supplied Realm.
@@ -32,7 +32,7 @@ impl VirtualMachine {
         bytecode: &VerifiedBytecode,
         realm: &Realm,
     ) -> RuntimeResult<Completion> {
-        Self::run::<false>(bytecode, Some(realm), None)
+        Self::run::<false>(bytecode, Some(realm), None, false)
     }
 
     /// Executes function-body bytecode with a caller-prepared function frame.
@@ -47,7 +47,7 @@ impl VirtualMachine {
                 "bytecode requires a function environment",
             ));
         }
-        Self::run::<false>(bytecode, Some(realm), Some(frame))
+        Self::run::<false>(bytecode, Some(realm), Some(frame), false)
     }
 
     // Only a freshly instantiated, nonescaping internal function frame may
@@ -59,9 +59,14 @@ impl VirtualMachine {
         frame: &Environment,
     ) -> RuntimeResult<Completion> {
         if scalar_loop_locals(bytecode) {
-            Self::run::<true>(bytecode, Some(realm), Some(frame))
+            Self::run::<true>(bytecode, Some(realm), Some(frame), true)
         } else {
-            Self::run::<false>(bytecode, Some(realm), Some(frame))
+            Self::run::<false>(
+                bytecode,
+                Some(realm),
+                Some(frame),
+                bytecode.reuse_loop_bindings,
+            )
         }
     }
 
@@ -69,6 +74,7 @@ impl VirtualMachine {
         bytecode: &VerifiedBytecode,
         realm: Option<&Realm>,
         function: Option<&Environment>,
+        reuse_loop_bindings: bool,
     ) -> RuntimeResult<Completion> {
         let _object_roots = realm.and_then(Realm::enter_object_root_region);
         let mut property_context = realm.map(PropertyReferenceContext::new);
@@ -231,7 +237,7 @@ impl VirtualMachine {
                     scopes.pop();
                 }
                 Instruction::CloneLoopBindings => {
-                    if SCALAR_LOCALS {
+                    if reuse_loop_bindings {
                         continue;
                     }
                     let frame = scopes.last_mut().expect("verified loop environment");
@@ -1178,5 +1184,135 @@ mod private_scope_tests {
             let template = BytecodeCompiler::compile_function_template(function).unwrap();
             assert_eq!(scalar_loop_locals(&template.body), eligible, "{source}");
         }
+    }
+}
+
+#[cfg(test)]
+mod loop_binding_identity_tests {
+    use super::*;
+    use crate::{
+        ast::StmtKind,
+        bytecode::{Bytecode, BytecodeCompiler, ScopeBinding},
+        parser::parse_script,
+        runtime::{Runtime, ThisBindingStatus},
+    };
+
+    #[test]
+    fn reuse_excludes_closure_creation_and_eval_observers() {
+        for (source, expected) in [
+            (
+                "function f(n){let total=0;for(let i=0;i<n;i++){total+=outside(i);}return total;}",
+                true,
+            ),
+            (
+                "function f(n){let a=[];for(let i=0;i<n;i++){a.push(function(){return i;});}return a;}",
+                false,
+            ),
+            (
+                "function f(n){var eval=0;for(let i=0;i<n;i++){outside(i);}return n;}",
+                false,
+            ),
+            (
+                "function f(n){for(let i=0;i<n;i++){(0,eval)('x');}return n;}",
+                false,
+            ),
+        ] {
+            let program = parse_script(source).unwrap();
+            let StmtKind::FunctionDeclaration(function) = &program.body[0].kind else {
+                panic!("function")
+            };
+            let code = BytecodeCompiler::compile_function_template(function).unwrap();
+            assert_eq!(code.body.reuse_loop_bindings, expected, "{source}");
+        }
+    }
+
+    #[test]
+    fn references_retained_across_clone_keep_the_original_iteration_cell() {
+        let code = Bytecode {
+            constants: vec![
+                Constant::Scope(ScopeDescriptor {
+                    kind: ScopeKind::Function,
+                    strict: false,
+                    bindings: vec![],
+                    functions: vec![],
+                }),
+                Constant::Scope(ScopeDescriptor {
+                    kind: ScopeKind::Block,
+                    strict: false,
+                    bindings: vec![ScopeBinding {
+                        name: "i".into(),
+                        kind: BindingKind::Let,
+                    }],
+                    functions: vec![],
+                }),
+                Constant::Number(0.0),
+                Constant::Number(1.0),
+            ],
+            instructions: vec![
+                Instruction::EnterScope(0),
+                Instruction::EnterScope(1),
+                Instruction::LoadConstant(2),
+                Instruction::InitializeBinding { scope: 1, slot: 0 },
+                Instruction::ResolveBinding {
+                    scope: 1,
+                    slot: 0,
+                    strict: false,
+                },
+                Instruction::CloneLoopBindings,
+                Instruction::LoadConstant(3),
+                Instruction::StoreBinding { scope: 1, slot: 0 },
+                Instruction::LoadReference,
+                Instruction::DiscardReference,
+                Instruction::Return,
+            ],
+            local_count: 0,
+        }
+        .verify()
+        .unwrap();
+        let realm = Realm::ordinary();
+        let frame = Environment::function(
+            Some(realm.global_environment()),
+            Object::new_in(realm.allocation_context()),
+            None,
+            ThisBindingStatus::Initialized,
+        );
+        assert!(matches!(
+            VirtualMachine::execute_with_private_frame(&code, &realm, &frame).unwrap(),
+            Completion::Return(Value::Number(0.0))
+        ));
+    }
+
+    #[test]
+    fn callback_loops_without_captures_allocate_a_constant_number_of_managed_records() {
+        let runtime = Runtime::new();
+        runtime.set_allocation_collection_interval(usize::MAX);
+        let realm = Realm::ordinary_in(&runtime);
+        let code=BytecodeCompiler::compile("function increment(x){'use strict';this.value+=x;return this.value;}function bench(n){let counter={value:0,add:increment};for(let i=0;i<n;i++){counter.add(1);}return counter.value;}bench;").unwrap();
+        let Completion::Normal(Some(Value::Object(function))) =
+            VirtualMachine::execute_in_realm(&code, &realm).unwrap()
+        else {
+            panic!("function")
+        };
+        runtime.collect_garbage().unwrap();
+        let before = runtime.diagnostics().live;
+        assert!(
+            function
+                .call(Value::Undefined, &[Value::Number(1.0)])
+                .unwrap()
+                .same_value(&Value::Number(1.0))
+        );
+        let after_small = runtime.diagnostics().live;
+        let count = if cfg!(miri) { 3.0 } else { 50.0 };
+        assert!(
+            function
+                .call(Value::Undefined, &[Value::Number(count)])
+                .unwrap()
+                .same_value(&Value::Number(count))
+        );
+        let after_large = runtime.diagnostics().live;
+        assert_eq!(after_large - after_small, after_small - before);
+        drop((function, realm));
+        assert_eq!(runtime.collect_garbage().unwrap().retained, 0);
+        assert!(!code.bytecode().instructions.is_empty());
     }
 }

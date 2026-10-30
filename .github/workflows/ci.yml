@@ -49,6 +49,11 @@ jobs:
         run: node benchmarks/base-classes/verify-auto-functions.mjs
       - name: Verify private lexical class optimization and raw original suites
         run: node benchmarks/base-classes/verify-lexical.mjs
+      - name: Verify retained hosted class slowdowns and full-corpus regression
+        run: |
+          node benchmarks/base-classes/verify-hosted-f1c.mjs
+          node benchmarks/base-classes/verify-full-f1c.mjs
+          node benchmarks/test262-asan-compat/verify.mjs
       - name: Check external benchmark adapter formatting
         run: rustfmt +stable --edition 2024 --check benchmarks/omoikane-worker/main.rs
       - name: Check authored RegExp input contracts

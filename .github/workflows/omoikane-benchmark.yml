@@ -43,7 +43,8 @@ permissions:
 
 concurrency:
   group: omoikane-benchmark-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  # Finish active captures; queue a newer source without truncating raw data.
+  cancel-in-progress: false
 
 jobs:
   measure:

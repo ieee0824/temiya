@@ -198,6 +198,15 @@ the unchanged per-variant outcomes and failure signatures against `8b01973`.
 The i686 record establishes type checking only. Hosted qualification remains
 separate from these native observations.
 
+The two-host anonymous-environment capture retains all 24 reports in
+`hosted-anonymous-env-v1`. Both hosts have 33 original-suite Boa wins and
+12 base-class wins. Derived/Boa has 13 wins and two noisy comparisons on
+EPYC 9V74, and 14 wins and one noisy comparison on EPYC 9V45. Class definition
+has only one significant win in three pairs on 9V74, so this candidate still
+does not qualify that workload there. The original identical-worker control
+retains one apparent slowdown on 9V74, and the derived identical-worker control
+retains one apparent speedup on 9V45. Every before/after comparison is noisy.
+
 Four complete upstream captures (`336a38d`, `2be3d7c`, `8b01973`, `13a91d1`) retain all
 100,211 variants each: 26,276 pass, 64,978 fail, 18 skip and 8,939 time out,
 with zero missing or unexecuted variants. `verify-full.mjs` independently

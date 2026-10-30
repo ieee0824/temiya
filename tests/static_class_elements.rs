@@ -62,3 +62,47 @@ fn anonymous_static_initializer_names_and_duplicate_fields_follow_source_order()
         "let key=Symbol.iterator;class C{static f=function(){};static arrow=()=>42;static nested=class {};static [key]=function(){};static value=1;static value=42;}C.f.name==='f' && C.arrow.name==='arrow' && C.nested.name==='nested' && C[key].name==='[Symbol.iterator]' && C.value===42;",
     );
 }
+
+#[test]
+fn key_exceptions_prevent_all_static_initialization() {
+    check(
+        "let log='';let marker={};let caught=false;try{class C{static first=(log+='A');static [(log+='K',(()=>{throw marker;})())]=1;}}catch(e){caught=e===marker;}caught && log==='K';",
+    );
+}
+
+#[test]
+fn failed_static_definition_evaluates_value_then_stops() {
+    check(
+        "let effects=0;let escaped;let caught=false;try{class C{static{escaped=this;Object.preventExtensions(this);}static value=(effects++,42);static later=effects++;}}catch(e){caught=e instanceof TypeError;}caught && effects===1 && !escaped.hasOwnProperty('value') && !escaped.hasOwnProperty('later');",
+    );
+}
+
+#[test]
+fn static_closures_and_pending_initializers_survive_gc_then_collect() {
+    for backend in [ScriptBackend::Ast, ScriptBackend::Auto] {
+        let engine = Engine::builder().script_backend(backend).build();
+        {
+            let realm = engine.create_realm();
+            let gc = temiya::runtime::Object::native_function_with_context(
+                engine.allocation_context(),
+                |context, _, _| {
+                    context.collect_garbage()?;
+                    Ok(Value::Undefined)
+                },
+            );
+            engine
+                .set_global(
+                    &realm,
+                    "gcNow",
+                    engine.value(&realm, Value::Object(gc)).unwrap(),
+                )
+                .unwrap();
+            let script=engine.compile(&realm,"function make(){let captured={value:41};class A{static get seed(){gcNow();return this.saved.value;}}return class extends A{static saved=(gcNow(),captured);static{gcNow();let increment=1;this.read=()=>super.seed+increment;}static result=(gcNow(),this.read());};}let C=make();let read=C.read;C=undefined;gcNow();read()===42;").unwrap();
+            assert!(matches!(
+                engine.evaluate(&script).unwrap().value(),
+                Value::Boolean(true)
+            ));
+        }
+        assert_eq!(engine.collect_garbage().unwrap().retained, 0);
+    }
+}

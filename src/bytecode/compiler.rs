@@ -400,6 +400,22 @@ impl Compiler {
         match &expression.kind {
             ExprKind::Literal(literal) => self.literal(literal, expression.span),
             ExprKind::Object(properties) => {
+                if properties.iter().any(|property| {
+                    matches!(
+                        property.value.as_ref().map(|value| &value.kind),
+                        Some(ExprKind::Method { .. })
+                    )
+                }) {
+                    if !self.constants.iter().any(|c| matches!(c, Constant::Scope(scope) if scope.kind == ScopeKind::Function)) {
+                        return Err(self.unsupported("object method outside function", expression.span));
+                    }
+                    let index = self.pool(Constant::ObjectLiteral {
+                        definition: std::rc::Rc::new(expression.clone()),
+                        strict: self.strict,
+                    })?;
+                    self.code.push(Instruction::CreateObjectLiteral(index));
+                    return Ok(());
+                }
                 self.code.push(Instruction::CreateObject);
                 for property in properties {
                     if property.spread {
@@ -1436,7 +1452,7 @@ fn bytecode_may_observe_arguments(body: &VerifiedBytecode) -> bool {
                     .eq("arguments".encode_utf16())
                     || name.code_units().iter().copied().eq("eval".encode_utf16())
             }
-            Constant::Class { .. } => true,
+            Constant::Class { .. } | Constant::ObjectLiteral { .. } => true,
             Constant::Function(template) => bytecode_may_observe_arguments(&template.body),
             Constant::Scope(scope) => {
                 scope.bindings.iter().any(|binding| {

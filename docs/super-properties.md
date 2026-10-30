@@ -58,3 +58,14 @@ normalizes this with the defining Realm before executing the leaf plan; property
 references retain their original strictness, including silent failed writes in
 non-strict functions. Unsupported bodies enter their normal activation before
 executing any source effects, and a leaf runtime error is never retried.
+
+Eligible function bodies can also create object literals containing methods and
+accessors through verified CreateObjectLiteral metadata. The shared evaluator
+receives the current VM environment and containing strictness; it preserves
+computed-key order, spreads, prototype setters, captures and HomeObjects while
+surrounding supported loops run in the VM. Capturing initializers prevent scalar
+binding elision and unsafe loop-environment reuse. Definitions use immutable
+AST metadata and create fresh runtime objects, with no retry after an error.
+Top-level object methods remain outside the whole-Script compiler subset. This
+does not introduce general super-reference bytecode instructions or complete
+#299.

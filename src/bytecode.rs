@@ -104,6 +104,13 @@ pub enum Constant {
     Scope(ScopeDescriptor),
     /// Immutable nested code, usable only by CreateFunction.
     Function(Rc<FunctionTemplate>),
+    /// Object initializer source for the shared evaluator, never a Value.
+    ObjectLiteral {
+        /// Parsed object expression with no runtime values.
+        definition: Rc<crate::ast::Expr>,
+        /// Strictness of the containing code.
+        strict: bool,
+    },
     /// Immutable class source for the shared class evaluator.
     Class {
         /// Parsed definition, containing no runtime values.
@@ -339,6 +346,8 @@ pub enum Instruction {
     CreateFunction(u32),
     /// Evaluate a fresh class in the current function environment.
     CreateClass(u32),
+    /// Evaluate a fresh object initializer in the current environment.
+    CreateObjectLiteral(u32),
     /// Push the nearest non-arrow function newTarget, or undefined.
     LoadNewTarget,
     /// Push the current lexical this binding.
@@ -397,6 +406,7 @@ impl Instruction {
             Self::BeginMethodCall => 2,
             Self::CreateFunction(_)
             | Self::CreateClass(_)
+            | Self::CreateObjectLiteral(_)
             | Self::LoadNewTarget
             | Self::BeginReferenceCall
             | Self::Invoke
@@ -461,6 +471,7 @@ impl Instruction {
             | Self::SpreadArguments => -1,
             Self::CreateFunction(_)
             | Self::CreateClass(_)
+            | Self::CreateObjectLiteral(_)
             | Self::LoadNewTarget
             | Self::Invoke
             | Self::LoadThis
@@ -503,7 +514,7 @@ impl Instruction {
 /// Untrusted portable bytecode plus its constant pool and local-slot count.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Bytecode {
-    /// Pointer-free literals referenced by `LoadConstant`.
+    /// Literals and immutable code/source metadata referenced by operands.
     pub constants: Vec<Constant>,
     /// Instructions addressed by zero-based absolute indices.
     pub instructions: Vec<Instruction>,
@@ -683,7 +694,9 @@ fn loop_bindings_are_unobserved(code: &Bytecode, states: &[Option<FlowState>]) -
         .iter()
         .enumerate()
         .all(|(offset, instruction)| match *instruction {
-            Instruction::CreateFunction(_) | Instruction::CreateClass(_) => false,
+            Instruction::CreateFunction(_)
+            | Instruction::CreateClass(_)
+            | Instruction::CreateObjectLiteral(_) => false,
             Instruction::EnterScope(index) => {
                 let Constant::Scope(plan) = &code.constants[index as usize] else {
                     return false;
@@ -954,6 +967,15 @@ fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
                     );
                 }
             }
+            Instruction::CreateObjectLiteral(index) => {
+                if !matches!(constant(index)?, Constant::ObjectLiteral { definition, .. } if matches!(definition.kind, crate::ast::ExprKind::Object(_)))
+                {
+                    return Err(error(VerifyErrorKind::InvalidConstantKind));
+                }
+                if state.scopes.is_empty() {
+                    return Err(error(VerifyErrorKind::ScopeMismatch));
+                }
+            }
             Instruction::CreateClass(index) => {
                 if !matches!(constant(index)?, Constant::Class { .. }) {
                     return Err(error(VerifyErrorKind::InvalidConstantKind));
@@ -1056,7 +1078,10 @@ fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
             Instruction::LoadConstant(index) => {
                 if matches!(
                     constant(index)?,
-                    Constant::Scope(_) | Constant::Function(_) | Constant::Class { .. }
+                    Constant::Scope(_)
+                        | Constant::Function(_)
+                        | Constant::Class { .. }
+                        | Constant::ObjectLiteral { .. }
                 ) {
                     return Err(error(VerifyErrorKind::InvalidConstantKind));
                 }

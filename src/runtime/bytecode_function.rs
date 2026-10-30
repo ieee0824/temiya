@@ -1,4 +1,4 @@
-//! Bytecode-backed functions and the explicit shared class-definition bridge.
+//! Bytecode-backed functions and shared class/object-definition bridges.
 use super::{
     environment::{FunctionThis, StoredEnvironment},
     execution::StoredRealm,
@@ -18,11 +18,11 @@ struct Closure {
 }
 
 #[derive(Default)]
-pub(crate) struct ClassEvaluationContext {
+pub(crate) struct DefinitionEvaluationContext {
     cache: Option<super::function::FunctionCache>,
 }
 
-impl ClassEvaluationContext {
+impl DefinitionEvaluationContext {
     pub(crate) fn evaluate(
         &mut self,
         class: &crate::ast::Class,
@@ -30,6 +30,27 @@ impl ClassEvaluationContext {
         realm: &Realm,
         environment: &Environment,
     ) -> RuntimeResult<Object> {
+        let evaluator = self.evaluator(realm, environment, true)?;
+        super::class::evaluate(class, &evaluator, inferred_name)
+    }
+
+    pub(crate) fn evaluate_object_literal(
+        &mut self,
+        expression: &crate::ast::Expr,
+        strict: bool,
+        realm: &Realm,
+        environment: &Environment,
+    ) -> RuntimeResult<Value> {
+        self.evaluator(realm, environment, strict)?
+            .evaluate(expression)
+    }
+
+    fn evaluator(
+        &mut self,
+        realm: &Realm,
+        environment: &Environment,
+        strict: bool,
+    ) -> RuntimeResult<super::ExpressionEvaluator> {
         let mut current = Some(environment.clone());
         let mut this_environment = None;
         let mut this_value = Value::Undefined;
@@ -37,7 +58,7 @@ impl ClassEvaluationContext {
         while let Some(scope) = current {
             if scope.kind() == super::EnvironmentKind::Function && scope.has_this_binding()? {
                 // Do not read this eagerly: a prepared derived frame may still
-                // have an uninitialized binding that the class never touches.
+                // have an uninitialized binding that the definition never touches.
                 new_target = scope.new_target()?;
                 this_environment = Some(scope);
                 break;
@@ -48,18 +69,17 @@ impl ClassEvaluationContext {
             }
             current = scope.outer();
         }
-        let evaluator = super::ExpressionEvaluator::with_environment(
+        Ok(super::ExpressionEvaluator::with_environment(
             realm.clone(),
             environment.clone(),
             this_value,
-            true,
+            strict,
         )
         .with_this_environment(this_environment)
         .with_new_target(new_target)
         .with_function_cache(Some(
             self.cache.get_or_insert_with(Default::default).clone(),
-        ));
-        super::class::evaluate(class, &evaluator, inferred_name)
+        )))
     }
 }
 

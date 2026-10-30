@@ -71,7 +71,10 @@ impl LeafFunctionPlan {
                     let value = code.constants.get(index as usize)?;
                     if matches!(
                         value,
-                        Constant::Scope(_) | Constant::Function(_) | Constant::Class { .. }
+                        Constant::Scope(_)
+                            | Constant::Function(_)
+                            | Constant::Class { .. }
+                            | Constant::ObjectLiteral { .. }
                     ) {
                         return None;
                     }

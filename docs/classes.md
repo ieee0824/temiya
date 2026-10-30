@@ -187,6 +187,17 @@ also retain nine significant slowdowns on that machine, alongside one apparent
 slowdown in its identical-worker control. `verify-hosted.mjs` checks every
 report without converting successful integrity checks into speed acceptance.
 
+The anonymous-environment candidate (`13a91d1`) retains four native derived
+reports in `anonymous-env-v1`. All 120 runs and 1,920 output values validate;
+the Boa comparison has five significant wins and ten noisy comparisons.
+Before/after and identical-candidate controls each have fifteen noisy
+comparisons; baseline/Boa has four wins and eleven noisy comparisons. These
+observations do not qualify performance. `verify-anonymous-env.mjs` replays
+the reports, the 769 passing native tests, all fixed upstream captures and
+the unchanged per-variant outcomes and failure signatures against `8b01973`.
+The i686 record establishes type checking only. Hosted qualification remains
+separate from these native observations.
+
 Three complete upstream captures (`336a38d`, `2be3d7c`, `8b01973`) retain all
 100,211 variants each: 26,276 pass, 64,978 fail, 18 skip and 8,939 time out,
 with zero missing or unexecuted variants. `verify-full.mjs` independently

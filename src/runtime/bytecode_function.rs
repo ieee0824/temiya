@@ -393,15 +393,16 @@ impl Closure {
                 }
             }
         }
-        let result = if !self.template.arguments_object
+        let scalar_bindings_unobserved = !self.template.arguments_object
             && arguments
                 .iter()
-                .all(|value| matches!(value, Value::Number(_)))
-        {
-            VirtualMachine::execute_with_private_frame(&self.template.body, &self.realm, &frame)
-        } else {
-            VirtualMachine::execute_in_function(&self.template.body, &self.realm, &frame)
-        }?;
+                .all(|value| matches!(value, Value::Number(_)));
+        let result = VirtualMachine::execute_with_private_frame(
+            &self.template.body,
+            &self.realm,
+            &frame,
+            scalar_bindings_unobserved,
+        )?;
         match result {
             Completion::Return(value) => Ok(value),
             Completion::Normal(_) => Ok(Value::Undefined),

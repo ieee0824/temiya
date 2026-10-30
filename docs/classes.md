@@ -10,9 +10,9 @@ not lower class elements or constructors to new bytecode instructions.
 
 Anonymous class variable initializers and identifier assignments preserve name
 inference, including parenthesized expressions. Anonymous class object-property
-values and logical assignments select AST before execution. Classes prevent
-loop-environment reuse and scalar binding elision because methods can capture
-those bindings. The bridge resolves enclosing this and new.target without
+values and logical assignments select AST before execution. Classes keep scalar binding elision disabled because methods can capture
+bindings. Loop-header reuse requires a conservative full-class check that no
+header binding or eval is observed; body-local bindings remain distinct. The bridge resolves enclosing this and new.target without
 reading an uninitialized this binding until class source actually requires it.
 
 Within an Auto AST Script, eligible simple-parameter ordinary and class function
@@ -307,3 +307,52 @@ functions and alternate new targets, including Proxy wrappers and subclasses,
 retain GetPrototypeFromConstructor and all observable property access. Bound
 construction follows its normal new-target substitution before this check.
 Changing the instance prototype's parent remains observable by new instances.
+
+A verified class loop can reuse its header cells only when the complete class
+syntax does not mention any cloned loop binding or eval. The scan includes
+heritage, computed keys, parameter defaults and nested functions/classes;
+shadowed name occurrences conservatively retain distinct cells. Fields/private
+elements keep the previous path. Body-local bindings and fresh class objects
+retain their separate identities. References or pending calls spanning a clone
+continue to prohibit reuse.
+
+Runtime-created function frames keep their actual argument and parameter
+bindings whenever those can be observed. That requirement disables scalar
+binding elision independently of the verified loop-cell proof. Internal calls
+can reuse unobserved loop headers while retaining captured arguments and
+body-local records. The public caller-prepared frame API remains fully backed
+by its Environment and keeps its previous execution path.
+
+Runtime-created function frames apply this loop-reuse proof independently of
+scalar-local elision. An observable arguments object still requires physical
+argument/parameter bindings; it does not by itself expose an unrelated loop
+header. The public VM entry for caller-prepared frames retains its existing
+binding publication behavior. Scalar-local eligibility keeps its separate
+unobservability and numeric-argument checks.
+
+Source a10e7a3 retains its ARM64 measurements in
+`benchmarks/derived-classes/class-loop-runtime-v1`. Run
+`node benchmarks/derived-classes/verify-class-loop-runtime.mjs` to replay the
+216 runs and3456 checked values, source/binary identities, fixed Test262
+selection and unchanged failed diagnostics. All12 base-class and15 derived
+Boa comparisons are significantly faster. All before/after and identical-worker
+comparisons are within noise; no significant before/after gain is established.
+Native tests pass779 with26 ignored. Each Ast/Auto fixed upstream selection
+has214 passes and187 failures; the base selection has276 passes and18
+dependency failures. The PR selection passes216 variants. These local results
+do not establish the still-pending two-host, full-corpus and security gates.
+
+Source a10e7a3 also retains all24 reports from two-host run41105090994 in
+`hosted-class-loop-runtime-v1`. EPYC9V74 has33 original-eleven Boa wins,
+12 base-class wins and14 derived wins/1 noisy comparison. EPYC7763 has33,
+12 and15 respectively. Every base/derived workload meets the fixed minimum
+of two significant wins in three pairs on each host. Identical-worker controls
+are entirely noisy. Before/after retains arithmetic pair0 at11.23% slower on
+9V74 and closure-allocation pair2 at10.66% slower on7763; all base/derived
+before/after comparisons are noisy. These observations remain recorded.
+
+The same source's full run41105090864 is retained in
+`full-class-loop-runtime-v1`. All eight known-pass gates were independently
+replayed over100211 variants:26276 pass,64978 fail,18 skip,8939 timeout,
+zero missing. This records the remaining failures and establishes no complete
+ECMAScript conformance claim. Security and final-head checks remain separate.

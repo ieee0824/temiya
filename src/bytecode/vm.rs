@@ -50,15 +50,16 @@ impl VirtualMachine {
         Self::run::<false>(bytecode, Some(realm), Some(frame), false)
     }
 
-    // Only a freshly instantiated, nonescaping internal function frame may
-    // keep scalar locals outside its Environment. The public prepared-frame
-    // API must publish every write to the caller's observable Environment.
+    // Internal calls own their freshly instantiated frame. Scalar binding
+    // elision additionally requires unobservable bindings; safe loop-cell reuse
+    // is proven independently. Public prepared frames retain their old path.
     pub(crate) fn execute_with_private_frame(
         bytecode: &VerifiedBytecode,
         realm: &Realm,
         frame: &Environment,
+        scalar_bindings_unobserved: bool,
     ) -> RuntimeResult<Completion> {
-        if scalar_loop_locals(bytecode) {
+        if scalar_bindings_unobserved && scalar_loop_locals(bytecode) {
             Self::run::<true>(bytecode, Some(realm), Some(frame), true)
         } else {
             Self::run::<false>(
@@ -1335,7 +1336,7 @@ mod loop_binding_identity_tests {
             ThisBindingStatus::Initialized,
         );
         assert!(matches!(
-            VirtualMachine::execute_with_private_frame(&code, &realm, &frame).unwrap(),
+            VirtualMachine::execute_with_private_frame(&code, &realm, &frame, true).unwrap(),
             Completion::Return(Value::Number(0.0))
         ));
     }

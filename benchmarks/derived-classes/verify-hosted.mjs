@@ -9,6 +9,8 @@ import {fileURLToPath} from 'node:url';
 const root=path.dirname(fileURLToPath(import.meta.url)),repo=path.resolve(root,'../..');
 const read=p=>JSON.parse(fs.readFileSync(p)),sha=b=>createHash('sha256').update(b).digest('hex');
 const captures=new Map([
+ ['hosted-class-loop-runtime-v1',{source:'a10e7a389e76faca5c8d38f5ab4619d8d678da05',run:41105090994,baseline:'e11890a12fbd67a395dafad3e43b763e14dd29de'}],
+ ['hosted-class-prototype-v1',{source:'e11890a12fbd67a395dafad3e43b763e14dd29de',run:41090357043,baseline:'306c32c24a6c678276284c6ff898713137447370'}],
  ['hosted-class-bridge-v1',{source:'306c32c24a6c678276284c6ff898713137447370',run:41083660459,baseline:'43d3ff7a8c2203c71750409ff20442cc3344f056'}],
  ['hosted-function-metadata-v1',{source:'43d3ff7a8c2203c71750409ff20442cc3344f056',run:41069423997,baseline:'13a91d105f205aeb2f0b5b296709702fa577082e'}],
  ['hosted-anonymous-env-v1',{source:'13a91d105f205aeb2f0b5b296709702fa577082e',run:41062833044,baseline:'8b019733ed8e08d3bb8a31319501a4d3c08bf070'}],

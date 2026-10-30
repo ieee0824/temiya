@@ -148,3 +148,27 @@ fn class_bridge_roots_live_bindings_during_reentrant_collection() {
         assert_eq!(engine.collect_garbage().unwrap().retained, 0);
     }
 }
+
+#[test]
+fn class_loop_reuse_keeps_body_bindings_and_nested_default_captures_distinct() {
+    for source in [
+        "function make(){let types=[],values=[];for(let i=0;i<3;i++){let C=class{constructor(value){this.value=value;}read(){return this.value;}static type(){return C;}};types.push(C);values.push(new C(i));}return types[0]!==types[1] && types[0].type()===types[0] && types[1].type()===types[1] && values[0].read()===0 && values[1].read()===1 && values[2].read()===2;}make();",
+        "function make(){let types=[];for(let i=0;i<3;i++){types.push(class{read(value=()=>i){return value();}});}return types;}let types=make();new types[0]().read()===0 && new types[1]().read()===1 && new types[2]().read()===2;",
+        "function make(){let types=[];for(let i=0;i<3;i++){types.push(class{read(){return ()=>()=>i;}});}return types;}let types=make();new types[0]().read()()()===0 && new types[1]().read()()()===1 && new types[2]().read()()()===2;",
+    ] {
+        let code = BytecodeCompiler::compile(source).unwrap();
+        assert!(
+            matches!(
+                VirtualMachine::execute_in_realm(&code, &Realm::ordinary()).unwrap(),
+                Completion::Normal(Some(Value::Boolean(true)))
+            ),
+            "{source}"
+        );
+    }
+}
+
+#[test]
+fn runtime_class_loop_frames_keep_observable_arguments_and_body_bindings() {
+    let source = "function Parent(value){this.value=value;}function make(Parent){let types=[];for(let i=0;i<3;i++){let C=class extends arguments[0]{constructor(value){super(value);}read(){return this.value;}static type(){return C;}};types.push(C);}return types;}let types=make(Parent);Object.getPrototypeOf(types[0])===Parent && types[0].type()===types[0] && types[1].type()===types[1] && new types[0](42).read()===42 && new types[2](99).read()===99;";
+    check(source);
+}

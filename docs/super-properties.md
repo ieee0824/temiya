@@ -134,3 +134,21 @@ Source211698b retains all120 runs/1920 checked values in `lazy-leaf-v1`.
 Object/class/arrow/computed-update workloads meet the native minimum2/3 Boa wins;
 accessor remains0/3. Before/after has15 noisy comparisons, so a significant timing
 gain is not demonstrated. The same-binary control retains one apparent slowdown.
+
+Ordinary own accessor operations revive only the invoked getter or setter,
+without materializing the other method or a complete descriptor. The selected
+method is rooted before releasing the property-state borrow. Descriptor APIs
+keep their full records; Proxy, namespace, virtual/exotic and legacy-function
+properties retain their normal paths. Ordinary data reads use one checked
+lookup, and own writable data writes retain their existing shortcut.
+
+Source96901d5 passes808 native tests. The root regression measures400 to200
+registrations/removals for100 Get plus100 Set operations and verifies collection
+to zero retained objects. Its four retained reports in `accessor-slot-v1` have
+nine Boa wins/six noisy comparisons; all15 before/after comparisons are noisy,
+so no significant timing improvement is demonstrated. Accessor remains0/3 and
+computed-update1/3 in this snapshot. The separate Callgrind archive is diagnostic
+instruction-count evidence, including startup/setup and two validated invocations;
+it is neither wall-clock timing nor performance acceptance. It identifies leaf
+execution, Value drop/clone and active-object caching as substantial instruction
+costs to investigate next.

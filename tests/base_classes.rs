@@ -131,7 +131,12 @@ fn class_call_and_restricted_accessor_errors_belong_to_the_class_realm() {
     let engine = Engine::default();
     let origin = engine.create_realm();
     let caller = engine.create_realm();
-    let definition = engine.compile(&origin, "class C {} C;").unwrap();
+    let definition = engine
+        .compile(
+            &origin,
+            "class C { write(value) { this.value = value; return this.value; } } C;",
+        )
+        .unwrap();
     let class = engine.evaluate(&definition).unwrap();
     engine
         .set_global(
@@ -145,6 +150,8 @@ fn class_call_and_restricted_accessor_errors_belong_to_the_class_realm() {
     for source in [
         "try { C(); } catch (e) { Object.getPrototypeOf(e); }",
         "try { C.caller; } catch (e) { Object.getPrototypeOf(e); }",
+        "try { C.prototype.write.call(Object.preventExtensions({}), 1); } catch (e) { Object.getPrototypeOf(e); }",
+        "try { C.prototype.write.call(undefined, 1); } catch (e) { Object.getPrototypeOf(e); }",
     ] {
         let script = engine.compile(&caller, source).unwrap();
         let result = engine.evaluate(&script).unwrap();
@@ -224,5 +231,21 @@ fn this_lookup_crosses_declarative_blocks_and_hoisted_function_bodies() {
     );
     check(
         "class C { constructor() { this.value = 40; } read() { { let extra = 2; let f = () => this.value + extra; return f(); } } } new C().read() === 42;",
+    );
+}
+
+#[test]
+fn straight_line_methods_preserve_accessor_coercion_order_and_never_retry_errors() {
+    check(
+        "let log='';let current=1;let boxed={valueOf(){log+='v';return current;}};let target={get value(){log+='g';return boxed;},set value(x){log+='s';current=x;}};class C{add(x){this.value+=x;return this.value;}}let result=C.prototype.add.call(target,2);result===boxed && current===3 && log==='gvsg';",
+    );
+    check(
+        "let log='';let marker={};let target={get value(){log+='g';return 1;},set value(x){log+='s';throw marker;}};class C{add(x){this.value+=x;return this.value;}}let same=false;try{C.prototype.add.call(target,2);}catch(e){same=e===marker;}same && log==='gs';",
+    );
+    check(
+        "class C{write(value){this.value=value;return this.value;}bump(){return this.value++;}}let target={value:1n};C.prototype.write.call(target,4n)===4n && C.prototype.bump.call(target)===4n && target.value===5n;",
+    );
+    check(
+        "class C{write(value){this.value=value;return this.value;}}let target={};let result=C.prototype.write.call(target);result===undefined && target.hasOwnProperty('value');",
     );
 }

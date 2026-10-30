@@ -763,7 +763,7 @@ fn indexed_value(base: &Value, key: &Value) -> Option<Value> {
     }
 }
 
-fn constant(constant: &Constant) -> Value {
+pub(super) fn constant(constant: &Constant) -> Value {
     match constant {
         Constant::Scope(_) | Constant::Function(_) => {
             unreachable!("verifier rejects metadata values")

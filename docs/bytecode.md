@@ -386,3 +386,22 @@ Empty block descriptors retain their verified scope entries while reusing the
 parent environment, since they introduce no binding identity or declaration.
 The existing explicit-Ast for-let header capture gap is tracked in #537; Auto's
 verified function-loop path already retains the distinct iteration bindings.
+
+Strict, non-arrow bytecode functions without an arguments object can execute a
+verified straight-line body without creating an activation Environment. The
+whole-body plan permits parameter/undefined-var reads, literal values, `this`,
+named property references and primitive operators; it rejects captures, local
+binding writes, closures, nonempty lexical scopes, calls, branches and
+`new.target`. Other bodies retain the normal VM path. This optimization also
+applies to eligible base constructors and methods inside Auto's AST fallback;
+explicit Ast is unchanged.
+
+Property reads/writes, updates and coercions use the existing runtime operations,
+including reentrant getters/setters and their original receivers. Function,
+newTarget, this, argument and outer-environment roots remain alive during these
+callbacks. A runtime error propagates directly and never replays the body. The
+public prepared-frame VM API continues to execute against its supplied frame.
+Tests verify zero managed activation allocations, original accessor/coercion
+order and thrown-value identity, source-Realm errors, BigInt updates and GC
+inside nested accessor execution. No JIT or benchmark-specific recognition is
+involved.

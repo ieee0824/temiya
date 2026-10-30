@@ -5,6 +5,7 @@ use std::{collections::VecDeque, fmt, rc::Rc};
 use crate::runtime::JsString;
 
 mod compiler;
+mod leaf_function;
 mod numeric_return;
 mod vm;
 pub use compiler::{BytecodeCompiler, CompileError};
@@ -514,9 +515,23 @@ pub struct VerifiedBytecode {
     has_backedge: bool,
     has_own_property_cache: bool,
     numeric_return: Option<numeric_return::NumericReturnPlan>,
+    leaf_function: Option<leaf_function::LeafFunctionPlan>,
 }
 
 impl VerifiedBytecode {
+    pub(crate) fn try_leaf_function(
+        &self,
+        parameters: &[JsString],
+        arguments: &[crate::runtime::Value],
+        this: &crate::runtime::Value,
+        realm: &crate::runtime::Realm,
+    ) -> Option<crate::runtime::RuntimeResult<crate::runtime::Value>> {
+        Some(
+            self.leaf_function
+                .as_ref()?
+                .execute(parameters, arguments, this, realm),
+        )
+    }
     pub(crate) fn try_numeric_return(
         &self,
         parameters: &[JsString],
@@ -995,7 +1010,9 @@ fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
             .iter()
             .any(|op| matches!(op, Instruction::GetNamedProperty { .. }));
     let numeric_return = numeric_return::NumericReturnPlan::compile(&bytecode, max_stack);
+    let leaf_function = leaf_function::LeafFunctionPlan::compile(&bytecode, max_stack);
     Ok(VerifiedBytecode {
+        leaf_function,
         bytecode,
         max_stack,
         has_backedge,

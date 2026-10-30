@@ -1,0 +1,35 @@
+{
+  "schema": 1,
+  "source_revision": "06ceeee645204673aa06f6c407fa2cfa9e536c17",
+  "rlib": {
+    "path": "/tmp/temiya-155-target/release/deps/libtemiya.rlib",
+    "sha256": "1fd2b844b21ace909d6ae94356d146cc8905554adcb01406f81608a8aa991ec9"
+  },
+  "command": [
+    "rustc",
+    "--edition",
+    "2024",
+    "probes.rs",
+    "--extern",
+    "temiya=/tmp/temiya-155-target/release/deps/libtemiya.rlib",
+    "-L",
+    "dependency=/tmp/temiya-155-target/release/deps",
+    "-o",
+    "/tmp/temiya-155-dependency-probes"
+  ],
+  "files": [
+    {
+      "file": "probes.rs",
+      "sha256": "f8979348947bfdc07e52e6a066ae8c2d2eaee87f166c77d18790eac6e6770839"
+    },
+    {
+      "file": "probes.log",
+      "sha256": "b0289df6052575f736d3c2ca9a0916e7f7905134b03fde3f34dc93ac7078fcfb"
+    },
+    {
+      "file": "audit.json",
+      "sha256": "68a1842c776c619c8ac1ae0d17811123feb530fb976cbfaee34acf918d207355"
+    }
+  ],
+  "qualification": "Diagnostic executable linked the already-built release library from the candidate target. No native performance ran locally during these probes."
+}

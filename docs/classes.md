@@ -139,3 +139,11 @@ original files in each of Ast and Auto: 214 pass, 187 fail, zero skipped or time
 out. All 208 preceding passes remain passing. The separate base-class selection
 has 276 passes and 18 dependency failures; the 216-variant PR gate passes fully.
 Raw failures remain available for dependency review; they do not count as passes.
+The [per-variant dependency audit](../benchmarks/derived-classes/dependencies-v1/audit.json)
+accounts for all 187 failures in 96 files and links their observed blockers to
+separate issues. Twenty-two class-free probes, executed in both Ast and Auto,
+confirm missing native APIs and generic iterator behavior. The audit preserves
+the original failure signatures and explicitly leaves later assertions unproven.
+`node benchmarks/derived-classes/verify-dependencies.mjs` checks it against the
+retained upstream sources and both raw captures; it never converts failures to
+passes.

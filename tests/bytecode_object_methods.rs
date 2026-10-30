@@ -216,3 +216,22 @@ fn super_reference_bytecode_checks_scope_stack_and_runtime_function_operands() {
         RuntimeErrorKind::TypeError
     );
 }
+
+#[test]
+fn object_loop_reuse_keeps_body_bindings_and_nested_captures_distinct() {
+    for source in [
+        "function make(){let values=[];for(let i=0;i<3;i++){let value=i;let object={read(){return value;},self(){return object;}};values.push(object);}return values;}let values=make();values[0]!==values[1] && values[0].read()===0 && values[1].read()===1 && values[2].read()===2 && values[0].self()===values[0] && values[1].self()===values[1];",
+        "function make(){let values=[];for(let i=0;i<3;i++){values.push({read(value=()=>i){return value();}});}return values;}let values=make();values[0].read()===0 && values[1].read()===1 && values[2].read()===2;",
+        "function make(){let values=[];for(let i=0;i<3;i++){values.push({read(){return ()=>()=>i;}});}return values;}let values=make();values[0].read()()()===0 && values[1].read()()()===1 && values[2].read()()()===2;",
+        "function make(){let values=[];for(let i=0;i<3;i++){values.push({...{get read(){return ()=>i;}}});}return values;}let values=make();values[0].read()===0 && values[1].read()===1 && values[2].read()===2;",
+    ] {
+        let code = BytecodeCompiler::compile(source).unwrap();
+        assert!(
+            matches!(
+                VirtualMachine::execute_in_realm(&code, &Realm::ordinary()).unwrap(),
+                Completion::Normal(Some(Value::Boolean(true)))
+            ),
+            "{source}"
+        );
+    }
+}

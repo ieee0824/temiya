@@ -726,6 +726,32 @@ fn class_does_not_observe_loop_bindings(
     !observed
 }
 
+// A complete object initializer may create methods without observing cloned
+// header cells. Inspect keys, spreads, defaults and all nested syntax. Reject
+// unsupported class elements conservatively, as the class proof does.
+fn object_does_not_observe_loop_bindings(
+    expression: &crate::ast::Expr,
+    loop_names: &std::collections::HashSet<Vec<u16>>,
+) -> bool {
+    let mut observed = false;
+    expression.visit(&mut |expression| match &expression.kind {
+        crate::ast::ExprKind::Identifier(name) => {
+            observed |=
+                name == "eval" || loop_names.contains(&name.encode_utf16().collect::<Vec<_>>());
+        }
+        crate::ast::ExprKind::Class(class) => {
+            observed |= class.elements.iter().any(|element| {
+                !matches!(element.kind, crate::ast::ClassElementKind::Method { .. })
+                    || element.key.as_ref().is_some_and(|key| {
+                        matches!(key.kind, crate::ast::ExprKind::PrivateIdentifier(_))
+                    })
+            });
+        }
+        _ => {}
+    });
+    !observed
+}
+
 // Reuse requires that no closure/eval observer can read these cells and that
 // no reference or pending invocation spans a clone. This exhaustive instruction
 // match requires a fresh review whenever an opcode is added.
@@ -739,7 +765,7 @@ fn loop_bindings_are_unobserved(code: &Bytecode, states: &[Option<FlowState>]) -
     {
         return false;
     }
-    // A class may capture its surrounding scope without observing these loop
+    // Source metadata may capture its surrounding scope without observing these loop
     // cells. Collect every cloned header's names; rejecting shadowed uses is
     // deliberately conservative, and applies to nested loops as well.
     let mut loop_names = std::collections::HashSet::new();
@@ -767,9 +793,15 @@ fn loop_bindings_are_unobserved(code: &Bytecode, states: &[Option<FlowState>]) -
         .enumerate()
         .all(|(offset, instruction)| match *instruction {
             Instruction::CreateFunction(_)
-            | Instruction::CreateObjectLiteral(_)
             | Instruction::LoadSuperBinding
             | Instruction::ResolveSuperProperty { .. } => false,
+            Instruction::CreateObjectLiteral(index) => {
+                let Constant::ObjectLiteral { definition, .. } = &code.constants[index as usize]
+                else {
+                    return false;
+                };
+                object_does_not_observe_loop_bindings(definition, &loop_names)
+            }
             Instruction::CreateClass(index) => {
                 let Constant::Class { definition, .. } = &code.constants[index as usize] else {
                     return false;

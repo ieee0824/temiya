@@ -492,6 +492,42 @@ mod numeric_return_tests {
     }
 
     #[test]
+    fn unobserved_object_literal_loop_headers_do_not_allocate_per_iteration() {
+        let runtime = Runtime::new();
+        runtime.set_allocation_collection_interval(usize::MAX);
+        let realm = Realm::ordinary_in(&runtime);
+        let code=BytecodeCompiler::compile("(function(n){let object={value:1,read(){return this.value;}};let total=0;for(let i=0;i<n;i++)total+=object.read();return total;});").unwrap();
+        let Completion::Normal(Some(Value::Object(function))) =
+            VirtualMachine::execute_in_realm(&code, &realm).unwrap()
+        else {
+            panic!("function")
+        };
+        let before = runtime.diagnostics().live;
+        assert!(
+            function
+                .call(Value::Undefined, &[Value::Number(3.0)])
+                .unwrap()
+                .same_value(&Value::Number(3.0))
+        );
+        let short = runtime.diagnostics().live - before;
+        let count = if cfg!(miri) { 5.0 } else { 30.0 };
+        let before = runtime.diagnostics().live;
+        assert!(
+            function
+                .call(Value::Undefined, &[Value::Number(count)])
+                .unwrap()
+                .same_value(&Value::Number(count))
+        );
+        let long = runtime.diagnostics().live - before;
+        assert_eq!(
+            long, short,
+            "unobserved header must not allocate on every iteration"
+        );
+        drop((function, realm));
+        assert_eq!(runtime.collect_garbage().unwrap().retained, 0);
+    }
+
+    #[test]
     fn pure_numeric_calls_allocate_no_managed_frames_and_code_keeps_no_runtime_edges() {
         let runtime = Runtime::new();
         runtime.set_allocation_collection_interval(usize::MAX);

@@ -661,9 +661,40 @@ struct FlowState {
     calls: Vec<(u32, usize)>,
 }
 
-// Reusing a let loop's cells is valid only when this activation cannot create
-// a closure/eval observer and no reference or pending invocation spans a clone.
-// This exhaustive match requires a fresh review whenever an opcode is added.
+// Source metadata is not a runtime closure. Inspect the complete class syntax,
+// including heritage, keys, defaults and nested functions/classes. Any eval or
+// loop-name occurrence keeps distinct cells, even when lexical shadowing would
+// make that occurrence harmless. Fields/private elements retain the old path.
+fn class_does_not_observe_loop_bindings(
+    class: &crate::ast::Class,
+    loop_names: &std::collections::HashSet<Vec<u16>>,
+) -> bool {
+    if class.elements.iter().any(|element| {
+        !matches!(element.kind, crate::ast::ClassElementKind::Method { .. })
+            || element
+                .key
+                .as_ref()
+                .is_some_and(|key| matches!(key.kind, crate::ast::ExprKind::PrivateIdentifier(_)))
+    }) {
+        return false;
+    }
+    let expression = crate::ast::Expr::new(
+        class.span,
+        crate::ast::ExprKind::Class(Box::new(class.clone())),
+    );
+    let mut observed = false;
+    expression.visit(&mut |expression| {
+        if let crate::ast::ExprKind::Identifier(name) = &expression.kind {
+            observed |=
+                name == "eval" || loop_names.contains(&name.encode_utf16().collect::<Vec<_>>());
+        }
+    });
+    !observed
+}
+
+// Reuse requires that no closure/eval observer can read these cells and that
+// no reference or pending invocation spans a clone. This exhaustive instruction
+// match requires a fresh review whenever an opcode is added.
 fn loop_bindings_are_unobserved(code: &Bytecode, states: &[Option<FlowState>]) -> bool {
     if !matches!(code.instructions.first(), Some(Instruction::EnterScope(index))
         if matches!(&code.constants[*index as usize], Constant::Scope(plan) if plan.kind == ScopeKind::Function))
@@ -674,12 +705,40 @@ fn loop_bindings_are_unobserved(code: &Bytecode, states: &[Option<FlowState>]) -
     {
         return false;
     }
+    // A class may capture its surrounding scope without observing these loop
+    // cells. Collect every cloned header's names; rejecting shadowed uses is
+    // deliberately conservative, and applies to nested loops as well.
+    let mut loop_names = std::collections::HashSet::new();
+    for (offset, instruction) in code.instructions.iter().enumerate() {
+        if matches!(instruction, Instruction::CloneLoopBindings) {
+            let Some((_, index)) = states[offset]
+                .as_ref()
+                .and_then(|state| state.scopes.last())
+            else {
+                return false;
+            };
+            let Constant::Scope(plan) = &code.constants[*index as usize] else {
+                return false;
+            };
+            loop_names.extend(
+                plan.bindings
+                    .iter()
+                    .map(|binding| binding.name.code_units().to_vec()),
+            );
+        }
+    }
     let eval = JsString::from("eval");
     code.instructions
         .iter()
         .enumerate()
         .all(|(offset, instruction)| match *instruction {
-            Instruction::CreateFunction(_) | Instruction::CreateClass(_) => false,
+            Instruction::CreateFunction(_) => false,
+            Instruction::CreateClass(index) => {
+                let Constant::Class { definition, .. } = &code.constants[index as usize] else {
+                    return false;
+                };
+                class_does_not_observe_loop_bindings(definition, &loop_names)
+            }
             Instruction::EnterScope(index) => {
                 let Constant::Scope(plan) = &code.constants[index as usize] else {
                     return false;

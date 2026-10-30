@@ -10,9 +10,9 @@ not lower class elements or constructors to new bytecode instructions.
 
 Anonymous class variable initializers and identifier assignments preserve name
 inference, including parenthesized expressions. Anonymous class object-property
-values and logical assignments select AST before execution. Classes prevent
-loop-environment reuse and scalar binding elision because methods can capture
-those bindings. The bridge resolves enclosing this and new.target without
+values and logical assignments select AST before execution. Classes keep scalar binding elision disabled because methods can capture
+bindings. Loop-header reuse requires a conservative full-class check that no
+header binding or eval is observed; body-local bindings remain distinct. The bridge resolves enclosing this and new.target without
 reading an uninitialized this binding until class source actually requires it.
 
 Within an Auto AST Script, eligible simple-parameter ordinary and class function
@@ -305,3 +305,11 @@ functions and alternate new targets, including Proxy wrappers and subclasses,
 retain GetPrototypeFromConstructor and all observable property access. Bound
 construction follows its normal new-target substitution before this check.
 Changing the instance prototype's parent remains observable by new instances.
+
+A verified class loop can reuse its header cells only when the complete class
+syntax does not mention any cloned loop binding or eval. The scan includes
+heritage, computed keys, parameter defaults and nested functions/classes;
+shadowed name occurrences conservatively retain distinct cells. Fields/private
+elements keep the previous path. Body-local bindings and fresh class objects
+retain their separate identities. References or pending calls spanning a clone
+continue to prohibit reuse.

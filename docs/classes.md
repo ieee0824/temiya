@@ -214,7 +214,7 @@ does not qualify that workload there. The original identical-worker control
 retains one apparent slowdown on 9V74, and the derived identical-worker control
 retains one apparent speedup on 9V45. Every before/after comparison is noisy.
 
-Four complete upstream captures (`336a38d`, `2be3d7c`, `8b01973`, `13a91d1`) retain all
+Five complete upstream captures (`336a38d`, `2be3d7c`, `8b01973`, `13a91d1`, `43d3ff7`) retain all
 100,211 variants each: 26,276 pass, 64,978 fail, 18 skip and 8,939 time out,
 with zero missing or unexecuted variants. `verify-full.mjs` independently
 reconstructs all eight known-pass gates for each source. Passing those gates
@@ -230,6 +230,17 @@ the fixed upstream captures and unchanged failure signatures. It also checks
 the actual source13a baseline identity; a rejected packaging archive with an
 incorrect copied identity remains retained and never counts as qualification.
 Current-source full-corpus, security and two-host qualification remain separate.
+
+Source `43d3ff7` also retains all 24 two-host reports in
+`hosted-function-metadata-v1`. Original/Boa has 33 significant wins and
+base-class/Boa has 12 on each host. Derived/Boa has 13 wins and two noisy
+comparisons on EPYC 9V45 and 15 wins on EPYC 7763. Definition wins only one
+of three pairs on 9V45, so the two-host performance criterion remains unmet.
+Both hosts' identical-candidate controls are entirely noisy. Before/after
+retains one original-suite and one base-class speedup on 7763, with every
+other comparison noisy. The full source43d capture independently preserves
+all eight known-pass gates; neither integrity replay nor those gates waive
+the unresolved performance condition.
 
 The historical two-host prototype/address-width measurements retain all twelve
 reports per machine, including slower before/after decisions and apparent

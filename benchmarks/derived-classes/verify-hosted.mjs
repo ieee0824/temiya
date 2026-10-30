@@ -9,6 +9,7 @@ import {fileURLToPath} from 'node:url';
 const root=path.dirname(fileURLToPath(import.meta.url)),repo=path.resolve(root,'../..');
 const read=p=>JSON.parse(fs.readFileSync(p)),sha=b=>createHash('sha256').update(b).digest('hex');
 const captures=new Map([
+ ['hosted-function-metadata-v1',{source:'43d3ff7a8c2203c71750409ff20442cc3344f056',run:41069423997,baseline:'13a91d105f205aeb2f0b5b296709702fa577082e'}],
  ['hosted-anonymous-env-v1',{source:'13a91d105f205aeb2f0b5b296709702fa577082e',run:41062833044,baseline:'8b019733ed8e08d3bb8a31319501a4d3c08bf070'}],
  ['hosted-native-prototypes-v1',{source:'336a38dbc74242a107761680bed5c1f429b602a1',run:41044280340}],
  ['hosted-delegation-v1',{source:'8b019733ed8e08d3bb8a31319501a4d3c08bf070',run:41054310081,baseline:'2be3d7c82091d27f7d2fae58a346c44144d3666b'}],

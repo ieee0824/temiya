@@ -109,3 +109,17 @@ node benchmarks/base-classes/verify-full-f1c.mjs
 The full verifier safely decodes the retained capture and original reference,
 independently checks every raw shard, proves complete nonoverlapping file/variant
 coverage and reruns the production per-variant gate, including its rejection.
+
+Latest native loop-binding measurements (runtime05d2eee) are retained in
+`native-loop-v1`. The same fixed four class inputs produce six comparisons
+faster than Boa beyond the noise threshold and six within it. Before/after
+has four faster and eight noisy comparisons; the identical-worker control
+has twelve noisy comparisons. These results do not establish superiority
+for every class workload. The archive also retains actual native test logs
+(740 pass, 26 ignored, 96 groups), the actual ASan job log
+(738 pass, 26 ignored, 95 groups), build identities and affinity records.
+
+`node benchmarks/base-classes/verify-native-loop.mjs` verifies the archive,
+reconstructs every recorded class decision and recomputes both test counts.
+Original-eleven measurements, hosted runs and full-corpus qualification
+remain separate evidence.

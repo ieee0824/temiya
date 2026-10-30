@@ -152,3 +152,19 @@ Those control results are preserved and cannot establish a source regression
 or improvement. Run `node benchmarks/base-classes/verify-native-originals.mjs`
 to reconstruct all 264 runs and 4,224 checked values without dropping any
 outcome. This archive does not establish an unconditional speed pass.
+
+Final hosted measurements (run41004747984, runtime05d2eee, baseline9970cd5)
+are retained in `hosted-loop-v1`, with all eight reports on each machine.
+Both machines record all 33 original-eleven comparisons faster than actual
+Boa and all 33 identical-worker comparisons within noise. Original before/after
+has no significant slowdown (copy1:33 noisy; copy2:one faster,32 noisy).
+For class4, copy1 records 11 faster comparisons and one noisy class-definition
+comparison; copy2 records all12 faster. Each named class workload has repeated
+significant speedups on both machines. Class before/after has six faster and
+six noisy comparisons per machine; both class identical-worker controls have
+all12 within noise. All inputs, counts, oracles and thresholds remain fixed.
+
+Run `node benchmarks/base-classes/verify-hosted-loop.mjs` to safely decode
+the archive, independently recompute all16 reports and retain the noisy result.
+These observations qualify the recorded suites and machines; they do not
+establish universal engine superiority or erase the noisier ARM controls.

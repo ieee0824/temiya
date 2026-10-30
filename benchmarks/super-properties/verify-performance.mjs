@@ -35,6 +35,7 @@ try{
   ['lazy-leaf-v1','211698bc8fbc8ecc2831f819359e2b6c78a95def',806,[{"Temiya faster beyond threshold":10,"within noise threshold":5},{"within noise threshold":15},{"within noise threshold":14,"after slower beyond threshold":1},{"Temiya faster beyond threshold":11,"within noise threshold":4}]],
   ['accessor-slot-v1','96901d59149d7a8a90742519eea1093dccf73e4d',808,[{"Temiya faster beyond threshold":9,"within noise threshold":6},{"within noise threshold":15},{"within noise threshold":15},{"Temiya faster beyond threshold":10,"within noise threshold":5}]],
   ['main155-v1','55907d5acfedb8eb8ceba0df19de80399c4e4203',810,null],
+  ['object-capture-v1','5fc8f42092f186d196f325b68187fcd83c8c7c88',812,[{'Temiya faster beyond threshold':14,'within noise threshold':1},{'after faster beyond threshold':11,'within noise threshold':4},{'after slower beyond threshold':1,'within noise threshold':14},{'Temiya faster beyond threshold':9,'within noise threshold':6}]],
  ]){
   const {dest,e}=extract(phase);assert.equal(e.source_revision,revision);const w=read(dest+'/worker-info.json'),engine=read(dest+'/engine-info.json');assert.equal(w.revision,revision);assert.equal(w.executable_sha256,e.worker_sha256);assert.equal(engine.source_revision,revision);assert.equal(engine.executable_sha256,e.engine_sha256);assert.equal(engine.source_clean,true);
   if(expected !== null){
@@ -47,7 +48,7 @@ try{
    const old=previous+'/'+previousPrefix+mode,rows=read(dir+'/outcomes.json');assert.deepEqual(rows,read(old+'/outcomes.json'));
    for(const row of rows.filter(r=>r.outcome!=='pass')){const[file,pointer]=row.raw_record.split('#'),index=Number(pointer.split('/').at(-1)),current=read(dir+'/'+file).results[index],prior=read(old+'/'+file).results[index];for(const key of ['detail','diagnostic','observed_failure','reason','status'])assert.deepEqual(current[key],prior[key],row.path+':'+key);}
   }
-  if(['sloppy-leaf-v1','object-bridge-v1','home-root-v1','super-binding-v1','super-delegation-v1','super-leaf-v1','super-leaf-arrow-v1','super-operands-v1','lazy-leaf-v1','accessor-slot-v1','main155-v1'].includes(phase)){
+  if(['sloppy-leaf-v1','object-bridge-v1','home-root-v1','super-binding-v1','super-delegation-v1','super-leaf-v1','super-leaf-arrow-v1','super-operands-v1','lazy-leaf-v1','accessor-slot-v1','main155-v1','object-capture-v1'].includes(phase)){
    for(const mode of ['ast','auto'])for(const [dir,files,variants,pass,fail]of [['derived-'+mode,203,401,264,137],['base-originals/'+mode,149,294,276,18]]){const capture=dest+'/'+dir,v=run('verify-test262-baseline.mjs',[capture]);assert.equal(v.files,files);assert.equal(v.variants,variants);assert.equal(v.totals.pass,pass);assert.equal(v.totals.fail,fail);for(const key of ['skip','timeout','not_run','unreported'])assert.equal(v.totals[key],0);assert.equal(read(capture+'/conditions.json').engine_sha256,e.engine_sha256);}
    if(previousDerived){
     for(const mode of ['ast','auto']){
@@ -63,7 +64,7 @@ try{
    previousDerived=dest;
    const gate=run('verify-test262-baseline.mjs',[dest+'/pr-gate/capture']);assert.equal(gate.files,129);assert.equal(gate.variants,216);assert.equal(gate.totals.pass,216);assert.equal(gate.totals.fail,0);
   }
-  const rows=[...fs.readFileSync(dest+'/native-all-tests.log','utf8').matchAll(/test result: ok\. (\d+) passed; (\d+) failed; (\d+) ignored/g)];assert.equal(rows.length,['home-root-v1','super-binding-v1','super-delegation-v1','super-leaf-v1','super-leaf-arrow-v1','super-operands-v1','lazy-leaf-v1','accessor-slot-v1','main155-v1'].includes(phase)?109:phase==='object-bridge-v1'?100:99);assert.equal(rows.reduce((n,r)=>n+ +r[1],0),native);assert(rows.every(r=>+r[2]===0));assert.equal(rows.reduce((n,r)=>n+ +r[3],0),26);
+  const rows=[...fs.readFileSync(dest+'/native-all-tests.log','utf8').matchAll(/test result: ok\. (\d+) passed; (\d+) failed; (\d+) ignored/g)];assert.equal(rows.length,['home-root-v1','super-binding-v1','super-delegation-v1','super-leaf-v1','super-leaf-arrow-v1','super-operands-v1','lazy-leaf-v1','accessor-slot-v1','main155-v1','object-capture-v1'].includes(phase)?109:phase==='object-bridge-v1'?100:99);assert.equal(rows.reduce((n,r)=>n+ +r[1],0),native);assert(rows.every(r=>+r[2]===0));assert.equal(rows.reduce((n,r)=>n+ +r[3],0),26);
   summaries.push({source:revision,outcomes:expected,variants_per_backend:601,pass:405,fail:196,scope:e.scope});previous=dest;previousPrefix='super-';previousRevision=revision;
  }
  console.log(JSON.stringify({integrity:'pass',reports:summaries,scope:'Intermediate negative or incomplete speed evidence, not final qualification.'}));

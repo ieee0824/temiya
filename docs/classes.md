@@ -95,3 +95,11 @@ property references, fields/private elements or complete builtin subclassing.
 Run `cargo test --locked --test derived_classes --test base_classes` for the
 public Engine tests. Fixed upstream coverage retains every recorded dependency
 failure separately and does not establish full class conformance.
+
+Derived constructors omit the implicit arguments object only when a complete
+syntax walk finds neither arguments nor eval identifiers, including parameter
+defaults and all nested functions/classes. The immutable result is cached with
+the function code before execution. Observable arguments, including captured
+arrows and extra actual parameters, keep the existing binding and strict
+unmapped values. This changes allocation only; it neither skips body effects
+nor retries errors.

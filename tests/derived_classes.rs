@@ -202,3 +202,16 @@ fn derived_this_and_captured_arrows_survive_reentrant_collection() {
         assert_eq!(engine.collect_garbage().unwrap().retained, 0);
     }
 }
+
+#[test]
+fn constructor_arguments_remain_available_to_arrows_defaults_and_strict_writes() {
+    check(
+        "class A { constructor(value) { this.value = value; } } class B extends A { constructor(value) { let read = () => arguments; value = 99; super(value); this.args = read(); } } let p = new B(42); p.value === 99 && p.args.length === 1 && p.args[0] === 42;",
+    );
+    check(
+        "class A { constructor(value) { this.value = value; } } class B extends A { constructor(value = arguments.length) { super(value); } } new B().value === 0 && new B(undefined).value === 1;",
+    );
+    check(
+        "class A {} class B extends A { constructor(value) { super(); this.count = arguments.length; this.extra = arguments[1]; } } let marker = {}; let p = new B(1,marker); p.count === 2 && p.extra === marker;",
+    );
+}

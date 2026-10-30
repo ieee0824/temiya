@@ -48,6 +48,7 @@ pub(super) struct FunctionCode {
     ast: Function,
     kind: FunctionKind,
     compiled: Option<Rc<FunctionTemplate>>,
+    may_observe_arguments: bool,
     auto_functions: bool,
     cache: Weak<RefCell<CodeCache>>,
 }
@@ -98,6 +99,7 @@ fn prepare_code(
         ast: code.clone(),
         kind,
         compiled,
+        may_observe_arguments: may_observe_arguments(code),
         auto_functions: cache.is_some(),
         cache: cache.as_ref().map_or_else(Weak::new, Rc::downgrade),
     });
@@ -109,6 +111,19 @@ fn prepare_code(
             .push(prepared.clone());
     }
     prepared
+}
+
+// Scan complete syntax once, including defaults, arrows, nested classes and
+// functions. Over-approximating nested scopes is safe. Keep the binding for
+// direct eval as well, independently of whether eval is currently supported.
+fn may_observe_arguments(function: &Function) -> bool {
+    let mut observed = false;
+    function.visit_expressions(&mut |expression| {
+        if let ExprKind::Identifier(name) = &expression.kind {
+            observed |= name == "arguments" || name == "eval";
+        }
+    });
+    observed
 }
 
 #[derive(Clone)]
@@ -483,7 +498,9 @@ fn construct_derived(
         Some(new_target.clone()),
         ThisBindingStatus::Uninitialized,
     );
-    bind_arguments(&closure.realm, &environment, arguments)?;
+    if closure.code.may_observe_arguments {
+        bind_arguments(&closure.realm, &environment, arguments)?;
+    }
     let evaluator = ExpressionEvaluator::with_environment(
         closure.realm.clone(),
         environment.clone(),
@@ -710,6 +727,76 @@ mod auto_body_tests {
                 super::super::bytecode_function::bridged_calls() - before,
                 usize::from(backend == ScriptBackend::Auto)
             );
+        }
+    }
+}
+
+#[cfg(test)]
+mod derived_arguments_tests {
+    use crate::{
+        Engine,
+        embedding::ScriptBackend,
+        runtime::{Object, Value},
+    };
+
+    #[test]
+    fn unobservable_derived_arguments_avoid_one_managed_object_per_call() {
+        for backend in [ScriptBackend::Ast, ScriptBackend::Auto] {
+            let engine = Engine::builder().script_backend(backend).build();
+            engine
+                .allocation_context()
+                .set_allocation_collection_interval(usize::MAX);
+            {
+                let realm = engine.create_realm();
+                let definition = engine.compile(&realm, "class A {} class Lean extends A { constructor(value) { super(value); } } class Observed extends A { constructor(value) { arguments.length; super(value); } }").unwrap();
+                engine.evaluate(&definition).unwrap();
+                let get = |name: &str| {
+                    let script = engine.compile(&realm, name).unwrap();
+                    let value = engine.evaluate(&script).unwrap();
+                    let Value::Object(object) = value.value() else {
+                        panic!("constructor")
+                    };
+                    object.clone()
+                };
+                let (lean, observed) = (get("Lean"), get("Observed"));
+                let count = if cfg!(miri) { 2 } else { 8 };
+                let allocations = |constructor: &Object| {
+                    let before = engine.allocation_context().diagnostics();
+                    for _ in 0..count {
+                        constructor
+                            .construct(&[Value::Number(42.0)], constructor.clone())
+                            .unwrap();
+                    }
+                    let after = engine.allocation_context().diagnostics();
+                    assert_eq!(after.collections, before.collections);
+                    after.live - before.live
+                };
+                let lean_allocations = allocations(&lean);
+                let observed_allocations = allocations(&observed);
+                assert_eq!(
+                    observed_allocations - lean_allocations,
+                    count,
+                    "{backend:?}"
+                );
+            }
+            assert_eq!(engine.collect_garbage().unwrap().retained, 0);
+        }
+    }
+
+    #[test]
+    fn complete_syntax_keeps_arguments_for_eval_and_nested_observers() {
+        for source in [
+            "function f() { eval('arguments'); }",
+            "function f() { return () => arguments; }",
+            "function f(value = arguments.length) {}",
+            "function f() { try {} finally { arguments; } }",
+            "function f() { class C { static read() { return arguments; } } }",
+        ] {
+            let expression = crate::parser::parse_expression(source).unwrap();
+            let crate::ast::ExprKind::Function(function) = expression.kind else {
+                panic!("function")
+            };
+            assert!(super::may_observe_arguments(&function), "{source}");
         }
     }
 }

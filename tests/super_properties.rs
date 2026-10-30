@@ -138,6 +138,16 @@ fn captured_home_objects_and_receivers_survive_reentrant_collection() {
                 engine.evaluate(&script).unwrap().value(),
                 Value::Boolean(true)
             ));
+            let script = engine.compile(&realm, "let reentrantGet={get value(){delete reentrantGet.value;gcNow();return 42;},set value(value){throw 99;}};let result=reentrantGet.value;result===42 && reentrantGet.value===undefined;").unwrap();
+            assert!(matches!(
+                engine.evaluate(&script).unwrap().value(),
+                Value::Boolean(true)
+            ));
+            let script = engine.compile(&realm, "let reentrantSet={get value(){throw 99;},set value(value){delete reentrantSet.value;gcNow();this.saved=value;}};reentrantSet.value=42;reentrantSet.saved===42 && reentrantSet.value===undefined;").unwrap();
+            assert!(matches!(
+                engine.evaluate(&script).unwrap().value(),
+                Value::Boolean(true)
+            ));
             let script = engine.compile(&realm, "function makeGenerator(receiver){return {__proto__:{read(){gcNow();return this.value;}},*values(){gcNow();yield super.read();gcNow();return super.read()+1;}}.values.call(receiver);}let iterator=makeGenerator({value:42});gcNow();let first=iterator.next();first.value===42 && first.done===false;").unwrap();
             assert!(matches!(
                 engine.evaluate(&script).unwrap().value(),
@@ -268,5 +278,15 @@ fn super_leaf_locals_keep_captures_parameter_writes_and_lexical_errors() {
     );
     check(
         "let calls=0;let first={value:1},next={value:42};let key={toString(){calls++;Object.setPrototypeOf(object,next);return 'value';}};let object={__proto__:first,read(){let value=super[key];return value;}};object.read()===1 && object.read()===42 && calls===2;",
+    );
+}
+
+#[test]
+fn absent_accessor_methods_shadow_prototype_accessors() {
+    check(
+        "let object={__proto__:{get value(){throw 99;}},set value(value){this.saved=value;}};object.value=42;object.value===undefined && object.saved===42;",
+    );
+    check(
+        "let calls=0;let object={__proto__:{set value(value){calls++;}},get value(){return 42;}};object.value=99;object.value===42 && calls===0;",
     );
 }

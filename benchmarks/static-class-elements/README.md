@@ -16,3 +16,9 @@ Five authored workloads in workloads-v2 retain 10000 iterations and expected
 The rejected v1 repeated-exception input and its reference failure are retained;
 v2 exercises interruption on the final iteration. Oracle probes establish
 correct output only, not timing qualification.
+
+default-class-v1 retains the following anonymous default-exported class fix.
+Both backends preserve all 462 initial passes and add one official module test;
+84 failures remain. verify-default-class.mjs reconstructs all 547 outcomes per
+backend and checks the 838 passing native tests. New-source performance remains
+separate from the preceding hosted measurement.

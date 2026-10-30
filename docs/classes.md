@@ -1,12 +1,24 @@
 # Class execution
 
-The public Engine executes base and derived class declarations and expressions through the
-AST backend. Auto selects this path before execution when a Script contains a
-class; explicit Bytecode still rejects class compilation. Within an Auto
-AST Script, eligible simple-parameter ordinary and class function bodies are
-independently verified and run by the bytecode function runtime. Explicit Ast
-keeps function bodies in the AST interpreter. Unsupported bodies select AST
-before execution; runtime errors never trigger a second execution.
+The public Engine executes base and derived class definitions through the shared
+AST class evaluator. Class declarations and top-level class expressions select
+AST before Script execution. Within eligible function bodies, a verified
+`CreateClass` instruction invokes that same evaluator with the current lexical
+environment, so surrounding supported loops can execute as bytecode. This also
+works through explicit Bytecode when the complete Script is supported; it does
+not lower class elements or constructors to new bytecode instructions.
+
+Anonymous class variable initializers and identifier assignments preserve name
+inference, including parenthesized expressions. Anonymous class object-property
+values and logical assignments select AST before execution. Classes prevent
+loop-environment reuse and scalar binding elision because methods can capture
+those bindings. The bridge resolves enclosing this and new.target without
+reading an uninitialized this binding until class source actually requires it.
+
+Within an Auto AST Script, eligible simple-parameter ordinary and class function
+bodies independently use the bytecode function runtime. Explicit Ast keeps
+function bodies in the AST interpreter. Unsupported bodies select AST before
+execution; runtime errors never trigger a second execution.
 
 The per-evaluation cache shares immutable code, not class environments, `this`
 or objects. Span/kind lookup is checked against the complete function AST, so

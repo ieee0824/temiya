@@ -1,4 +1,4 @@
-//! Bytecode-backed function objects. No AST body evaluation occurs here.
+//! Bytecode-backed functions and the explicit shared class-definition bridge.
 use super::{
     environment::{FunctionThis, StoredEnvironment},
     execution::StoredRealm,
@@ -15,6 +15,52 @@ struct Closure {
     template: Rc<FunctionTemplate>,
     realm: Realm,
     environment: Environment,
+}
+
+#[derive(Default)]
+pub(crate) struct ClassEvaluationContext {
+    cache: Option<super::function::FunctionCache>,
+}
+
+impl ClassEvaluationContext {
+    pub(crate) fn evaluate(
+        &mut self,
+        class: &crate::ast::Class,
+        inferred_name: Option<super::JsString>,
+        realm: &Realm,
+        environment: &Environment,
+    ) -> RuntimeResult<Object> {
+        let mut current = Some(environment.clone());
+        let mut this_environment = None;
+        let mut this_value = Value::Undefined;
+        let mut new_target = None;
+        while let Some(scope) = current {
+            if scope.kind() == super::EnvironmentKind::Function && scope.has_this_binding()? {
+                // Do not read this eagerly: a prepared derived frame may still
+                // have an uninitialized binding that the class never touches.
+                new_target = scope.new_target()?;
+                this_environment = Some(scope);
+                break;
+            }
+            if scope.kind() == super::EnvironmentKind::Global {
+                this_value = scope.global_this_value()?;
+                break;
+            }
+            current = scope.outer();
+        }
+        let evaluator = super::ExpressionEvaluator::with_environment(
+            realm.clone(),
+            environment.clone(),
+            this_value,
+            true,
+        )
+        .with_this_environment(this_environment)
+        .with_new_target(new_target)
+        .with_function_cache(Some(
+            self.cache.get_or_insert_with(Default::default).clone(),
+        ));
+        super::class::evaluate(class, &evaluator, inferred_name)
+    }
 }
 
 pub(super) fn execute_template(

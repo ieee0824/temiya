@@ -34,6 +34,12 @@ bridge does not introduce general super-reference bytecode instructions. Fields/
 parameter-environment gaps have separate issues. Fixed upstream results and
 performance qualification must be recorded before treating #156 as complete.
 
+AST ordinary and method calls allocate the implicit arguments object only when
+it can be observed. The conservative complete-syntax scan also checks parameter
+defaults, nested functions/arrows, class heritage and computed keys, and eval.
+Calls that can observe arguments retain the actual object and its normal traced
+ownership. This does not change the separate parameter-aliasing scope.
+
 At candidate `b1557a5`, the fixed 310 upstream files have 601 variants in each
 of Ast and Auto: 405 pass and 196 fail, with no skipped, timed-out or missing
 variants. All previous 292 passes remain passing; 113 additional variants pass.

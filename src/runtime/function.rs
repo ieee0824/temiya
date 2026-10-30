@@ -485,7 +485,10 @@ fn call_function(
     if !lexical {
         environment.bind_this_value(this_value.clone())?;
     }
-    if !lexical {
+    // The complete syntax scan includes defaults, nested classes/functions,
+    // arrows and direct eval. Retain the actual object whenever any of those
+    // can observe arguments; otherwise this implicit binding is unreachable.
+    if !lexical && closure.code.may_observe_arguments {
         bind_arguments(&closure.realm, &environment, arguments)?;
     }
     let evaluator = ExpressionEvaluator::with_environment(

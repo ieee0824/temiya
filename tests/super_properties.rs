@@ -174,3 +174,19 @@ fn compiled_class_definitions_keep_enclosing_method_super_bindings() {
         "class A{get key(){return 'first';}}class B extends A{make(){let C=class{[super.key](){return 42;}};return C;}}let first=new B().make();Object.setPrototypeOf(B.prototype,{get key(){return 'second';}});let second=new B().make();new first().first()===42 && new second().second()===42;",
     );
 }
+
+#[test]
+fn arguments_remain_observable_in_ast_methods_defaults_and_nested_classes() {
+    check(
+        "class A{step(){return this.value;}}class B extends A{step(value){let read=()=>arguments[0];return super.step()+read();}}let object=new B();object.value=2;object.step(40)===42;",
+    );
+    check(
+        "let base={get result(){return this.value;}};let object={__proto__:base,value:2,read(value=arguments[1]){return super.result+value;}};object.read(undefined,40)===42;",
+    );
+    check(
+        "function make(){try{return class{[arguments[0]](){return 42;}};}finally{}}let C=make('read');new C().read()===42;",
+    );
+    check(
+        "let object={get value(){return arguments.length;},set value(value){this.read=()=>arguments[0];}};let marker={};object.value=marker;object.value===0 && object.read()===marker;",
+    );
+}

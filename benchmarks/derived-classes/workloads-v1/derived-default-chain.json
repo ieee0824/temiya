@@ -1,0 +1,8 @@
+{
+  "name": "derived-default-chain",
+  "iterations": 10000,
+  "oracle": "sum-zero-to-n-minus-one",
+  "setup": "class Base { constructor(value) { this.value = value; } } class Middle extends Base {} class Derived extends Middle {} function bench(n) { let total = 0; for (let i = 0; i < n; i++) { let point = new Derived(i); total += point.value; } return total; }",
+  "invocation": "bench(10000);",
+  "expected": 49995000
+}

@@ -388,14 +388,16 @@
         "tests/declarations.rs",
         "tests/functions_runtime.rs",
         "tests/spec_support.rs",
-        "tests/base_classes.rs"
+        "tests/base_classes.rs",
+        "tests/derived_classes.rs"
       ],
-      "rationale": "Ordinary functions/arrows execute a subset. Base classes execute declarations/expressions, constructors, methods/accessors, TDZ and strict call restrictions. Derived classes, fields/private elements, non-simple parameter environments and complete arguments remain separate work. See individual probes and focused original captures.",
+      "rationale": "Ordinary functions/arrows execute a subset. Base classes execute declarations/expressions, constructors, methods/accessors, TDZ and strict call restrictions. Basic derived construction connects super(), uninitialized this and new.target propagation. Super properties, fields/private elements, non-simple parameter environments and complete arguments remain separate work. See individual probes and focused original captures.",
       "kind": "group",
       "issues": [
         154,
         165,
-        166
+        166,
+        155
       ],
       "test262": {
         "status": "not-run",
@@ -2855,9 +2857,10 @@
       "issues": [
         249
       ],
-      "rationale": "Public Engine checks the stated operation, not full clause conformance. Known gap: omitted byteOffset is rejected rather than defaulting to zero (#248/#249).",
+      "rationale": "Public Engine checks prototype propagation, default byteOffset, range validation and detachment ordering. Full DataView methods and resizable-buffer behavior remain incomplete (#249).",
       "tests": [
-        "tests/spec_support.rs"
+        "tests/spec_support.rs",
+        "tests/derived_classes.rs"
       ],
       "test262": {
         "status": "not-run"
@@ -2873,12 +2876,12 @@
           }
         },
         {
-          "source": "new DataView(new ArrayBuffer(8));",
+          "source": "Object.getPrototypeOf(new DataView(new ArrayBuffer(8)))===DataView.prototype;",
           "expected": {
             "parser": "accept",
-            "ast": "RangeError",
-            "bytecode": "RangeError",
-            "auto": "RangeError"
+            "ast": "true",
+            "bytecode": "true",
+            "auto": "true"
           }
         }
       ],
@@ -10666,31 +10669,31 @@
     {
       "id": "syntax.class-extends",
       "kind": "syntax",
-      "status": "unconnected",
+      "status": "partial",
       "reference": "ECMA-262 2026 language syntax and evaluation",
       "issues": [
         155
       ],
-      "rationale": "Authored public Engine probe covers the stated example only; complete specification semantics remain unqualified.",
+      "rationale": "Public Engine AST and Auto connect constructor and instance inheritance, default argument forwarding, new.target, uninitialized this and super() construction. Super-property references, fields and complete builtin subclass semantics remain separate; focused probes do not qualify the whole specification.",
       "tests": [
-        "tests/spec_support.rs"
+        "tests/spec_support.rs",
+        "tests/derived_classes.rs"
       ],
       "test262": {
         "status": "not-run"
       },
       "probes": [
         {
-          "source": "class A {} class B extends A {} true;",
+          "source": "class A { constructor(x) { this.x = x; } } class B extends A { constructor(x) { super(x); } } new B(42).x === 42;",
           "expected": {
             "parser": "accept",
-            "ast": "engine-error",
+            "ast": "true",
             "bytecode": "bytecode-unsupported",
-            "auto": "engine-error"
-          },
-          "diagnostic_contains": "class"
+            "auto": "true"
+          }
         }
       ],
-      "evidence_kind": "unconnected-boundary"
+      "evidence_kind": "examples"
     },
     {
       "id": "syntax.class-field",

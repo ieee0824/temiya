@@ -50,15 +50,16 @@ impl VirtualMachine {
         Self::run::<false>(bytecode, Some(realm), Some(frame), false)
     }
 
-    // Only a freshly instantiated, nonescaping internal function frame may
-    // keep scalar locals outside its Environment. The public prepared-frame
-    // API must publish every write to the caller's observable Environment.
+    // Internal calls own their freshly instantiated frame. Scalar binding
+    // elision additionally requires unobservable bindings; safe loop-cell reuse
+    // is proven independently. Public prepared frames retain their old path.
     pub(crate) fn execute_with_private_frame(
         bytecode: &VerifiedBytecode,
         realm: &Realm,
         frame: &Environment,
+        scalar_bindings_unobserved: bool,
     ) -> RuntimeResult<Completion> {
-        if scalar_loop_locals(bytecode) {
+        if scalar_bindings_unobserved && scalar_loop_locals(bytecode) {
             Self::run::<true>(bytecode, Some(realm), Some(frame), true)
         } else {
             Self::run::<false>(
@@ -78,6 +79,8 @@ impl VirtualMachine {
     ) -> RuntimeResult<Completion> {
         let _object_roots = realm.and_then(Realm::enter_object_root_region);
         let mut property_context = realm.map(PropertyReferenceContext::new);
+        let mut class_context =
+            crate::runtime::bytecode_function::ClassEvaluationContext::default();
         let body = bytecode.bytecode();
         let mut scalar_scopes: Vec<Option<ScalarScope<'_>>> = Vec::new();
         if SCALAR_LOCALS {
@@ -628,6 +631,21 @@ impl VirtualMachine {
                     let invocation = calls.pop().expect("verified call frame");
                     stack.push(invocation.invoke()?);
                 }
+                Instruction::CreateClass(index) => {
+                    let Constant::Class {
+                        definition,
+                        inferred_name,
+                    } = &body.constants[index as usize]
+                    else {
+                        unreachable!()
+                    };
+                    stack.push(Value::Object(class_context.evaluate(
+                        definition,
+                        inferred_name.clone(),
+                        realm.expect("verified class Realm"),
+                        &scopes.last().expect("verified active scope").environment,
+                    )?));
+                }
                 Instruction::CreateFunction(index) => {
                     let Constant::Function(template) = &body.constants[index as usize] else {
                         unreachable!()
@@ -771,7 +789,7 @@ fn indexed_value(base: &Value, key: &Value) -> Option<Value> {
 
 pub(super) fn constant(constant: &Constant) -> Value {
     match constant {
-        Constant::Scope(_) | Constant::Function(_) => {
+        Constant::Scope(_) | Constant::Function(_) | Constant::Class { .. } => {
             unreachable!("verifier rejects metadata values")
         }
         Constant::BigInt(value) => Value::BigInt(value.clone()),
@@ -1277,7 +1295,7 @@ mod loop_binding_identity_tests {
             ThisBindingStatus::Initialized,
         );
         assert!(matches!(
-            VirtualMachine::execute_with_private_frame(&code, &realm, &frame).unwrap(),
+            VirtualMachine::execute_with_private_frame(&code, &realm, &frame, true).unwrap(),
             Completion::Return(Value::Number(0.0))
         ));
     }

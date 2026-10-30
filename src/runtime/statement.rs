@@ -84,6 +84,10 @@ pub struct StatementEvaluator {
 }
 
 impl StatementEvaluator {
+    pub(super) fn with_this_environment(mut self, environment: Option<Environment>) -> Self {
+        self.expression.this_environment = environment;
+        self
+    }
     pub(super) fn with_function_cache(
         mut self,
         cache: Option<super::function::FunctionCache>,

@@ -496,6 +496,7 @@ pub struct ExpressionEvaluator {
     pub(super) realm: Realm,
     pub(super) environment: Environment,
     pub(super) this_value: Value,
+    pub(super) this_environment: Option<Environment>,
     pub(super) new_target: Option<Object>,
     pub(super) strict: bool,
     pub(super) function_cache: Option<super::function::FunctionCache>,
@@ -535,6 +536,7 @@ impl ExpressionEvaluator {
             realm,
             environment,
             this_value,
+            this_environment: None,
             new_target: None,
             strict: false,
             function_cache: None,
@@ -553,6 +555,7 @@ impl ExpressionEvaluator {
             realm,
             environment,
             this_value,
+            this_environment: None,
             new_target: None,
             strict,
             function_cache: None,
@@ -563,6 +566,11 @@ impl ExpressionEvaluator {
     #[must_use]
     pub fn with_new_target(mut self, new_target: Option<Object>) -> Self {
         self.new_target = new_target;
+        self
+    }
+
+    pub(super) fn with_this_environment(mut self, environment: Option<Environment>) -> Self {
+        self.this_environment = environment;
         self
     }
 
@@ -585,7 +593,10 @@ impl ExpressionEvaluator {
         match &expression.kind {
             ExprKind::Identifier(name) => self.identifier(name).map(Evaluation::Reference),
             ExprKind::Literal(literal) => self.literal(literal).map(Evaluation::Value),
-            ExprKind::This => Ok(Evaluation::Value(self.this_value.clone())),
+            ExprKind::This => self.this_environment.as_ref().map_or_else(
+                || Ok(Evaluation::Value(self.this_value.clone())),
+                |environment| environment.get_this_binding().map(Evaluation::Value),
+            ),
             ExprKind::Parenthesized(inner) => match self.eval(inner)? {
                 Evaluation::ShortCircuit => Ok(Evaluation::Value(Value::Undefined)),
                 result => Ok(result),
@@ -740,6 +751,25 @@ impl ExpressionEvaluator {
     }
 
     fn call(&self, callee: &Expr, arguments: &[Expr], optional: bool) -> RuntimeResult<Evaluation> {
+        if matches!(callee.kind, ExprKind::Super) {
+            let environment = self.this_environment.as_ref().ok_or_else(|| {
+                RuntimeError::reference_error("super call has no constructor environment")
+            })?;
+            let new_target = environment
+                .new_target()?
+                .ok_or_else(|| RuntimeError::reference_error("super call has no new.target"))?;
+            let function = environment.function_object()?;
+            let parent = function.try_prototype()?;
+            // The arguments run even when the current parent cannot construct.
+            let arguments = self.arguments(arguments)?;
+            let parent = parent.filter(Object::is_constructor).ok_or_else(|| {
+                RuntimeError::type_error("super constructor is not a constructor")
+            })?;
+            let result = parent.construct(&arguments, new_target)?;
+            return environment
+                .bind_this_value(Value::Object(result))
+                .map(Evaluation::Value);
+        }
         let result = self.eval(callee)?;
         if matches!(result, Evaluation::ShortCircuit) {
             return Ok(Evaluation::ShortCircuit);
@@ -1425,6 +1455,7 @@ pub(super) struct StoredExpressionEvaluator {
     realm: super::execution::StoredRealm,
     environment: super::environment::StoredEnvironment,
     this_value: super::stored::StoredValue,
+    this_environment: Option<super::environment::StoredEnvironment>,
     new_target: Option<super::stored::StoredObject>,
     strict: bool,
     function_cache: Option<super::function::FunctionCache>,
@@ -1438,6 +1469,11 @@ impl StoredExpressionEvaluator {
                 &evaluator.environment,
             )?,
             this_value: super::stored::StoredValue::store_owned(owner, evaluator.this_value)?,
+            this_environment: evaluator
+                .this_environment
+                .as_ref()
+                .map(|environment| super::environment::StoredEnvironment::store(owner, environment))
+                .transpose()?,
             new_target: evaluator
                 .new_target
                 .as_ref()
@@ -1452,6 +1488,11 @@ impl StoredExpressionEvaluator {
             realm: self.realm.load(owner)?,
             environment: self.environment.load(owner)?,
             this_value: self.this_value.into_value(owner)?,
+            this_environment: self
+                .this_environment
+                .as_ref()
+                .map(|environment| environment.load(owner))
+                .transpose()?,
             new_target: self
                 .new_target
                 .as_ref()
@@ -1465,6 +1506,9 @@ impl StoredExpressionEvaluator {
         self.realm.trace(tracer);
         self.environment.trace(tracer);
         self.this_value.trace(tracer);
+        if let Some(environment) = &self.this_environment {
+            environment.trace(tracer);
+        }
         if let Some(target) = &self.new_target {
             target.trace(tracer);
         }

@@ -1,0 +1,8 @@
+{
+  "name": "construction-only-ast",
+  "iterations": 1000,
+  "oracle": "sum-zero-to-n-minus-one",
+  "setup": "class Base { constructor(value) { this.value=value; } } class Derived extends Base { constructor(value) { super(value); } read() { return this.value; } } function bench(n) { if (false) { class Unused {} } let total=0; for (let i=0;i<n;i++) { let LocalBase=Base; let LocalDerived=Derived; total+=new LocalDerived(i).read(); } return total; }",
+  "invocation": "bench(1000);",
+  "expected": 499500
+}

@@ -66,7 +66,7 @@ fn source_compile_reports_parse_and_unsupported_errors() {
     assert!(
         unsupported
             .message()
-            .contains("unsupported bytecode expression")
+            .contains("unsupported bytecode class outside function")
     );
     assert!(unsupported.span().is_some());
     let unbound = BytecodeCompiler::compile("missing;").unwrap();

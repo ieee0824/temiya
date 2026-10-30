@@ -1,0 +1,8 @@
+{
+  "name": "loop-only-ast",
+  "iterations": 1000,
+  "oracle": "sum-zero-to-n-minus-one",
+  "setup": "function bench(n) { if (false) { class Unused {} } let total = 0; for (let i = 0; i < n; i++) { let Base = i; let Derived = i; total += i; } return total; }",
+  "invocation": "bench(1000);",
+  "expected": 499500
+}

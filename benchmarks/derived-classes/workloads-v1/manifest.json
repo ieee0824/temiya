@@ -1,0 +1,68 @@
+{
+  "schema": 1,
+  "fixture_kind": "authored-derived-classes",
+  "fixture_version": 1,
+  "reference_engine_revision": "007556adccb8fb4329236932ca8175f8e8d119d2",
+  "frozen_at": "2026-10-30T05:44:19.930Z",
+  "workloads": [
+    {
+      "name": "derived-explicit-construct",
+      "file": "derived-explicit-construct.json",
+      "iterations": 10000,
+      "expected": 49995000,
+      "oracle": "sum-zero-to-n-minus-one",
+      "sha256": "cfc9d3b342c2c2d3186a9e2091c20aefe9de1f98d34e260eabfd3867ed61f65a",
+      "setup_sha256": "6d593b8f608d85f6eb761ee5a5d3f1c3e588502609ea57c86311e8957d8ecdf2",
+      "invocation_sha256": "d0e3efdf9851dbde2f1f5c032f78b8ac15e066d907d82e7745927914215538b7"
+    },
+    {
+      "name": "derived-default-construct",
+      "file": "derived-default-construct.json",
+      "iterations": 10000,
+      "expected": 49995000,
+      "oracle": "sum-zero-to-n-minus-one",
+      "sha256": "241f767be745158830788224fda75a2116cdad4613446b83d95742f38d6835f7",
+      "setup_sha256": "627e57e61dbd80df9b8fd3e00640e00f2832570f34748b1fb485cf084725e1ea",
+      "invocation_sha256": "d0e3efdf9851dbde2f1f5c032f78b8ac15e066d907d82e7745927914215538b7"
+    },
+    {
+      "name": "derived-inherited-method",
+      "file": "derived-inherited-method.json",
+      "iterations": 10000,
+      "expected": 10000,
+      "oracle": "n",
+      "sha256": "5381b01db2e1c0cb6713339c8c9f15a629a33ce2ce325b16e88d1341bb28c7bb",
+      "setup_sha256": "0f31a59023a793dd95a97e816432f46afbc79769e52264f98966220c40a4a5ab",
+      "invocation_sha256": "d0e3efdf9851dbde2f1f5c032f78b8ac15e066d907d82e7745927914215538b7"
+    },
+    {
+      "name": "derived-default-chain",
+      "file": "derived-default-chain.json",
+      "iterations": 10000,
+      "expected": 49995000,
+      "oracle": "sum-zero-to-n-minus-one",
+      "sha256": "b36253ca9da7c32d2b20623fb191d7448982f7e5aa155a8c45b1f11e98da1729",
+      "setup_sha256": "fa7be1d9ba4e255c0feea507c35fff72641aca8970895178577430edb18a26f5",
+      "invocation_sha256": "d0e3efdf9851dbde2f1f5c032f78b8ac15e066d907d82e7745927914215538b7"
+    },
+    {
+      "name": "derived-definition",
+      "file": "derived-definition.json",
+      "iterations": 1000,
+      "expected": 499500,
+      "oracle": "sum-zero-to-n-minus-one",
+      "sha256": "b4f78e37d3b18741e191105675aa91730458e0b7010646241c8e29879272ad74",
+      "setup_sha256": "2c68a01c92b14f530a14ac5b3bd6f39d2f91e9b683e87dc20e44caf404f223a6",
+      "invocation_sha256": "8fe3956ff4863c29f618bd15ee5343f412c56c3a7bebdd108eed8f03f0cf24ce"
+    }
+  ],
+  "conditions": {
+    "samples": 15,
+    "pairs": 3,
+    "timeout_ms": 180000,
+    "rss_limit_kib": 524288,
+    "noise_floor": 0.1,
+    "relative_mad_multiplier": 3
+  },
+  "scope": "Authored explicit/default derived construction, inherited method, multilevel default chain and derived definition. Frozen before either engine executes these workload inputs; original11 and baseclass4 remain separate unchanged controls. Setup/startup excluded; parse+evaluate invocation timed. Retain every speed/noise/control outcome."
+}

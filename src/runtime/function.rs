@@ -6,13 +6,14 @@ use super::{
     stored::{StoredObject, StoredValue},
 };
 use std::{
+    borrow::Cow,
     cell::RefCell,
     collections::HashMap,
     ops::Deref,
     rc::{Rc, Weak},
 };
 
-use crate::ast::{Expr, ExprKind, Function, FunctionBody, MethodKind};
+use crate::ast::{Expr, ExprKind, Function, FunctionBody, MethodKind, StmtKind};
 use crate::bytecode::{BytecodeCompiler, FunctionTemplate};
 
 use super::{
@@ -32,6 +33,13 @@ pub enum FunctionKind {
     Method(MethodKind),
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum ConstructorKind {
+    Base,
+    Derived,
+    DefaultDerived,
+}
+
 type FunctionCacheKey = (usize, usize, u8);
 type CodeCache = HashMap<FunctionCacheKey, Vec<Rc<FunctionCode>>>;
 pub(super) type FunctionCache = Rc<RefCell<CodeCache>>;
@@ -41,6 +49,8 @@ pub(super) struct FunctionCode {
     ast: Function,
     kind: FunctionKind,
     compiled: Option<Rc<FunctionTemplate>>,
+    may_observe_arguments: bool,
+    delegated_parameters: Option<Box<[usize]>>,
     auto_functions: bool,
     cache: Weak<RefCell<CodeCache>>,
 }
@@ -91,6 +101,12 @@ fn prepare_code(
         ast: code.clone(),
         kind,
         compiled,
+        may_observe_arguments: may_observe_arguments(code),
+        delegated_parameters: if kind == FunctionKind::Method(MethodKind::Constructor) {
+            delegated_parameters(code)
+        } else {
+            None
+        },
         auto_functions: cache.is_some(),
         cache: cache.as_ref().map_or_else(Weak::new, Rc::downgrade),
     });
@@ -104,6 +120,73 @@ fn prepare_code(
     prepared
 }
 
+// A sole super(p, q, ...) with simple parameters cannot observe or retain its
+// activation. Preserve the explicit argument List (including missing values,
+// reordering and dropped extra actuals), rather than forwarding all actuals.
+fn delegated_parameters(function: &Function) -> Option<Box<[usize]>> {
+    if !function.strict || function.asynchronous || function.generator {
+        return None;
+    }
+    let FunctionBody::Block(body) = &function.body else {
+        return None;
+    };
+    let StmtKind::Block(statements) = &body.kind else {
+        return None;
+    };
+    let [statement] = statements.as_slice() else {
+        return None;
+    };
+    let StmtKind::Expression(expression) = &statement.kind else {
+        return None;
+    };
+    let ExprKind::Call {
+        callee,
+        arguments,
+        optional: false,
+    } = &expression.kind
+    else {
+        return None;
+    };
+    if !matches!(callee.kind, ExprKind::Super) {
+        return None;
+    }
+    let mut parameters = HashMap::with_capacity(function.parameters.len());
+    for (index, parameter) in function.parameters.iter().enumerate() {
+        let ExprKind::Identifier(name) = &parameter.kind else {
+            return None;
+        };
+        if name == "arguments"
+            || name == "eval"
+            || parameters.insert(name.as_str(), index).is_some()
+        {
+            return None;
+        }
+    }
+    arguments
+        .iter()
+        .map(|argument| {
+            let ExprKind::Identifier(name) = &argument.kind else {
+                return None;
+            };
+            parameters.get(name.as_str()).copied()
+        })
+        .collect::<Option<Vec<_>>>()
+        .map(Vec::into_boxed_slice)
+}
+
+// Scan complete syntax once, including defaults, arrows, nested classes and
+// functions. Over-approximating nested scopes is safe. Keep the binding for
+// direct eval as well, independently of whether eval is currently supported.
+fn may_observe_arguments(function: &Function) -> bool {
+    let mut observed = false;
+    function.visit_expressions(&mut |expression| {
+        if let ExprKind::Identifier(name) = &expression.kind {
+            observed |= name == "arguments" || name == "eval";
+        }
+    });
+    observed
+}
+
 #[derive(Clone)]
 pub(super) struct FunctionClosure {
     pub(super) code: Rc<FunctionCode>,
@@ -111,6 +194,8 @@ pub(super) struct FunctionClosure {
     pub(super) realm: Realm,
     pub(super) environment: Environment,
     pub(super) lexical_this: Value,
+    lexical_this_environment: Option<Environment>,
+    constructor_kind: ConstructorKind,
     #[allow(dead_code)]
     home_object: Option<Object>,
 }
@@ -121,7 +206,10 @@ pub(super) struct StoredFunctionClosure {
     realm: StoredRealm,
     environment: StoredEnvironment,
     lexical_this: StoredValue,
+    lexical_this_environment: Option<StoredEnvironment>,
+    constructor_kind: ConstructorKind,
     home_object: Option<StoredObject>,
+    immutable_class_prototype: bool,
 }
 impl StoredFunctionClosure {
     pub(super) fn has_legacy_properties(&self) -> bool {
@@ -137,6 +225,12 @@ impl StoredFunctionClosure {
         Ok(FunctionClosure {
             code: self.code.clone(),
             kind: self.kind,
+            constructor_kind: self.constructor_kind,
+            lexical_this_environment: self
+                .lexical_this_environment
+                .as_ref()
+                .map(|environment| environment.load(owner))
+                .transpose()?,
             realm: self.realm.load(owner)?,
             environment: self.environment.load(owner)?,
             // Verified ordinary/method bodies use their prepared this binding;
@@ -211,14 +305,27 @@ impl StoredFunctionClosure {
         arguments: &[Value],
         new_target: Object,
     ) -> RuntimeResult<Object> {
+        // Only direct construction of a base class can use its immutable own
+        // prototype. Alternate new targets (including Proxy wrappers) retain
+        // GetPrototypeFromConstructor and its observable property access.
+        let prototype = if self.immutable_class_prototype && owner == &new_target {
+            self.home_object
+                .as_ref()
+                .map(|object| object.load(owner))
+                .transpose()?
+        } else {
+            None
+        };
         let closure = self.load(owner)?;
-        construct_function(&closure, owner.clone(), arguments, new_target)
-            .map_err(|error| closure.realm.bind_exception(error))
+        construct_function(&closure, owner.clone(), arguments, new_target, prototype)
     }
     pub(super) fn trace(&self, tracer: &mut crate::gc::Tracer<'_>) {
         self.realm.trace(tracer);
         self.environment.trace(tracer);
         self.lexical_this.trace(tracer);
+        if let Some(environment) = &self.lexical_this_environment {
+            environment.trace(tracer);
+        }
         if let Some(object) = &self.home_object {
             object.trace(tracer);
         }
@@ -230,6 +337,26 @@ pub(super) fn create_function(
     kind: FunctionKind,
     evaluator: &ExpressionEvaluator,
     home_object: Option<Object>,
+) -> RuntimeResult<Object> {
+    create_function_with_constructor(
+        code,
+        kind,
+        evaluator,
+        home_object,
+        ConstructorKind::Base,
+        None,
+        None,
+    )
+}
+
+pub(super) fn create_function_with_constructor(
+    code: &Function,
+    kind: FunctionKind,
+    evaluator: &ExpressionEvaluator,
+    home_object: Option<Object>,
+    constructor_kind: ConstructorKind,
+    constructor_parent: Option<Object>,
+    class_name: Option<JsString>,
 ) -> RuntimeResult<Object> {
     if code.asynchronous && code.generator {
         return Err(RuntimeError::internal_error(
@@ -244,11 +371,11 @@ pub(super) fn create_function(
         } else {
             None
         };
-    let function = Object::new_with_prototype(
+    let function = Object::new_with_prototype(constructor_parent.unwrap_or_else(|| {
         evaluator
             .realm
-            .intrinsic(super::IntrinsicId::FunctionPrototype),
-    );
+            .intrinsic(super::IntrinsicId::FunctionPrototype)
+    }));
     let closure = StoredFunctionClosure {
         code: prepare_code(code, kind, &evaluator.function_cache),
         kind,
@@ -258,6 +385,22 @@ pub(super) fn create_function(
             name_environment.as_ref().unwrap_or(&evaluator.environment),
         )?,
         lexical_this: StoredValue::store(&function, &evaluator.this_value)?,
+        lexical_this_environment: if kind == FunctionKind::Arrow {
+            evaluator
+                .this_environment
+                .as_ref()
+                .map(|environment| StoredEnvironment::store(&function, environment))
+                .transpose()?
+        } else {
+            None
+        },
+        constructor_kind,
+        // The class evaluator publishes this function only after defining its
+        // non-writable, non-configurable prototype as this same HomeObject.
+        // Other AST-created functions never gain this construction shortcut.
+        immutable_class_prototype: class_name.is_some()
+            && kind == FunctionKind::Method(MethodKind::Constructor)
+            && constructor_kind == ConstructorKind::Base,
         home_object: home_object
             .as_ref()
             .map(|object| StoredObject::store(&function, object))
@@ -284,13 +427,22 @@ pub(super) fn create_function(
             )
         })
         .count();
-    function.define_own_property(
-        "length".into(),
-        super::PropertyDescriptor::data(Value::Number(length as f64), false, false, true),
-    )?;
-    if let Some(ExprKind::Identifier(name)) = code.name.as_ref().map(|name| &name.kind) {
-        function
-            .create_data_property("name".into(), Value::String(JsString::from(name.as_str())))?;
+    if let Some(name) = class_name {
+        // Class functions are still fresh ordinary objects. Their complete
+        // standard metadata can be stored without repeatedly validating and
+        // reviving property descriptors. No user code runs before publication.
+        function.initialize_function_properties(length, name, None)?;
+    } else {
+        function.define_own_property(
+            "length".into(),
+            super::PropertyDescriptor::data(Value::Number(length as f64), false, false, true),
+        )?;
+        if let Some(ExprKind::Identifier(name)) = code.name.as_ref().map(|name| &name.kind) {
+            function.create_data_property(
+                "name".into(),
+                Value::String(JsString::from(name.as_str())),
+            )?;
+        }
     }
     if constructable && kind != FunctionKind::Method(MethodKind::Constructor) {
         function.install_lazy_function_prototype(
@@ -351,6 +503,7 @@ fn call_function(
         closure.code.strict,
     )
     .with_new_target(new_target.clone())
+    .with_this_environment(closure.lexical_this_environment.clone())
     .with_function_cache(closure.code.context());
     bind_parameters(
         &evaluator,
@@ -370,6 +523,7 @@ fn call_function(
                 closure.code.strict,
             )
             .with_new_target(new_target)
+            .with_this_environment(closure.lexical_this_environment.clone())
             .with_function_cache(evaluator.function_cache.clone());
             match statements.evaluate_statement(body)? {
                 Completion::Return(value) => Ok(value),
@@ -388,25 +542,130 @@ fn construct_function(
     function: Object,
     arguments: &[Value],
     new_target: Object,
+    prototype: Option<Object>,
 ) -> RuntimeResult<Object> {
-    let prototype = match new_target.get(&PropertyKey::from("prototype"))? {
-        Value::Object(prototype) => Some(prototype),
-        _ => Some(closure.realm.intrinsic(super::IntrinsicId::ObjectPrototype)),
+    if closure.constructor_kind != ConstructorKind::Base {
+        return construct_derived(closure, function, arguments, new_target)
+            .map_err(|error| closure.realm.bind_exception(error));
+    }
+    let prototype = match prototype {
+        Some(prototype) => prototype,
+        None => new_target.constructor_prototype(super::IntrinsicId::ObjectPrototype, || {
+            Ok(closure.realm.intrinsic(super::IntrinsicId::ObjectPrototype))
+        })?,
     };
     let instance = Object::new_for(&new_target);
-    if let Some(prototype) = prototype {
-        instance.initialize_prototype(Some(prototype));
-    }
+    instance.initialize_prototype(Some(prototype));
     let result = call_function(
         closure,
         function,
         Value::Object(instance.clone()),
         arguments,
         Some(new_target),
-    )?;
+    )
+    .map_err(|error| closure.realm.bind_exception(error))?;
     match result {
         Value::Object(object) => Ok(object),
         _ => Ok(instance),
+    }
+}
+
+fn construct_derived(
+    closure: &FunctionClosure,
+    function: Object,
+    arguments: &[Value],
+    new_target: Object,
+) -> RuntimeResult<Object> {
+    if closure.constructor_kind == ConstructorKind::DefaultDerived {
+        // Forward the argument List directly, without an observable array iterator.
+        let parent = function
+            .try_prototype()?
+            .filter(Object::is_constructor)
+            .ok_or_else(|| RuntimeError::type_error("super constructor is not a constructor"))?;
+        return parent.construct(arguments, new_target);
+    }
+    if let Some(parameters) = &closure.code.delegated_parameters {
+        // No this/arguments/eval, defaults, spread, closures or later statements
+        // can observe BindThisValue in this shape. Class fields are still
+        // rejected by class evaluation, so no instance initializer is omitted.
+        let parent = function.try_prototype()?;
+        let arguments: Cow<'_, [Value]> = if arguments.len() >= parameters.len()
+            && parameters.iter().copied().eq(0..parameters.len())
+        {
+            Cow::Borrowed(&arguments[..parameters.len()])
+        } else {
+            Cow::Owned(
+                parameters
+                    .iter()
+                    .map(|index| arguments.get(*index).cloned().unwrap_or(Value::Undefined))
+                    .collect(),
+            )
+        };
+        let parent = parent
+            .filter(Object::is_constructor)
+            .ok_or_else(|| RuntimeError::type_error("super constructor is not a constructor"))?;
+        return parent.construct(&arguments, new_target);
+    }
+    let environment = Environment::function(
+        Some(closure.environment.clone()),
+        function,
+        Some(new_target.clone()),
+        ThisBindingStatus::Uninitialized,
+    );
+    if closure.code.may_observe_arguments {
+        bind_arguments(&closure.realm, &environment, arguments)?;
+    }
+    let evaluator = ExpressionEvaluator::with_environment(
+        closure.realm.clone(),
+        environment.clone(),
+        Value::Undefined,
+        true,
+    )
+    .with_new_target(Some(new_target.clone()))
+    .with_this_environment(Some(environment.clone()))
+    .with_function_cache(closure.code.context());
+    bind_parameters(
+        &evaluator,
+        &environment,
+        &closure.code.parameters,
+        arguments,
+    )?;
+    let FunctionBody::Block(body) = &closure.code.body else {
+        return Err(RuntimeError::internal_error(
+            "derived constructor requires a block body",
+        ));
+    };
+    let statements = StatementEvaluator::with_environments(
+        closure.realm.clone(),
+        environment.clone(),
+        environment.clone(),
+        Value::Undefined,
+        true,
+    )
+    .with_new_target(Some(new_target))
+    .with_this_environment(Some(environment.clone()))
+    .with_function_cache(evaluator.function_cache.clone());
+    let result = match statements.evaluate_statement(body)? {
+        Completion::Return(value) => value,
+        Completion::Normal(_) => Value::Undefined,
+        Completion::Throw(value) => return Err(RuntimeError::thrown(value)),
+        Completion::Break { .. } | Completion::Continue { .. } => {
+            return Err(RuntimeError::internal_error(
+                "invalid completion escaped a constructor",
+            ));
+        }
+    };
+    match result {
+        Value::Object(object) => Ok(object),
+        Value::Undefined => match environment.get_this_binding()? {
+            Value::Object(object) => Ok(object),
+            _ => Err(RuntimeError::internal_error(
+                "constructor this is not an object",
+            )),
+        },
+        _ => Err(RuntimeError::type_error(
+            "derived constructor returned a non-object",
+        )),
     }
 }
 
@@ -582,6 +841,117 @@ mod auto_body_tests {
                 super::super::bytecode_function::bridged_calls() - before,
                 usize::from(backend == ScriptBackend::Auto)
             );
+        }
+    }
+}
+
+#[cfg(test)]
+mod derived_arguments_tests {
+    use crate::{
+        Engine,
+        embedding::ScriptBackend,
+        runtime::{Object, Value},
+    };
+
+    #[test]
+    fn anonymous_class_definitions_avoid_an_unused_environment() {
+        for backend in [ScriptBackend::Ast, ScriptBackend::Auto] {
+            let engine = Engine::builder().script_backend(backend).build();
+            engine
+                .allocation_context()
+                .set_allocation_collection_interval(usize::MAX);
+            {
+                let realm = engine.create_realm();
+                let anonymous = engine
+                    .compile(&realm, "(class { read(){return 42;} });")
+                    .unwrap();
+                let named = engine
+                    .compile(&realm, "(class Named { read(){return 42;} });")
+                    .unwrap();
+                let count = if cfg!(miri) { 2 } else { 8 };
+                let allocations = |script| {
+                    let before = engine.allocation_context().diagnostics();
+                    for _ in 0..count {
+                        engine.evaluate(script).unwrap();
+                    }
+                    let after = engine.allocation_context().diagnostics();
+                    assert_eq!(after.collections, before.collections);
+                    after.live - before.live
+                };
+                assert_eq!(
+                    allocations(&named) - allocations(&anonymous),
+                    count,
+                    "{backend:?}"
+                );
+            }
+            assert_eq!(engine.collect_garbage().unwrap().retained, 0);
+        }
+    }
+
+    #[test]
+    fn derived_arguments_and_delegation_each_avoid_one_managed_object_per_call() {
+        for backend in [ScriptBackend::Ast, ScriptBackend::Auto] {
+            let engine = Engine::builder().script_backend(backend).build();
+            engine
+                .allocation_context()
+                .set_allocation_collection_interval(usize::MAX);
+            {
+                let realm = engine.create_realm();
+                let definition = engine.compile(&realm, "class A {} class Delegate extends A { constructor(value) { super(value); } } class Lean extends A { constructor(value) { super(value); this.marker = value; } } class Observed extends A { constructor(value) { arguments.length; super(value); this.marker = value; } }").unwrap();
+                engine.evaluate(&definition).unwrap();
+                let get = |name: &str| {
+                    let script = engine.compile(&realm, name).unwrap();
+                    let value = engine.evaluate(&script).unwrap();
+                    let Value::Object(object) = value.value() else {
+                        panic!("constructor")
+                    };
+                    object.clone()
+                };
+                let (lean, observed) = (get("Lean"), get("Observed"));
+                let count = if cfg!(miri) { 2 } else { 8 };
+                let allocations = |constructor: &Object| {
+                    let before = engine.allocation_context().diagnostics();
+                    for _ in 0..count {
+                        constructor
+                            .construct(&[Value::Number(42.0)], constructor.clone())
+                            .unwrap();
+                    }
+                    let after = engine.allocation_context().diagnostics();
+                    assert_eq!(after.collections, before.collections);
+                    after.live - before.live
+                };
+                let delegated_allocations = allocations(&get("Delegate"));
+                let lean_allocations = allocations(&lean);
+                assert_eq!(
+                    lean_allocations - delegated_allocations,
+                    count,
+                    "{backend:?}: activation"
+                );
+                let observed_allocations = allocations(&observed);
+                assert_eq!(
+                    observed_allocations - lean_allocations,
+                    count,
+                    "{backend:?}"
+                );
+            }
+            assert_eq!(engine.collect_garbage().unwrap().retained, 0);
+        }
+    }
+
+    #[test]
+    fn complete_syntax_keeps_arguments_for_eval_and_nested_observers() {
+        for source in [
+            "function f() { eval('arguments'); }",
+            "function f() { return () => arguments; }",
+            "function f(value = arguments.length) {}",
+            "function f() { try {} finally { arguments; } }",
+            "function f() { class C { static read() { return arguments; } } }",
+        ] {
+            let expression = crate::parser::parse_expression(source).unwrap();
+            let crate::ast::ExprKind::Function(function) = expression.kind else {
+                panic!("function")
+            };
+            assert!(super::may_observe_arguments(&function), "{source}");
         }
     }
 }

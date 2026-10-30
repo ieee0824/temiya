@@ -21,8 +21,8 @@ Each status applies only to the entry's stated scope:
 
 Schema 1 used `implemented` for broad groups even when only a subset worked.
 Schema 2 keeps the old group IDs, but reclassifies their incomplete scope as
-`partial`. Base class evaluation is connected for the recorded examples; derived
-classes and the callable Promise placeholder remain `unconnected`. Engine runtime GC is integrated and no longer described as an
+`partial`. Base and derived construction are connected for the recorded examples;
+fields and the callable Promise placeholder remain `unconnected`. Engine runtime GC is integrated and no longer described as an
 unconnected collector; incremental/generational collection is still separate.
 
 ## Reading the data

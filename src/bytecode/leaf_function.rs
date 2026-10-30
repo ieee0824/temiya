@@ -70,7 +70,10 @@ impl LeafFunctionPlan {
                 Instruction::ExitScope => continue,
                 Instruction::LoadConstant(index) => {
                     let value = code.constants.get(index as usize)?;
-                    if matches!(value, Constant::Scope(_) | Constant::Function(_)) {
+                    if matches!(
+                        value,
+                        Constant::Scope(_) | Constant::Function(_) | Constant::Class { .. }
+                    ) {
                         return None;
                     }
                     depth += 1;

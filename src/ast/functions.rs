@@ -86,6 +86,13 @@ pub enum ClassElementKind {
 }
 
 impl Function {
+    /// Visits all expression syntax, including parameters and nested functions.
+    pub(crate) fn visit_expressions(&self, visitor: &mut impl FnMut(&Expr)) {
+        for expression in self.expressions() {
+            expression.visit(visitor);
+        }
+    }
+
     pub(super) fn expressions(&self) -> Vec<&Expr> {
         let mut expressions: Vec<_> = self.name.iter().chain(self.parameters.iter()).collect();
         match &self.body {

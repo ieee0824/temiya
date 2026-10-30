@@ -289,7 +289,7 @@ impl IntrinsicRegistry {
                     RuntimeError::internal_error("intrinsic prototype was not allocated")
                 })?;
                 let constructor = Object::new_for(global);
-                constructor.set_captured_factory(
+                constructor.set_captured_factory_with_prototype(
                     &prototype,
                     None,
                     Some((false, |_, _, _, _| Ok(Value::Undefined))),
@@ -298,6 +298,7 @@ impl IntrinsicRegistry {
                         instance.initialize_prototype(Some(prototype.clone()));
                         Ok(instance)
                     }),
+                    Some(prototype_id),
                 )?;
                 constructor
             } else if id == IntrinsicId::Proxy {
@@ -484,6 +485,25 @@ pub(super) struct ObjectFactory {
     prototypes: [StoredObject; 6],
 }
 impl ObjectFactory {
+    pub(super) fn construct(
+        &self,
+        owner: &Object,
+        arguments: &[Value],
+        new_target: Object,
+    ) -> RuntimeResult<Object> {
+        if &new_target == owner {
+            return self.create(owner, arguments);
+        }
+        // A distinct newTarget requests allocation, not ToObject(value).
+        let prototype = new_target
+            .constructor_prototype(super::IntrinsicId::ObjectPrototype, || {
+                self.prototypes[0].load(owner)
+            })?;
+        let object = Object::new_for(&new_target);
+        object.initialize_prototype(Some(prototype));
+        Ok(object)
+    }
+
     pub(super) fn new(owner: &Object, prototypes: &[Object; 6]) -> RuntimeResult<Self> {
         let [a, b, c, d, e, f] = prototypes;
         Ok(Self {

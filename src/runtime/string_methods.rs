@@ -39,13 +39,12 @@ pub(super) fn install(
             }
             constructor_string(args, key.expect("String primitive key")).map(Value::String)
         })),
-        Some(|prototype, key, args, _| {
-            let object = super::StringObject::new_for(
-                prototype,
-                constructor_string(args, key.expect("String primitive key"))?,
-            )
-            .object();
-            object.initialize_prototype(Some(prototype.clone()));
+        Some(|prototype, key, args, new_target| {
+            let value = constructor_string(args, key.expect("String primitive key"))?;
+            let prototype = new_target
+                .constructor_prototype(IntrinsicId::StringPrototype, || Ok(prototype.clone()))?;
+            let object = super::StringObject::new_for(&new_target, value).object();
+            object.initialize_prototype(Some(prototype));
             Ok(object)
         }),
     )?;

@@ -390,6 +390,7 @@ pub(super) struct CapturedFactory {
     // Calls such as Number(number) need only a leaf coercion key, not a rooted prototype.
     call: Option<(bool, CapturedFactoryCallback)>,
     construct: Option<CapturedFactoryConstructor>,
+    construct_prototype: Option<super::IntrinsicId>,
 }
 
 pub(super) struct BoundFunction {
@@ -516,16 +517,24 @@ impl ManagedCallable {
         new_target: Object,
     ) -> RuntimeResult<Object> {
         if let Self::ObjectFactory(factory) = self {
-            return factory.create(owner, arguments);
+            return factory.construct(owner, arguments, new_target);
         }
         if let Self::Date(factory) = self {
-            return factory.construct(owner, arguments);
+            return factory.construct(owner, arguments, new_target);
         }
         if let Self::Factory(factory) = self {
             let callback = factory
                 .construct
                 .ok_or_else(|| RuntimeError::type_error("object is not a constructor"))?;
-            let object = factory.object.load(owner)?;
+            let object = match factory.construct_prototype {
+                // Intrinsic factories have immutable own prototype properties.
+                // A distinct newTarget (including a Proxy) still performs Get.
+                Some(_) if &new_target == owner => factory.object.load(owner)?,
+                Some(intrinsic) => {
+                    new_target.constructor_prototype(intrinsic, || factory.object.load(owner))?
+                }
+                None => factory.object.load(owner)?,
+            };
             return callback(&object, factory.key.as_ref(), arguments, new_target);
         }
         if let Self::Ast(closure) = self {
@@ -683,6 +692,10 @@ impl Object {
     }
     pub(super) fn source_realm(&self) -> Option<StoredRealm> {
         self.0.runtime()?;
+        self.stored_source_realm()
+    }
+
+    fn stored_source_realm(&self) -> Option<StoredRealm> {
         let state = self.0.state.borrow();
         if let Some(call) = &state.managed_callable {
             return match &call.body {
@@ -701,6 +714,49 @@ impl Object {
                     .as_ref()
                     .and_then(|body| body.source().cloned())
             })
+    }
+
+    /// Resolves the function's Realm through bound and Proxy targets. Synthetic
+    /// callback source metadata on a wrapper is not an ECMAScript [[Realm]] slot.
+    fn function_realm(&self) -> RuntimeResult<Option<super::Realm>> {
+        let mut function = self.clone();
+        loop {
+            let target = {
+                let state = function.0.state.borrow();
+                if let Some(proxy) = &state.proxy {
+                    Some(proxy.target(&function)?)
+                } else if let Some(call) = &state.managed_callable {
+                    call.body.bound_target(&function)?
+                } else {
+                    None
+                }
+            };
+            if let Some(target) = target {
+                function = target;
+                continue;
+            }
+            return function
+                .stored_source_realm()
+                .map(|source| source.load(&function))
+                .transpose();
+        }
+    }
+
+    /// Gets a constructor's instance prototype, using its own Realm's intrinsic
+    /// only after an observable getter returned a non-object value.
+    pub(super) fn constructor_prototype(
+        &self,
+        intrinsic: super::IntrinsicId,
+        fallback: impl FnOnce() -> RuntimeResult<Object>,
+    ) -> RuntimeResult<Object> {
+        if let Value::Object(prototype) = self.get(&"prototype".into())? {
+            return Ok(prototype);
+        }
+        match self.function_realm()? {
+            Some(realm) => Ok(realm.intrinsic(intrinsic)),
+            // Embedding-created callbacks may have no associated ECMAScript Realm.
+            None => fallback(),
+        }
     }
 
     fn bind_native_exception(
@@ -753,11 +809,23 @@ impl Object {
         call: Option<(bool, CapturedFactoryCallback)>,
         construct: Option<CapturedFactoryConstructor>,
     ) -> RuntimeResult<()> {
+        self.set_captured_factory_with_prototype(capture, key, call, construct, None)
+    }
+
+    pub(super) fn set_captured_factory_with_prototype(
+        &self,
+        capture: &Object,
+        key: Option<PropertyKey>,
+        call: Option<(bool, CapturedFactoryCallback)>,
+        construct: Option<CapturedFactoryConstructor>,
+        construct_prototype: Option<super::IntrinsicId>,
+    ) -> RuntimeResult<()> {
         let factory = CapturedFactory {
             object: StoredObject::store(self, capture)?,
             key,
             call,
             construct,
+            construct_prototype,
         };
         self.set_managed_callable(ManagedCallable::Factory(factory));
         Ok(())
@@ -868,7 +936,7 @@ impl Object {
         Some((value, index))
     }
 
-    // Only for a newly allocated ordinary bytecode function, before it is
+    // Only for a newly allocated ordinary function, before it is
     // published. Both values are leaves and the standard descriptors are known.
     pub(super) fn initialize_function_properties(
         &self,
@@ -1334,6 +1402,21 @@ impl Object {
                 .invoke(arguments, new_target)
         };
         let result = result.map_err(|error| {
+            // These bodies bind errors after entering their own Realm. Instance
+            // allocation precedes that entry; Bound/Proxy forwarding also keeps
+            // the caller context. Do not rebind an unmaterialized allocation error.
+            if proxy
+                || bound.as_ref().is_some_and(|call| {
+                    matches!(
+                        &call.body,
+                        ManagedCallable::Ast(_)
+                            | ManagedCallable::Bytecode(_)
+                            | ManagedCallable::Bound(_)
+                    )
+                })
+            {
+                return error;
+            }
             self.bind_native_exception(
                 bound
                     .as_ref()

@@ -1,0 +1,8 @@
+{
+  "name": "derived-inherited-method",
+  "iterations": 10000,
+  "oracle": "n",
+  "setup": "class Base { constructor() { this.value = 0; } add(delta) { this.value += delta; return this.value; } } class Counter extends Base {} function bench(n) { let counter = new Counter(); for (let i = 0; i < n; i++) { counter.add(1); } return counter.value; }",
+  "invocation": "bench(10000);",
+  "expected": 10000
+}

@@ -29,3 +29,15 @@ This connection uses the AST function path. Explicit Bytecode does not compile
 super-dependent methods. Fields/private elements, eval and general async or
 parameter-environment gaps have separate issues. Fixed upstream results and
 performance qualification must be recorded before treating #156 as complete.
+
+At candidate `b1557a5`, the fixed 310 upstream files have 601 variants in each
+of Ast and Auto: 405 pass and 196 fail, with no skipped, timed-out or missing
+variants. All previous 292 passes remain passing; 113 additional variants pass.
+The [dependency audit](../benchmarks/super-properties/dependencies-v1/audit.json)
+retains every failed diagnostic and source hash. It records unsupported class
+elements, eval, async generators, missing native APIs, generic iterator/spread
+behavior and the separate import-defer proposal-adoption decision (#541).
+Twenty-four authored class-free probes per backend confirm the recorded missing
+behavior; they are not additional conformance passes. Later fixture assertions
+remain unproven. Run `node benchmarks/super-properties/verify-dependencies.mjs`
+to replay the retained records and classification checks.

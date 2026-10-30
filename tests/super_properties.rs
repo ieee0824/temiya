@@ -148,3 +148,16 @@ fn super_assignment_checks_receiver_descriptors_and_propagates_proxy_errors() {
         "let base={value:1};let home={__proto__:base,write(){super.value=42;}};let marker={};let receiver=new Proxy({},{getOwnPropertyDescriptor(){throw marker;}});let caught=false;try{home.write.call(receiver);}catch(e){caught=e===marker;}caught && base.value===1;",
     );
 }
+
+#[test]
+fn rejected_super_writes_obey_method_strictness_without_freeze() {
+    check(
+        "let object={write(){super.fresh=42;}};Object.preventExtensions(object);object.write();!object.hasOwnProperty('fresh');",
+    );
+    check(
+        "class A{}class B extends A{write(){super.fresh=42;}}let object=new B();Object.preventExtensions(object);let caught=false;try{object.write();}catch(e){caught=e instanceof TypeError;}caught && !object.hasOwnProperty('fresh');",
+    );
+    check(
+        "'use strict';let object={write(){super.fresh=42;}};Object.preventExtensions(object);let caught=false;try{object.write();}catch(e){caught=e instanceof TypeError;}caught && !object.hasOwnProperty('fresh');",
+    );
+}

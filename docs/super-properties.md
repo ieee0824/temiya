@@ -152,3 +152,11 @@ instruction-count evidence, including startup/setup and two validated invocation
 it is neither wall-clock timing nor performance acceptance. It identifies leaf
 execution, Value drop/clone and active-object caching as substantial instruction
 costs to investigate next.
+
+The follow-up branch integrates the actually merged main70cc260 at55907d5.
+The merge retains main's class-capture loop proof and independent scalar guard,
+while object initializers and super-reference instructions conservatively prevent
+loop-header reuse. Its correctness-only `main155-v1` snapshot passes810 native
+tests, Clippy and i686 type checking. Every601 super and401 derived outcome and
+failed diagnostic per backend matches96901d5; base and PR gates also pass. No
+performance result is transferred to this new source without a fresh measurement.

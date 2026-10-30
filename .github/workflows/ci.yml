@@ -52,6 +52,8 @@ jobs:
       - name: Verify retained hosted class slowdowns and full-corpus regression
         run: |
           node benchmarks/base-classes/verify-native-loop.mjs
+          node benchmarks/base-classes/verify-native-originals.mjs
+          node benchmarks/base-classes/verify-loop-originals.mjs
           node benchmarks/base-classes/verify-hosted-f1c.mjs
           node benchmarks/base-classes/verify-full-f1c.mjs
           node benchmarks/base-classes/verify-full-loop.mjs

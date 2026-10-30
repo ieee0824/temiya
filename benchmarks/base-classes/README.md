@@ -133,3 +133,22 @@ Run `node benchmarks/base-classes/verify-full-loop.mjs` to safely decode the
 archive, verify each raw capture, prove nonoverlapping complete coverage and
 rerun all eight production gates. This preserves known successes; it does not
 qualify full language conformance or count failures/timeouts/skips as passes.
+
+The same native candidate's focused raw correctness records are retained in
+`native-loop-v1/correctness.tar.gz`. Run
+`node benchmarks/base-classes/verify-loop-originals.mjs` to recheck both
+149-file class captures against their unchanged source hashes and 38 recorded
+dependency-failure signatures, compare every outcome and raw failure signature
+in both 385-file for-loop captures with the retained prior candidate, and
+replay the 129-file/216-variant production PR gate. A recorded dependency failure
+remains a failure; neither this fixed selection nor its verifier establishes
+complete class or for-loop conformance.
+
+`native-loop-v1/originals.tar.gz` retains all four original-eleven reports:
+changed/Boa has 27 faster and six noisy comparisons, before/after has one
+faster and 32 noisy, and baseline/Boa has 30 faster and three noisy. The
+identical-worker control has 31 noisy comparisons and two apparent slowdowns.
+Those control results are preserved and cannot establish a source regression
+or improvement. Run `node benchmarks/base-classes/verify-native-originals.mjs`
+to reconstruct all 264 runs and 4,224 checked values without dropping any
+outcome. This archive does not establish an unconditional speed pass.

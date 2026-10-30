@@ -521,7 +521,7 @@ fn derived_data_views_keep_their_buffer_and_recheck_detachment_after_getters() {
                 .unwrap(),
             6
         );
-        let source = "function invalid(buffer, offset, length, kind) { let reads = 0; function Target() {} let target = Proxy.revocable(Target, { get(t,key) { if (key === 'prototype') { reads++; return {}; } return t[key]; } }).proxy; let caught = false; try { Reflect.construct(DataView, [buffer,offset,length], target); } catch(e) { caught = e instanceof kind; } return caught && reads === 0; } let old = new ArrayBuffer(8); detach(old); invalid(new ArrayBuffer(8),9,undefined,RangeError) && invalid(new ArrayBuffer(8),2,7,RangeError) && invalid(old,0,undefined,TypeError) && invalid(new ArrayBuffer(8),Infinity,0,RangeError) && invalid(new ArrayBuffer(8),-1,0,RangeError);";
+        let source = "function invalid(buffer, offset, length, kind) { let reads = 0; function Target() {} let target = Proxy.revocable(Target, { get(t,key) { if (key === 'prototype') { reads++; return {}; } return t[key]; } }).proxy; let caught = false; try { Reflect.construct(DataView, [buffer,offset,length], target); } catch(e) { caught = e instanceof kind; } return caught && reads === 0; } let old = new ArrayBuffer(8); detach(old); invalid(new ArrayBuffer(8),9,undefined,RangeError) && invalid(new ArrayBuffer(8),2,7,RangeError) && invalid(old,0,undefined,TypeError) && invalid(old,4294967296,undefined,TypeError) && invalid(old,9007199254740991,undefined,TypeError) && invalid(old,9007199254740992,undefined,RangeError) && invalid(new ArrayBuffer(8),Infinity,0,RangeError) && invalid(new ArrayBuffer(8),-1,0,RangeError);";
         let script = engine.compile(&realm, source).unwrap();
         assert!(
             matches!(

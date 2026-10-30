@@ -635,8 +635,7 @@ fn install_indexed(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {
             if buffer.is_detached() {
                 return Err(RuntimeError::type_error("ArrayBuffer is detached"));
             }
-            let available = buffer
-                .byte_length()
+            let available = (buffer.byte_length() as u64)
                 .checked_sub(offset)
                 .ok_or_else(|| RuntimeError::range_error("view offset is out of bounds"))?;
             let length = match arguments.get(2) {
@@ -648,7 +647,9 @@ fn install_indexed(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {
             }
             let prototype = new_target
                 .constructor_prototype(IntrinsicId::DataViewPrototype, || Ok(prototype.clone()))?;
-            let view = DataView::new(&buffer, offset, length)?;
+            // Both indices now fit the buffer's usize length. Converting before
+            // the detached/range checks would change exception order on 32-bit.
+            let view = DataView::new(&buffer, offset as usize, length as usize)?;
             let object = view.object();
             object.initialize_prototype(Some(prototype.clone()));
             Ok(object)
@@ -690,14 +691,13 @@ fn length_argument(value: Option<&Value>) -> RuntimeResult<usize> {
 
 // ToIndex for a view range: unlike allocation limits, fractions are truncated
 // and undefined/NaN select zero. The buffer bounds are checked by the caller.
-fn view_index(value: Option<&Value>) -> RuntimeResult<usize> {
+fn view_index(value: Option<&Value>) -> RuntimeResult<u64> {
     let number = value_arg(value).to_number()?;
     let integer = if number.is_nan() { 0.0 } else { number.trunc() };
     if !(0.0..=9_007_199_254_740_991.0).contains(&integer) {
         return Err(RuntimeError::range_error("view index is out of range"));
     }
-    usize::try_from(integer as u64)
-        .map_err(|_| RuntimeError::range_error("view index exceeds addressable range"))
+    Ok(integer as u64)
 }
 
 fn install_object(

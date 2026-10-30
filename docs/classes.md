@@ -320,3 +320,22 @@ binding elision independently of the verified loop-cell proof. Internal calls
 can reuse unobserved loop headers while retaining captured arguments and
 body-local records. The public caller-prepared frame API remains fully backed
 by its Environment and keeps its previous execution path.
+
+Runtime-created function frames apply this loop-reuse proof independently of
+scalar-local elision. An observable arguments object still requires physical
+argument/parameter bindings; it does not by itself expose an unrelated loop
+header. The public VM entry for caller-prepared frames retains its existing
+binding publication behavior. Scalar-local eligibility keeps its separate
+unobservability and numeric-argument checks.
+
+Source a10e7a3 retains its ARM64 measurements in
+`benchmarks/derived-classes/class-loop-runtime-v1`. Run
+`node benchmarks/derived-classes/verify-class-loop-runtime.mjs` to replay the
+216 runs and3456 checked values, source/binary identities, fixed Test262
+selection and unchanged failed diagnostics. All12 base-class and15 derived
+Boa comparisons are significantly faster. All before/after and identical-worker
+comparisons are within noise; no significant before/after gain is established.
+Native tests pass779 with26 ignored. Each Ast/Auto fixed upstream selection
+has214 passes and187 failures; the base selection has276 passes and18
+dependency failures. The PR selection passes216 variants. These local results
+do not establish the still-pending two-host, full-corpus and security gates.

@@ -4,7 +4,9 @@
 engine: explicit construction, implicit argument forwarding, inherited method
 calls, a multilevel default-constructor chain and repeated derived definitions.
 Counts, expected numeric values and source hashes are fixed in the manifest and
-`scripts/derived-class-benchmark-reference.mjs`. No result is yet claimed here.
+`scripts/derived-class-benchmark-reference.mjs`. Results below are tied to their
+source revisions; later runtime qualification is described in
+[the class execution documentation](../../docs/classes.md#retained-derived-qualification).
 
 Use the existing Linux process/watchdog protocol with the derived suite selected:
 

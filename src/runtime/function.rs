@@ -196,8 +196,6 @@ pub(super) struct FunctionClosure {
     pub(super) lexical_this: Value,
     lexical_this_environment: Option<Environment>,
     constructor_kind: ConstructorKind,
-    #[allow(dead_code)]
-    home_object: Option<Object>,
 }
 
 pub(super) struct StoredFunctionClosure {
@@ -230,6 +228,9 @@ impl StoredFunctionClosure {
     pub(super) fn source_realm(&self) -> &StoredRealm {
         &self.realm
     }
+    // The live function argument (or its stored generator environment) roots
+    // HomeObject through this stored closure. The call facade never uses it;
+    // super resolves the traced edge from the owning function environment.
     fn load(&self, owner: &Object) -> RuntimeResult<FunctionClosure> {
         Ok(FunctionClosure {
             code: self.code.clone(),
@@ -250,14 +251,6 @@ impl StoredFunctionClosure {
                 Value::Undefined
             } else {
                 self.lexical_this.load(owner)?
-            },
-            home_object: if self.code.compiled.is_some() {
-                None
-            } else {
-                self.home_object
-                    .as_ref()
-                    .map(|object| object.load(owner))
-                    .transpose()?
             },
         })
     }

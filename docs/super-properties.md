@@ -121,3 +121,16 @@ operand retain the full VM path. Immediate reference-read/discard and update
 sequences reuse the shared Reference directly. The retained d606937 native
 records in `super-operands-v1` show no significant before/after improvement
 (all15 comparisons noisy); their successful replay is not speed qualification.
+
+Stored compiled calls load their outer Environment only when a numeric capture,
+leaf capture or fallback needs it. Complete leaf plans record capture needs before
+executing effects; property-only methods retain the traced stored edge without
+reviving a call-local facade. The root-activity regression shows100 method calls
+avoid100 temporary registrations/removals, preserve their answers and collect to
+zero retained objects. Capturing bodies and ordinary frames keep their required
+roots, defining Realm, this normalization and exception propagation.
+
+Source211698b retains all120 runs/1920 checked values in `lazy-leaf-v1`.
+Object/class/arrow/computed-update workloads meet the native minimum2/3 Boa wins;
+accessor remains0/3. Before/after has15 noisy comparisons, so a significant timing
+gain is not demonstrated. The same-binary control retains one apparent slowdown.

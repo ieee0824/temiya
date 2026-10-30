@@ -10,3 +10,9 @@ when they share these metadata features.
 The baseline is the immutable #157 runtime snapshot 38983db, not a claim that
 #157 has already merged. The static-element implementation and its performance
 qualification are pending.
+
+Five authored workloads in workloads-v2 retain 10000 iterations and expected
+50005000. All were validated twice against the actual pinned Boa embedding.
+The rejected v1 repeated-exception input and its reference failure are retained;
+v2 exercises interruption on the final iteration. Oracle probes establish
+correct output only, not timing qualification.

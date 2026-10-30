@@ -1,0 +1,8 @@
+{
+  "name": "static-computed-key",
+  "iterations": 10000,
+  "oracle": "sum-one-to-n-and-per-case-invariants",
+  "setup": "function bench(n){let total=0;let keys=0;for(let i=0;i<n;i++){let log='';class C{static [(keys++,log+='K','x')]=(log+='A',i+1);static [(keys++,log+='K','y')]=(log+='B',this.x);}if(log!=='KKAB'||C.x!==C.y)throw 42;total+=C.y;}if(keys!==2*n)throw 42;return total;}",
+  "invocation": "bench(10000);",
+  "expected": 50005000
+}

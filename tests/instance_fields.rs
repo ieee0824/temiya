@@ -109,7 +109,7 @@ fn initializer_closures_and_home_objects_survive_reentrant_gc_and_collect() {
                     engine.value(&realm, Value::Object(gc)).unwrap(),
                 )
                 .unwrap();
-            let script=engine.compile(&realm,"function make(){let captured={value:41};class A{get value(){gcNow();return this.seed.value+1;}}return class extends A{seed=(gcNow(),captured);read=()=>super.value;direct=()=>this.value;};}let C=make();gcNow();let object=new C();let read=object.read;let direct=object.direct;C=undefined;object=undefined;gcNow();read()===42 && direct()===42;").unwrap();
+            let script=engine.compile(&realm,"function make(){let captured={value:41};let holder={get value(){gcNow();return captured;}};class A{get value(){gcNow();return this.seed.value+1;}}return class extends A{seed=holder.value;read=()=>super.value;direct=()=>this.value;};}let C=make();gcNow();let object=new C();let read=object.read;let direct=object.direct;C=undefined;object=undefined;gcNow();read()===42 && direct()===42;").unwrap();
             assert!(matches!(
                 engine.evaluate(&script).unwrap().value(),
                 Value::Boolean(true)
@@ -173,5 +173,12 @@ fn arrow_property_reads_preserve_primitive_this_and_async_results() {
     );
     check(
         "class C{value=42;read=async()=>this.value;}let c=new C();let result=c.read();typeof result.then==='function';",
+    );
+}
+
+#[test]
+fn simple_initializers_keep_strictness_receiver_and_undefined_new_target() {
+    check(
+        "class C{receiver=this;target=new.target;value=this.receiver===this?42:0;}let c=new C();let caught=false;try{class D{value=(missingFieldBinding=42);}new D();}catch(e){caught=e instanceof ReferenceError;}c.receiver===c && c.target===undefined && c.value===42 && caught && typeof missingFieldBinding==='undefined';",
     );
 }

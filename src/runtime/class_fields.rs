@@ -13,6 +13,41 @@ pub(super) struct Field {
     key: PropertyKey,
     initializer: Option<StoredObject>,
 }
+
+// No function-local binding is reachable from these expressions. Property
+// callbacks execute in their own contexts; eval, calls, super and escaping
+// definitions retain the initializer's ordinary function environment.
+pub(super) fn can_evaluate_without_function_environment(expression: &Expr) -> bool {
+    use ExprKind as E;
+    let simple = can_evaluate_without_function_environment;
+    match &expression.kind {
+        E::Literal(_) | E::This => true,
+        E::Identifier(name) => !matches!(name.as_str(), "eval" | "arguments"),
+        E::MetaProperty { meta, property } => meta == "new" && property == "target",
+        E::Parenthesized(inner)
+        | E::Unary {
+            argument: inner, ..
+        }
+        | E::Update {
+            argument: inner, ..
+        } => simple(inner),
+        E::Binary { left, right, .. } => simple(left) && simple(right),
+        E::Assignment { target, value, .. } => simple(target) && simple(value),
+        E::Conditional {
+            test,
+            consequent,
+            alternate,
+        } => simple(test) && simple(consequent) && simple(alternate),
+        E::Sequence(expressions) => expressions.iter().all(simple),
+        E::Member {
+            object,
+            property,
+            computed,
+            ..
+        } => simple(object) && (!computed || simple(property)),
+        _ => false,
+    }
+}
 impl Field {
     pub(super) fn trace(&self, tracer: &mut crate::gc::Tracer<'_>) {
         if let Some(initializer) = &self.initializer {
@@ -26,6 +61,7 @@ pub(super) struct Initializer {
     // Immutable code cache only: it owns no Realm, environment or JS objects.
     // Each call still creates its own receiver/lexical environment.
     cache: Option<super::function::FunctionCache>,
+    direct: bool,
     name: JsString,
     realm: StoredRealm,
     environment: StoredEnvironment,
@@ -49,16 +85,20 @@ impl Initializer {
     }
     pub(super) fn call(&self, owner: &Object, this: Value) -> RuntimeResult<Value> {
         let realm = self.realm.load(owner)?;
-        let environment = Environment::function(
-            Some(self.environment.load(owner)?),
-            owner.clone(),
-            None,
-            ThisBindingStatus::Uninitialized,
-        );
-        environment.bind_this_value(this.clone())?;
-        let evaluator =
+        let captured = self.environment.load(owner)?;
+        let evaluator = if self.direct {
+            ExpressionEvaluator::with_environment(realm.clone(), captured, this, true)
+        } else {
+            let environment = Environment::function(
+                Some(captured),
+                owner.clone(),
+                None,
+                ThisBindingStatus::Uninitialized,
+            );
+            environment.bind_this_value(this.clone())?;
             ExpressionEvaluator::with_environment(realm.clone(), environment.clone(), this, true)
-                .with_this_environment(Some(environment));
+                .with_this_environment(Some(environment))
+        };
         let evaluator = evaluator.with_function_cache(self.cache.clone());
         let value = evaluator
             .evaluate_named(&self.expression, &self.name)
@@ -111,6 +151,7 @@ pub(super) fn add(
             let initializer = Initializer {
                 expression: Rc::new(expression.clone()),
                 cache: evaluator.function_cache.clone(),
+                direct: can_evaluate_without_function_environment(expression),
                 name,
                 realm: StoredRealm::store(&function, &evaluator.realm)?,
                 environment: StoredEnvironment::store(&function, &evaluator.environment)?,

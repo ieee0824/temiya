@@ -8,7 +8,7 @@ import {execFileSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 const root=path.dirname(fileURLToPath(import.meta.url)),repo=path.resolve(root,'../..');
 const read=p=>JSON.parse(fs.readFileSync(p));
-const captures=new Map([['full-object-capture-v1',{source:'2a36d63eb62ce4bc69e807b7eec177bf8ba0e442',run:41125906497}]]);
+const captures=new Map([['full-object-capture-v1',{source:'2a36d63eb62ce4bc69e807b7eec177bf8ba0e442',run:41125906497,historicalFailure:true}],['full-namespace-has-v1',{source:'299e8d8154f075c8f5169ae4651ad0f7b28bad0f',run:41130396942,historicalFailure:false}]]);
 const selected=process.argv.slice(2);if(selected.length===0)selected.push(...captures.keys());
 assert.equal(new Set(selected).size,selected.length);
 for(const name of selected){
@@ -28,9 +28,9 @@ for(const name of selected){
   fs.copyFileSync(dir+'/policy.json',temp+'/policy.json');
   const reference=temp+'/reference';
   execFileSync(process.execPath,[repo+'/scripts/verify-test262-archive.mjs',repo+'/benchmarks/test262-feature-baseline',reference],{stdio:'pipe'});
-  const result=JSON.parse(execFileSync(process.execPath,[repo+'/benchmarks/super-properties/replay-failed-full.mjs',temp,reference,temp+'/policy.json',e.source_revision,String(e.run)],{encoding:'utf8',cwd:repo,maxBuffer:1024*1024}));
+  const result=JSON.parse(execFileSync(process.execPath,[expected.historicalFailure?repo+'/benchmarks/super-properties/replay-failed-full.mjs':repo+'/scripts/audit-full-candidate.mjs',temp,reference,temp+'/policy.json',e.source_revision,String(e.run)],{encoding:'utf8',cwd:repo,maxBuffer:1024*1024}));
   assert.equal(result.files,52133);assert.equal(result.variants,100211);
-  assert.equal(result.failures.length,1);assert.deepEqual(result.failures,e.knownpass_regressions);assert.equal(result.gate,'historical failure retained:7 gates passed, namespace membership regression in shard3');
+  assert.equal(result.failures.length,expected.historicalFailure?1:0);if(expected.historicalFailure){assert.deepEqual(result.failures,e.knownpass_regressions);assert.equal(result.gate,'historical failure retained:7 gates passed, namespace membership regression in shard3');}else{assert.deepEqual(result.failures,[]);assert.equal(result.gate,'all8 independently replayed known-pass gates passed');}
   assert.deepEqual(result.totals,e.totals);
   const actual=read(temp+'/independent-candidate-audit.json');assert.deepEqual(actual,read(dir+'/independent-audit.json'));
   for(const row of actual.results){

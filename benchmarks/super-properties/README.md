@@ -78,3 +78,14 @@ namespace regression prevents merging it. verify-hosted.mjs reconstructs all
 raw values and checks source/compiler/features/binaries and shared hardware.
 Source299e8d8 fixes membership independently from Get/GetOwnProperty TDZ; its
 new full-corpus, security and two-host speed runs are still pending.
+
+namespace-has-v1 retains the813-test native/source checks and all four ARM
+controls (15Boa wins; before15noise; self13noise plus one apparent speedup and
+one slowdown). hosted-namespace-has-v1 retains32 independently replayed reports
+from the new EPYC9V74/Xeon8573C pair, meeting the per-workload minimum for every
+suite. full-namespace-has-v1 retains the new100211-variant run with zero
+known-pass regressions. verify-performance.mjs, verify-hosted.mjs and
+verify-full.mjs reconstruct the complete current and adverse historical records.
+The larger full archive listing uses an explicit16MiB buffer; no validation
+checks or measurements are weakened. Runtime fingerprints and scope are in
+runtime-qualification.json; final-head and security completion are separate.

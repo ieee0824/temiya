@@ -8,7 +8,7 @@ import {execFileSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 const root=path.dirname(fileURLToPath(import.meta.url)),repo=path.resolve(root,'../..');
 const read=p=>JSON.parse(fs.readFileSync(p)),sha=b=>createHash('sha256').update(b).digest('hex');
-const captures=new Map([['hosted-object-capture-v1',{source:'2a36d63eb62ce4bc69e807b7eec177bf8ba0e442',run:41125902984,baseline:'55907d5acfedb8eb8ceba0df19de80399c4e4203'}]]);
+const captures=new Map([['hosted-object-capture-v1',{source:'2a36d63eb62ce4bc69e807b7eec177bf8ba0e442',run:41125902984,baseline:'55907d5acfedb8eb8ceba0df19de80399c4e4203'}],['hosted-namespace-has-v1',{source:'299e8d8154f075c8f5169ae4651ad0f7b28bad0f',run:41130701494,baseline:'2a36d63eb62ce4bc69e807b7eec177bf8ba0e442'}]]);
 const groups=[
  ['original','audit-original-workload-records.mjs',[],['beforeafter','boa','baseline-boa','same-binary-control']],
  ['class','audit-class-workload-records.mjs',[],['class-beforeafter','class-boa','class-baseline-boa','class-same-binary']],
@@ -53,7 +53,8 @@ for(const name of selected){
      if(i===2)assert.equal(first.executable_sha256,baseline.executable_sha256);
      if(i===3)assert(r.workers.every(w=>w.executable_sha256===candidate.executable_sha256));
     }
-    summary.groups.push({suite:group,outcomes:audit.reports.map(r=>r.outcomes)});
+    const wins={};for(const comparison of read(capture+'/'+reports[1]+'.json').comparisons)wins[comparison.workload]=(wins[comparison.workload]??0)+(comparison.outcome==='Temiya faster beyond threshold'?1:0);assert(Object.values(wins).every(n=>n>=2));
+    summary.groups.push({suite:group,boa_wins_by_workload:wins,outcomes:audit.reports.map(r=>r.outcomes)});
    }
    summaries.push(summary);
   }

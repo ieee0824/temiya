@@ -181,3 +181,19 @@ has11 improvements and four noisy comparisons; identical-binary control has
 one apparent slowdown and14 noisy comparisons. All120 runs and1920 values are
 independently replayed. Independent hosted qualification, preserved original/base/
 derived workloads, full Test262 and final CI/security checks remain pending.
+
+At runtime source299e8d8, all15 native super comparisons are significant Boa
+wins. Independent EPYC9V74 and Xeon8573C runners each retain15 super wins and
+33 original-eleven wins; base results are11wins/1noise and12wins, derived15wins
+on both. Every workload meets the unchanged minimum of two wins in three pairs.
+All source before/after comparisons are noisy. Identical-binary controls retain
+one native apparent speedup/slowdown and one18.60% hosted prop-mega slowdown;
+these observations are preserved rather than treated as source regressions.
+
+The new full run41130396942 independently replays all100211 variants with
+26397pass,64857fail,18skip and8939timeout, no missing results and no prior-pass
+regressions. Earlier source2a36d63 retains its one namespace regression and is
+not substituted for this result. The qualification record and replay tools live
+in benchmarks/super-properties; security completion and final-head checks remain
+separate merge requirements. These records do not establish full conformance
+or general engine superiority.

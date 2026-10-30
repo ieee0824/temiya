@@ -13,9 +13,9 @@ const temp=fs.mkdtempSync(path.join(os.tmpdir(),'temiya-super-performance-'));
 function extract(name){
  const dir=root+'/'+name,e=read(dir+'/evidence.json'),archive=dir+'/capture.tar.gz',bytes=fs.readFileSync(archive);
  assert.equal(bytes.length,e.archive.bytes);assert.equal(sha(bytes),e.archive.sha256);
- const names=execFileSync('tar',['-tzf',archive],{encoding:'utf8'}).trim().split('\n');
+ const names=execFileSync('tar',['-tzf',archive],{encoding:'utf8',maxBuffer:16*1024*1024}).trim().split('\n');
  assert.equal(new Set(names).size,names.length);assert(names.every(n=>!path.isAbsolute(n)&&!n.split('/').some(p=>p==='.'||p==='..')));
- assert(execFileSync('tar',['-tvzf',archive],{encoding:'utf8'}).trim().split('\n').every(n=>n[0]==='d'||n[0]==='-'));
+ assert(execFileSync('tar',['-tvzf',archive],{encoding:'utf8',maxBuffer:16*1024*1024}).trim().split('\n').every(n=>n[0]==='d'||n[0]==='-'));
  const dest=temp+'/'+name;fs.mkdirSync(dest);execFileSync('tar',['-xzf',archive,'--no-same-owner','--no-same-permissions','-C',dest]);return {dest,e};
 }
 try{
@@ -36,6 +36,7 @@ try{
   ['accessor-slot-v1','96901d59149d7a8a90742519eea1093dccf73e4d',808,[{"Temiya faster beyond threshold":9,"within noise threshold":6},{"within noise threshold":15},{"within noise threshold":15},{"Temiya faster beyond threshold":10,"within noise threshold":5}]],
   ['main155-v1','55907d5acfedb8eb8ceba0df19de80399c4e4203',810,null],
   ['object-capture-v1','5fc8f42092f186d196f325b68187fcd83c8c7c88',812,[{'Temiya faster beyond threshold':14,'within noise threshold':1},{'after faster beyond threshold':11,'within noise threshold':4},{'after slower beyond threshold':1,'within noise threshold':14},{'Temiya faster beyond threshold':9,'within noise threshold':6}]],
+  ['namespace-has-v1','299e8d8154f075c8f5169ae4651ad0f7b28bad0f',813,[{'Temiya faster beyond threshold':15},{'within noise threshold':15},{'within noise threshold':13,'after faster beyond threshold':1,'after slower beyond threshold':1},{'Temiya faster beyond threshold':15}]],
  ]){
   const {dest,e}=extract(phase);assert.equal(e.source_revision,revision);const w=read(dest+'/worker-info.json'),engine=read(dest+'/engine-info.json');assert.equal(w.revision,revision);assert.equal(w.executable_sha256,e.worker_sha256);assert.equal(engine.source_revision,revision);assert.equal(engine.executable_sha256,e.engine_sha256);assert.equal(engine.source_clean,true);
   if(expected !== null){
@@ -48,7 +49,7 @@ try{
    const old=previous+'/'+previousPrefix+mode,rows=read(dir+'/outcomes.json');assert.deepEqual(rows,read(old+'/outcomes.json'));
    for(const row of rows.filter(r=>r.outcome!=='pass')){const[file,pointer]=row.raw_record.split('#'),index=Number(pointer.split('/').at(-1)),current=read(dir+'/'+file).results[index],prior=read(old+'/'+file).results[index];for(const key of ['detail','diagnostic','observed_failure','reason','status'])assert.deepEqual(current[key],prior[key],row.path+':'+key);}
   }
-  if(['sloppy-leaf-v1','object-bridge-v1','home-root-v1','super-binding-v1','super-delegation-v1','super-leaf-v1','super-leaf-arrow-v1','super-operands-v1','lazy-leaf-v1','accessor-slot-v1','main155-v1','object-capture-v1'].includes(phase)){
+  if(['sloppy-leaf-v1','object-bridge-v1','home-root-v1','super-binding-v1','super-delegation-v1','super-leaf-v1','super-leaf-arrow-v1','super-operands-v1','lazy-leaf-v1','accessor-slot-v1','main155-v1','object-capture-v1','namespace-has-v1'].includes(phase)){
    for(const mode of ['ast','auto'])for(const [dir,files,variants,pass,fail]of [['derived-'+mode,203,401,264,137],['base-originals/'+mode,149,294,276,18]]){const capture=dest+'/'+dir,v=run('verify-test262-baseline.mjs',[capture]);assert.equal(v.files,files);assert.equal(v.variants,variants);assert.equal(v.totals.pass,pass);assert.equal(v.totals.fail,fail);for(const key of ['skip','timeout','not_run','unreported'])assert.equal(v.totals[key],0);assert.equal(read(capture+'/conditions.json').engine_sha256,e.engine_sha256);}
    if(previousDerived){
     for(const mode of ['ast','auto']){
@@ -64,7 +65,22 @@ try{
    previousDerived=dest;
    const gate=run('verify-test262-baseline.mjs',[dest+'/pr-gate/capture']);assert.equal(gate.files,129);assert.equal(gate.variants,216);assert.equal(gate.totals.pass,216);assert.equal(gate.totals.fail,0);
   }
-  const rows=[...fs.readFileSync(dest+'/native-all-tests.log','utf8').matchAll(/test result: ok\. (\d+) passed; (\d+) failed; (\d+) ignored/g)];assert.equal(rows.length,['home-root-v1','super-binding-v1','super-delegation-v1','super-leaf-v1','super-leaf-arrow-v1','super-operands-v1','lazy-leaf-v1','accessor-slot-v1','main155-v1','object-capture-v1'].includes(phase)?109:phase==='object-bridge-v1'?100:99);assert.equal(rows.reduce((n,r)=>n+ +r[1],0),native);assert(rows.every(r=>+r[2]===0));assert.equal(rows.reduce((n,r)=>n+ +r[3],0),26);
+  if(phase==='namespace-has-v1'){
+   const old=extract('full-object-capture-v1');assert.equal(old.e.source_revision,'2a36d63eb62ce4bc69e807b7eec177bf8ba0e442');
+   const all=new Map();
+   for(let shard=0;shard<8;shard++){const dir=old.dest+'/test262-full-'+shard+'-of-8/test262-regression/capture';for(const row of read(dir+'/outcomes.json'))all.set(JSON.stringify([row.path,row.variant]),{row,dir});}
+   const comparisons=[];
+   const raw=(row,dir)=>{const[file,pointer]=row.raw_record.split('#');return read(dir+'/'+file).results[Number(pointer.split('/').at(-1))];};
+   for(const mode of ['ast','auto']){
+    const dir=dest+'/namespace-'+mode,v=run('verify-test262-baseline.mjs',[dir]);assert.equal(v.files,36);assert.equal(v.variants,36);assert.equal(v.totals.pass,27);assert.equal(v.totals.fail,9);for(const key of ['skip','timeout','not_run','unreported'])assert.equal(v.totals[key],0);assert.equal(read(dir+'/conditions.json').engine_sha256,e.engine_sha256);
+    let preserved=0,failed=0;const changes=[];
+    for(const row of read(dir+'/outcomes.json')){const prior=all.get(JSON.stringify([row.path,row.variant]));assert(prior);if(prior.row.outcome==='pass'){assert.equal(row.outcome,'pass');preserved++;}if(row.outcome!==prior.row.outcome)changes.push({path:row.path,variant:row.variant,before:prior.row.outcome,after:row.outcome});if(row.outcome!=='pass'){failed++;for(const key of ['detail','diagnostic','observed_failure','reason','status'])assert.deepEqual(raw(row,dir)[key],raw(prior.row,prior.dir)[key],row.path+':'+key);}}
+    assert.equal(preserved,26);assert.equal(failed,9);assert.deepEqual(changes,[{path:'test/language/module-code/namespace/internals/has-property-str-found-uninit.js',variant:'Module',before:'fail',after:'pass'}]);
+    comparisons.push({mode,preserved_passes:preserved,changes,unchanged_failure_signatures:failed});
+   }
+   assert.deepEqual({modes:comparisons},read(dest+'/namespace-full-before-comparison.json'));
+  }
+  const rows=[...fs.readFileSync(dest+'/native-all-tests.log','utf8').matchAll(/test result: ok\. (\d+) passed; (\d+) failed; (\d+) ignored/g)];assert.equal(rows.length,['home-root-v1','super-binding-v1','super-delegation-v1','super-leaf-v1','super-leaf-arrow-v1','super-operands-v1','lazy-leaf-v1','accessor-slot-v1','main155-v1','object-capture-v1','namespace-has-v1'].includes(phase)?109:phase==='object-bridge-v1'?100:99);assert.equal(rows.reduce((n,r)=>n+ +r[1],0),native);assert(rows.every(r=>+r[2]===0));assert.equal(rows.reduce((n,r)=>n+ +r[3],0),26);
   summaries.push({source:revision,outcomes:expected,variants_per_backend:601,pass:405,fail:196,scope:e.scope});previous=dest;previousPrefix='super-';previousRevision=revision;
  }
  console.log(JSON.stringify({integrity:'pass',reports:summaries,scope:'Intermediate negative or incomplete speed evidence, not final qualification.'}));

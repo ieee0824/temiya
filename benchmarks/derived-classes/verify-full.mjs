@@ -11,6 +11,7 @@ const read=p=>JSON.parse(fs.readFileSync(p));
 const captures=new Map([
  ['full-native-prototypes-v1',{source:'336a38dbc74242a107761680bed5c1f429b602a1',run:41044387471}],
  ['full-view-index-v1',{source:'2be3d7c82091d27f7d2fae58a346c44144d3666b',run:41047319155}],
+ ['full-delegation-v1',{source:'8b019733ed8e08d3bb8a31319501a4d3c08bf070',run:41053545979}],
 ]);
 const selected=process.argv.slice(2);if(selected.length===0)selected.push(...captures.keys());
 assert.equal(new Set(selected).size,selected.length);

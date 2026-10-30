@@ -158,3 +158,26 @@ the original failure signatures and explicitly leaves later assertions unproven.
 `node benchmarks/derived-classes/verify-dependencies.mjs` checks it against the
 retained upstream sources and both raw captures; it never converts failures to
 passes.
+
+The later sole-super candidate (`8b01973`) retains four native derived reports:
+candidate/Boa, candidate/before, identical-candidate control and baseline/Boa.
+Explicit construction takes 24–29% less time than the address-width candidate
+in all three significant before/after comparisons. The Boa comparison has
+thirteen significant wins and two noisy comparisons; the identical-worker
+control has fifteen noisy comparisons. These are observations, not a universal
+speed claim. `verify-delegation.mjs` replays them with the 767 passing native
+tests and fixed original captures. The i686 record is a type check, not a
+32-bit execution result.
+
+Three complete upstream captures (`336a38d`, `2be3d7c`, `8b01973`) retain all
+100,211 variants each: 26,276 pass, 64,978 fail, 18 skip and 8,939 time out,
+with zero missing or unexecuted variants. `verify-full.mjs` independently
+reconstructs all eight known-pass gates for each source. Passing those gates
+does not turn the recorded failures or timeouts into conformance passes.
+
+The historical two-host prototype/address-width measurements retain all twelve
+reports per machine, including slower before/after decisions and apparent
+speed changes between identical binaries. `verify-hosted.mjs` checks every
+original-eleven, base-four and derived-five report and control. The separate
+`verify-view-index.mjs` keeps native controls, the interrupted earlier run,
+the ARM byte-identity record and the rejected x64 identity transfer.

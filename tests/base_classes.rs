@@ -213,3 +213,16 @@ fn observable_loop_bindings_and_object_coercions_keep_their_effects() {
         "let calls = 0; let input = { valueOf() { calls++; return 3; } }; class C { static run(n) { let total = 0; for (let i = 0; i < n; i++) { total += i; } return total; } } C.run(input) === 3 && calls === 4;",
     );
 }
+
+#[test]
+fn this_lookup_crosses_declarative_blocks_and_hoisted_function_bodies() {
+    check(
+        "function FACTORY() { this.id = 0; this.id = func(); function func() { return 'id_string'; } } let obj; try { obj = new FACTORY(); } catch (e) { throw e; } obj.id === 'id_string';",
+    );
+    check(
+        "class C { constructor() { this.value = 40; } read() { { let extra = 2; return this.value + extra; } } } new C().read() === 42;",
+    );
+    check(
+        "class C { constructor() { this.value = 40; } read() { { let extra = 2; let f = () => this.value + extra; return f(); } } } new C().read() === 42;",
+    );
+}

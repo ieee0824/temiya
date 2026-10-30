@@ -673,7 +673,9 @@ impl VirtualMachine {
                             stack.push(environment.global_this_value()?);
                             break;
                         }
-                        if environment.has_this_binding()? {
+                        if environment.kind() == EnvironmentKind::Function
+                            && environment.has_this_binding()?
+                        {
                             stack.push(environment.get_this_binding()?);
                             break;
                         }

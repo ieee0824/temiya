@@ -339,3 +339,18 @@ Native tests pass779 with26 ignored. Each Ast/Auto fixed upstream selection
 has214 passes and187 failures; the base selection has276 passes and18
 dependency failures. The PR selection passes216 variants. These local results
 do not establish the still-pending two-host, full-corpus and security gates.
+
+Source a10e7a3 also retains all24 reports from two-host run41105090994 in
+`hosted-class-loop-runtime-v1`. EPYC9V74 has33 original-eleven Boa wins,
+12 base-class wins and14 derived wins/1 noisy comparison. EPYC7763 has33,
+12 and15 respectively. Every base/derived workload meets the fixed minimum
+of two significant wins in three pairs on each host. Identical-worker controls
+are entirely noisy. Before/after retains arithmetic pair0 at11.23% slower on
+9V74 and closure-allocation pair2 at10.66% slower on7763; all base/derived
+before/after comparisons are noisy. These observations remain recorded.
+
+The same source's full run41105090864 is retained in
+`full-class-loop-runtime-v1`. All eight known-pass gates were independently
+replayed over100211 variants:26276 pass,64978 fail,18 skip,8939 timeout,
+zero missing. This records the remaining failures and establishes no complete
+ECMAScript conformance claim. Security and final-head checks remain separate.

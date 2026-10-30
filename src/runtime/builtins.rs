@@ -89,7 +89,7 @@ fn date_receiver(value: Value) -> RuntimeResult<DateObject> {
 fn install_collections(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {
     let map = intrinsics.get(IntrinsicId::Map);
     let map_prototype = intrinsics.get(IntrinsicId::MapPrototype);
-    map.set_captured_factory(
+    map.set_captured_factory_with_prototype(
         &map_prototype,
         None,
         None,
@@ -98,6 +98,7 @@ fn install_collections(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {
             object.initialize_prototype(Some(prototype.clone()));
             Ok(object)
         }),
+        Some(IntrinsicId::MapPrototype),
     )?;
     let map_prototype = intrinsics.get(IntrinsicId::MapPrototype);
     method(intrinsics, &map_prototype, "set", 2, |this, arguments| {
@@ -127,7 +128,7 @@ fn install_collections(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {
 
     let set = intrinsics.get(IntrinsicId::Set);
     let set_prototype = intrinsics.get(IntrinsicId::SetPrototype);
-    set.set_captured_factory(
+    set.set_captured_factory_with_prototype(
         &set_prototype,
         None,
         None,
@@ -136,6 +137,7 @@ fn install_collections(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {
             object.initialize_prototype(Some(prototype.clone()));
             Ok(object)
         }),
+        Some(IntrinsicId::SetPrototype),
     )?;
     let set_prototype = intrinsics.get(IntrinsicId::SetPrototype);
     method(intrinsics, &set_prototype, "add", 1, |this, arguments| {
@@ -162,7 +164,7 @@ fn install_collections(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {
 
     let weak_map = intrinsics.get(IntrinsicId::WeakMap);
     let weak_map_prototype = intrinsics.get(IntrinsicId::WeakMapPrototype);
-    weak_map.set_captured_factory(
+    weak_map.set_captured_factory_with_prototype(
         &weak_map_prototype,
         None,
         None,
@@ -171,6 +173,7 @@ fn install_collections(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {
             object.initialize_prototype(Some(prototype.clone()));
             Ok(object)
         }),
+        Some(IntrinsicId::WeakMapPrototype),
     )?;
     let weak_map_prototype = intrinsics.get(IntrinsicId::WeakMapPrototype);
     method(
@@ -200,7 +203,7 @@ fn install_collections(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {
 
     let weak_set = intrinsics.get(IntrinsicId::WeakSet);
     let weak_set_prototype = intrinsics.get(IntrinsicId::WeakSetPrototype);
-    weak_set.set_captured_factory(
+    weak_set.set_captured_factory_with_prototype(
         &weak_set_prototype,
         None,
         None,
@@ -209,6 +212,7 @@ fn install_collections(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {
             object.initialize_prototype(Some(prototype.clone()));
             Ok(object)
         }),
+        Some(IntrinsicId::WeakSetPrototype),
     )?;
     let weak_set_prototype = intrinsics.get(IntrinsicId::WeakSetPrototype);
     method(
@@ -270,10 +274,12 @@ fn install_numeric(
             number_argument(arguments.first(), key.expect("Number primitive key"))
                 .map(Value::Number)
         })),
-        Some(|prototype, key, arguments, _| {
+        Some(|prototype, key, arguments, new_target| {
             let value = number_argument(arguments.first(), key.expect("Number primitive key"))?;
-            let object = NumberObject::new_for(prototype, value).object();
-            object.initialize_prototype(Some(prototype.clone()));
+            let prototype = new_target
+                .constructor_prototype(IntrinsicId::NumberPrototype, || Ok(prototype.clone()))?;
+            let object = NumberObject::new_for(&new_target, value).object();
+            object.initialize_prototype(Some(prototype));
             Ok(object)
         }),
     )?;
@@ -491,13 +497,14 @@ fn create_regexp(arguments: &[Value], prototype: &Object) -> RuntimeResult<Objec
 fn install_regexp(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {
     let regexp = intrinsics.get(IntrinsicId::RegExp);
     let regexp_prototype = intrinsics.get(IntrinsicId::RegExpPrototype);
-    regexp.set_captured_factory(
+    regexp.set_captured_factory_with_prototype(
         &regexp_prototype,
         None,
         Some((true, |prototype, _, _, arguments| {
             create_regexp(arguments, prototype.expect("RegExp prototype")).map(Value::Object)
         })),
         Some(|prototype, _, arguments, _| create_regexp(arguments, prototype)),
+        Some(IntrinsicId::RegExpPrototype),
     )?;
     let exec = Object::native_function_with_lazy_object_capture(
         &intrinsics.get(IntrinsicId::FunctionPrototype),
@@ -526,13 +533,14 @@ fn install_regexp(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {
 fn install_indexed(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {
     let array = intrinsics.get(IntrinsicId::Array);
     let array_prototype = intrinsics.get(IntrinsicId::ArrayPrototype);
-    array.set_captured_factory(
+    array.set_captured_factory_with_prototype(
         &array_prototype,
         None,
         Some((true, |prototype, _, _, arguments| {
             create_array(arguments, prototype.expect("Array prototype")).map(Value::Object)
         })),
         Some(|prototype, _, arguments, _| create_array(arguments, prototype)),
+        Some(IntrinsicId::ArrayPrototype),
     )?;
     method(intrinsics, &array, "isArray", 1, |_, arguments| {
         Ok(Value::Boolean(
@@ -562,9 +570,13 @@ fn install_indexed(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {
         &buffer_prototype,
         None,
         Some((false, |_, _, _, _| Ok(Value::Undefined))),
-        Some(|prototype, _, arguments, _| {
+        Some(|prototype, _, arguments, new_target| {
             let length = length_argument(arguments.first())?;
-            let buffer = ArrayBuffer::new_for(prototype, length)?;
+            let prototype = new_target
+                .constructor_prototype(IntrinsicId::ArrayBufferPrototype, || {
+                    Ok(prototype.clone())
+                })?;
+            let buffer = ArrayBuffer::new_for(&new_target, length)?;
             buffer
                 .object()
                 .initialize_prototype(Some(prototype.clone()));
@@ -579,7 +591,7 @@ fn install_indexed(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {
 
     let typed_array = intrinsics.get(IntrinsicId::TypedArray);
     let typed_prototype = intrinsics.get(IntrinsicId::TypedArrayPrototype);
-    typed_array.set_captured_factory(
+    typed_array.set_captured_factory_with_prototype(
         &typed_prototype,
         None,
         Some((false, |_, _, _, _| Ok(Value::Undefined))),
@@ -606,6 +618,7 @@ fn install_indexed(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {
             view.object().initialize_prototype(Some(prototype.clone()));
             Ok(view.object())
         }),
+        Some(IntrinsicId::TypedArrayPrototype),
     )?;
 
     let data_view = intrinsics.get(IntrinsicId::DataView);
@@ -614,18 +627,27 @@ fn install_indexed(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {
         &data_prototype,
         None,
         Some((false, |_, _, _, _| Ok(Value::Undefined))),
-        Some(|prototype, _, arguments, _| {
+        Some(|prototype, _, arguments, new_target| {
             let buffer = object_arg(arguments.first(), "DataView buffer")?;
             let buffer = ArrayBuffer::from_object(buffer)
                 .ok_or_else(|| RuntimeError::type_error("DataView requires an ArrayBuffer"))?;
-            let offset = length_argument(arguments.get(1))?;
+            let offset = view_index(arguments.get(1))?;
+            if buffer.is_detached() {
+                return Err(RuntimeError::type_error("ArrayBuffer is detached"));
+            }
+            let available = buffer
+                .byte_length()
+                .checked_sub(offset)
+                .ok_or_else(|| RuntimeError::range_error("view offset is out of bounds"))?;
             let length = match arguments.get(2) {
-                Some(value) => length_argument(Some(value))?,
-                None => buffer
-                    .byte_length()
-                    .checked_sub(offset)
-                    .ok_or_else(|| RuntimeError::range_error("view offset is out of bounds"))?,
+                None | Some(Value::Undefined) => available,
+                Some(value) => view_index(Some(value))?,
             };
+            if length > available {
+                return Err(RuntimeError::range_error("buffer view is out of bounds"));
+            }
+            let prototype = new_target
+                .constructor_prototype(IntrinsicId::DataViewPrototype, || Ok(prototype.clone()))?;
             let view = DataView::new(&buffer, offset, length)?;
             let object = view.object();
             object.initialize_prototype(Some(prototype.clone()));
@@ -664,6 +686,18 @@ fn length_argument(value: Option<&Value>) -> RuntimeResult<usize> {
         return Err(RuntimeError::range_error("length is out of range"));
     }
     Ok(number as usize)
+}
+
+// ToIndex for a view range: unlike allocation limits, fractions are truncated
+// and undefined/NaN select zero. The buffer bounds are checked by the caller.
+fn view_index(value: Option<&Value>) -> RuntimeResult<usize> {
+    let number = value_arg(value).to_number()?;
+    let integer = if number.is_nan() { 0.0 } else { number.trunc() };
+    if !(0.0..=9_007_199_254_740_991.0).contains(&integer) {
+        return Err(RuntimeError::range_error("view index is out of range"));
+    }
+    usize::try_from(integer as u64)
+        .map_err(|_| RuntimeError::range_error("view index exceeds addressable range"))
 }
 
 fn install_object(

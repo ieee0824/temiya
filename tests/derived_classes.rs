@@ -215,3 +215,328 @@ fn constructor_arguments_remain_available_to_arrows_defaults_and_strict_writes()
         "class A {} class B extends A { constructor(value) { super(); this.count = arguments.length; this.extra = arguments[1]; } } let marker = {}; let p = new B(1,marker); p.count === 2 && p.extra === marker;",
     );
 }
+
+#[test]
+fn object_subclasses_allocate_with_new_target_and_ignore_conversion_arguments() {
+    check(
+        "class Obj extends Object { valueOf() { return 42; } } let input = {}; let p = new Obj(input); p !== input && p.valueOf() === 42 && p instanceof Obj && Object.getPrototypeOf(p) === Obj.prototype && Object(input) === input && new Object(input) === input;",
+    );
+}
+
+#[test]
+fn non_object_prototype_uses_the_new_targets_realm_through_wrappers() {
+    for backend in [ScriptBackend::Ast, ScriptBackend::Auto] {
+        let engine = Engine::builder().script_backend(backend).build();
+        let origin = engine.create_realm();
+        let caller = engine.create_realm();
+        let script = engine
+            .compile(
+                &origin,
+                "function Foreign() {} Foreign.prototype = null; Foreign;",
+            )
+            .unwrap();
+        let foreign = engine.evaluate(&script).unwrap();
+        let Value::Object(target) = foreign.value() else {
+            panic!("constructor")
+        };
+        let handler = temiya::runtime::Object::new_in(engine.allocation_context());
+        let proxy = temiya::runtime::ProxyObject::try_new(target.clone(), handler)
+            .unwrap()
+            .object();
+        for (name, object) in [("Target", target.clone()), ("ProxyTarget", proxy)] {
+            engine
+                .set_global(
+                    &caller,
+                    name,
+                    engine.value(&caller, Value::Object(object)).unwrap(),
+                )
+                .unwrap();
+        }
+        let script = engine.compile(&caller, "Target.bind(null);").unwrap();
+        let bound = engine.evaluate(&script).unwrap();
+        engine
+            .set_global(
+                &caller,
+                "BoundTarget",
+                engine.value(&caller, bound.value().clone()).unwrap(),
+            )
+            .unwrap();
+        let script = engine.compile(&origin, "Object.prototype;").unwrap();
+        let expected = engine.evaluate(&script).unwrap();
+        for name in ["Target", "ProxyTarget", "BoundTarget"] {
+            for body in [
+                "let Base = function() { this.target = new.target; };",
+                "class Parent { constructor() { this.target = new.target; } } let Base = class extends Parent { constructor() { super(); } };",
+            ] {
+                let source = format!(
+                    "{{ {body} let p = Reflect.construct(Base, [], {name}); p.target === {name} && Object.getPrototypeOf(p); }}"
+                );
+                let script = engine.compile(&caller, &source).unwrap();
+                let actual = engine.evaluate(&script).unwrap();
+                assert!(
+                    actual.value().same_value(expected.value()),
+                    "{backend:?}: {name}: {body}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn prototype_getter_revocation_is_checked_only_when_realm_fallback_is_needed() {
+    check(
+        "let pair; function Target() {} function Base() {} pair = Proxy.revocable(Target, { get(t,key) { if (key === 'prototype') { pair.revoke(); return null; } return t[key]; } }); let caught = false; try { Reflect.construct(Base, [], pair.proxy); } catch (e) { caught = e instanceof TypeError; } caught;",
+    );
+    check(
+        "let pair; let proto = {}; function Target() {} function Base() {} pair = Proxy.revocable(Target, { get(t,key) { if (key === 'prototype') { pair.revoke(); return proto; } return t[key]; } }); let p = Reflect.construct(Base, [], pair.proxy); Object.getPrototypeOf(p) === proto;",
+    );
+}
+
+#[test]
+fn allocation_errors_before_entering_a_foreign_constructor_use_the_caller_realm() {
+    for backend in [ScriptBackend::Ast, ScriptBackend::Auto] {
+        let engine = Engine::builder().script_backend(backend).build();
+        let origin = engine.create_realm();
+        let caller = engine.create_realm();
+        for (name, source) in [
+            ("Foreign", "class Foreign {} Foreign;"),
+            ("ForeignPlain", "(function() {});"),
+            (
+                "ForeignBody",
+                "class ForeignBody { constructor() { null.x; } } ForeignBody;",
+            ),
+            ("ForeignPlainBody", "(function() { null.x; });"),
+        ] {
+            let script = engine.compile(&origin, source).unwrap();
+            let constructor = engine.evaluate(&script).unwrap();
+            engine
+                .set_global(
+                    &caller,
+                    name,
+                    engine.value(&caller, constructor.value().clone()).unwrap(),
+                )
+                .unwrap();
+        }
+        let script = engine.compile(&caller, "TypeError.prototype;").unwrap();
+        let expected_caller = engine.evaluate(&script).unwrap();
+        let script = engine.compile(&origin, "TypeError.prototype;").unwrap();
+        let expected_body = engine.evaluate(&script).unwrap();
+        for constructor in ["Foreign", "ForeignPlain"] {
+            for wrapper in [
+                constructor.to_string(),
+                format!("{constructor}.bind(null)"),
+                format!("Proxy.revocable({constructor}, {{}}).proxy"),
+            ] {
+                let source = format!(
+                    "{{ let pair; function Target() {{}} pair = Proxy.revocable(Target, {{ get(t,key) {{ if (key === 'prototype') {{ pair.revoke(); return null; }} return t[key]; }} }}); try {{ Reflect.construct({wrapper}, [], pair.proxy); }} catch (e) {{ Object.getPrototypeOf(e); }} }}"
+                );
+                let script = engine.compile(&caller, &source).unwrap();
+                let actual = engine.evaluate(&script).unwrap();
+                assert!(
+                    actual.value().same_value(expected_caller.value()),
+                    "{backend:?}: {wrapper}"
+                );
+            }
+        }
+        for constructor in ["ForeignBody", "ForeignPlainBody"] {
+            let script = engine
+                .compile(
+                    &caller,
+                    &format!(
+                        "try {{ new {constructor}(); }} catch (e) {{ Object.getPrototypeOf(e); }}"
+                    ),
+                )
+                .unwrap();
+            let actual = engine.evaluate(&script).unwrap();
+            assert!(
+                actual.value().same_value(expected_body.value()),
+                "{backend:?}: {constructor}"
+            );
+        }
+    }
+}
+
+#[test]
+fn native_array_number_and_string_subclasses_keep_prototypes_and_payloads() {
+    check(
+        "class A extends Array {} let p = new A(1,2); p instanceof A && Object.getPrototypeOf(p) === A.prototype && Array.isArray(p) && p.length === 2 && p[1] === 2;",
+    );
+    check(
+        "class N extends Number {} let p = new N(42); p instanceof N && Object.getPrototypeOf(p) === N.prototype && Number.prototype.valueOf.call(p) === 42;",
+    );
+    check(
+        "class S extends String {} let p = new S('abc'); p instanceof S && Object.getPrototypeOf(p) === S.prototype && String.prototype.valueOf.call(p) === 'abc' && p.length === 3 && p[1] === 'b';",
+    );
+}
+
+#[test]
+fn native_collection_buffer_date_and_regexp_subclasses_keep_their_slots() {
+    check(
+        "class M extends Map {} let p = new M(); p.set('key',42); p instanceof M && Object.getPrototypeOf(p) === M.prototype && p.get('key') === 42;",
+    );
+    check("class S extends Set {} let p = new S(); p.add(42); p instanceof S && p.has(42);");
+    check(
+        "class W extends WeakMap {} let p = new W(); let key = {}; p.set(key,42); p instanceof W && p.get(key) === 42;",
+    );
+    check(
+        "class W extends WeakSet {} let p = new W(); let key = {}; p.add(key); p instanceof W && p.has(key);",
+    );
+    check(
+        "class B extends ArrayBuffer {} let p = new B(4); p instanceof B && Object.getPrototypeOf(p) === B.prototype && p.byteLength === 4;",
+    );
+    check(
+        "class D extends Date {} let p = new D(0); p instanceof D && Object.getPrototypeOf(p) === D.prototype && Date.prototype.valueOf.call(p) === 0;",
+    );
+    check(
+        "class R extends RegExp {} let p = new R('a'); p instanceof R && Object.getPrototypeOf(p) === R.prototype && p.exec('a')[0] === 'a';",
+    );
+}
+
+#[test]
+fn default_intrinsic_factories_use_the_derived_prototype() {
+    check(
+        "class E extends Error { own() { return 42; } } let p = new E(); Object.getPrototypeOf(p) === E.prototype && p.own() === 42;",
+    );
+    check(
+        "class B extends Boolean { own() { return 42; } } let p = new B(); Object.getPrototypeOf(p) === B.prototype && p.own() === 42;",
+    );
+}
+
+#[test]
+fn native_conversion_and_prototype_getters_keep_their_required_order() {
+    check(
+        "let log = ''; let proto = {}; function Target() {} let target = Proxy.revocable(Target, { get(t,key) { if (key === 'prototype') { log += 'p'; return proto; } return t[key]; } }).proxy; let value = { valueOf() { log += 'v'; return 42; } }; let p = Reflect.construct(Number, [value], target); log === 'vp' && Object.getPrototypeOf(p) === proto && Number.prototype.valueOf.call(p) === 42;",
+    );
+    check(
+        "let log = ''; let proto = {}; function Target() {} let target = Proxy.revocable(Target, { get(t,key) { if (key === 'prototype') { log += 'p'; return proto; } return t[key]; } }).proxy; let value = { toString() { log += 's'; return 'abc'; } }; let p = Reflect.construct(String, [value], target); log === 'sp' && Object.getPrototypeOf(p) === proto && String.prototype.valueOf.call(p) === 'abc';",
+    );
+    check(
+        "let log = ''; function Target() {} let target = Proxy.revocable(Target, { get(t,key) { if (key === 'prototype') { log += 'p'; return {}; } return t[key]; } }).proxy; let caught = false; try { Reflect.construct(Array, [1.5], target); } catch (e) { caught = e instanceof RangeError; } caught && log === 'p';",
+    );
+}
+
+#[test]
+fn native_intrinsic_fallbacks_come_from_the_new_targets_realm() {
+    for backend in [ScriptBackend::Ast, ScriptBackend::Auto] {
+        let engine = Engine::builder().script_backend(backend).build();
+        let origin = engine.create_realm();
+        let caller = engine.create_realm();
+        let script = engine.compile(&origin, "(function() {});").unwrap();
+        let target = engine.evaluate(&script).unwrap();
+        engine
+            .set_global(
+                &caller,
+                "Target",
+                engine.value(&caller, target.value().clone()).unwrap(),
+            )
+            .unwrap();
+        let script = engine.compile(&caller, "Target.prototype = null;").unwrap();
+        engine.evaluate(&script).unwrap();
+        for (name, args) in [
+            ("Array", "[1,2]"),
+            ("Number", "[42]"),
+            ("String", "['abc']"),
+            ("Map", "[]"),
+            ("ArrayBuffer", "[4]"),
+            ("Date", "[0]"),
+            ("RegExp", "['a']"),
+            ("Error", "[]"),
+        ] {
+            let script = engine
+                .compile(&origin, &format!("{name}.prototype;"))
+                .unwrap();
+            let expected = engine.evaluate(&script).unwrap();
+            let script = engine
+                .compile(
+                    &caller,
+                    &format!("Object.getPrototypeOf(Reflect.construct({name}, {args}, Target));"),
+                )
+                .unwrap();
+            let actual = engine.evaluate(&script).unwrap();
+            assert!(
+                actual.value().same_value(expected.value()),
+                "{backend:?}: {name}"
+            );
+        }
+    }
+}
+
+#[test]
+fn derived_data_views_keep_their_buffer_and_recheck_detachment_after_getters() {
+    for backend in [ScriptBackend::Ast, ScriptBackend::Auto] {
+        let engine = Engine::builder().script_backend(backend).build();
+        let realm = engine.create_realm();
+        let script = engine.compile(&realm, "class V extends DataView {} let buffer = new ArrayBuffer(8); let view = new V(buffer,2,4); view;").unwrap();
+        let value = engine.evaluate(&script).unwrap();
+        let Value::Object(object) = value.value() else {
+            panic!("view")
+        };
+        let view = temiya::runtime::TypedArray::from_object(object.clone());
+        // DataView shares the runtime's checked byte-view storage.
+        let view = view.expect("derived DataView payload");
+        let script = engine
+            .compile(
+                &realm,
+                "buffer = null; Object.getPrototypeOf(view) === V.prototype;",
+            )
+            .unwrap();
+        assert!(matches!(
+            engine.evaluate(&script).unwrap().value(),
+            Value::Boolean(true)
+        ));
+        engine.collect_garbage().unwrap();
+        view.set(0, 42).unwrap();
+        assert_eq!(view.length().unwrap(), 4);
+        assert!(view.get(0).unwrap().same_value(&Value::Number(42.0)));
+        let detach = temiya::runtime::Object::native_function_with_context(
+            engine.allocation_context(),
+            |_, _, args| {
+                let Some(Value::Object(object)) = args.first() else {
+                    return Err(temiya::runtime::RuntimeError::type_error("buffer required"));
+                };
+                let buffer = temiya::runtime::ArrayBuffer::from_object(object.clone())
+                    .ok_or_else(|| temiya::runtime::RuntimeError::type_error("buffer required"))?;
+                buffer.detach();
+                Ok(Value::Undefined)
+            },
+        );
+        engine
+            .set_global(
+                &realm,
+                "detach",
+                engine.value(&realm, Value::Object(detach)).unwrap(),
+            )
+            .unwrap();
+        let script = engine
+            .compile(&realm, "new DataView(new ArrayBuffer(8), 2.9, undefined);")
+            .unwrap();
+        let value = engine.evaluate(&script).unwrap();
+        let Value::Object(object) = value.value() else {
+            panic!("view")
+        };
+        assert_eq!(
+            temiya::runtime::TypedArray::from_object(object.clone())
+                .unwrap()
+                .length()
+                .unwrap(),
+            6
+        );
+        let source = "function invalid(buffer, offset, length, kind) { let reads = 0; function Target() {} let target = Proxy.revocable(Target, { get(t,key) { if (key === 'prototype') { reads++; return {}; } return t[key]; } }).proxy; let caught = false; try { Reflect.construct(DataView, [buffer,offset,length], target); } catch(e) { caught = e instanceof kind; } return caught && reads === 0; } let old = new ArrayBuffer(8); detach(old); invalid(new ArrayBuffer(8),9,undefined,RangeError) && invalid(new ArrayBuffer(8),2,7,RangeError) && invalid(old,0,undefined,TypeError) && invalid(new ArrayBuffer(8),Infinity,0,RangeError) && invalid(new ArrayBuffer(8),-1,0,RangeError);";
+        let script = engine.compile(&realm, source).unwrap();
+        assert!(
+            matches!(
+                engine.evaluate(&script).unwrap().value(),
+                Value::Boolean(true)
+            ),
+            "{backend:?}: validation must precede prototype access"
+        );
+        let source = "let detachedBuffer = new ArrayBuffer(8); function Target() {} let target = Proxy.revocable(Target, { get(t,key) { if (key === 'prototype') { detach(detachedBuffer); return {}; } return t[key]; } }).proxy; let caught = false; try { Reflect.construct(DataView, [detachedBuffer], target); } catch (e) { caught = e instanceof TypeError ? true : e.name + ': ' + e.message; } caught;";
+        let script = engine.compile(&realm, source).unwrap();
+        let result = engine.evaluate(&script).unwrap();
+        assert!(
+            matches!(result.value(), Value::Boolean(true)),
+            "{backend:?}: {:?}",
+            result.value()
+        );
+    }
+}

@@ -245,7 +245,6 @@ impl StoredFunctionClosure {
     ) -> RuntimeResult<Object> {
         let closure = self.load(owner)?;
         construct_function(&closure, owner.clone(), arguments, new_target)
-            .map_err(|error| closure.realm.bind_exception(error))
     }
     pub(super) fn trace(&self, tracer: &mut crate::gc::Tracer<'_>) {
         self.realm.trace(tracer);
@@ -455,23 +454,23 @@ fn construct_function(
     new_target: Object,
 ) -> RuntimeResult<Object> {
     if closure.constructor_kind != ConstructorKind::Base {
-        return construct_derived(closure, function, arguments, new_target);
+        return construct_derived(closure, function, arguments, new_target)
+            .map_err(|error| closure.realm.bind_exception(error));
     }
-    let prototype = match new_target.get(&PropertyKey::from("prototype"))? {
-        Value::Object(prototype) => Some(prototype),
-        _ => Some(closure.realm.intrinsic(super::IntrinsicId::ObjectPrototype)),
-    };
+    let prototype = new_target
+        .constructor_prototype(super::IntrinsicId::ObjectPrototype, || {
+            Ok(closure.realm.intrinsic(super::IntrinsicId::ObjectPrototype))
+        })?;
     let instance = Object::new_for(&new_target);
-    if let Some(prototype) = prototype {
-        instance.initialize_prototype(Some(prototype));
-    }
+    instance.initialize_prototype(Some(prototype));
     let result = call_function(
         closure,
         function,
         Value::Object(instance.clone()),
         arguments,
         Some(new_target),
-    )?;
+    )
+    .map_err(|error| closure.realm.bind_exception(error))?;
     match result {
         Value::Object(object) => Ok(object),
         _ => Ok(instance),

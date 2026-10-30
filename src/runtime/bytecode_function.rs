@@ -105,11 +105,11 @@ impl StoredClosure {
         new_target: Object,
     ) -> RuntimeResult<Object> {
         let closure = self.load(owner)?;
+        let prototype = new_target
+            .constructor_prototype(super::IntrinsicId::ObjectPrototype, || {
+                Ok(closure.realm.intrinsic(IntrinsicId::ObjectPrototype))
+            })?;
         let instance = Object::new_for(&new_target);
-        let prototype = match new_target.get(&"prototype".into())? {
-            Value::Object(prototype) => prototype,
-            _ => closure.realm.intrinsic(IntrinsicId::ObjectPrototype),
-        };
         instance.initialize_prototype(Some(prototype));
         let value = closure
             .call(

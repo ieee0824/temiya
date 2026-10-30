@@ -2857,9 +2857,10 @@
       "issues": [
         249
       ],
-      "rationale": "Public Engine checks the stated operation, not full clause conformance. Known gap: omitted byteOffset is rejected rather than defaulting to zero (#248/#249).",
+      "rationale": "Public Engine checks prototype propagation, default byteOffset, range validation and detachment ordering. Full DataView methods and resizable-buffer behavior remain incomplete (#249).",
       "tests": [
-        "tests/spec_support.rs"
+        "tests/spec_support.rs",
+        "tests/derived_classes.rs"
       ],
       "test262": {
         "status": "not-run"
@@ -2875,12 +2876,12 @@
           }
         },
         {
-          "source": "new DataView(new ArrayBuffer(8));",
+          "source": "Object.getPrototypeOf(new DataView(new ArrayBuffer(8)))===DataView.prototype;",
           "expected": {
             "parser": "accept",
-            "ast": "RangeError",
-            "bytecode": "RangeError",
-            "auto": "RangeError"
+            "ast": "true",
+            "bytecode": "true",
+            "auto": "true"
           }
         }
       ],

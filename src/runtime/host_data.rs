@@ -62,13 +62,21 @@ impl DateFactory {
     pub(super) fn call(&self) -> RuntimeResult<Value> {
         DateObject::format_value(DateObject::clip(self.host.now())).map(Value::String)
     }
-    pub(super) fn construct(&self, owner: &Object, arguments: &[Value]) -> RuntimeResult<Object> {
-        let prototype = self.prototype.load(owner)?;
+    pub(super) fn construct(
+        &self,
+        owner: &Object,
+        arguments: &[Value],
+        new_target: Object,
+    ) -> RuntimeResult<Object> {
         let value = match arguments.first() {
             Some(value) => value.to_number()?,
             None => self.host.now(),
         };
-        let object = DateObject::new_for(&prototype, value).object();
+        let prototype = new_target
+            .constructor_prototype(super::IntrinsicId::DatePrototype, || {
+                self.prototype.load(owner)
+            })?;
+        let object = DateObject::new_for(&new_target, value).object();
         object.initialize_prototype(Some(prototype));
         Ok(object)
     }

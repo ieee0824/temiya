@@ -31,7 +31,8 @@ infer their names. Class code executes strictly.
 
 Both explicit and default constructors support `new`; direct calls throw
 TypeError before executing the body. A returned object replaces the newly
-created instance, while a primitive return leaves the instance in place.
+created instance. For base constructors, a primitive return leaves the instance
+in place; derived return rules are described below.
 Constructor bodies observe their actual `new.target`. Ordinary/static methods,
 computed names and accessor pairs retain their descriptors and source order.
 Methods are non-enumerable; the constructor's `prototype` property is
@@ -103,3 +104,20 @@ the function code before execution. Observable arguments, including captured
 arrows and extra actual parameters, keep the existing binding and strict
 unmapped values. This changes allocation only; it neither skips body effects
 nor retries errors.
+
+Instance allocation reads the actual new target's `prototype` once. A
+non-object result selects the appropriate intrinsic prototype from that
+constructor's Realm, including through bound functions and proxies; a revoked
+proxy throws. Allocation errors before entering an ordinary constructor belong
+to the caller's Realm, while errors from the constructor body retain its Realm.
+Subclassing Object allocates a fresh instance instead of returning its argument.
+
+The existing Array, Number, String, Map/Set/weak collection, ArrayBuffer,
+DataView, Date and RegExp constructors preserve their implemented payloads
+with the derived prototype. Argument conversion and prototype access keep their
+constructor-specific order. DataView validates the initial range before
+prototype access and rechecks detachment afterwards, following the
+[DataView constructor algorithm](https://tc39.es/ecma262/2026/multipage/structured-data.html#sec-dataview-buffer-byteoffset-bytelength).
+This does not complete missing collection iteration, concrete typed-array
+globals, or placeholder Boolean/Error constructor payload behavior. The
+integration tests distinguish prototype propagation from payload coverage.

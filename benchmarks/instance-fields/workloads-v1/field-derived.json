@@ -1,0 +1,8 @@
+{
+  "name": "field-derived",
+  "iterations": 10000,
+  "oracle": "sum-one-to-n-and-per-case-invariants",
+  "setup": "function bench(n){class A{constructor(value){this.seed=value;}}class C extends A{value=this.seed;}let total=0;for(let i=1;i<=n;i++)total+=new C(i).value;return total;}",
+  "invocation": "bench(10000);",
+  "expected": 50005000
+}

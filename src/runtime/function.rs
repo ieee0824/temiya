@@ -209,6 +209,7 @@ pub(super) struct StoredFunctionClosure {
     lexical_this_environment: Option<StoredEnvironment>,
     constructor_kind: ConstructorKind,
     home_object: Option<StoredObject>,
+    immutable_class_prototype: bool,
 }
 impl StoredFunctionClosure {
     pub(super) fn super_base(&self, owner: &Object) -> RuntimeResult<Value> {
@@ -314,8 +315,19 @@ impl StoredFunctionClosure {
         arguments: &[Value],
         new_target: Object,
     ) -> RuntimeResult<Object> {
+        // Only direct construction of a base class can use its immutable own
+        // prototype. Alternate new targets (including Proxy wrappers) retain
+        // GetPrototypeFromConstructor and its observable property access.
+        let prototype = if self.immutable_class_prototype && owner == &new_target {
+            self.home_object
+                .as_ref()
+                .map(|object| object.load(owner))
+                .transpose()?
+        } else {
+            None
+        };
         let closure = self.load(owner)?;
-        construct_function(&closure, owner.clone(), arguments, new_target)
+        construct_function(&closure, owner.clone(), arguments, new_target, prototype)
     }
     pub(super) fn trace(&self, tracer: &mut crate::gc::Tracer<'_>) {
         self.realm.trace(tracer);
@@ -393,6 +405,12 @@ pub(super) fn create_function_with_constructor(
             None
         },
         constructor_kind,
+        // The class evaluator publishes this function only after defining its
+        // non-writable, non-configurable prototype as this same HomeObject.
+        // Other AST-created functions never gain this construction shortcut.
+        immutable_class_prototype: class_name.is_some()
+            && kind == FunctionKind::Method(MethodKind::Constructor)
+            && constructor_kind == ConstructorKind::Base,
         home_object: home_object
             .as_ref()
             .map(|object| StoredObject::store(&function, object))
@@ -537,15 +555,18 @@ fn construct_function(
     function: Object,
     arguments: &[Value],
     new_target: Object,
+    prototype: Option<Object>,
 ) -> RuntimeResult<Object> {
     if closure.constructor_kind != ConstructorKind::Base {
         return construct_derived(closure, function, arguments, new_target)
             .map_err(|error| closure.realm.bind_exception(error));
     }
-    let prototype = new_target
-        .constructor_prototype(super::IntrinsicId::ObjectPrototype, || {
+    let prototype = match prototype {
+        Some(prototype) => prototype,
+        None => new_target.constructor_prototype(super::IntrinsicId::ObjectPrototype, || {
             Ok(closure.realm.intrinsic(super::IntrinsicId::ObjectPrototype))
-        })?;
+        })?,
+    };
     let instance = Object::new_for(&new_target);
     instance.initialize_prototype(Some(prototype));
     let result = call_function(

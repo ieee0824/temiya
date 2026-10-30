@@ -259,3 +259,16 @@ fn noncapturing_callback_loops_keep_values_and_abrupt_control_flow() {
         "function run(n){let values=[];for(let i=0;i<n;i++){if(i===2)continue;if(i===5)break;values.push(i);}return values.length===4 && values[0]+values[1]+values[2]+values[3]===8;}run(10);",
     );
 }
+
+#[test]
+fn direct_base_construction_preserves_immutable_prototypes_and_alternate_new_targets() {
+    check(
+        "class Base{constructor(value){this.value=value;this.target=new.target;}}let prototype=Base.prototype;let caught=false;try{Object.defineProperty(Base,'prototype',{value:{}});}catch(e){caught=e instanceof TypeError;}Object.setPrototypeOf(prototype,{marker:42});let point=new Base(99);caught && Object.getPrototypeOf(point)===prototype && point.marker===42 && point.value===99 && point.target===Base;",
+    );
+    check(
+        "class Base{constructor(value){this.value=value;this.target=new.target;}}let calls=0;let alternate={};let target=new Proxy(function Other(){},{get(object,key){if(key==='prototype'){calls++;return alternate;}return object[key];}});let point=Reflect.construct(Base,[42],target);calls===1 && Object.getPrototypeOf(point)===alternate && point.value===42 && point.target===target;",
+    );
+    check(
+        "class Base{constructor(value){this.value=value;this.target=new.target;}}let bound=Base.bind(null,42);let direct=new bound();class Derived extends Base{}let derived=new Derived(99);Object.getPrototypeOf(direct)===Base.prototype && direct.value===42 && direct.target===Base && Object.getPrototypeOf(derived)===Derived.prototype && derived.value===99 && derived.target===Derived;",
+    );
+}

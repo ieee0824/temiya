@@ -1,12 +1,24 @@
 # Class execution
 
-The public Engine executes base and derived class declarations and expressions through the
-AST backend. Auto selects this path before execution when a Script contains a
-class; explicit Bytecode still rejects class compilation. Within an Auto
-AST Script, eligible simple-parameter ordinary and class function bodies are
-independently verified and run by the bytecode function runtime. Explicit Ast
-keeps function bodies in the AST interpreter. Unsupported bodies select AST
-before execution; runtime errors never trigger a second execution.
+The public Engine executes base and derived class definitions through the shared
+AST class evaluator. Class declarations and top-level class expressions select
+AST before Script execution. Within eligible function bodies, a verified
+`CreateClass` instruction invokes that same evaluator with the current lexical
+environment, so surrounding supported loops can execute as bytecode. This also
+works through explicit Bytecode when the complete Script is supported; it does
+not lower class elements or constructors to new bytecode instructions.
+
+Anonymous class variable initializers and identifier assignments preserve name
+inference, including parenthesized expressions. Anonymous class object-property
+values and logical assignments select AST before execution. Classes prevent
+loop-environment reuse and scalar binding elision because methods can capture
+those bindings. The bridge resolves enclosing this and new.target without
+reading an uninitialized this binding until class source actually requires it.
+
+Within an Auto AST Script, eligible simple-parameter ordinary and class function
+bodies independently use the bytecode function runtime. Explicit Ast keeps
+function bodies in the AST interpreter. Unsupported bodies select AST before
+execution; runtime errors never trigger a second execution.
 
 The per-evaluation cache shares immutable code, not class environments, `this`
 or objects. Span/kind lookup is checked against the complete function AST, so
@@ -20,6 +32,13 @@ keep their own immutable binding and its temporal dead zone. Both forms still
 evaluate heritage and computed keys in strict mode with the enclosing `this`
 and new target. Methods retain traced access to captured outer bindings even
 when garbage collection runs during construction or method execution.
+
+Class functions initialize their complete `length` and `name` descriptors
+together while the ordinary function object is still fresh. This reuses the
+existing internal function-property initializer rather than validating and
+reviving descriptors for independent updates. Descriptor flags and own-key
+order remain unchanged, including inferred names, symbol method names,
+accessor prefixes and the length cut-off at default/rest parameters.
 
 ```js
 class Point {
@@ -200,11 +219,42 @@ the unchanged per-variant outcomes and failure signatures against `8b01973`.
 The i686 record establishes type checking only. Hosted qualification remains
 separate from these native observations.
 
-Three complete upstream captures (`336a38d`, `2be3d7c`, `8b01973`) retain all
+The two-host anonymous-environment capture retains all 24 reports in
+`hosted-anonymous-env-v1`. Both hosts have 33 original-suite Boa wins and
+12 base-class wins. Derived/Boa has 13 wins and two noisy comparisons on
+EPYC 9V74, and 14 wins and one noisy comparison on EPYC 9V45. Class definition
+has only one significant win in three pairs on 9V74, so this candidate still
+does not qualify that workload there. The original identical-worker control
+retains one apparent slowdown on 9V74, and the derived identical-worker control
+retains one apparent speedup on 9V45. Every before/after comparison is noisy.
+
+Five complete upstream captures (`336a38d`, `2be3d7c`, `8b01973`, `13a91d1`, `43d3ff7`) retain all
 100,211 variants each: 26,276 pass, 64,978 fail, 18 skip and 8,939 time out,
 with zero missing or unexecuted variants. `verify-full.mjs` independently
 reconstructs all eight known-pass gates for each source. Passing those gates
 does not turn the recorded failures or timeouts into conformance passes.
+
+The fresh-function metadata candidate (`43d3ff7`) retains four native derived
+reports in `function-metadata-v1`. Candidate/Boa and baseline/Boa each have
+fifteen significant wins. Before/after and identical-candidate controls each
+have fifteen noisy comparisons, so these records do not establish a significant
+effect of the optimization itself. All 120 runs and 1,920 output values validate.
+`verify-function-metadata.mjs` replays those records, 770 passing native tests,
+the fixed upstream captures and unchanged failure signatures. It also checks
+the actual source13a baseline identity; a rejected packaging archive with an
+incorrect copied identity remains retained and never counts as qualification.
+Current-source full-corpus, security and two-host qualification remain separate.
+
+Source `43d3ff7` also retains all 24 two-host reports in
+`hosted-function-metadata-v1`. Original/Boa has 33 significant wins and
+base-class/Boa has 12 on each host. Derived/Boa has 13 wins and two noisy
+comparisons on EPYC 9V45 and 15 wins on EPYC 7763. Definition wins only one
+of three pairs on 9V45, so the two-host performance criterion remains unmet.
+Both hosts' identical-candidate controls are entirely noisy. Before/after
+retains one original-suite and one base-class speedup on 7763, with every
+other comparison noisy. The full source43d capture independently preserves
+all eight known-pass gates; neither integrity replay nor those gates waive
+the unresolved performance condition.
 
 The historical two-host prototype/address-width measurements retain all twelve
 reports per machine, including slower before/after decisions and apparent

@@ -948,7 +948,7 @@ impl Object {
         Some((value, index))
     }
 
-    // Only for a newly allocated ordinary bytecode function, before it is
+    // Only for a newly allocated ordinary function, before it is
     // published. Both values are leaves and the standard descriptors are known.
     pub(super) fn initialize_function_properties(
         &self,

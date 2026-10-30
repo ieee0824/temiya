@@ -595,3 +595,16 @@ fn anonymous_classes_preserve_outer_bindings_strict_this_and_inferred_names() {
         "let Outer=class {}; let caught=false; try { let Outer=class extends Outer {}; } catch(e){caught=e instanceof ReferenceError;} caught;",
     );
 }
+
+#[test]
+fn fresh_class_function_metadata_preserves_descriptors_and_key_order() {
+    check(
+        "function metadata(fn,name,length){let n=Object.getOwnPropertyDescriptor(fn,'name');let l=Object.getOwnPropertyDescriptor(fn,'length');return n.value===name && l.value===length && n.writable===false && l.writable===false && n.enumerable===false && l.enumerable===false && n.configurable===true && l.configurable===true;}class C{constructor(a,b=0,c){}read(a,b=0,c){}get value(){return 42;}set value(v){}static make(a,...rest){}[Symbol.iterator](...rest){}}let value=Object.getOwnPropertyDescriptor(C.prototype,'value');metadata(C,'C',1) && metadata(C.prototype.read,'read',1) && metadata(value.get,'get value',0) && metadata(value.set,'set value',1) && metadata(C.make,'make',1) && metadata(C.prototype[Symbol.iterator],'[Symbol.iterator]',0);",
+    );
+    check(
+        "class A{}class B extends A{}let keys=Reflect.ownKeys(B);keys.length===3 && keys[0]==='length' && keys[1]==='name' && keys[2]==='prototype' && B.length===0 && B.name==='B' && Object.getOwnPropertyDescriptor(B,'prototype').writable===false;",
+    );
+    check(
+        "class C{read(){}}let keys=Reflect.ownKeys(C.prototype.read);keys.length===2 && keys[0]==='length' && keys[1]==='name' && !C.prototype.read.hasOwnProperty('prototype');",
+    );
+}

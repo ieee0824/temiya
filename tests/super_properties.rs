@@ -161,3 +161,16 @@ fn rejected_super_writes_obey_method_strictness_without_freeze() {
         "'use strict';let object={write(){super.fresh=42;}};Object.preventExtensions(object);let caught=false;try{object.write();}catch(e){caught=e instanceof TypeError;}caught && !object.hasOwnProperty('fresh');",
     );
 }
+
+#[test]
+fn compiled_class_definitions_keep_enclosing_method_super_bindings() {
+    check(
+        "class A{get key(){return this.keyName;}}class B extends A{make(value){let C=class{[super.key](){return value;}};return C;}}let owner=new B();owner.keyName='read';let C=owner.make(42);new C().read()===42;",
+    );
+    check(
+        "class A{choose(){return A;}}class B extends A{make(){let C=class extends super.choose(){};return C;}}let C=new B().make();new C() instanceof A && Object.getPrototypeOf(C)===A;",
+    );
+    check(
+        "class A{get key(){return 'first';}}class B extends A{make(){let C=class{[super.key](){return 42;}};return C;}}let first=new B().make();Object.setPrototypeOf(B.prototype,{get key(){return 'second';}});let second=new B().make();new first().first()===42 && new second().second()===42;",
+    );
+}

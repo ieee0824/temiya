@@ -8,7 +8,7 @@ use crate::ast::{
 use super::{
     Environment, ExpressionEvaluator, FunctionKind, IntrinsicId, JsString, Object,
     PropertyDescriptor, PropertyKey, RuntimeError, RuntimeResult, Value,
-    function::{ConstructorKind, create_function, create_function_with_constructor},
+    function::{ConstructorKind, create_function_with_constructor},
 };
 
 pub(super) fn evaluate(
@@ -126,15 +126,7 @@ pub(super) fn evaluate(
         Some(prototype.clone()),
         constructor_kind,
         Some(constructor_parent),
-    )?;
-    constructor.define_own_property(
-        "name".into(),
-        PropertyDescriptor::data(
-            Value::String(binding.clone().or(inferred_name).unwrap_or_default()),
-            false,
-            false,
-            true,
-        ),
+        Some(binding.clone().or(inferred_name).unwrap_or_default()),
     )?;
     constructor.define_own_property(
         "prototype".into(),
@@ -170,12 +162,6 @@ pub(super) fn evaluate(
             &prototype
         };
         let code = strict_code(function);
-        let method = create_function(
-            &code,
-            FunctionKind::Method(*kind),
-            &evaluator,
-            Some(home.clone()),
-        )?;
         let name = match &key {
             PropertyKey::String(name) => name.code_units().to_vec(),
             PropertyKey::Symbol(symbol) => {
@@ -193,14 +179,14 @@ pub(super) fn evaluate(
             _ => "",
         };
         let name = prefix.encode_utf16().chain(name).collect::<Vec<_>>();
-        method.define_own_property(
-            "name".into(),
-            PropertyDescriptor::data(
-                Value::String(JsString::from_code_units_slice(&name)),
-                false,
-                false,
-                true,
-            ),
+        let method = create_function_with_constructor(
+            &code,
+            FunctionKind::Method(*kind),
+            &evaluator,
+            Some(home.clone()),
+            ConstructorKind::Base,
+            None,
+            Some(JsString::from_code_units_slice(&name)),
         )?;
         let descriptor = match kind {
             MethodKind::Get => PropertyDescriptor {

@@ -242,7 +242,8 @@ impl StoredFunctionClosure {
             realm: self.realm.load(owner)?,
             environment: self.environment.load(owner)?,
             // Verified ordinary/method bodies use their prepared this binding;
-            // the compiler rejects arrows and super-dependent bodies here.
+            // direct super operations remain AST. Nested class evaluation resolves
+            // super through the function environment and stored HomeObject.
             // Retain stored GC edges without reviving unused call-local roots.
             lexical_this: if self.code.compiled.is_some() {
                 Value::Undefined
@@ -342,6 +343,7 @@ pub(super) fn create_function(
         home_object,
         ConstructorKind::Base,
         None,
+        None,
     )
 }
 
@@ -352,6 +354,7 @@ pub(super) fn create_function_with_constructor(
     home_object: Option<Object>,
     constructor_kind: ConstructorKind,
     constructor_parent: Option<Object>,
+    class_name: Option<JsString>,
 ) -> RuntimeResult<Object> {
     if code.asynchronous && code.generator {
         return Err(RuntimeError::internal_error(
@@ -416,13 +419,22 @@ pub(super) fn create_function_with_constructor(
             )
         })
         .count();
-    function.define_own_property(
-        "length".into(),
-        super::PropertyDescriptor::data(Value::Number(length as f64), false, false, true),
-    )?;
-    if let Some(ExprKind::Identifier(name)) = code.name.as_ref().map(|name| &name.kind) {
-        function
-            .create_data_property("name".into(), Value::String(JsString::from(name.as_str())))?;
+    if let Some(name) = class_name {
+        // Class functions are still fresh ordinary objects. Their complete
+        // standard metadata can be stored without repeatedly validating and
+        // reviving property descriptors. No user code runs before publication.
+        function.initialize_function_properties(length, name, None)?;
+    } else {
+        function.define_own_property(
+            "length".into(),
+            super::PropertyDescriptor::data(Value::Number(length as f64), false, false, true),
+        )?;
+        if let Some(ExprKind::Identifier(name)) = code.name.as_ref().map(|name| &name.kind) {
+            function.create_data_property(
+                "name".into(),
+                Value::String(JsString::from(name.as_str())),
+            )?;
+        }
     }
     if constructable && kind != FunctionKind::Method(MethodKind::Constructor) {
         function.install_lazy_function_prototype(

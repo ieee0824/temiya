@@ -25,8 +25,12 @@ identity, inherited accessors, detached methods, dynamic parents, nested arrows,
 key evaluation and conversion, strict assignment failures, Proxy traps and
 reentrant garbage collection of captured HomeObjects and receivers.
 
-This connection uses the AST function path. Explicit Bytecode does not compile
-super-dependent methods. Fields/private elements, eval and general async or
+Super references use the shared AST expression evaluator. Methods with direct
+super references select AST before execution. Eligible methods that contain
+class expressions can run surrounding code in the VM: the CreateClass bridge
+uses the enclosing method environment for super in class heritage and computed
+keys, including its actual receiver and current HomeObject prototype. This
+bridge does not introduce general super-reference bytecode instructions. Fields/private elements, eval and general async or
 parameter-environment gaps have separate issues. Fixed upstream results and
 performance qualification must be recorded before treating #156 as complete.
 

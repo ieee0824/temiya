@@ -330,7 +330,7 @@ impl Compiler {
                                 strict: self.strict,
                             });
                         }
-                        self.expression(init)?;
+                        self.named_expression(init, name)?;
                     } else if *kind == VariableKind::Var {
                         continue;
                     } else if *kind == VariableKind::Const {
@@ -413,6 +413,9 @@ impl Compiler {
                     ) {
                         return Err(self.unsupported("object method", property.span));
                     }
+                    if property.value.as_ref().is_some_and(|value| matches!(&unparenthesized(value).kind, ExprKind::Class(class) if class.name.is_none())) {
+                        return Err(self.unsupported("anonymous class property name inference", property.span));
+                    }
                     let proto_name = match &property.key.kind {
                         ExprKind::Identifier(name) => name == "__proto__",
                         ExprKind::Literal(Literal::String { value, .. }) => {
@@ -471,6 +474,7 @@ impl Compiler {
                 self.load_name(name)?;
                 Ok(())
             }
+            ExprKind::Class(class) => self.class_expression(class, None, expression.span),
             ExprKind::Function(function) | ExprKind::Arrow(function) => {
                 let arrow = matches!(expression.kind, ExprKind::Arrow(_));
                 let template = self.function_template(function, arrow)?;
@@ -523,7 +527,11 @@ impl Compiler {
                     }
                     _ => return Err(self.unsupported("assignment target", target.span)),
                 };
-                self.expression(value)?;
+                if let ExprKind::Identifier(name) = &target.kind {
+                    self.named_expression(value, name)?;
+                } else {
+                    self.expression(value)?;
+                }
                 self.code.push(Instruction::Duplicate);
                 self.code.push(if let Some((scope, slot, _)) = binding {
                     Instruction::StoreBinding { scope, slot }
@@ -684,6 +692,35 @@ impl Compiler {
         }
     }
 
+    fn named_expression(&mut self, expression: &Expr, name: &str) -> Result<(), CompileError> {
+        if let ExprKind::Class(class) = &unparenthesized(expression).kind {
+            self.class_expression(class, Some(name.into()), expression.span)
+        } else {
+            self.expression(expression)
+        }
+    }
+
+    fn class_expression(
+        &mut self,
+        class: &crate::ast::Class,
+        inferred_name: Option<JsString>,
+        span: Span,
+    ) -> Result<(), CompileError> {
+        if !self
+            .constants
+            .iter()
+            .any(|c| matches!(c, Constant::Scope(s) if s.kind == ScopeKind::Function))
+        {
+            return Err(self.unsupported("class outside function", span));
+        }
+        let index = self.pool(Constant::Class {
+            definition: std::rc::Rc::new(class.clone()),
+            inferred_name,
+        })?;
+        self.code.push(Instruction::CreateClass(index));
+        Ok(())
+    }
+
     fn emit_binary(&mut self, operator: &str, span: Span) -> Result<(), CompileError> {
         let operator = BinaryOperator::from_spelling(operator)
             .ok_or_else(|| self.unsupported("binary operator", span))?;
@@ -705,6 +742,11 @@ impl Compiler {
         value: &Expr,
         span: Span,
     ) -> Result<(), CompileError> {
+        if matches!(operator, "&&=" | "||=" | "??=")
+            && matches!(&unparenthesized(value).kind, ExprKind::Class(class) if class.name.is_none())
+        {
+            return Err(self.unsupported("anonymous class logical assignment", span));
+        }
         let append = match (
             operator,
             &unparenthesized(target).kind,
@@ -1394,6 +1436,7 @@ fn bytecode_may_observe_arguments(body: &VerifiedBytecode) -> bool {
                     .eq("arguments".encode_utf16())
                     || name.code_units().iter().copied().eq("eval".encode_utf16())
             }
+            Constant::Class { .. } => true,
             Constant::Function(template) => bytecode_may_observe_arguments(&template.body),
             Constant::Scope(scope) => {
                 scope.bindings.iter().any(|binding| {

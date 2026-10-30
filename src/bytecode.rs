@@ -104,6 +104,13 @@ pub enum Constant {
     Scope(ScopeDescriptor),
     /// Immutable nested code, usable only by CreateFunction.
     Function(Rc<FunctionTemplate>),
+    /// Immutable class source for the shared class evaluator.
+    Class {
+        /// Parsed definition, containing no runtime values.
+        definition: Rc<crate::ast::Class>,
+        /// Optional identifier name inferred by the surrounding expression.
+        inferred_name: Option<JsString>,
+    },
 }
 
 /// Supported numeric unary operations; conversion semantics are shared with AST.
@@ -330,6 +337,8 @@ pub enum Instruction {
     Invoke,
     /// Create a bytecode-backed closure capturing the current environment.
     CreateFunction(u32),
+    /// Evaluate a fresh class in the current function environment.
+    CreateClass(u32),
     /// Push the nearest non-arrow function newTarget, or undefined.
     LoadNewTarget,
     /// Push the current lexical this binding.
@@ -387,6 +396,7 @@ impl Instruction {
             Self::AsCallTarget => 1,
             Self::BeginMethodCall => 2,
             Self::CreateFunction(_)
+            | Self::CreateClass(_)
             | Self::LoadNewTarget
             | Self::BeginReferenceCall
             | Self::Invoke
@@ -450,6 +460,7 @@ impl Instruction {
             | Self::AppendArgument
             | Self::SpreadArguments => -1,
             Self::CreateFunction(_)
+            | Self::CreateClass(_)
             | Self::LoadNewTarget
             | Self::Invoke
             | Self::LoadThis
@@ -668,7 +679,7 @@ fn loop_bindings_are_unobserved(code: &Bytecode, states: &[Option<FlowState>]) -
         .iter()
         .enumerate()
         .all(|(offset, instruction)| match *instruction {
-            Instruction::CreateFunction(_) => false,
+            Instruction::CreateFunction(_) | Instruction::CreateClass(_) => false,
             Instruction::EnterScope(index) => {
                 let Constant::Scope(plan) = &code.constants[index as usize] else {
                     return false;
@@ -939,6 +950,14 @@ fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
                     );
                 }
             }
+            Instruction::CreateClass(index) => {
+                if !matches!(constant(index)?, Constant::Class { .. }) {
+                    return Err(error(VerifyErrorKind::InvalidConstantKind));
+                }
+                if state.scopes.is_empty() {
+                    return Err(error(VerifyErrorKind::ScopeMismatch));
+                }
+            }
             Instruction::CreateFunction(index) => {
                 let Constant::Function(template) = constant(index)? else {
                     return Err(error(VerifyErrorKind::InvalidConstantKind));
@@ -1031,7 +1050,10 @@ fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
                     .ok_or_else(|| error(VerifyErrorKind::ScopeMismatch))?;
             }
             Instruction::LoadConstant(index) => {
-                if matches!(constant(index)?, Constant::Scope(_) | Constant::Function(_)) {
+                if matches!(
+                    constant(index)?,
+                    Constant::Scope(_) | Constant::Function(_) | Constant::Class { .. }
+                ) {
                     return Err(error(VerifyErrorKind::InvalidConstantKind));
                 }
             }

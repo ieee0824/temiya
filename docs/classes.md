@@ -121,3 +121,21 @@ prototype access and rechecks detachment afterwards, following the
 This does not complete missing collection iteration, concrete typed-array
 globals, or placeholder Boolean/Error constructor payload behavior. The
 integration tests distinguish prototype propagation from payload coverage.
+
+## Retained derived qualification
+
+The fixed derived suite contains five source workloads, with unchanged counts
+and result oracles. The initial implementation, arguments allocation change,
+and native-prototype candidate each retain independent raw measurements and
+verifiers under [benchmarks/derived-classes](../benchmarks/derived-classes).
+The arguments candidate has fifteen significant Boa wins; the subsequent native
+prototype candidate has thirteen wins and two comparisons within noise. Its
+identical-binary control also has one apparent slowdown, which remains in the
+archive. These observations require further host qualification before a final
+performance claim.
+
+The native-prototype candidate executes all 401 variants of 203 fixed upstream
+original files in each of Ast and Auto: 214 pass, 187 fail, zero skipped or timed
+out. All 208 preceding passes remain passing. The separate base-class selection
+has 276 passes and 18 dependency failures; the 216-variant PR gate passes fully.
+Raw failures remain available for dependency review; they do not count as passes.

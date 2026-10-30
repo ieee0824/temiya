@@ -61,3 +61,10 @@ derived outcomes and failed diagnostics match the preceding main155-v1 snapshot.
 The allocation test fails before this change and passes after it. Hosted speed
 qualification and full regression checks remain pending. verify-performance.mjs
 replays every intermediate snapshot, including rejected and adverse timings.
+
+The full-object-capture-v1 archive retains all100211 variants from run41125906497.
+Seven known-pass gates succeeded, but shard3 has a real namespace membership
+regression before export initialization. This source is not merge-qualified.
+verify-full.mjs independently reconstructs that exact red gate and every raw
+outcome; accepting historical record integrity does not waive the regression.
+The namespace HasProperty fix requires its own full and speed qualification.

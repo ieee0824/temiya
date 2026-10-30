@@ -12,6 +12,8 @@ therefore affects later references; key conversion or the assignment's right
 side cannot retarget a reference that was already created.
 Writes inspect the receiver's own descriptor and propagate Proxy or module
 binding errors, including a namespace export's temporal dead zone.
+Namespace membership tests inspect export names without reading their values;
+Get and GetOwnProperty still throw for uninitialized exports.
 
 An uninitialized derived `this` throws before evaluating the property expression.
 Key conversion occurs when GetValue or PutValue consumes the reference, and the

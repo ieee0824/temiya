@@ -311,7 +311,8 @@ Changing the instance prototype's parent remains observable by new instances.
 A verified class loop can reuse its header cells only when the complete class
 syntax does not mention any cloned loop binding or eval. The scan includes
 heritage, computed keys, parameter defaults and nested functions/classes;
-shadowed name occurrences conservatively retain distinct cells. Fields/private
+shadowed name occurrences conservatively retain distinct cells. Public instance
+field initializers and nested defaults/arrows are included; static/private
 elements keep the previous path. Body-local bindings and fresh class objects
 retain their separate identities. References or pending calls spanning a clone
 continue to prohibit reuse.

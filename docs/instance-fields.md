@@ -20,8 +20,25 @@ HomeObjects are traced from the constructor. Public Engine tests in
 `tests/instance_fields.rs` cover reentrant collection and reclamation.
 
 Static fields, static blocks and private elements remain unsupported and are
-rejected before class effects. Field-bearing classes remain excluded from the
-VM loop-header reuse proof. This implementation does not establish complete
+rejected before class effects. Eligible function-body declarations enter the VM
+through the shared class evaluator with their lexical TDZ and mutable outer
+binding. Complete syntax analysis permits loop-header reuse only when fields,
+keys, defaults and nested functions/classes cannot observe any cloned header
+name or eval. Capturing headers and per-iteration body bindings remain distinct.
+This implementation does not establish complete
 class-fields-public conformance or speed qualification; the fixed 2057-file
 selection and five pre-implementation Boa oracle probes are retained under
 `benchmarks/instance-fields` while runtime comparison is pending.
+
+The initial3f86f24 snapshot retains all4098 variants per backend:579 prior passes
+are preserved and429 new variants pass;2294 failures and796 timeouts remain.
+Both backend outcome lists match. Its initial native comparison has5 significant
+Boa wins and10 noisy comparisons, so the suite is not speed-qualified. It also
+inherits the separately fixed namespace regression. Run
+`node benchmarks/instance-fields/verify-initial.mjs` to replay that history.
+
+The following declaration/capture optimization passes825 native tests. The
+allocation test fails before the proof with40 versus13 live allocations for
+thirty versus three iterations, then passes with a constant allocation count.
+Delayed initializers, nested arrows/defaults/classes and distinct body bindings
+retain their values. Fresh performance and upstream qualification remain pending.

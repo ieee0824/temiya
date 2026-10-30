@@ -698,18 +698,22 @@ struct FlowState {
 // Source metadata is not a runtime closure. Inspect the complete class syntax,
 // including heritage, keys, defaults and nested functions/classes. Any eval or
 // loop-name occurrence keeps distinct cells, even when lexical shadowing would
-// make that occurrence harmless. Fields/private elements retain the old path.
+// make that occurrence harmless. Static/private elements retain the old path.
 fn class_does_not_observe_loop_bindings(
     class: &crate::ast::Class,
     loop_names: &std::collections::HashSet<Vec<u16>>,
 ) -> bool {
-    if class.elements.iter().any(|element| {
-        !matches!(element.kind, crate::ast::ClassElementKind::Method { .. })
-            || element
-                .key
-                .as_ref()
-                .is_some_and(|key| matches!(key.kind, crate::ast::ExprKind::PrivateIdentifier(_)))
-    }) {
+    fn supported(class: &crate::ast::Class) -> bool {
+        class.elements.iter().all(|element| {
+            (matches!(element.kind, crate::ast::ClassElementKind::Method { .. })
+                || matches!(element.kind, crate::ast::ClassElementKind::Field(_))
+                    && !element.is_static)
+                && !element.key.as_ref().is_some_and(|key| {
+                    matches!(key.kind, crate::ast::ExprKind::PrivateIdentifier(_))
+                })
+        })
+    }
+    if !supported(class) {
         return false;
     }
     let expression = crate::ast::Expr::new(
@@ -718,6 +722,9 @@ fn class_does_not_observe_loop_bindings(
     );
     let mut observed = false;
     expression.visit(&mut |expression| {
+        if let crate::ast::ExprKind::Class(nested) = &expression.kind {
+            observed |= !supported(nested);
+        }
         if let crate::ast::ExprKind::Identifier(name) = &expression.kind {
             observed |=
                 name == "eval" || loop_names.contains(&name.encode_utf16().collect::<Vec<_>>());

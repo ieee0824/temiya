@@ -172,3 +172,57 @@ fn runtime_class_loop_frames_keep_observable_arguments_and_body_bindings() {
     let source = "function Parent(value){this.value=value;}function make(Parent){let types=[];for(let i=0;i<3;i++){let C=class extends arguments[0]{constructor(value){super(value);}read(){return this.value;}static type(){return C;}};types.push(C);}return types;}let types=make(Parent);Object.getPrototypeOf(types[0])===Parent && types[0].type()===types[0] && types[1].type()===types[1] && new types[0](42).read()===42 && new types[2](99).read()===99;";
     check(source);
 }
+
+#[test]
+fn class_declarations_inside_functions_keep_tdz_and_binding_identity() {
+    for source in [
+        "function make(){class C{value=42;read(){return C;}}let Saved=C;C=99;return new Saved().read()===Saved && new Saved().value===42 && C===99;}make();",
+        "function make(){let C=7;{class C{value=42;}if(new C().value!==42)return false;}return C===7;}make();",
+        "function make(value){class C{value=value;}return new C().value===42;}make(42);",
+        "function make(){class A{constructor(value){this.seed=value;}}class B extends A{value=this.seed+1;}return new B(41).value===42;}make();",
+    ] {
+        let code = BytecodeCompiler::compile(source).unwrap();
+        assert!(
+            matches!(
+                VirtualMachine::execute_in_realm(&code, &Realm::ordinary()).unwrap(),
+                Completion::Normal(Some(Value::Boolean(true)))
+            ),
+            "{source}"
+        );
+    }
+    for source in [
+        "function make(){return C;class C{}}make();",
+        "function make(){class C extends C{}return C;}make();",
+    ] {
+        let code = BytecodeCompiler::compile(source).unwrap();
+        assert_eq!(
+            VirtualMachine::execute_in_realm(&code, &Realm::ordinary())
+                .unwrap_err()
+                .kind(),
+            RuntimeErrorKind::ReferenceError
+        );
+    }
+    assert!(BytecodeCompiler::compile("class C{}").is_err());
+    assert!(BytecodeCompiler::compile("function make(){var C;class C{}}").is_err());
+}
+
+#[test]
+fn field_class_loop_reuse_keeps_delayed_captures_and_body_cells_distinct() {
+    for source in [
+        "function make(){let values=[];for(let i=0;i<3;i++){values.push(class{value=i;});}return values;}let values=make();let A=values[0],B=values[1],C=values[2];new A().value===0 && new B().value===1 && new C().value===2;",
+        "function make(){let values=[];for(let i=0;i<3;i++){class C{value=i;}values.push(C);}return values;}let values=make();let A=values[0],B=values[1],C=values[2];new A().value===0 && new B().value===1 && new C().value===2;",
+        "function make(){let values=[];for(let i=0;i<3;i++){values.push(class{value=()=>i;});}return values;}let values=make();let A=values[0],B=values[1],C=values[2];new A().value()===0 && new B().value()===1 && new C().value()===2;",
+        "function make(){let values=[];for(let i=0;i<3;i++){values.push(class{unused=1;read(value=()=>i){return value();}});}return values;}let values=make();let A=values[0],B=values[1],C=values[2];new A().read()===0 && new B().read()===1 && new C().read()===2;",
+        "function make(){let values=[];for(let i=0;i<3;i++){values.push(class{value=class{read=i;};});}return values;}let values=make();let A=new (values[0])().value,B=new (values[1])().value,C=new (values[2])().value;new A().read===0 && new B().read===1 && new C().read===2;",
+        "function make(){let values=[];for(let i=0;i<3;i++){let body=i;class C{value=body;read=()=>body;}values.push(C);}return values;}let values=make();let A=values[0],B=values[1],C=values[2];new A().value===0 && new B().read()===1 && new C().value===2;",
+    ] {
+        let code = BytecodeCompiler::compile(source).unwrap();
+        assert!(
+            matches!(
+                VirtualMachine::execute_in_realm(&code, &Realm::ordinary()).unwrap(),
+                Completion::Normal(Some(Value::Boolean(true)))
+            ),
+            "{source}"
+        );
+    }
+}

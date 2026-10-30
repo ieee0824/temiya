@@ -68,3 +68,13 @@ regression before export initialization. This source is not merge-qualified.
 verify-full.mjs independently reconstructs that exact red gate and every raw
 outcome; accepting historical record integrity does not waive the regression.
 The namespace HasProperty fix requires its own full and speed qualification.
+
+The hosted-object-capture-v1 archive retains32 reports from two independent
+x64 hosts, including original11/base4/derived5/super5 and all four controls.
+Both hosts have15/15 significant super wins against Boa and12 improvements
+against the preceding runtime. Every derived workload retains at least2/3
+Boa wins. These speed observations belong to2a36d63, whose full-corpus
+namespace regression prevents merging it. verify-hosted.mjs reconstructs all
+raw values and checks source/compiler/features/binaries and shared hardware.
+Source299e8d8 fixes membership independently from Get/GetOwnProperty TDZ; its
+new full-corpus, security and two-host speed runs are still pending.

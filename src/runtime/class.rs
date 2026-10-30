@@ -16,8 +16,9 @@ pub(super) fn evaluate(
     outer: &ExpressionEvaluator,
     inferred_name: Option<JsString>,
 ) -> RuntimeResult<Object> {
-    enum StaticInitializer {
+    enum StaticInitializer<'a> {
         Field(PropertyKey, Option<Object>),
+        DirectField(PropertyKey, &'a crate::ast::Expr),
         Block(Object),
     }
     // Never execute a partial class while silently discarding unsupported elements.
@@ -178,6 +179,12 @@ pub(super) fn evaluate(
         };
         if let ClassElementKind::Field(expression) = &element.kind {
             if element.is_static {
+                if let Some(expression) = expression.as_ref().filter(|expression| {
+                    super::class_fields::can_evaluate_static_directly(expression)
+                }) {
+                    static_initializers.push(StaticInitializer::DirectField(key, expression));
+                    continue;
+                }
                 let initializer = expression
                     .as_ref()
                     .map(|expression| {
@@ -263,11 +270,19 @@ pub(super) fn evaluate(
                     Some(function) => function.call(Value::Object(constructor.clone()), &[])?,
                     None => Value::Undefined,
                 };
-                if !constructor
-                    .define_own_property(key, PropertyDescriptor::data(value, true, true, true))?
-                {
-                    return Err(RuntimeError::type_error("cannot define static field"));
-                }
+                define_static_field(&constructor, key, value)?;
+            }
+            StaticInitializer::DirectField(key, expression) => {
+                let direct = ExpressionEvaluator::with_environment(
+                    outer.realm.clone(),
+                    environment.clone(),
+                    Value::Object(constructor.clone()),
+                    true,
+                );
+                let value = direct
+                    .evaluate(expression)
+                    .map_err(|error| outer.realm.bind_exception(error))?;
+                define_static_field(&constructor, key, value)?;
             }
             StaticInitializer::Block(function) => {
                 function.call(Value::Object(constructor.clone()), &[])?;
@@ -275,6 +290,13 @@ pub(super) fn evaluate(
         }
     }
     Ok(constructor)
+}
+
+fn define_static_field(constructor: &Object, key: PropertyKey, value: Value) -> RuntimeResult<()> {
+    if !constructor.define_own_property(key, PropertyDescriptor::data(value, true, true, true))? {
+        return Err(RuntimeError::type_error("cannot define static field"));
+    }
+    Ok(())
 }
 
 fn strict_code(function: &Function) -> Cow<'_, Function> {

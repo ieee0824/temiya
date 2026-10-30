@@ -13,6 +13,51 @@ pub(super) struct Field {
     key: PropertyKey,
     initializer: Option<StoredObject>,
 }
+
+// These synchronous expressions cannot retain or inspect an initializer's
+// function environment. Calls, eval, super and function/class creation keep
+// the ordinary initializer path. Property callbacks have their own contexts.
+pub(super) fn can_evaluate_static_directly(expression: &Expr) -> bool {
+    use ExprKind as E;
+    match &expression.kind {
+        E::Literal(_) | E::This => true,
+        E::Identifier(name) => !matches!(name.as_str(), "eval" | "arguments"),
+        E::MetaProperty { meta, property } => meta == "new" && property == "target",
+        E::Parenthesized(inner)
+        | E::Unary {
+            argument: inner, ..
+        }
+        | E::Update {
+            argument: inner, ..
+        } => can_evaluate_static_directly(inner),
+        E::Binary { left, right, .. } => {
+            can_evaluate_static_directly(left) && can_evaluate_static_directly(right)
+        }
+        E::Assignment { target, value, .. } => {
+            can_evaluate_static_directly(target) && can_evaluate_static_directly(value)
+        }
+        E::Conditional {
+            test,
+            consequent,
+            alternate,
+        } => {
+            can_evaluate_static_directly(test)
+                && can_evaluate_static_directly(consequent)
+                && can_evaluate_static_directly(alternate)
+        }
+        E::Sequence(expressions) => expressions.iter().all(can_evaluate_static_directly),
+        E::Member {
+            object,
+            property,
+            computed,
+            ..
+        } => {
+            can_evaluate_static_directly(object)
+                && (!computed || can_evaluate_static_directly(property))
+        }
+        _ => false,
+    }
+}
 impl Field {
     pub(super) fn trace(&self, tracer: &mut crate::gc::Tracer<'_>) {
         if let Some(initializer) = &self.initializer {

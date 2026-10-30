@@ -97,7 +97,7 @@ fn static_closures_and_pending_initializers_survive_gc_then_collect() {
                     engine.value(&realm, Value::Object(gc)).unwrap(),
                 )
                 .unwrap();
-            let script=engine.compile(&realm,"function make(){let captured={value:41};class A{static get seed(){gcNow();return this.saved.value;}}return class extends A{static saved=(gcNow(),captured);static{gcNow();let increment=1;this.read=()=>super.seed+increment;}static result=(gcNow(),this.read());};}let C=make();let read=C.read;C=undefined;gcNow();read()===42;").unwrap();
+            let script=engine.compile(&realm,"function make(){let captured={value:41};let holder={get value(){gcNow();return captured;}};class A{static get seed(){gcNow();return this.saved.value;}}return class extends A{static saved=holder.value;static{gcNow();let increment=1;this.read=()=>super.seed+increment;}static result=(gcNow(),this.read());};}let C=make();let read=C.read;C=undefined;gcNow();read()===42;").unwrap();
             assert!(matches!(
                 engine.evaluate(&script).unwrap().value(),
                 Value::Boolean(true)
@@ -105,4 +105,11 @@ fn static_closures_and_pending_initializers_survive_gc_then_collect() {
         }
         assert_eq!(engine.collect_garbage().unwrap().retained, 0);
     }
+}
+
+#[test]
+fn simple_static_initializers_keep_strict_class_this_and_undefined_new_target() {
+    check(
+        "function make(){class C{static receiver=this;static target=new.target;}return C;}let C=new make();let caught=false;try{class D{static value=(missingStaticBinding=42);}}catch(e){caught=e instanceof ReferenceError;}C.receiver===C && C.target===undefined && caught && typeof missingStaticBinding==='undefined';",
+    );
 }

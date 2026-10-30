@@ -1,0 +1,8 @@
+{
+  "name": "super-arrow-dynamic-parent",
+  "iterations": 10000,
+  "oracle": "half-n-times42-plus-half-n-times84",
+  "setup": "function bench(n) { let base = { read() { return this.value; } }; let next = { read() { return this.value * 2; } }; let object = { __proto__: base, value: 42, make() { return () => super.read(); } }; let read = object.make(); let total = 0; for (let i = 0; i < n; i++) { if (i === n / 2) Object.setPrototypeOf(object, next); total += read(); } return total; }",
+  "invocation": "bench(10000);",
+  "expected": 630000
+}

@@ -1,0 +1,8 @@
+{
+  "name": "super-accessor-receiver",
+  "iterations": 10000,
+  "oracle": "sum-one-to-n-and-receiver-state",
+  "setup": "function bench(n) { let base = { get value() { return this.stored; }, set value(value) { this.stored = value; } }; let object = { __proto__: base, stored: 0, step() { let next = super.value + 1; super.value = next; return next; } }; let total = 0; for (let i = 0; i < n; i++) total += object.step(); if (object.stored !== n || base.stored !== undefined) throw 42; return total; }",
+  "invocation": "bench(10000);",
+  "expected": 50005000
+}

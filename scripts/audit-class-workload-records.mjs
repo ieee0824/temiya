@@ -2,18 +2,24 @@
 import fs from 'node:fs';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
-import {classFixtureVersion, classManifestSha256, classReferenceRevision, classWorkloads} from './class-benchmark-reference.mjs';
+import * as baseClassSuite from './class-benchmark-reference.mjs';
 
-assert(process.argv.length > 2, 'provide authored class comparison reports');
+const args = process.argv.slice(2);
+const derived = args[0] === '--derived';
+if (derived) args.shift();
+const {classFixtureVersion, classManifestSha256, classReferenceRevision, classWorkloads} = derived
+  ? await import('./derived-class-benchmark-reference.mjs') : baseClassSuite;
+assert(args.length > 0, 'provide authored class comparison reports');
 const sha = b => createHash('sha256').update(b).digest('hex');
 const median = values => {const s = [...values].sort((a, b) => a - b), i = s.length >> 1;
   return s.length % 2 ? s[i] : Math.floor((s[i - 1] + s[i]) / 2);};
 const reports = [];
-for (const file of process.argv.slice(2)) {
+for (const file of args) {
   const bytes = fs.readFileSync(file), r = JSON.parse(bytes);
   const before = r.comparison_kind === 'Temiya class before/after or control';
   assert(before || r.comparison_kind === 'Temiya class versus actual Boa');
   assert.equal(sha(JSON.stringify(r.manifest, null, 2) + '\n'), classManifestSha256);
+  assert.equal(r.manifest.fixture_kind, derived ? 'authored-derived-classes' : 'authored-base-classes');
   assert.equal(r.manifest.fixture_version, classFixtureVersion);
   assert.equal(r.manifest.reference_engine_revision, classReferenceRevision);
   assert.deepEqual(r.capture_errors, []);

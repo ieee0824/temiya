@@ -1,4 +1,4 @@
-//! Base class definitions. Derived construction and fields have separate gates.
+//! Class definitions and constructor inheritance. Fields have separate gates.
 use std::borrow::Cow;
 
 use crate::ast::{
@@ -7,7 +7,8 @@ use crate::ast::{
 
 use super::{
     Environment, ExpressionEvaluator, FunctionKind, IntrinsicId, JsString, Object,
-    PropertyDescriptor, PropertyKey, RuntimeError, RuntimeResult, Value, function::create_function,
+    PropertyDescriptor, PropertyKey, RuntimeError, RuntimeResult, Value,
+    function::{ConstructorKind, create_function, create_function_with_constructor},
 };
 
 pub(super) fn evaluate(
@@ -15,11 +16,6 @@ pub(super) fn evaluate(
     outer: &ExpressionEvaluator,
     inferred_name: Option<JsString>,
 ) -> RuntimeResult<Object> {
-    if class.super_class.is_some() {
-        return Err(RuntimeError::internal_error(
-            "derived class evaluation is not yet implemented",
-        ));
-    }
     // Never execute a partial class while silently discarding unsupported elements.
     for element in &class.elements {
         if !matches!(element.kind, ClassElementKind::Method { .. })
@@ -49,8 +45,39 @@ pub(super) fn evaluate(
         true,
     )
     .with_new_target(outer.new_target.clone())
+    .with_this_environment(outer.this_environment.clone())
     .with_function_cache(outer.function_cache.clone());
-    let prototype = Object::new_with_prototype(outer.realm.intrinsic(IntrinsicId::ObjectPrototype));
+    let (prototype_parent, constructor_parent) = if let Some(heritage) = &class.super_class {
+        match evaluator.evaluate(heritage)? {
+            Value::Null => (None, outer.realm.intrinsic(IntrinsicId::FunctionPrototype)),
+            Value::Object(parent) if parent.is_constructor() => {
+                let prototype = match parent.get(&PropertyKey::from("prototype"))? {
+                    Value::Object(object) => Some(object),
+                    Value::Null => None,
+                    _ => {
+                        return Err(RuntimeError::type_error(
+                            "superclass prototype is not an object or null",
+                        ));
+                    }
+                };
+                (prototype, parent)
+            }
+            _ => {
+                return Err(RuntimeError::type_error(
+                    "class heritage is not a constructor or null",
+                ));
+            }
+        }
+    } else {
+        (
+            Some(outer.realm.intrinsic(IntrinsicId::ObjectPrototype)),
+            outer.realm.intrinsic(IntrinsicId::FunctionPrototype),
+        )
+    };
+    let prototype = Object::new_for(&constructor_parent);
+    if let Some(parent) = prototype_parent {
+        prototype.initialize_prototype(Some(parent));
+    }
     let explicit = class
         .elements
         .iter()
@@ -77,11 +104,20 @@ pub(super) fn evaluate(
             strict: true,
         })
     };
-    let constructor = create_function(
+    let constructor_kind = if class.super_class.is_none() {
+        ConstructorKind::Base
+    } else if explicit.is_some() {
+        ConstructorKind::Derived
+    } else {
+        ConstructorKind::DefaultDerived
+    };
+    let constructor = create_function_with_constructor(
         &code,
         FunctionKind::Method(MethodKind::Constructor),
         &evaluator,
         Some(prototype.clone()),
+        constructor_kind,
+        Some(constructor_parent),
     )?;
     constructor.define_own_property(
         "name".into(),

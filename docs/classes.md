@@ -1,6 +1,6 @@
-# Base class execution
+# Class execution
 
-The public Engine executes base class declarations and expressions through the
+The public Engine executes base and derived class declarations and expressions through the
 AST backend. Auto selects this path before execution when a Script contains a
 class; explicit Bytecode still rejects class compilation. Within an Auto
 AST Script, eligible simple-parameter ordinary and class function bodies are
@@ -53,7 +53,7 @@ do not allocate these extra properties. Strict functions, methods, arrows,
 generators, async functions and classes do not receive this extension. This
 does not implement general legacy caller introspection.
 
-Derived construction (#155), super references (#156), public fields (#157),
+Super-property references (#156), public fields (#157),
 static initialization (#158) and private elements (#159/#160) are separate work.
 Unsupported elements produce explicit Engine failures; they are never silently
 dropped. General parameter-environment behavior (#165), arrow new.target (#168)
@@ -72,3 +72,26 @@ default/explicit constructors, strict calls, descriptors, computed names and
 GC-surviving class environments and instances. Fixed Test262 originals retain
 their own recorded selection and every outcome; their results do not qualify
 the separate incomplete features above.
+
+## Derived construction
+
+Heritage connects both the constructor and instance prototype chains. Explicit
+derived constructors begin with uninitialized `this`; `super()` constructs with
+the original `new.target` and then binds that environment exactly once. Arguments
+run before the super-constructor validity check, and a duplicate super call
+performs construction before rejecting the second binding. An object return can
+override the instance even before super; undefined requires initialized `this`,
+and other primitive returns throw TypeError. Null heritage has a null instance
+prototype parent and requires an explicit object-returning constructor.
+
+An implicit derived constructor forwards the argument List directly, without
+consulting an array iterator. Arrows created before super retain the owning
+`this` binding and observe its later initialization. Captured environments are
+traced through stored closures and suspended evaluators. Derived bodies use
+the AST evaluator in both Ast and Auto; current leaf/activation-elision paths
+do not model uninitialized constructor `this`. This does not connect super
+property references, fields/private elements or complete builtin subclassing.
+
+Run `cargo test --locked --test derived_classes --test base_classes` for the
+public Engine tests. Fixed upstream coverage retains every recorded dependency
+failure separately and does not establish full class conformance.

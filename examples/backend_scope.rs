@@ -35,10 +35,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     ));
     assert!(BytecodeCompiler::compile(class).is_err());
 
-    // Parsing derived classes still does not establish their runtime support.
-    let derived = "(class extends Object {});";
-    assert!(parse_script(derived).is_ok());
+    // Derived construction is connected; fields still expose a runtime boundary.
+    let derived = "class Parent { constructor(x) { this.x = x; } } class Child extends Parent {} (new Child(42)).x;";
     let script = engine.compile(&realm, derived)?;
+    assert!(matches!(
+        engine.evaluate(&script)?.value(),
+        Value::Number(42.0)
+    ));
+    let fields = "(class { field; });";
+    assert!(parse_script(fields).is_ok());
+    let script = engine.compile(&realm, fields)?;
     assert!(engine.evaluate(&script).is_err());
 
     let bytecode = BytecodeCompiler::compile("40 + 2;")?;

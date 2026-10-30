@@ -1,0 +1,8 @@
+{
+  "name": "derived-definition",
+  "iterations": 1000,
+  "oracle": "sum-zero-to-n-minus-one",
+  "setup": "function bench(n) { let total = 0; for (let i = 0; i < n; i++) { let Base = class { constructor(value) { this.value = value; } }; let Derived = class extends Base { constructor(value) { super(value); } read() { return this.value; } }; total += new Derived(i).read(); } return total; }",
+  "invocation": "bench(1000);",
+  "expected": 499500
+}

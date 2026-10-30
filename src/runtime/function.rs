@@ -32,6 +32,13 @@ pub enum FunctionKind {
     Method(MethodKind),
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum ConstructorKind {
+    Base,
+    Derived,
+    DefaultDerived,
+}
+
 type FunctionCacheKey = (usize, usize, u8);
 type CodeCache = HashMap<FunctionCacheKey, Vec<Rc<FunctionCode>>>;
 pub(super) type FunctionCache = Rc<RefCell<CodeCache>>;
@@ -111,6 +118,8 @@ pub(super) struct FunctionClosure {
     pub(super) realm: Realm,
     pub(super) environment: Environment,
     pub(super) lexical_this: Value,
+    lexical_this_environment: Option<Environment>,
+    constructor_kind: ConstructorKind,
     #[allow(dead_code)]
     home_object: Option<Object>,
 }
@@ -121,6 +130,8 @@ pub(super) struct StoredFunctionClosure {
     realm: StoredRealm,
     environment: StoredEnvironment,
     lexical_this: StoredValue,
+    lexical_this_environment: Option<StoredEnvironment>,
+    constructor_kind: ConstructorKind,
     home_object: Option<StoredObject>,
 }
 impl StoredFunctionClosure {
@@ -137,6 +148,12 @@ impl StoredFunctionClosure {
         Ok(FunctionClosure {
             code: self.code.clone(),
             kind: self.kind,
+            constructor_kind: self.constructor_kind,
+            lexical_this_environment: self
+                .lexical_this_environment
+                .as_ref()
+                .map(|environment| environment.load(owner))
+                .transpose()?,
             realm: self.realm.load(owner)?,
             environment: self.environment.load(owner)?,
             // Verified ordinary/method bodies use their prepared this binding;
@@ -219,6 +236,9 @@ impl StoredFunctionClosure {
         self.realm.trace(tracer);
         self.environment.trace(tracer);
         self.lexical_this.trace(tracer);
+        if let Some(environment) = &self.lexical_this_environment {
+            environment.trace(tracer);
+        }
         if let Some(object) = &self.home_object {
             object.trace(tracer);
         }
@@ -230,6 +250,24 @@ pub(super) fn create_function(
     kind: FunctionKind,
     evaluator: &ExpressionEvaluator,
     home_object: Option<Object>,
+) -> RuntimeResult<Object> {
+    create_function_with_constructor(
+        code,
+        kind,
+        evaluator,
+        home_object,
+        ConstructorKind::Base,
+        None,
+    )
+}
+
+pub(super) fn create_function_with_constructor(
+    code: &Function,
+    kind: FunctionKind,
+    evaluator: &ExpressionEvaluator,
+    home_object: Option<Object>,
+    constructor_kind: ConstructorKind,
+    constructor_parent: Option<Object>,
 ) -> RuntimeResult<Object> {
     if code.asynchronous && code.generator {
         return Err(RuntimeError::internal_error(
@@ -244,11 +282,11 @@ pub(super) fn create_function(
         } else {
             None
         };
-    let function = Object::new_with_prototype(
+    let function = Object::new_with_prototype(constructor_parent.unwrap_or_else(|| {
         evaluator
             .realm
-            .intrinsic(super::IntrinsicId::FunctionPrototype),
-    );
+            .intrinsic(super::IntrinsicId::FunctionPrototype)
+    }));
     let closure = StoredFunctionClosure {
         code: prepare_code(code, kind, &evaluator.function_cache),
         kind,
@@ -258,6 +296,16 @@ pub(super) fn create_function(
             name_environment.as_ref().unwrap_or(&evaluator.environment),
         )?,
         lexical_this: StoredValue::store(&function, &evaluator.this_value)?,
+        lexical_this_environment: if kind == FunctionKind::Arrow {
+            evaluator
+                .this_environment
+                .as_ref()
+                .map(|environment| StoredEnvironment::store(&function, environment))
+                .transpose()?
+        } else {
+            None
+        },
+        constructor_kind,
         home_object: home_object
             .as_ref()
             .map(|object| StoredObject::store(&function, object))
@@ -351,6 +399,7 @@ fn call_function(
         closure.code.strict,
     )
     .with_new_target(new_target.clone())
+    .with_this_environment(closure.lexical_this_environment.clone())
     .with_function_cache(closure.code.context());
     bind_parameters(
         &evaluator,
@@ -370,6 +419,7 @@ fn call_function(
                 closure.code.strict,
             )
             .with_new_target(new_target)
+            .with_this_environment(closure.lexical_this_environment.clone())
             .with_function_cache(evaluator.function_cache.clone());
             match statements.evaluate_statement(body)? {
                 Completion::Return(value) => Ok(value),
@@ -389,6 +439,9 @@ fn construct_function(
     arguments: &[Value],
     new_target: Object,
 ) -> RuntimeResult<Object> {
+    if closure.constructor_kind != ConstructorKind::Base {
+        return construct_derived(closure, function, arguments, new_target);
+    }
     let prototype = match new_target.get(&PropertyKey::from("prototype"))? {
         Value::Object(prototype) => Some(prototype),
         _ => Some(closure.realm.intrinsic(super::IntrinsicId::ObjectPrototype)),
@@ -407,6 +460,81 @@ fn construct_function(
     match result {
         Value::Object(object) => Ok(object),
         _ => Ok(instance),
+    }
+}
+
+fn construct_derived(
+    closure: &FunctionClosure,
+    function: Object,
+    arguments: &[Value],
+    new_target: Object,
+) -> RuntimeResult<Object> {
+    if closure.constructor_kind == ConstructorKind::DefaultDerived {
+        // Forward the argument List directly, without an observable array iterator.
+        let parent = function
+            .try_prototype()?
+            .filter(Object::is_constructor)
+            .ok_or_else(|| RuntimeError::type_error("super constructor is not a constructor"))?;
+        return parent.construct(arguments, new_target);
+    }
+    let environment = Environment::function(
+        Some(closure.environment.clone()),
+        function,
+        Some(new_target.clone()),
+        ThisBindingStatus::Uninitialized,
+    );
+    bind_arguments(&closure.realm, &environment, arguments)?;
+    let evaluator = ExpressionEvaluator::with_environment(
+        closure.realm.clone(),
+        environment.clone(),
+        Value::Undefined,
+        true,
+    )
+    .with_new_target(Some(new_target.clone()))
+    .with_this_environment(Some(environment.clone()))
+    .with_function_cache(closure.code.context());
+    bind_parameters(
+        &evaluator,
+        &environment,
+        &closure.code.parameters,
+        arguments,
+    )?;
+    let FunctionBody::Block(body) = &closure.code.body else {
+        return Err(RuntimeError::internal_error(
+            "derived constructor requires a block body",
+        ));
+    };
+    let statements = StatementEvaluator::with_environments(
+        closure.realm.clone(),
+        environment.clone(),
+        environment.clone(),
+        Value::Undefined,
+        true,
+    )
+    .with_new_target(Some(new_target))
+    .with_this_environment(Some(environment.clone()))
+    .with_function_cache(evaluator.function_cache.clone());
+    let result = match statements.evaluate_statement(body)? {
+        Completion::Return(value) => value,
+        Completion::Normal(_) => Value::Undefined,
+        Completion::Throw(value) => return Err(RuntimeError::thrown(value)),
+        Completion::Break { .. } | Completion::Continue { .. } => {
+            return Err(RuntimeError::internal_error(
+                "invalid completion escaped a constructor",
+            ));
+        }
+    };
+    match result {
+        Value::Object(object) => Ok(object),
+        Value::Undefined => match environment.get_this_binding()? {
+            Value::Object(object) => Ok(object),
+            _ => Err(RuntimeError::internal_error(
+                "constructor this is not an object",
+            )),
+        },
+        _ => Err(RuntimeError::type_error(
+            "derived constructor returned a non-object",
+        )),
     }
 }
 

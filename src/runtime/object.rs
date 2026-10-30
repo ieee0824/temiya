@@ -1993,8 +1993,18 @@ impl Object {
 
     /// Implements `HasProperty`, including the prototype chain.
     pub fn has_property(&self, key: &PropertyKey) -> RuntimeResult<bool> {
-        if self.0.state.borrow().proxy.is_some() {
-            return super::proxy::has(self, key);
+        {
+            let state = self.0.state.borrow();
+            if state.proxy.is_some() {
+                drop(state);
+                return super::proxy::has(self, key);
+            }
+            if state.module_namespace.is_some() && matches!(key, PropertyKey::String(_)) {
+                // Namespace [[HasProperty]] tests the export names, without
+                // GetBindingValue. An uninitialized export still exists; only
+                // Get and GetOwnProperty consume its value and observe TDZ.
+                return Ok(state.properties.iter().any(|entry| entry.key == *key));
+            }
         }
         if self.get_own_property(key).is_some() {
             return Ok(true);

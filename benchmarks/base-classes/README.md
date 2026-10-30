@@ -123,3 +123,13 @@ for every class workload. The archive also retains actual native test logs
 reconstructs every recorded class decision and recomputes both test counts.
 Original-eleven measurements, hosted runs and full-corpus qualification
 remain separate evidence.
+
+`full-loop-v1` retains all eight shards from run41004744713, runtime05d2eee:
+52,133 files, 100,211 variants, 25,895 pass, 65,355 fail, 18 skip, 8,943 timeout,
+zero missing or unexecuted variants. Every known-pass gate was independently
+replayed against the decoded fixed reference and agrees with its saved output.
+
+Run `node benchmarks/base-classes/verify-full-loop.mjs` to safely decode the
+archive, verify each raw capture, prove nonoverlapping complete coverage and
+rerun all eight production gates. This preserves known successes; it does not
+qualify full language conformance or count failures/timeouts/skips as passes.

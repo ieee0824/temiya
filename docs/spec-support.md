@@ -38,7 +38,10 @@ unconnected collector; incremental/generational collection is still separate.
   JavaScript constructor or prototype method is exposed.
   The Engine-backed Test262 runner is one tooling boundary; its focused original
   cases do not qualify the whole corpus. Async completion has a separate partial
-  component; complete Promise globals and general resource limits remain open.
+  component; complete Promise globals remain open. The Linux CLI supervises
+  each executable variant with finite wall, memory and stack limits, recorded
+  separately in the process-isolation component. Non-Linux enforcement and a
+  general security sandbox remain unqualified.
 - `test262.status: "not-run"` means the entire entry has no corpus qualification.
   It never means pass or skip. Focused, historical suite results retain their own
   scope in [`test262/`](../test262/) and [qualification records](runtime-ownership.md).

@@ -240,16 +240,25 @@ impl Closure {
         arguments: &[Value],
         new_target: Option<Object>,
     ) -> RuntimeResult<Value> {
-        if self.template.strict && !self.template.arrow && !self.template.arguments_object {
+        if !self.template.arrow
+            && !self.template.arguments_object
+            && self.template.body.has_leaf_function()
+        {
+            // Normalize only an eligible leaf call. Preserve the original
+            // receiver for fallback, including host-supplied global this values.
+            let receiver = if self.template.strict {
+                this.clone()
+            } else {
+                super::function::ordinary_this(&self.realm, this.clone())?
+            };
             if let Some(result) = self.template.body.try_leaf_function(
                 &self.template.parameters,
                 arguments,
-                &this,
+                &receiver,
                 &self.realm,
             ) {
-                // Function, newTarget, this and outer-environment roots remain
-                // in this activation while property/coercion callbacks run.
-                // Some(Err) propagates; effects are never retried in the VM.
+                // Function, newTarget, receiver and outer-environment roots
+                // remain live during property/coercion callbacks. Never retry.
                 return result;
             }
         }

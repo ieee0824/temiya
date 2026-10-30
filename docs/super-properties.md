@@ -51,3 +51,10 @@ Twenty-four authored class-free probes per backend confirm the recorded missing
 behavior; they are not additional conformance passes. Later fixture assertions
 remain unproven. Run `node benchmarks/super-properties/verify-dependencies.mjs`
 to replay the retained records and classification checks.
+
+Eligible non-strict straight-line functions and object accessors can also use
+the existing leaf executor when their activation cannot be observed. The caller
+normalizes this with the defining Realm before executing the leaf plan; property
+references retain their original strictness, including silent failed writes in
+non-strict functions. Unsupported bodies enter their normal activation before
+executing any source effects, and a leaf runtime error is never retried.

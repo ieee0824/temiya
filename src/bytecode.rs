@@ -531,6 +531,10 @@ pub struct VerifiedBytecode {
 }
 
 impl VerifiedBytecode {
+    pub(crate) fn has_leaf_function(&self) -> bool {
+        self.leaf_function.is_some()
+    }
+
     pub(crate) fn try_leaf_function(
         &self,
         parameters: &[JsString],

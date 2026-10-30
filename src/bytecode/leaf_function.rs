@@ -1,4 +1,4 @@
-//! Straight-line strict bodies whose activation bindings cannot be observed.
+//! Straight-line bodies whose activation bindings cannot be observed.
 //! Eligibility is established for the complete body before executing any step.
 use super::{
     BinaryOperator, BindingKind, Bytecode, Constant, Instruction, ScopeKind, UnaryNumericOperator,
@@ -44,7 +44,6 @@ impl LeafFunctionPlan {
             return None;
         };
         if scope.kind != ScopeKind::Function
-            || !scope.strict
             || !scope.functions.is_empty()
             || scope.bindings.iter().any(|b| b.kind != BindingKind::Var)
         {
@@ -293,13 +292,13 @@ mod tests {
     };
 
     #[test]
-    fn eligibility_requires_the_entire_body_to_hide_its_strict_activation() {
+    fn eligibility_requires_the_entire_body_to_hide_its_activation() {
         for (source, eligible) in [
             (
                 "function f(x){'use strict';this.value=x;return this.value;}",
                 true,
             ),
-            ("function f(x){this.value=x;return this.value;}", false),
+            ("function f(x){this.value=x;return this.value;}", true),
             (
                 "function f(x){'use strict';this.value=x;let y=1;return y;}",
                 false,

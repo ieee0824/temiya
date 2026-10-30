@@ -190,3 +190,15 @@ fn arguments_remain_observable_in_ast_methods_defaults_and_nested_classes() {
         "let object={get value(){return arguments.length;},set value(value){this.read=()=>arguments[0];}};let marker={};object.value=marker;object.value===0 && object.read()===marker;",
     );
 }
+
+#[test]
+fn non_strict_leaf_calls_normalize_this_and_keep_silent_assignment_failures() {
+    check(
+        "let expected=this;function receiver(){return this;}let boxed=receiver.call(42);boxed instanceof Number && boxed.valueOf()===42 && receiver.call(null)===expected && receiver()===expected;",
+    );
+    check("function write(value){this.saved=value;return this.saved;}write.call(42,99)===99;");
+    check("function write(){this.length=99;return this.length;}write.call('abc')===3;");
+    check(
+        "function write(){this.value=99;return this.value;}let object={};Object.defineProperty(object,'value',{value:42,writable:false});write.call(object)===42;",
+    );
+}

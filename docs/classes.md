@@ -279,3 +279,20 @@ were independently replayed. Its100211 outcomes all match43d3ff7:
 Those failures and timeouts remain unqualified; the result establishes no
 whole-corpus conformance claim. Two-host performance and security acceptance
 remain separate requirements.
+
+The completed two-host run41083660459 retains all24 reports in
+`benchmarks/derived-classes/hosted-class-bridge-v1`. Each derived workload has
+at least two significant Boa wins on each machine:14 wins/1 noisy comparison
+on EPYC9V74 and15 wins on EPYC7763. Original-eleven/Boa has33 wins on each.
+Base-class/Boa has11 wins/1 noisy on9V74 and9 wins/3 noisy on7763; base
+construction has only1/3 significant wins on7763, despite lower medians in
+all three pairs. Therefore preservation of the existing base-class performance
+is not fully demonstrated by this capture. Do not turn those noisy comparisons
+into acceptance or rerun unchanged source to select favorable machines.
+
+The9V74 before/after control also records an array slowdown of10–13% in all
+three pairs; its actual Boa comparisons remain significant wins. The7763
+before/after original comparisons are all within noise, and all identical-worker
+controls are within noise on both machines. Every result is retained. The
+new derived-workload criterion is met, but this is not unconditional performance
+qualification or a reason to omit the base-class and array observations.

@@ -51,3 +51,13 @@ in the archive. The identical-candidate control has15 noisy comparisons. All
 failed signatures are unchanged. This candidate still does not qualify the
 entire super suite. verify-performance.mjs reconstructs all four intermediate
 candidates rather than selecting only their favorable observations.
+
+The object-capture-v1 snapshot at5fc8f42 retains the complete four-report local
+ARM64 comparison after integrating main. Boa has14 significant wins and one
+noisy comparison; each of the five workloads has at least two wins. Before/after
+has11 improvements and four noisy comparisons; the identical-binary control
+retains one apparent slowdown. Native812 tests pass. Fixed601 super and401
+derived outcomes and failed diagnostics match the preceding main155-v1 snapshot.
+The allocation test fails before this change and passes after it. Hosted speed
+qualification and full regression checks remain pending. verify-performance.mjs
+replays every intermediate snapshot, including rejected and adverse timings.

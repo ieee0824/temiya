@@ -25,12 +25,14 @@ identity, inherited accessors, detached methods, dynamic parents, nested arrows,
 key evaluation and conversion, strict assignment failures, Proxy traps and
 reentrant garbage collection of captured HomeObjects and receivers.
 
-Super references use the shared AST expression evaluator. Methods with direct
-super references select AST before execution. Eligible methods that contain
-class expressions can run surrounding code in the VM: the CreateClass bridge
-uses the enclosing method environment for super in class heritage and computed
-keys, including its actual receiver and current HomeObject prototype. This
-bridge does not introduce general super-reference bytecode instructions. Fields/private elements, eval and general async or
+AST references and verified bytecode share the same receiver-aware Reference
+operations. LoadSuperBinding captures the initialized receiver and owning
+function before a computed key expression; ResolveSuperProperty then reads the
+current HomeObject parent. Verification checks function scope and operand flow;
+invalid runtime operands throw TypeError. Eligible methods can also create class
+expressions through CreateClass metadata, preserving the enclosing environment
+for super in heritage and computed keys. Unsupported bodies select their ordinary
+execution path before effects. Fields/private elements, eval and general async or
 parameter-environment gaps have separate issues. Fixed upstream results and
 performance qualification must be recorded before treating #156 as complete.
 
@@ -63,8 +65,11 @@ Eligible function bodies can also create object literals containing methods and
 accessors through verified CreateObjectLiteral metadata. The shared evaluator
 receives the current VM environment and containing strictness; it preserves
 computed-key order, spreads, prototype setters, captures and HomeObjects while
-surrounding supported loops run in the VM. Capturing initializers prevent scalar
-binding elision and unsafe loop-environment reuse. Definitions use immutable
+surrounding supported loops run in the VM. Initializers prevent scalar binding
+elision. Loop-header reuse additionally requires a complete syntax scan to prove
+that no initializer, computed key, spread, parameter default or nested closure
+observes any cloned header name or eval. Body environments remain distinct.
+Definitions use immutable
 AST metadata and create fresh runtime objects, with no retry after an error.
 Top-level object methods remain outside the whole-Script compiler subset. This
 does not complete general class bytecode lowering (#299).
@@ -160,3 +165,17 @@ loop-header reuse. Its correctness-only `main155-v1` snapshot passes810 native
 tests, Clippy and i686 type checking. Every601 super and401 derived outcome and
 failed diagnostic per backend matches96901d5; base and PR gates also pass. No
 performance result is transferred to this new source without a fresh measurement.
+
+Source5fc8f42 adds that object-initializer capture proof. The allocation regression
+compares calls with three and thirty iterations: before the change the longer
+call creates27 additional managed objects; after it both calls allocate equally.
+Nested default/arrow/spread captures and per-iteration body bindings retain their
+separate values. All812 native tests pass, and the fixed601 super/401 derived
+outcomes and failed diagnostics remain unchanged per backend.
+
+The retained local ARM64 object-capture-v1 reports have14 significant Boa wins
+and one noisy comparison, with at least two wins per workload. Before/after
+has11 improvements and four noisy comparisons; identical-binary control has
+one apparent slowdown and14 noisy comparisons. All120 runs and1920 values are
+independently replayed. Independent hosted qualification, preserved original/base/
+derived workloads, full Test262 and final CI/security checks remain pending.

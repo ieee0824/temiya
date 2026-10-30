@@ -190,10 +190,10 @@ fn derived_this_and_captured_arrows_survive_reentrant_collection() {
                     engine.value(&realm, Value::Object(gc)).unwrap(),
                 )
                 .unwrap();
-            let script = engine.compile(&realm, "class A { constructor(value) { gcNow(); this.value = value; } } class B extends A { constructor(value) { let read = () => this; super(value); gcNow(); this.read = read; } } let value = {}; let instance = new B(value);").unwrap();
+            let script = engine.compile(&realm, "class A { constructor(value) { gcNow(); this.value = value; } } class B extends A { constructor(value) { let read = () => this; super(value); gcNow(); this.read = read; } } class D extends A { constructor(value) { super(value); } } let delegated = new D({}); let value = {}; let instance = new B(value);").unwrap();
             engine.evaluate(&script).unwrap();
             engine.collect_garbage().unwrap();
-            let script = engine.compile(&realm, "instance.value === value && instance.read() === instance && instance instanceof B;").unwrap();
+            let script = engine.compile(&realm, "instance.value === value && instance.read() === instance && instance instanceof B && typeof delegated.value === 'object' && Object.getPrototypeOf(delegated) === D.prototype;").unwrap();
             assert!(matches!(
                 engine.evaluate(&script).unwrap().value(),
                 Value::Boolean(true)
@@ -539,4 +539,32 @@ fn derived_data_views_keep_their_buffer_and_recheck_detachment_after_getters() {
             result.value()
         );
     }
+}
+
+#[test]
+fn sole_super_preserves_explicit_argument_mapping_and_original_new_target() {
+    check(
+        "class A { constructor(a,b) { this.a=a; this.b=b; this.count=arguments.length; } } class D extends A { constructor(x,y) { super(x,y); } } let p=new D(42); p.a===42 && p.b===undefined && p.count===2;",
+    );
+    check(
+        "class A { constructor(a) { this.a=a; this.count=arguments.length; } } class D extends A { constructor(x) { super(x); } } let p=new D(42,99); p.a===42 && p.count===1;",
+    );
+    check(
+        "class A { constructor(a,b,c) { this.a=a; this.b=b; this.c=c; this.count=arguments.length; this.target=new.target; } } class D extends A { constructor(x,y,z) { super(y,x,y); } } let marker={}; let p=new D(42,marker,99,100); p.a===marker && p.b===42 && p.c===marker && p.count===3 && p.target===D && Object.getPrototypeOf(p)===D.prototype;",
+    );
+    check(
+        "class A { constructor(a,b) { this.a=a; this.b=b; this.count=arguments.length; } } class D extends A { constructor(x,y) { super(y,x); } } let p=new D(42); p.a===undefined && p.b===42 && p.count===2;",
+    );
+    check(
+        "class A { constructor() { this.count=arguments.length; } } class D extends A { constructor(x) { super(); } } new D(42,99).count===0;",
+    );
+    check(
+        "class A {} class Other { constructor(x) { this.x=x; this.target=new.target; } } class D extends A { constructor(x) { super(x); } } Object.setPrototypeOf(D,Other); let p=new D(42); p.x===42 && p.target===D && Object.getPrototypeOf(p)===D.prototype;",
+    );
+    check(
+        "let marker={}; class A { constructor(value) { return value; } } class D extends A { constructor(value) { super(value); } } new D(marker)===marker;",
+    );
+    check(
+        "let calls=0; function mark(v) { calls++; return v; } class A { constructor(v) { this.v=v; } } class D extends A { constructor(v=mark(42)) { super(mark(v)); } } let p=new D(); p.v===42 && calls===2;",
+    );
 }

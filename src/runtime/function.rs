@@ -6,13 +6,14 @@ use super::{
     stored::{StoredObject, StoredValue},
 };
 use std::{
+    borrow::Cow,
     cell::RefCell,
     collections::HashMap,
     ops::Deref,
     rc::{Rc, Weak},
 };
 
-use crate::ast::{Expr, ExprKind, Function, FunctionBody, MethodKind};
+use crate::ast::{Expr, ExprKind, Function, FunctionBody, MethodKind, StmtKind};
 use crate::bytecode::{BytecodeCompiler, FunctionTemplate};
 
 use super::{
@@ -49,6 +50,7 @@ pub(super) struct FunctionCode {
     kind: FunctionKind,
     compiled: Option<Rc<FunctionTemplate>>,
     may_observe_arguments: bool,
+    delegated_parameters: Option<Box<[usize]>>,
     auto_functions: bool,
     cache: Weak<RefCell<CodeCache>>,
 }
@@ -100,6 +102,11 @@ fn prepare_code(
         kind,
         compiled,
         may_observe_arguments: may_observe_arguments(code),
+        delegated_parameters: if kind == FunctionKind::Method(MethodKind::Constructor) {
+            delegated_parameters(code)
+        } else {
+            None
+        },
         auto_functions: cache.is_some(),
         cache: cache.as_ref().map_or_else(Weak::new, Rc::downgrade),
     });
@@ -111,6 +118,60 @@ fn prepare_code(
             .push(prepared.clone());
     }
     prepared
+}
+
+// A sole super(p, q, ...) with simple parameters cannot observe or retain its
+// activation. Preserve the explicit argument List (including missing values,
+// reordering and dropped extra actuals), rather than forwarding all actuals.
+fn delegated_parameters(function: &Function) -> Option<Box<[usize]>> {
+    if !function.strict || function.asynchronous || function.generator {
+        return None;
+    }
+    let FunctionBody::Block(body) = &function.body else {
+        return None;
+    };
+    let StmtKind::Block(statements) = &body.kind else {
+        return None;
+    };
+    let [statement] = statements.as_slice() else {
+        return None;
+    };
+    let StmtKind::Expression(expression) = &statement.kind else {
+        return None;
+    };
+    let ExprKind::Call {
+        callee,
+        arguments,
+        optional: false,
+    } = &expression.kind
+    else {
+        return None;
+    };
+    if !matches!(callee.kind, ExprKind::Super) {
+        return None;
+    }
+    let mut parameters = HashMap::with_capacity(function.parameters.len());
+    for (index, parameter) in function.parameters.iter().enumerate() {
+        let ExprKind::Identifier(name) = &parameter.kind else {
+            return None;
+        };
+        if name == "arguments"
+            || name == "eval"
+            || parameters.insert(name.as_str(), index).is_some()
+        {
+            return None;
+        }
+    }
+    arguments
+        .iter()
+        .map(|argument| {
+            let ExprKind::Identifier(name) = &argument.kind else {
+                return None;
+            };
+            parameters.get(name.as_str()).copied()
+        })
+        .collect::<Option<Vec<_>>>()
+        .map(Vec::into_boxed_slice)
 }
 
 // Scan complete syntax once, including defaults, arrows, nested classes and
@@ -491,6 +552,28 @@ fn construct_derived(
             .ok_or_else(|| RuntimeError::type_error("super constructor is not a constructor"))?;
         return parent.construct(arguments, new_target);
     }
+    if let Some(parameters) = &closure.code.delegated_parameters {
+        // No this/arguments/eval, defaults, spread, closures or later statements
+        // can observe BindThisValue in this shape. Class fields are still
+        // rejected by class evaluation, so no instance initializer is omitted.
+        let parent = function.try_prototype()?;
+        let arguments: Cow<'_, [Value]> = if arguments.len() >= parameters.len()
+            && parameters.iter().copied().eq(0..parameters.len())
+        {
+            Cow::Borrowed(&arguments[..parameters.len()])
+        } else {
+            Cow::Owned(
+                parameters
+                    .iter()
+                    .map(|index| arguments.get(*index).cloned().unwrap_or(Value::Undefined))
+                    .collect(),
+            )
+        };
+        let parent = parent
+            .filter(Object::is_constructor)
+            .ok_or_else(|| RuntimeError::type_error("super constructor is not a constructor"))?;
+        return parent.construct(&arguments, new_target);
+    }
     let environment = Environment::function(
         Some(closure.environment.clone()),
         function,
@@ -739,7 +822,7 @@ mod derived_arguments_tests {
     };
 
     #[test]
-    fn unobservable_derived_arguments_avoid_one_managed_object_per_call() {
+    fn derived_arguments_and_delegation_each_avoid_one_managed_object_per_call() {
         for backend in [ScriptBackend::Ast, ScriptBackend::Auto] {
             let engine = Engine::builder().script_backend(backend).build();
             engine
@@ -747,7 +830,7 @@ mod derived_arguments_tests {
                 .set_allocation_collection_interval(usize::MAX);
             {
                 let realm = engine.create_realm();
-                let definition = engine.compile(&realm, "class A {} class Lean extends A { constructor(value) { super(value); } } class Observed extends A { constructor(value) { arguments.length; super(value); } }").unwrap();
+                let definition = engine.compile(&realm, "class A {} class Delegate extends A { constructor(value) { super(value); } } class Lean extends A { constructor(value) { super(value); this.marker = value; } } class Observed extends A { constructor(value) { arguments.length; super(value); this.marker = value; } }").unwrap();
                 engine.evaluate(&definition).unwrap();
                 let get = |name: &str| {
                     let script = engine.compile(&realm, name).unwrap();
@@ -770,7 +853,13 @@ mod derived_arguments_tests {
                     assert_eq!(after.collections, before.collections);
                     after.live - before.live
                 };
+                let delegated_allocations = allocations(&get("Delegate"));
                 let lean_allocations = allocations(&lean);
+                assert_eq!(
+                    lean_allocations - delegated_allocations,
+                    count,
+                    "{backend:?}: activation"
+                );
                 let observed_allocations = allocations(&observed);
                 assert_eq!(
                     observed_allocations - lean_allocations,

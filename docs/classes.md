@@ -88,8 +88,8 @@ prototype parent and requires an explicit object-returning constructor.
 An implicit derived constructor forwards the argument List directly, without
 consulting an array iterator. Arrows created before super retain the owning
 `this` binding and observe its later initialization. Captured environments are
-traced through stored closures and suspended evaluators. Derived bodies use
-the AST evaluator in both Ast and Auto; current leaf/activation-elision paths
+traced through stored closures and suspended evaluators. General derived bodies use
+the AST evaluator in both Ast and Auto; the bytecode leaf/activation-elision paths
 do not model uninitialized constructor `this`. This does not connect super
 property references, fields/private elements or complete builtin subclassing.
 
@@ -104,6 +104,17 @@ the function code before execution. Observable arguments, including captured
 arrows and extra actual parameters, keep the existing binding and strict
 unmapped values. This changes allocation only; it neither skips body effects
 nor retries errors.
+
+A constructor whose entire body is `super(...)`, with only simple parameters
+and direct parameter references as arguments, uses a cached delegation plan.
+It preserves argument order, repetition, missing undefined values and omission
+of extra actual arguments. A matching argument prefix can be borrowed directly.
+This shape cannot observe or capture its constructor activation, so it needs no
+managed function environment. Parent lookup and construction still occur on
+each call with the original new target. Defaults, spread, eval, arguments,
+closures, this accesses and additional statements retain general evaluation;
+runtime errors never retry another path. Class fields remain explicitly rejected,
+so this specialization does not silently omit instance initializers.
 
 Instance allocation reads the actual new target's `prototype` once. A
 non-object result selects the appropriate intrinsic prototype from that

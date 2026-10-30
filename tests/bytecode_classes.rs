@@ -166,3 +166,9 @@ fn class_loop_reuse_keeps_body_bindings_and_nested_default_captures_distinct() {
         );
     }
 }
+
+#[test]
+fn runtime_class_loop_frames_keep_observable_arguments_and_body_bindings() {
+    let source = "function Parent(value){this.value=value;}function make(Parent){let types=[];for(let i=0;i<3;i++){let C=class extends arguments[0]{constructor(value){super(value);}read(){return this.value;}static type(){return C;}};types.push(C);}return types;}let types=make(Parent);Object.getPrototypeOf(types[0])===Parent && types[0].type()===types[0] && types[1].type()===types[1] && new types[0](42).read()===42 && new types[2](99).read()===99;";
+    check(source);
+}

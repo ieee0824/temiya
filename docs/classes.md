@@ -313,3 +313,10 @@ shadowed name occurrences conservatively retain distinct cells. Fields/private
 elements keep the previous path. Body-local bindings and fresh class objects
 retain their separate identities. References or pending calls spanning a clone
 continue to prohibit reuse.
+
+Runtime-created function frames keep their actual argument and parameter
+bindings whenever those can be observed. That requirement disables scalar
+binding elision independently of the verified loop-cell proof. Internal calls
+can reuse unobserved loop headers while retaining captured arguments and
+body-local records. The public caller-prepared frame API remains fully backed
+by its Environment and keeps its previous execution path.

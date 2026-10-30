@@ -25,3 +25,12 @@ oracle from the specification and pinned Test262. The rejected v2 assertion
 copied the observed two-conversion behavior and is not used by this suite.
 
 No benchmark results or performance qualification are established by these inputs.
+
+Intermediate ARM64 observations are retained in class-bridge-v1 and
+ast-arguments-v1. The first has no significant Boa wins and9 slower comparisons.
+Conservative arguments-object elision improves11 of15 before/after comparisons,
+but still has6 slower Boa comparisons. Both retain the full120 worker runs and
+1920 checked values, including unchanged-binary and baseline/Boa controls.
+Neither candidate is speed-qualified. Run verify-performance.mjs to reconstruct
+all raw values and statistics and independently replay both601-variant captures
+against their preceding outcomes and failed diagnostic signatures.

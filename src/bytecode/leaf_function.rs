@@ -509,6 +509,22 @@ mod tests {
     }
 
     #[test]
+    fn lexical_super_arrows_retain_the_shared_ast_delegation_path() {
+        let expression = crate::parser::parse_expression(
+            "class extends Object{make(){return ()=>super.read();}}",
+        )
+        .unwrap();
+        let crate::ast::ExprKind::Class(class) = expression.kind else {
+            panic!("class")
+        };
+        let crate::ast::ClassElementKind::Method { function, .. } = &class.elements[0].kind else {
+            panic!("method")
+        };
+        let error = BytecodeCompiler::compile_function_template(function).unwrap_err();
+        assert!(error.to_string().contains("lexical super arrow"));
+    }
+
+    #[test]
     fn property_calls_allocate_no_managed_activation_and_code_holds_no_runtime_edges() {
         let runtime = Runtime::new();
         runtime.set_allocation_collection_interval(usize::MAX);

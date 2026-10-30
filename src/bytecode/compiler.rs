@@ -1005,6 +1005,18 @@ impl Compiler {
             _ => return Err(self.unsupported("function name", function.span)),
         };
         let body = compiler.finish()?;
+        // Keep lexical super arrows on their shared AST path until the VM can
+        // avoid recreating their activation. This rejects before any effects;
+        // the stored AST closure retains its existing delegation optimization.
+        if arrow
+            && body
+                .bytecode()
+                .instructions
+                .iter()
+                .any(|op| matches!(op, Instruction::LoadSuperBinding))
+        {
+            return Err(self.unsupported("lexical super arrow", function.span));
+        }
         Ok(FunctionTemplate {
             self_binding: name.is_some() && !arrow,
             arguments_object: !arrow

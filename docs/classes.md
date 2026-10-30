@@ -220,6 +220,17 @@ with zero missing or unexecuted variants. `verify-full.mjs` independently
 reconstructs all eight known-pass gates for each source. Passing those gates
 does not turn the recorded failures or timeouts into conformance passes.
 
+The fresh-function metadata candidate (`43d3ff7`) retains four native derived
+reports in `function-metadata-v1`. Candidate/Boa and baseline/Boa each have
+fifteen significant wins. Before/after and identical-candidate controls each
+have fifteen noisy comparisons, so these records do not establish a significant
+effect of the optimization itself. All 120 runs and 1,920 output values validate.
+`verify-function-metadata.mjs` replays those records, 770 passing native tests,
+the fixed upstream captures and unchanged failure signatures. It also checks
+the actual source13a baseline identity; a rejected packaging archive with an
+incorrect copied identity remains retained and never counts as qualification.
+Current-source full-corpus, security and two-host qualification remain separate.
+
 The historical two-host prototype/address-width measurements retain all twelve
 reports per machine, including slower before/after decisions and apparent
 speed changes between identical binaries. `verify-hosted.mjs` checks every

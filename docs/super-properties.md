@@ -113,3 +113,11 @@ workloads remain unqualified. The same-binary control retains one apparent
 slowdown; earlier `super-leaf-v1` retains all three real before/after arrow
 slowdowns that led to restoring the AST path. No unchanged-source host selection
 or changed workload/noise criterion is used.
+
+Leaf super receiver/function operands can use the caller's existing roots only
+when an abstract stack check proves those operands feed their matching super
+reference operation. Ordinary operations, stores or returns that expose either
+operand retain the full VM path. Immediate reference-read/discard and update
+sequences reuse the shared Reference directly. The retained d606937 native
+records in `super-operands-v1` show no significant before/after improvement
+(all15 comparisons noisy); their successful replay is not speed qualification.

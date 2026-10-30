@@ -211,6 +211,15 @@ pub(super) struct StoredFunctionClosure {
     home_object: Option<StoredObject>,
 }
 impl StoredFunctionClosure {
+    pub(super) fn super_base(&self, owner: &Object) -> RuntimeResult<Value> {
+        let home = self
+            .home_object
+            .as_ref()
+            .ok_or_else(|| RuntimeError::reference_error("function has no super binding"))?
+            .load(owner)?;
+        Ok(home.try_prototype()?.map_or(Value::Null, Value::Object))
+    }
+
     pub(super) fn has_legacy_properties(&self) -> bool {
         self.kind == FunctionKind::Normal
             && !self.code.strict

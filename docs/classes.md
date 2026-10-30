@@ -61,8 +61,10 @@ do not allocate these extra properties. Strict functions, methods, arrows,
 generators, async functions and classes do not receive this extension. This
 does not implement general legacy caller introspection.
 
-Super-property references (#156), public fields (#157),
-static initialization (#158) and private elements (#159/#160) are separate work.
+Super-property get/set/call in object and class methods execute through Ast
+and Auto; see [super references](super-properties.md) for scope and ordering.
+Public fields (#157), static initialization (#158) and private elements
+(#159/#160) are separate work.
 Unsupported elements produce explicit Engine failures; they are never silently
 dropped. General parameter-environment behavior (#165), arrow new.target (#168)
 and eval (#169) also remain incomplete. No whole-class or whole-corpus conformance
@@ -97,8 +99,8 @@ consulting an array iterator. Arrows created before super retain the owning
 `this` binding and observe its later initialization. Captured environments are
 traced through stored closures and suspended evaluators. General derived bodies use
 the AST evaluator in both Ast and Auto; the bytecode leaf/activation-elision paths
-do not model uninitialized constructor `this`. This does not connect super
-property references, fields/private elements or complete builtin subclassing.
+do not model uninitialized constructor `this`. Fields/private elements and
+complete builtin subclassing remain separate work.
 
 Run `cargo test --locked --test derived_classes --test base_classes` for the
 public Engine tests. Fixed upstream coverage retains every recorded dependency

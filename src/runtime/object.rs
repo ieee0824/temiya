@@ -695,6 +695,18 @@ impl Object {
         self.stored_source_realm()
     }
 
+    pub(super) fn super_base(&self) -> RuntimeResult<Value> {
+        // Release the function-state borrow before following the traced home
+        // object or invoking its potentially observable prototype operation.
+        let callable = self.0.state.borrow().managed_callable.clone();
+        match callable.as_ref().map(|callable| &callable.body) {
+            Some(ManagedCallable::Ast(closure)) => closure.super_base(self),
+            _ => Err(RuntimeError::reference_error(
+                "function has no super binding",
+            )),
+        }
+    }
+
     fn stored_source_realm(&self) -> Option<StoredRealm> {
         let state = self.0.state.borrow();
         if let Some(call) = &state.managed_callable {

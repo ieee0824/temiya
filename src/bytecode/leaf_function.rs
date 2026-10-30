@@ -19,6 +19,8 @@ enum Step {
     ResolveName(JsString, bool),
     SuperBinding,
     SuperReference(bool),
+    SuperRead(bool),
+    SuperUpdate(bool, bool, bool),
     This,
     Get(JsString, bool),
     Resolve(JsString, bool),
@@ -47,9 +49,87 @@ struct Local {
     parameter: bool,
 }
 
+// These operands may be represented by empty stack slots only after proving
+// that no ordinary operation, return or store can observe either one.
+#[derive(Clone, Copy, PartialEq)]
+enum Operand {
+    Value,
+    SuperReceiver,
+    SuperFunction,
+}
+
+fn super_operands_do_not_escape(code: &Bytecode) -> bool {
+    let mut stack = Vec::new();
+    for &instruction in &code.instructions {
+        match instruction {
+            Instruction::LoadSuperBinding => {
+                stack.extend([Operand::SuperReceiver, Operand::SuperFunction]);
+            }
+            Instruction::ResolveSuperProperty { .. } => {
+                if !stack.ends_with(&[
+                    Operand::SuperReceiver,
+                    Operand::SuperFunction,
+                    Operand::Value,
+                ]) {
+                    return false;
+                }
+                stack.truncate(stack.len() - 3);
+            }
+            _ => {
+                let required = instruction.required_stack();
+                let Some(start) = stack.len().checked_sub(required) else {
+                    return false;
+                };
+                if stack[start..].iter().any(|value| *value != Operand::Value) {
+                    return false;
+                }
+                let Some(produced) = required.checked_add_signed(instruction.stack_delta()) else {
+                    return false;
+                };
+                stack.truncate(start);
+                stack.extend(std::iter::repeat_n(Operand::Value, produced));
+            }
+        }
+    }
+    true
+}
+
+// These sequences have no intervening effects. Retain the same shared
+// Reference for key conversion/get/set, without round trips through its stack.
+fn fuse_super_references(steps: Vec<Step>) -> Vec<Step> {
+    let mut result = Vec::with_capacity(steps.len());
+    let mut index = 0;
+    while index < steps.len() {
+        match &steps[index..] {
+            [
+                Step::SuperReference(strict),
+                Step::ReadReference,
+                Step::DiscardReference,
+                ..,
+            ] => {
+                result.push(Step::SuperRead(*strict));
+                index += 3;
+            }
+            [
+                Step::SuperReference(strict),
+                Step::UpdateReference(increment, prefix),
+                ..,
+            ] => {
+                result.push(Step::SuperUpdate(*strict, *increment, *prefix));
+                index += 2;
+            }
+            _ => {
+                result.push(steps[index].clone());
+                index += 1;
+            }
+        }
+    }
+    result
+}
+
 impl LeafFunctionPlan {
     pub(super) fn compile(code: &Bytecode, max_stack: usize) -> Option<Self> {
-        if max_stack > LIMIT {
+        if max_stack > LIMIT || !super_operands_do_not_escape(code) {
             return None;
         }
         let Instruction::EnterScope(index) = *code.instructions.first()? else {
@@ -219,7 +299,10 @@ impl LeafFunctionPlan {
                 Instruction::Return
                     if depth == 1 && references == 0 && offset + 1 == code.instructions.len() =>
                 {
-                    return Some(Self { steps, bindings });
+                    return Some(Self {
+                        steps: fuse_super_references(steps),
+                        bindings,
+                    });
                 }
                 // No calls, closures, branches, new.target,
                 // arguments object or other operation may expose this activation.
@@ -317,27 +400,36 @@ impl LeafFunctionPlan {
                     }
                 }
                 Step::SuperBinding => {
-                    stack[depth] = this.clone();
-                    depth += 1;
-                    Some(Value::Object(function.clone()))
+                    // The structural proof prevents these slots escaping. The
+                    // borrowed call receiver/function already root both values.
+                    depth += 2;
+                    None
                 }
-                Step::SuperReference(strict) => {
+                Step::SuperReference(strict)
+                | Step::SuperRead(strict)
+                | Step::SuperUpdate(strict, ..) => {
                     let name = ReferencedName::Value(pop(&mut stack, &mut depth));
-                    let Value::Object(function) = pop(&mut stack, &mut depth) else {
-                        return Err(RuntimeError::type_error(
-                            "super reference requires a function",
-                        ));
-                    };
-                    let receiver = pop(&mut stack, &mut depth);
-                    refs[reference_depth] = Some(Reference::super_property_in_realm(
+                    depth -= 2;
+                    let reference = Reference::super_property_in_realm(
                         realm,
                         function.super_base()?,
                         name,
                         *strict,
-                        receiver,
-                    ));
-                    reference_depth += 1;
-                    None
+                        this.clone(),
+                    );
+                    match step {
+                        Step::SuperRead(_) => Some(reference.get_value()?),
+                        Step::SuperUpdate(_, increment, prefix) => {
+                            Some(crate::runtime::update_reference_in_realm(
+                                realm, &reference, *increment, *prefix,
+                            )?)
+                        }
+                        _ => {
+                            refs[reference_depth] = Some(reference);
+                            reference_depth += 1;
+                            None
+                        }
+                    }
                 }
                 Step::This => Some(this.clone()),
                 Step::Get(name, strict) | Step::Resolve(name, strict) => {
@@ -522,6 +614,37 @@ mod tests {
         };
         let error = BytecodeCompiler::compile_function_template(function).unwrap_err();
         assert!(error.to_string().contains("lexical super arrow"));
+    }
+
+    #[test]
+    fn exposed_super_operands_keep_the_full_vm_path() {
+        let program = parse_script("function f(){return 42;}").unwrap();
+        let StmtKind::FunctionDeclaration(function) = &program.body[0].kind else {
+            panic!("function")
+        };
+        let template = BytecodeCompiler::compile_function_template(function).unwrap();
+        let mut body = template.body.into_bytecode();
+        let enter = body.instructions[0];
+        body.instructions = vec![
+            enter,
+            Instruction::LoadSuperBinding,
+            Instruction::Pop,
+            Instruction::Return,
+        ];
+        let code = body.verify().unwrap();
+        assert!(code.leaf_function.is_none());
+        let realm = Realm::ordinary();
+        let frame = crate::runtime::Environment::function(
+            Some(realm.global_environment()),
+            realm.intrinsic(crate::runtime::IntrinsicId::Object),
+            None,
+            crate::runtime::ThisBindingStatus::Uninitialized,
+        );
+        frame.bind_this_value(Value::Number(42.0)).unwrap();
+        assert!(matches!(
+            VirtualMachine::execute_in_function(&code, &realm, &frame).unwrap(),
+            Completion::Return(Value::Number(42.0))
+        ));
     }
 
     #[test]

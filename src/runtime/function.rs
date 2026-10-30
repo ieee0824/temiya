@@ -1,5 +1,7 @@
 //! ECMAScript function objects, calls, constructors, and parameter binding.
 
+mod super_call;
+
 use super::{
     environment::StoredEnvironment,
     execution::StoredRealm,
@@ -51,6 +53,7 @@ pub(super) struct FunctionCode {
     compiled: Option<Rc<FunctionTemplate>>,
     may_observe_arguments: bool,
     delegated_parameters: Option<Box<[usize]>>,
+    super_call: Option<super_call::Plan>,
     auto_functions: bool,
     cache: Weak<RefCell<CodeCache>>,
 }
@@ -107,6 +110,7 @@ fn prepare_code(
         } else {
             None
         },
+        super_call: super_call::Plan::prepare(code, kind),
         auto_functions: cache.is_some(),
         cache: cache.as_ref().map_or_else(Weak::new, Rc::downgrade),
     });
@@ -273,6 +277,12 @@ impl StoredFunctionClosure {
                 .realm
                 .load(owner)?
                 .bind_exception(RuntimeError::type_error("class constructor requires new")));
+        }
+        if let Some(plan) = &self.code.super_call {
+            let realm = self.realm.load(owner)?;
+            return plan
+                .execute(self, owner, this, arguments, &realm)
+                .map_err(|error| realm.bind_exception(error));
         }
         if let Some(template) = &self.code.compiled {
             let realm = self.realm.load(owner)?;

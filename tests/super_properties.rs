@@ -223,3 +223,29 @@ fn non_strict_leaf_calls_normalize_this_and_keep_silent_assignment_failures() {
         "function write(){this.value=99;return this.value;}let object={};Object.defineProperty(object,'value',{value:42,writable:false});write.call(object)===42;",
     );
 }
+
+#[test]
+fn sole_super_calls_preserve_parameter_mapping_and_fallback_effects() {
+    check(
+        "let base={pick(a,b,c){return arguments.length===3 && a===42 && b===undefined && c===42;}};let object={__proto__:base,read(a,b){return super.pick(b,a,b);}};object.read(undefined,42,99);",
+    );
+    check(
+        "let base={pick(value){return value===undefined;}};let object={__proto__:base,read(first,second){return super.pick(second);}};object.read(42);",
+    );
+    check(
+        "let effects=0;let base={read(value){return value;}};let object={__proto__:base,read(value=(effects++,42)){return super.read(value);},other(){effects++;return super.read(42);}};object.read()===42 && object.other()===42 && effects===2;",
+    );
+}
+
+#[test]
+fn sole_super_calls_keep_getter_target_and_propagate_one_throw() {
+    check(
+        "let effects=0;let marker={};let base={get read(){effects++;return function(){effects++;throw marker;};}};let object={__proto__:base,read(){return super.read();}};let caught=false;try{object.read();}catch(e){caught=e===marker;}caught && effects===2;",
+    );
+    check(
+        "let effects=0;let next={read(){return this.value*2;}};let base={get read(){effects++;Object.setPrototypeOf(object,next);return function(){return this.value;};}};let object={__proto__:base,value:21,read(){return super.read();}};object.read()===21 && object.read()===42 && effects===1;",
+    );
+    check(
+        "let effects=0;let base={get read(){effects++;return 42;}};let object={__proto__:base,read(){return super.read();}};let caught=false;try{object.read();}catch(e){caught=e instanceof TypeError;}caught && effects===1;",
+    );
+}

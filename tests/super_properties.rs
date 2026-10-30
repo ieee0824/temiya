@@ -138,3 +138,13 @@ fn captured_home_objects_and_receivers_survive_reentrant_collection() {
         assert_eq!(engine.collect_garbage().unwrap().retained, 0);
     }
 }
+
+#[test]
+fn super_assignment_checks_receiver_descriptors_and_propagates_proxy_errors() {
+    check(
+        "let calls=0;let actual={set value(v){calls++;}};class A{}class B extends A{write(){super.value=42;}}let caught=false;try{B.prototype.write.call(actual);}catch(e){caught=e instanceof TypeError;}caught && calls===0 && Object.getOwnPropertyDescriptor(actual,'value').set!==undefined;",
+    );
+    check(
+        "let base={value:1};let home={__proto__:base,write(){super.value=42;}};let marker={};let receiver=new Proxy({},{getOwnPropertyDescriptor(){throw marker;}});let caught=false;try{home.write.call(receiver);}catch(e){caught=e===marker;}caught && base.value===1;",
+    );
+}

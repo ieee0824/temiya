@@ -1554,6 +1554,19 @@ impl Object {
             drop(state);
             return super::proxy::get_own_property(self, key);
         }
+        if state.module_namespace.is_some() {
+            // Export getters are internal storage for live bindings. Expose
+            // the namespace's data descriptor and propagate an export's TDZ
+            // error rather than treating the binding as an accessor property.
+            if let Some(entry) = state.properties.iter().find(|entry| entry.key == *key) {
+                let descriptor = entry.descriptor.load(self)?;
+                if let Some(getter) = descriptor.get.flatten() {
+                    drop(state);
+                    let value = getter.call(Value::Object(self.clone()), &[])?;
+                    return Ok(Some(PropertyDescriptor::data(value, true, true, false)));
+                }
+            }
+        }
         if Self::legacy_property_key(key) {
             drop(state);
             self.materialize_legacy_function_properties();
@@ -1991,7 +2004,7 @@ impl Object {
         if self.0.state.borrow().proxy.is_some() {
             return super::proxy::get(self, key, receiver);
         }
-        let Some(descriptor) = self.get_own_property(key) else {
+        let Some(descriptor) = self.try_get_own_property(key)? else {
             return self.prototype().map_or(Ok(Value::Undefined), |prototype| {
                 prototype.get_with_receiver(key, receiver)
             });
@@ -2020,6 +2033,9 @@ impl Object {
         if self.0.state.borrow().proxy.is_some() {
             return super::proxy::set(self, key, value, receiver);
         }
+        if self.0.state.borrow().module_namespace.is_some() {
+            return Ok(false);
+        }
         // An own writable data property shadows every prototype. With the same
         // ordinary receiver, Set changes only its value; no descriptor needs to
         // be loaded into rooted facades and then rebuilt by DefineOwnProperty.
@@ -2043,15 +2059,14 @@ impl Object {
                 }
             }
         }
-        let descriptor = self.get_own_property(key);
-        let Some(descriptor) = descriptor else {
+        let descriptor = self.try_get_own_property(key)?;
+        let descriptor = if let Some(descriptor) = descriptor {
+            descriptor
+        } else {
             if let Some(prototype) = self.prototype() {
                 return prototype.set_with_receiver(key, value, receiver);
             }
-            let Value::Object(receiver) = receiver else {
-                return Ok(false);
-            };
-            return receiver.create_data_property(key.clone(), value);
+            PropertyDescriptor::data(Value::Undefined, true, true, true)
         };
         if descriptor.is_data_descriptor() {
             if descriptor.writable != Some(true) {
@@ -2060,7 +2075,7 @@ impl Object {
             let Value::Object(receiver) = receiver else {
                 return Ok(false);
             };
-            if let Some(existing) = receiver.get_own_property(key) {
+            if let Some(existing) = receiver.try_get_own_property(key)? {
                 if existing.is_accessor_descriptor() || existing.writable != Some(true) {
                     return Ok(false);
                 }

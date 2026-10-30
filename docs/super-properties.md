@@ -10,6 +10,8 @@ key expression. Get and Set use that captured base with the method's actual
 `this` as receiver, including accessors and Proxy traps. Changing the prototype
 therefore affects later references; key conversion or the assignment's right
 side cannot retarget a reference that was already created.
+Writes inspect the receiver's own descriptor and propagate Proxy or module
+binding errors, including a namespace export's temporal dead zone.
 
 An uninitialized derived `this` throws before evaluating the property expression.
 Key conversion occurs when GetValue or PutValue consumes the reference, and the

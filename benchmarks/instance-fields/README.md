@@ -32,3 +32,9 @@ do not convert any official-suite failure to a pass. The rejected v1 probe setup
 omitted doneprintHandle.js and is not used as engine evidence. run-probes.mjs is
 the original local capture driver; its absolute paths identify the captured
 engine and corpus rather than a portable test command.
+
+native-asi-v1 retains the final parser-fix ARM measurements: all fifteen Boa
+comparisons exceed the fixed threshold; identical-binary and preceding-source
+controls are all within noise. verify-native-asi.mjs checks all 77 compiled
+source hashes against the measured revision, raw statistics and 827 passing
+native tests. Hosted and full-corpus qualification remain separate.

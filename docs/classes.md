@@ -260,3 +260,22 @@ speed changes between identical binaries. `verify-hosted.mjs` checks every
 original-eleven, base-four and derived-five report and control. The separate
 `verify-view-index.mjs` keeps native controls, the interrupted earlier run,
 the ARM byte-identity record and the rejected x64 identity transfer.
+
+The function class-evaluator bridge at `306c32c` retains its local native and
+controlled-performance results in
+`benchmarks/derived-classes/class-bridge-v1`. Native release tests pass776 with
+26 ignored. Fixed upstream results and all187 failed signatures per backend
+match the preceding runtime. Local derived/Boa has14 significant wins and1
+noisy comparison; before/after has1 improvement and14 noisy comparisons. All
+120 worker runs and1920 checked values, including the identical-worker and
+baseline/Boa controls, remain available to independent replay. The reference
+worker was restored after build-directory cleanup and exactly matches its
+historical SHA-256; the rejected premeasurement attempt is also retained.
+
+The same runtime's complete Test262 run41083660571 is retained in
+`benchmarks/derived-classes/full-class-bridge-v1`. All eight known-pass gates
+were independently replayed. Its100211 outcomes all match43d3ff7:
+26276 pass,64978 fail,18 skip and8939 timeout, with no missing variants.
+Those failures and timeouts remain unqualified; the result establishes no
+whole-corpus conformance claim. Two-host performance and security acceptance
+remain separate requirements.

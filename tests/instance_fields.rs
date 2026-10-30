@@ -132,3 +132,10 @@ fn get_and_set_fields_before_generators_remain_own_data_properties() {
         "class C{get\n*a(){return 42;}set\n*b(value){return value;}}let c=new C();let d=Object.getOwnPropertyDescriptor(c,'get');class D{get\nvalue(){return 42;}}c.hasOwnProperty('get') && c.hasOwnProperty('set') && c.get===undefined && c.set===undefined && d.writable && d.enumerable && d.configurable && c.a().next().value===42 && c.b(99).next().value===99 && new D().value===42 && !new D().hasOwnProperty('get');",
     );
 }
+
+#[test]
+fn initializer_functions_keep_distinct_class_and_instance_environments() {
+    check(
+        "function make(seed){return class{value=seed;read=()=>this.value;captured=function(){return seed;};};}let A=make(41);let B=make(99);let a=new A();let second=new A();let b=new B();a.value=42;a.read()===42 && second.read()===41 && b.read()===99 && a.captured()===41 && b.captured()===99 && a.read.name==='read' && b.captured.name==='captured';",
+    );
+}

@@ -23,6 +23,9 @@ impl Field {
 
 pub(super) struct Initializer {
     expression: Rc<Expr>,
+    // Immutable code cache only: it owns no Realm, environment or JS objects.
+    // Each call still creates its own receiver/lexical environment.
+    cache: Option<super::function::FunctionCache>,
     name: JsString,
     realm: StoredRealm,
     environment: StoredEnvironment,
@@ -56,6 +59,7 @@ impl Initializer {
         let evaluator =
             ExpressionEvaluator::with_environment(realm.clone(), environment.clone(), this, true)
                 .with_this_environment(Some(environment));
+        let evaluator = evaluator.with_function_cache(self.cache.clone());
         let value = evaluator
             .evaluate_named(&self.expression, &self.name)
             .map_err(|error| realm.bind_exception(error))?;
@@ -106,6 +110,7 @@ pub(super) fn add(
             };
             let initializer = Initializer {
                 expression: Rc::new(expression.clone()),
+                cache: evaluator.function_cache.clone(),
                 name,
                 realm: StoredRealm::store(&function, &evaluator.realm)?,
                 environment: StoredEnvironment::store(&function, &evaluator.environment)?,

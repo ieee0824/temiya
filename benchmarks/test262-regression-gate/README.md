@@ -16,3 +16,8 @@ Run `node benchmarks/test262-regression-gate/verify.mjs` to decode and verify al
 226 files and independently reconstruct the 14 actual captures. This does not
 rerun JavaScript or claim full-corpus compatibility. The production full reference,
 PR selection and periodic workflow have separate acceptance requirements.
+
+`production-policy.json` preserves the exact 128-file/214-variant policy used
+by the archived production capture. Its SHA-256 is checked before replay.
+Current policy additions are tested against new captures; they cannot retroactively
+change the selection required from this historical capture.

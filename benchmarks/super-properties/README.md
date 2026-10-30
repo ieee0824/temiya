@@ -42,3 +42,12 @@ All791 native tests pass, with26 ignored. The archive also retains base and
 derived originals and the216-variant PR gate. The first receiver test used an
 unavailable globalThis builtin; its rejected log is retained, and the corrected
 test compares against captured top-level this.
+
+The object-initializer bridge at c78b9ba is retained in object-bridge-v1. It has
+5 significant Boa wins and10 noisy comparisons. Against a4c2577 it has7
+improvements,7 noisy comparisons and1 slowdown; that adverse comparison remains
+in the archive. The identical-candidate control has15 noisy comparisons. All
+798 native tests pass, with26 ignored; the fixed super and derived outcomes and
+failed signatures are unchanged. This candidate still does not qualify the
+entire super suite. verify-performance.mjs reconstructs all four intermediate
+candidates rather than selecting only their favorable observations.

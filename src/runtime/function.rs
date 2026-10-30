@@ -822,6 +822,41 @@ mod derived_arguments_tests {
     };
 
     #[test]
+    fn anonymous_class_definitions_avoid_an_unused_environment() {
+        for backend in [ScriptBackend::Ast, ScriptBackend::Auto] {
+            let engine = Engine::builder().script_backend(backend).build();
+            engine
+                .allocation_context()
+                .set_allocation_collection_interval(usize::MAX);
+            {
+                let realm = engine.create_realm();
+                let anonymous = engine
+                    .compile(&realm, "(class { read(){return 42;} });")
+                    .unwrap();
+                let named = engine
+                    .compile(&realm, "(class Named { read(){return 42;} });")
+                    .unwrap();
+                let count = if cfg!(miri) { 2 } else { 8 };
+                let allocations = |script| {
+                    let before = engine.allocation_context().diagnostics();
+                    for _ in 0..count {
+                        engine.evaluate(script).unwrap();
+                    }
+                    let after = engine.allocation_context().diagnostics();
+                    assert_eq!(after.collections, before.collections);
+                    after.live - before.live
+                };
+                assert_eq!(
+                    allocations(&named) - allocations(&anonymous),
+                    count,
+                    "{backend:?}"
+                );
+            }
+            assert_eq!(engine.collect_garbage().unwrap().retained, 0);
+        }
+    }
+
+    #[test]
     fn derived_arguments_and_delegation_each_avoid_one_managed_object_per_call() {
         for backend in [ScriptBackend::Ast, ScriptBackend::Auto] {
             let engine = Engine::builder().script_backend(backend).build();

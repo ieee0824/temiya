@@ -10,6 +10,7 @@ const root=path.dirname(fileURLToPath(import.meta.url)),repo=path.resolve(root,'
 const read=p=>JSON.parse(fs.readFileSync(p)),sha=b=>createHash('sha256').update(b).digest('hex');
 const captures=new Map([
  ['hosted-native-prototypes-v1',{source:'336a38dbc74242a107761680bed5c1f429b602a1',run:41044280340}],
+ ['hosted-delegation-v1',{source:'8b019733ed8e08d3bb8a31319501a4d3c08bf070',run:41054310081,baseline:'2be3d7c82091d27f7d2fae58a346c44144d3666b'}],
  ['hosted-view-index-v1',{source:'2be3d7c82091d27f7d2fae58a346c44144d3666b',run:41049321956}],
 ]);
 const groups=[
@@ -22,7 +23,7 @@ assert.equal(new Set(selected).size,selected.length);
 for(const name of selected){
  assert(captures.has(name));const dir=root+'/'+name,e=read(dir+'/evidence.json'),expected=captures.get(name);
  assert.equal(e.source_revision,expected.source);assert.equal(e.run,expected.run);
- assert.equal(e.baseline_revision,'f1ed7c0ab3260de78cbf169651e5093ca8239aa0');
+ assert.equal(e.baseline_revision,expected.baseline ?? 'f1ed7c0ab3260de78cbf169651e5093ca8239aa0');
  assert.equal(e.archive.file,'capture.tar.gz');const archive=dir+'/'+e.archive.file,bytes=fs.readFileSync(archive);
  assert.equal(bytes.length,e.archive.bytes);assert.equal(sha(bytes),e.archive.sha256);
  const temp=fs.mkdtempSync(path.join(os.tmpdir(),'temiya-derived-hosted-'));

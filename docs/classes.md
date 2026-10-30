@@ -14,6 +14,13 @@ unrelated definitions cannot reuse code by coincidental source offsets. Code
 holds only weak cache links; class instances and captured names retain the
 normal traced runtime ownership.
 
+Anonymous classes capture the enclosing environment directly: they introduce
+no class-name binding and need no empty declarative environment. Named classes
+keep their own immutable binding and its temporal dead zone. Both forms still
+evaluate heritage and computed keys in strict mode with the enclosing `this`
+and new target. Methods retain traced access to captured outer bindings even
+when garbage collection runs during construction or method execution.
+
 ```js
 class Point {
   constructor(x) { this.x = x; }
@@ -168,6 +175,17 @@ control has fifteen noisy comparisons. These are observations, not a universal
 speed claim. `verify-delegation.mjs` replays them with the 767 passing native
 tests and fixed original captures. The i686 record is a type check, not a
 32-bit execution result.
+
+The same sole-super revision also retains 24 hosted reports in
+`hosted-delegation-v1`, covering the original eleven, base-class four and
+derived five workloads on two machines with all four controls. Derived/Boa
+has thirteen significant wins and two noisy comparisons on one machine and
+fifteen wins on the other. Both noisy comparisons are class definition; only
+one of its three pairs wins significantly on the first machine, so this
+revision does not qualify that workload there. Original before/after results
+also retain nine significant slowdowns on that machine, alongside one apparent
+slowdown in its identical-worker control. `verify-hosted.mjs` checks every
+report without converting successful integrity checks into speed acceptance.
 
 Three complete upstream captures (`336a38d`, `2be3d7c`, `8b01973`) retain all
 100,211 variants each: 26,276 pass, 64,978 fail, 18 skip and 8,939 time out,

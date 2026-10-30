@@ -198,6 +198,11 @@ fn derived_this_and_captured_arrows_survive_reentrant_collection() {
                 engine.evaluate(&script).unwrap().value(),
                 Value::Boolean(true)
             ));
+            let script = engine.compile(&realm, "function factory(captured) { return class extends A { constructor(value) { super(value); gcNow(); } read() { gcNow(); return captured; } }; } let captured = {}; let Anonymous = factory(captured); let anonymous = new Anonymous(captured); gcNow(); anonymous.read() === captured && anonymous.value === captured && anonymous instanceof Anonymous;").unwrap();
+            assert!(matches!(
+                engine.evaluate(&script).unwrap().value(),
+                Value::Boolean(true)
+            ));
         }
         assert_eq!(engine.collect_garbage().unwrap().retained, 0);
     }
@@ -566,5 +571,27 @@ fn sole_super_preserves_explicit_argument_mapping_and_original_new_target() {
     );
     check(
         "let calls=0; function mark(v) { calls++; return v; } class A { constructor(v) { this.v=v; } } class D extends A { constructor(v=mark(42)) { super(mark(v)); } } let p=new D(); p.v===42 && calls===2;",
+    );
+}
+
+#[test]
+fn anonymous_classes_preserve_outer_bindings_strict_this_and_inferred_names() {
+    check(
+        "let C=class { static read(){return C;} }; let original=C; C=42; original.read()===42 && original.name==='C';",
+    );
+    check(
+        "let C=class Inner { static read(){return Inner;} }; let original=C; C=42; original.read()===original && original.name==='Inner';",
+    );
+    check(
+        "function make(value){return class { constructor(){this.value=value;} read(){return value;} };} let C=make(42); let p=new C(); p.value===42 && p.read()===42;",
+    );
+    check(
+        "let marker={key:'read'}; function make(value){ return class extends value { [this.key](){return this.value;} }; } class A { constructor(v){this.value=v;} } let C=make.call(marker,A); let p=new C(42); p.read()===42 && Object.getPrototypeOf(C)===A;",
+    );
+    check(
+        "let C=class { read(){return this;} }; let method=C.prototype.read; method()===undefined;",
+    );
+    check(
+        "let Outer=class {}; let caught=false; try { let Outer=class extends Outer {}; } catch(e){caught=e instanceof ReferenceError;} caught;",
     );
 }

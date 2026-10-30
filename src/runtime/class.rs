@@ -34,7 +34,15 @@ pub(super) fn evaluate(
         None => None,
         _ => return Err(RuntimeError::syntax_error("invalid class binding")),
     };
-    let environment = Environment::declarative(outer.environment.clone());
+    // An anonymous class introduces no lexical name. Its empty declarative
+    // record adds no binding or this behavior; methods can capture the outer
+    // environment directly. Named classes still need their own TDZ/immutable
+    // binding, and the evaluator below remains strict in both cases.
+    let environment = if binding.is_none() {
+        outer.environment.clone()
+    } else {
+        Environment::declarative(outer.environment.clone())
+    };
     if let Some(name) = &binding {
         environment.create_immutable_binding(name.clone(), true)?;
     }

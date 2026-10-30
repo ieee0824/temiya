@@ -498,9 +498,31 @@ pub struct ExpressionEvaluator {
     pub(super) this_value: Value,
     pub(super) new_target: Option<Object>,
     pub(super) strict: bool,
+    pub(super) function_cache: Option<super::function::FunctionCache>,
 }
 
 impl ExpressionEvaluator {
+    pub(super) fn with_function_cache(
+        mut self,
+        cache: Option<super::function::FunctionCache>,
+    ) -> Self {
+        self.function_cache = cache;
+        self
+    }
+    pub(super) fn evaluate_named(
+        &self,
+        expression: &Expr,
+        name: &JsString,
+    ) -> RuntimeResult<Value> {
+        match &expression.kind {
+            ExprKind::Class(class) if class.name.is_none() => {
+                super::class::evaluate(class, self, Some(name.clone())).map(Value::Object)
+            }
+            ExprKind::Parenthesized(inner) => self.evaluate_named(inner, name),
+            _ => self.evaluate(expression),
+        }
+    }
+
     /// Creates an evaluator in the Realm's global environment.
     #[must_use]
     pub fn new(realm: Realm) -> Self {
@@ -515,6 +537,7 @@ impl ExpressionEvaluator {
             this_value,
             new_target: None,
             strict: false,
+            function_cache: None,
         }
     }
 
@@ -532,6 +555,7 @@ impl ExpressionEvaluator {
             this_value,
             new_target: None,
             strict,
+            function_cache: None,
         }
     }
 
@@ -663,9 +687,8 @@ impl ExpressionEvaluator {
                 create_function(function, FunctionKind::Method(*kind), self, None)
                     .map(|function| Evaluation::Value(Value::Object(function)))
             }
-            ExprKind::Class(_) => Err(RuntimeError::internal_error(
-                "class evaluation is not yet implemented",
-            )),
+            ExprKind::Class(class) => super::class::evaluate(class, self, None)
+                .map(|constructor| Evaluation::Value(Value::Object(constructor))),
             ExprKind::Yield { .. } => Err(RuntimeError::internal_error(
                 "yield evaluation is implemented by milestone #28",
             )),
@@ -817,7 +840,14 @@ impl ExpressionEvaluator {
     fn assignment(&self, operator: &str, target: &Expr, value: &Expr) -> RuntimeResult<Value> {
         let reference = self.evaluate_reference(target)?;
         let assigned = if operator == "=" {
-            self.evaluate(value)?
+            match &reference.name {
+                ReferenceName::Plain(ReferencedName::PropertyKey(PropertyKey::String(name)))
+                    if matches!(target.kind, ExprKind::Identifier(_)) =>
+                {
+                    self.evaluate_named(value, name)?
+                }
+                _ => self.evaluate(value)?,
+            }
         } else {
             let left = reference.get_value()?;
             if (operator == "&&=" && !left.to_boolean())
@@ -1397,6 +1427,7 @@ pub(super) struct StoredExpressionEvaluator {
     this_value: super::stored::StoredValue,
     new_target: Option<super::stored::StoredObject>,
     strict: bool,
+    function_cache: Option<super::function::FunctionCache>,
 }
 impl StoredExpressionEvaluator {
     pub(super) fn store(owner: &Object, evaluator: ExpressionEvaluator) -> RuntimeResult<Self> {
@@ -1413,6 +1444,7 @@ impl StoredExpressionEvaluator {
                 .map(|target| super::stored::StoredObject::store(owner, target))
                 .transpose()?,
             strict: evaluator.strict,
+            function_cache: evaluator.function_cache,
         })
     }
     pub(super) fn load(self, owner: &Object) -> RuntimeResult<ExpressionEvaluator> {
@@ -1426,6 +1458,7 @@ impl StoredExpressionEvaluator {
                 .map(|target| target.load(owner))
                 .transpose()?,
             strict: self.strict,
+            function_cache: self.function_cache,
         })
     }
     pub(super) fn trace(&self, tracer: &mut crate::gc::Tracer<'_>) {

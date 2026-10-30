@@ -1,0 +1,58 @@
+{
+  "schema": 1,
+  "fixture_kind": "authored-base-classes",
+  "fixture_version": 1,
+  "reference_engine_revision": "007556adccb8fb4329236932ca8175f8e8d119d2",
+  "frozen_at": "2026-10-29T20:18:45.584Z",
+  "workloads": [
+    {
+      "name": "class-construct",
+      "file": "class-construct.json",
+      "iterations": 10000,
+      "expected": 49995000,
+      "oracle": "sum-zero-to-n-minus-one",
+      "sha256": "e9b06a3bf0fc4a584e5c9250a921cb670b520b8bff10901d5e2aeaa221849279",
+      "setup_sha256": "069d8759a42bbb45008ab8df8c18fb4640c0bbad97b517b9d3a4e58eb6339a24",
+      "invocation_sha256": "d0e3efdf9851dbde2f1f5c032f78b8ac15e066d907d82e7745927914215538b7"
+    },
+    {
+      "name": "class-method",
+      "file": "class-method.json",
+      "iterations": 10000,
+      "expected": 10000,
+      "oracle": "n",
+      "sha256": "a244d6547f354e02a43ab37f8c48472ab5dca12b0c6fecb3e04b032b3254b841",
+      "setup_sha256": "3f3b72d3687450811858dde2c6397a71747f0fe76222f9a5e7717f05cfc8bcdc",
+      "invocation_sha256": "d0e3efdf9851dbde2f1f5c032f78b8ac15e066d907d82e7745927914215538b7"
+    },
+    {
+      "name": "class-static",
+      "file": "class-static.json",
+      "iterations": 100000,
+      "expected": 4999950000,
+      "oracle": "sum-zero-to-n-minus-one",
+      "sha256": "d06d2a6c10e48081fa1dac6bde586c8c59b37653d780b778405e787d0eff7f69",
+      "setup_sha256": "f1b75b64b1d4668dc38a973597e8ff39df56ae692d91c61b069962b090648d91",
+      "invocation_sha256": "a72cb43459724fe2b0aface27688600ddfb80facc05f24871253b9ed58cd5d2d"
+    },
+    {
+      "name": "class-definition",
+      "file": "class-definition.json",
+      "iterations": 1000,
+      "expected": 499500,
+      "oracle": "sum-zero-to-n-minus-one",
+      "sha256": "d47289dc28c4ce5e615b6ab2fb4d29f5490fa2e34a1290df693dd4f1ad0a53ef",
+      "setup_sha256": "c908c470f5a69e266fff03b3812cda0c9778956d93feae8fc765a86b3293c811",
+      "invocation_sha256": "8fe3956ff4863c29f618bd15ee5343f412c56c3a7bebdd108eed8f03f0cf24ce"
+    }
+  ],
+  "conditions": {
+    "samples": 15,
+    "pairs": 3,
+    "timeout_ms": 180000,
+    "rss_limit_kib": 524288,
+    "noise_floor": 0.1,
+    "relative_mad_multiplier": 3
+  },
+  "scope": "Author-written base class construction/method/static/definition workloads, fixed before either engine executes them. Separate from unchanged original11. Setup and startup excluded; parse+evaluate invocation timed. No eligibility filtering or claimed speedup before actual results."
+}

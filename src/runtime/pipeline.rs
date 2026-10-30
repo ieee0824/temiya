@@ -30,6 +30,11 @@ use super::{
 use crate::gc::{Handle, Root, Trace, Tracer};
 
 impl ScriptRecord {
+    pub(crate) fn evaluate_with_auto_functions(&self) -> RuntimeResult<Completion> {
+        StatementEvaluator::new(self.realm())
+            .with_auto_functions()
+            .evaluate_program(self.program())
+    }
     /// Parses Script source and associates it with a Realm.
     pub fn parse(realm: Realm, source: &str) -> RuntimeResult<Self> {
         parse_script(source)

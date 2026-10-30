@@ -24,7 +24,7 @@ impl VirtualMachine {
         {
             return Self::execute_in_realm(bytecode, &Realm::ordinary());
         }
-        Self::run::<false>(bytecode, None, None)
+        Self::run::<false>(bytecode, None, None, false)
     }
 
     /// Executes Script bytecode in a persistent host-supplied Realm.
@@ -32,7 +32,7 @@ impl VirtualMachine {
         bytecode: &VerifiedBytecode,
         realm: &Realm,
     ) -> RuntimeResult<Completion> {
-        Self::run::<false>(bytecode, Some(realm), None)
+        Self::run::<false>(bytecode, Some(realm), None, false)
     }
 
     /// Executes function-body bytecode with a caller-prepared function frame.
@@ -47,7 +47,7 @@ impl VirtualMachine {
                 "bytecode requires a function environment",
             ));
         }
-        Self::run::<false>(bytecode, Some(realm), Some(frame))
+        Self::run::<false>(bytecode, Some(realm), Some(frame), false)
     }
 
     // Only a freshly instantiated, nonescaping internal function frame may
@@ -59,9 +59,14 @@ impl VirtualMachine {
         frame: &Environment,
     ) -> RuntimeResult<Completion> {
         if scalar_loop_locals(bytecode) {
-            Self::run::<true>(bytecode, Some(realm), Some(frame))
+            Self::run::<true>(bytecode, Some(realm), Some(frame), true)
         } else {
-            Self::run::<false>(bytecode, Some(realm), Some(frame))
+            Self::run::<false>(
+                bytecode,
+                Some(realm),
+                Some(frame),
+                bytecode.reuse_loop_bindings,
+            )
         }
     }
 
@@ -69,11 +74,15 @@ impl VirtualMachine {
         bytecode: &VerifiedBytecode,
         realm: Option<&Realm>,
         function: Option<&Environment>,
+        reuse_loop_bindings: bool,
     ) -> RuntimeResult<Completion> {
         let _object_roots = realm.and_then(Realm::enter_object_root_region);
         let mut property_context = realm.map(PropertyReferenceContext::new);
         let body = bytecode.bytecode();
-        let mut scalar_values: Option<Box<[Value]>> = None;
+        let mut scalar_scopes: Vec<Option<ScalarScope<'_>>> = Vec::new();
+        if SCALAR_LOCALS {
+            scalar_scopes.resize_with(body.instructions.len(), || None);
+        }
         let mut scopes: Vec<ScopeFrame<'_>> = vec![];
         let mut references: Vec<Reference> = vec![];
         let mut calls: Vec<Invocation> = vec![];
@@ -184,21 +193,31 @@ impl VirtualMachine {
                     let Constant::Scope(plan) = &body.constants[index as usize] else {
                         unreachable!()
                     };
-                    let environment = enter_scope(plan, &scopes, (pc - 1) as u32, realm, function)?;
-                    if SCALAR_LOCALS && plan.kind == ScopeKind::Function {
+                    // The whole-body proof excludes all operations that can observe
+                    // block environments or retain bindings. Keep primitive slots and
+                    // TDZ state locally; loop-environment cloning has no observer.
+                    let environment = if SCALAR_LOCALS && plan.kind == ScopeKind::Block {
+                        function.expect("private function frame").clone()
+                    } else {
+                        enter_scope(plan, &scopes, (pc - 1) as u32, realm, function)?
+                    };
+                    if SCALAR_LOCALS {
                         let values = plan
                             .bindings
                             .iter()
                             .map(|binding| {
-                                environment.get_binding_value(&binding.name, plan.strict)
+                                if binding.kind == BindingKind::Var {
+                                    environment
+                                        .get_binding_value(&binding.name, plan.strict)
+                                        .map(Some)
+                                } else {
+                                    Ok(None)
+                                }
                             })
                             .collect::<RuntimeResult<Box<[_]>>>()?;
-                        scalar_values = values
-                            .iter()
-                            .all(|value| matches!(value, Value::Number(_) | Value::Undefined))
-                            .then_some(values);
+                        scalar_scopes[pc - 1] = Some(ScalarScope { plan, values });
                     }
-                    let binding_hints = ((!SCALAR_LOCALS || scalar_values.is_none())
+                    let binding_hints = (!SCALAR_LOCALS
                         && bytecode.has_backedge()
                         && plan.kind == ScopeKind::Function)
                         .then(|| {
@@ -218,6 +237,9 @@ impl VirtualMachine {
                     scopes.pop();
                 }
                 Instruction::CloneLoopBindings => {
+                    if reuse_loop_bindings {
+                        continue;
+                    }
                     let frame = scopes.last_mut().expect("verified loop environment");
                     let next = Environment::declarative(
                         frame.environment.outer().expect("verified loop parent"),
@@ -233,13 +255,14 @@ impl VirtualMachine {
                 }
                 Instruction::LoadBinding { scope, slot } => {
                     if SCALAR_LOCALS {
-                        if let Some(values) = &scalar_values {
-                            stack.push(match &values[slot as usize] {
-                                Value::Number(value) => Value::Number(*value),
-                                value => value.clone(),
-                            });
-                            continue;
-                        }
+                        let slots = scalar_scopes[scope as usize]
+                            .as_ref()
+                            .expect("active scalar scope");
+                        stack.push(match slots.read(slot as usize)? {
+                            Value::Number(value) => Value::Number(*value),
+                            value => value.clone(),
+                        });
+                        continue;
                     }
                     let frame = binding_frame(&scopes, scope);
                     let name = &frame.plan.bindings[slot as usize].name;
@@ -276,16 +299,17 @@ impl VirtualMachine {
                     prefix,
                 } => {
                     if SCALAR_LOCALS {
-                        if let Some(values) = &mut scalar_values {
-                            let old = match &values[slot as usize] {
-                                Value::Number(value) => *value,
-                                value => value.to_number()?,
-                            };
-                            let new = if increment { old + 1.0 } else { old - 1.0 };
-                            values[slot as usize] = Value::Number(new);
-                            stack.push(Value::Number(if prefix { new } else { old }));
-                            continue;
-                        }
+                        let slots = scalar_scopes[scope as usize]
+                            .as_mut()
+                            .expect("active scalar scope");
+                        let old = match slots.read(slot as usize)? {
+                            Value::Number(value) => *value,
+                            value => value.to_number()?,
+                        };
+                        let new = if increment { old + 1.0 } else { old - 1.0 };
+                        slots.write(slot as usize, Value::Number(new))?;
+                        stack.push(Value::Number(if prefix { new } else { old }));
+                        continue;
                     }
                     let frame = binding_frame(&scopes, scope);
                     let name = &frame.plan.bindings[slot as usize].name;
@@ -344,6 +368,17 @@ impl VirtualMachine {
                     }
                 }
                 Instruction::InitializeBinding { scope, slot } => {
+                    if SCALAR_LOCALS {
+                        let slots = scalar_scopes[scope as usize]
+                            .as_mut()
+                            .expect("active scalar scope");
+                        let value = pop(&mut stack)?;
+                        if slots.values[slot as usize].is_some() {
+                            return Err(RuntimeError::type_error("binding is already initialized"));
+                        }
+                        slots.values[slot as usize] = Some(value);
+                        continue;
+                    }
                     let frame = binding_frame(&scopes, scope);
                     frame.environment.initialize_binding(
                         &frame.plan.bindings[slot as usize].name,
@@ -353,10 +388,11 @@ impl VirtualMachine {
                 Instruction::StoreBinding { scope, slot } => {
                     let value = pop(&mut stack)?;
                     if SCALAR_LOCALS {
-                        if let Some(values) = &mut scalar_values {
-                            values[slot as usize] = value;
-                            continue;
-                        }
+                        scalar_scopes[scope as usize]
+                            .as_mut()
+                            .expect("active scalar scope")
+                            .write(slot as usize, value)?;
+                        continue;
                     }
                     let frame = binding_frame(&scopes, scope);
                     let name = &frame.plan.bindings[slot as usize].name;
@@ -643,7 +679,9 @@ impl VirtualMachine {
                             stack.push(environment.global_this_value()?);
                             break;
                         }
-                        if environment.has_this_binding()? {
+                        if environment.kind() == EnvironmentKind::Function
+                            && environment.has_this_binding()?
+                        {
                             stack.push(environment.get_this_binding()?);
                             break;
                         }
@@ -731,7 +769,7 @@ fn indexed_value(base: &Value, key: &Value) -> Option<Value> {
     }
 }
 
-fn constant(constant: &Constant) -> Value {
+pub(super) fn constant(constant: &Constant) -> Value {
     match constant {
         Constant::Scope(_) | Constant::Function(_) => {
             unreachable!("verifier rejects metadata values")
@@ -875,6 +913,33 @@ impl Invocation {
     }
 }
 
+struct ScalarScope<'a> {
+    plan: &'a ScopeDescriptor,
+    values: Box<[Option<Value>]>,
+}
+
+impl ScalarScope<'_> {
+    fn read(&self, slot: usize) -> RuntimeResult<&Value> {
+        self.values[slot].as_ref().ok_or_else(|| {
+            RuntimeError::reference_error(format!(
+                "{} is in the temporal dead zone",
+                self.plan.bindings[slot].name.to_string_lossy()
+            ))
+        })
+    }
+
+    fn write(&mut self, slot: usize, value: Value) -> RuntimeResult<()> {
+        self.read(slot)?;
+        if self.plan.bindings[slot].kind == BindingKind::Const {
+            return Err(RuntimeError::type_error(
+                "assignment to an immutable binding",
+            ));
+        }
+        self.values[slot] = Some(value);
+        Ok(())
+    }
+}
+
 struct ScopeFrame<'a> {
     entry: u32,
     plan: &'a ScopeDescriptor,
@@ -883,10 +948,10 @@ struct ScopeFrame<'a> {
 }
 
 // Conservative whole-body proof: no captures, calls, property operations,
-// arguments access, reference escape or lexical bindings. Initial arguments
-// are Number leaves and var bindings are undefined; these instructions can
-// produce only primitive values. The frame is private to the internal caller,
-// so its intermediate var writes cannot be observed outside this activation.
+// arguments access or reference escape. Initial arguments are Number leaves;
+// var bindings start undefined and lexical slots retain their TDZ/mutability.
+// These instructions produce only primitive values. Neither a private frame's
+// intermediate writes nor its per-iteration binding identities can escape.
 fn scalar_loop_locals(bytecode: &VerifiedBytecode) -> bool {
     if !bytecode.has_backedge() {
         return false;
@@ -907,16 +972,18 @@ fn scalar_loop_locals(bytecode: &VerifiedBytecode) -> bool {
                 };
                 plan.functions.is_empty()
                     && match plan.kind {
-                        ScopeKind::Function => {
-                            offset == 0 && plan.bindings.iter().all(|b| b.kind == BindingKind::Var)
+                        ScopeKind::Function => offset == 0,
+                        ScopeKind::Block => {
+                            plan.bindings.iter().all(|b| b.kind != BindingKind::Var)
                         }
-                        ScopeKind::Block => plan.bindings.is_empty(),
                         ScopeKind::Global => false,
                     }
             }
-            Instruction::LoadBinding { scope, .. }
-            | Instruction::StoreBinding { scope, .. }
-            | Instruction::UpdateBinding { scope, .. } => scope == 0,
+            Instruction::LoadBinding { .. }
+            | Instruction::InitializeBinding { .. }
+            | Instruction::StoreBinding { .. }
+            | Instruction::UpdateBinding { .. }
+            | Instruction::CloneLoopBindings => true,
             Instruction::LoadConstant(index) => matches!(
                 body.constants[index as usize],
                 Constant::Undefined
@@ -971,13 +1038,16 @@ fn enter_scope(
         ScopeKind::Function => function
             .ok_or_else(|| RuntimeError::type_error("function scope requires a prepared frame"))?
             .clone(),
-        ScopeKind::Block => Environment::declarative(
-            parents
-                .last()
-                .expect("verified block parent")
-                .environment
-                .clone(),
-        ),
+        ScopeKind::Block => {
+            let parent = &parents.last().expect("verified block parent").environment;
+            // An empty descriptor has no binding identity to capture. Keep its
+            // verified scope entry, but reuse the same lookup environment.
+            if plan.bindings.is_empty() && plan.functions.is_empty() {
+                parent.clone()
+            } else {
+                Environment::declarative(parent.clone())
+            }
+        }
     };
     // Global eligibility is atomic with respect to binding/function creation.
     if plan.kind == ScopeKind::Global {
@@ -1080,4 +1150,169 @@ fn instantiate_functions(
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod private_scope_tests {
+    use super::scalar_loop_locals;
+    use crate::{ast::StmtKind, bytecode::BytecodeCompiler, parser::parse_script};
+
+    #[test]
+    fn lexical_loop_proof_accepts_private_bindings_and_rejects_observers() {
+        for (source, eligible) in [
+            (
+                "function f(n) { let sum=0; for(let i=0;i<n;i++){const x=i; {let i=x+1; sum+=i;}} return sum; }",
+                true,
+            ),
+            (
+                "function f(n) { let sum=0; for(let i=0;i<n;i++){sum+=i;} return sum; }",
+                true,
+            ),
+            ("function f(n) { for(let i=0;i<n;i++){let x; x++;} }", true),
+            (
+                "function f(n) { for(let i=0;i<n;i++){let x=function(){return i;};} }",
+                false,
+            ),
+            ("function f(n) { for(let i=0;i<n;i++){n.value;} }", false),
+            ("function f(n) { for(let i=0;i<n;i++){other();} }", false),
+            ("function f(n) { for(let i=0;i<n;i++){n=outer;} }", false),
+        ] {
+            let program = parse_script(source).unwrap();
+            let StmtKind::FunctionDeclaration(function) = &program.body[0].kind else {
+                panic!("function declaration")
+            };
+            let template = BytecodeCompiler::compile_function_template(function).unwrap();
+            assert_eq!(scalar_loop_locals(&template.body), eligible, "{source}");
+        }
+    }
+}
+
+#[cfg(test)]
+mod loop_binding_identity_tests {
+    use super::*;
+    use crate::{
+        ast::StmtKind,
+        bytecode::{Bytecode, BytecodeCompiler, ScopeBinding},
+        parser::parse_script,
+        runtime::{Runtime, ThisBindingStatus},
+    };
+
+    #[test]
+    fn reuse_excludes_closure_creation_and_eval_observers() {
+        for (source, expected) in [
+            (
+                "function f(n){let total=0;for(let i=0;i<n;i++){total+=outside(i);}return total;}",
+                true,
+            ),
+            (
+                "function f(n){let a=[];for(let i=0;i<n;i++){a.push(function(){return i;});}return a;}",
+                false,
+            ),
+            (
+                "function f(n){var eval=0;for(let i=0;i<n;i++){outside(i);}return n;}",
+                false,
+            ),
+            (
+                "function f(n){for(let i=0;i<n;i++){(0,eval)('x');}return n;}",
+                false,
+            ),
+        ] {
+            let program = parse_script(source).unwrap();
+            let StmtKind::FunctionDeclaration(function) = &program.body[0].kind else {
+                panic!("function")
+            };
+            let code = BytecodeCompiler::compile_function_template(function).unwrap();
+            assert_eq!(code.body.reuse_loop_bindings, expected, "{source}");
+        }
+    }
+
+    #[test]
+    fn references_retained_across_clone_keep_the_original_iteration_cell() {
+        let code = Bytecode {
+            constants: vec![
+                Constant::Scope(ScopeDescriptor {
+                    kind: ScopeKind::Function,
+                    strict: false,
+                    bindings: vec![],
+                    functions: vec![],
+                }),
+                Constant::Scope(ScopeDescriptor {
+                    kind: ScopeKind::Block,
+                    strict: false,
+                    bindings: vec![ScopeBinding {
+                        name: "i".into(),
+                        kind: BindingKind::Let,
+                    }],
+                    functions: vec![],
+                }),
+                Constant::Number(0.0),
+                Constant::Number(1.0),
+            ],
+            instructions: vec![
+                Instruction::EnterScope(0),
+                Instruction::EnterScope(1),
+                Instruction::LoadConstant(2),
+                Instruction::InitializeBinding { scope: 1, slot: 0 },
+                Instruction::ResolveBinding {
+                    scope: 1,
+                    slot: 0,
+                    strict: false,
+                },
+                Instruction::CloneLoopBindings,
+                Instruction::LoadConstant(3),
+                Instruction::StoreBinding { scope: 1, slot: 0 },
+                Instruction::LoadReference,
+                Instruction::DiscardReference,
+                Instruction::Return,
+            ],
+            local_count: 0,
+        }
+        .verify()
+        .unwrap();
+        let realm = Realm::ordinary();
+        let frame = Environment::function(
+            Some(realm.global_environment()),
+            Object::new_in(realm.allocation_context()),
+            None,
+            ThisBindingStatus::Initialized,
+        );
+        assert!(matches!(
+            VirtualMachine::execute_with_private_frame(&code, &realm, &frame).unwrap(),
+            Completion::Return(Value::Number(0.0))
+        ));
+    }
+
+    #[test]
+    fn callback_loops_without_captures_allocate_a_constant_number_of_managed_records() {
+        let runtime = Runtime::new();
+        runtime.set_allocation_collection_interval(usize::MAX);
+        let realm = Realm::ordinary_in(&runtime);
+        let code=BytecodeCompiler::compile("function increment(x){'use strict';this.value+=x;return this.value;}function bench(n){let counter={value:0,add:increment};for(let i=0;i<n;i++){counter.add(1);}return counter.value;}bench;").unwrap();
+        let Completion::Normal(Some(Value::Object(function))) =
+            VirtualMachine::execute_in_realm(&code, &realm).unwrap()
+        else {
+            panic!("function")
+        };
+        runtime.collect_garbage().unwrap();
+        let before = runtime.diagnostics().live;
+        assert!(
+            function
+                .call(Value::Undefined, &[Value::Number(1.0)])
+                .unwrap()
+                .same_value(&Value::Number(1.0))
+        );
+        let after_small = runtime.diagnostics().live;
+        let count = if cfg!(miri) { 3.0 } else { 50.0 };
+        assert!(
+            function
+                .call(Value::Undefined, &[Value::Number(count)])
+                .unwrap()
+                .same_value(&Value::Number(count))
+        );
+        let after_large = runtime.diagnostics().live;
+        assert_eq!(after_large - after_small, after_small - before);
+        drop((function, realm));
+        assert_eq!(runtime.collect_garbage().unwrap().retained, 0);
+        assert!(!code.bytecode().instructions.is_empty());
+    }
 }

@@ -387,9 +387,10 @@
       "tests": [
         "tests/declarations.rs",
         "tests/functions_runtime.rs",
-        "tests/spec_support.rs"
+        "tests/spec_support.rs",
+        "tests/base_classes.rs"
       ],
-      "rationale": "Ordinary functions and arrows execute a subset; class declarations/expressions parse but class execution is unconnected. Non-simple parameters, arguments, super and private fields remain separate work. See individual syntax probes.",
+      "rationale": "Ordinary functions/arrows execute a subset. Base classes execute declarations/expressions, constructors, methods/accessors, TDZ and strict call restrictions. Derived classes, fields/private elements, non-simple parameter environments and complete arguments remain separate work. See individual probes and focused original captures.",
       "kind": "group",
       "issues": [
         154,
@@ -10607,14 +10608,15 @@
     {
       "id": "syntax.class-declaration",
       "kind": "syntax",
-      "status": "unconnected",
+      "status": "partial",
       "reference": "ECMA-262 2026 language syntax and evaluation",
       "issues": [
         154
       ],
-      "rationale": "Authored public Engine probe covers the stated example only; complete specification semantics remain unqualified.",
+      "rationale": "Base class declarations/expressions construct strict callable-restricted constructors with TDZ bindings and ordinary/static methods. Derived construction, fields, private elements and full class semantics remain unqualified.",
       "tests": [
-        "tests/spec_support.rs"
+        "tests/spec_support.rs",
+        "tests/base_classes.rs"
       ],
       "test262": {
         "status": "not-run"
@@ -10624,26 +10626,26 @@
           "source": "class A {} true;",
           "expected": {
             "parser": "accept",
-            "ast": "engine-error",
+            "ast": "true",
             "bytecode": "bytecode-unsupported",
-            "auto": "engine-error"
-          },
-          "diagnostic_contains": "class"
+            "auto": "true"
+          }
         }
       ],
-      "evidence_kind": "unconnected-boundary"
+      "evidence_kind": "examples"
     },
     {
       "id": "syntax.class-expression",
       "kind": "syntax",
-      "status": "unconnected",
+      "status": "partial",
       "reference": "ECMA-262 2026 language syntax and evaluation",
       "issues": [
         154
       ],
-      "rationale": "Authored public Engine probe covers the stated example only; complete specification semantics remain unqualified.",
+      "rationale": "Base class declarations/expressions construct strict callable-restricted constructors with TDZ bindings and ordinary/static methods. Derived construction, fields, private elements and full class semantics remain unqualified.",
       "tests": [
-        "tests/spec_support.rs"
+        "tests/spec_support.rs",
+        "tests/base_classes.rs"
       ],
       "test262": {
         "status": "not-run"
@@ -10653,14 +10655,13 @@
           "source": "var A=class {}; true;",
           "expected": {
             "parser": "accept",
-            "ast": "engine-error",
+            "ast": "true",
             "bytecode": "bytecode-unsupported",
-            "auto": "engine-error"
-          },
-          "diagnostic_contains": "class"
+            "auto": "true"
+          }
         }
       ],
-      "evidence_kind": "unconnected-boundary"
+      "evidence_kind": "examples"
     },
     {
       "id": "syntax.class-extends",
@@ -11802,6 +11803,27 @@
         "testing/differential/test262-selection.json"
       ],
       "rationale": "Actual public Engine and pinned native SpiderMonkey workers compare typed completions, exception types, ordered side effects and native jobs. Raw bytes, executable identities and exact known-difference reproducers remain recorded. Native runs include five unchanged original Test262 variants in both modes; unsupported values, accessor snapshots and infrastructure faults never count as equal passes. General exotic object semantics, whole-corpus conformance and performance superiority remain unqualified."
+    },
+    {
+      "id": "component.base-class-execution",
+      "status": "partial",
+      "issues": [
+        154,
+        155,
+        156,
+        157,
+        158,
+        159,
+        165,
+        168,
+        169
+      ],
+      "tests": [
+        "tests/base_classes.rs",
+        "tests/functions_runtime.rs",
+        "tests/object_function_reflect.rs"
+      ],
+      "rationale": "Actual public Engine AST and Auto execute base classes with immutable inner names, mutable outer lexical bindings, strict methods, constructor new.target and inherited caller/arguments restrictions. GC and computed static prototype definition failure are tested. Derived/super, fields/private elements, general parameter environments, arrow new.target and eval remain unqualified."
     }
   ]
 }

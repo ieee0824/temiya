@@ -17,12 +17,41 @@ struct Closure {
     environment: Environment,
 }
 
+pub(super) fn execute_template(
+    template: Rc<FunctionTemplate>,
+    realm: Realm,
+    environment: Environment,
+    function: Object,
+    this: Value,
+    arguments: &[Value],
+    new_target: Option<Object>,
+) -> RuntimeResult<Value> {
+    #[cfg(test)]
+    BRIDGED_CALLS.with(|count| count.set(count.get() + 1));
+    Closure {
+        template,
+        realm,
+        environment,
+    }
+    .call(function, this, arguments, new_target)
+}
+
+#[cfg(test)]
+thread_local! { static BRIDGED_CALLS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) }; }
+#[cfg(test)]
+pub(super) fn bridged_calls() -> usize {
+    BRIDGED_CALLS.with(std::cell::Cell::get)
+}
+
 pub(super) struct StoredClosure {
     template: Rc<FunctionTemplate>,
     realm: StoredRealm,
     environment: StoredEnvironment,
 }
 impl StoredClosure {
+    pub(super) fn has_legacy_properties(&self) -> bool {
+        !self.template.strict && !self.template.arrow
+    }
     pub(super) fn source_realm(&self) -> &StoredRealm {
         &self.realm
     }
@@ -66,7 +95,7 @@ impl StoredClosure {
             },
         };
         closure
-            .call_fallback(owner.clone(), this, arguments, None)
+            .call_leaf_or_fallback(owner.clone(), this, arguments, None)
             .map_err(|error| closure.realm.bind_exception(error))
     }
     pub(super) fn construct(
@@ -153,6 +182,29 @@ impl Closure {
                 |name| self.environment.try_pure_number_binding(name),
             ) {
                 return Ok(value);
+            }
+        }
+        self.call_leaf_or_fallback(function, this, arguments, new_target)
+    }
+
+    fn call_leaf_or_fallback(
+        &self,
+        function: Object,
+        this: Value,
+        arguments: &[Value],
+        new_target: Option<Object>,
+    ) -> RuntimeResult<Value> {
+        if self.template.strict && !self.template.arrow && !self.template.arguments_object {
+            if let Some(result) = self.template.body.try_leaf_function(
+                &self.template.parameters,
+                arguments,
+                &this,
+                &self.realm,
+            ) {
+                // Function, newTarget, this and outer-environment roots remain
+                // in this activation while property/coercion callbacks run.
+                // Some(Err) propagates; effects are never retried in the VM.
+                return result;
             }
         }
         self.call_fallback(function, this, arguments, new_target)

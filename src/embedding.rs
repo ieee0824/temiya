@@ -448,6 +448,9 @@ impl Engine {
         }
         let completion = catch_unwind(AssertUnwindSafe(|| match &script.bytecode {
             Some(bytecode) => VirtualMachine::execute_in_realm(bytecode, &script.script.realm()),
+            None if self.backend == ScriptBackend::Auto => {
+                script.script.evaluate_with_auto_functions()
+            }
             None => script.script.evaluate(),
         }))
         .map_err(|_| Exception::engine("Rust panic during Script evaluation"))?

@@ -927,6 +927,45 @@ impl Object {
         Ok(())
     }
 
+    fn legacy_property_key(key: &PropertyKey) -> bool {
+        matches!(key, PropertyKey::String(name) if name.code_units() == [99, 97, 108, 108, 101, 114] || name.code_units() == [97, 114, 103, 117, 109, 101, 110, 116, 115])
+    }
+
+    fn materialize_legacy_function_properties(&self) {
+        let mut state = self.0.state.borrow_mut();
+        let legacy = state
+            .managed_callable
+            .as_ref()
+            .is_some_and(|call| match &call.body {
+                ManagedCallable::Ast(closure) => closure.has_legacy_properties(),
+                ManagedCallable::Bytecode(closure) => closure.has_legacy_properties(),
+                _ => false,
+            });
+        if !legacy {
+            return;
+        }
+        // A redacted legacy extension: never expose a caller or an arguments
+        // frame. Defer the properties until reflection/access to avoid extra
+        // allocations for ordinary function creation and calls.
+        for (index, name) in ["caller", "arguments"].into_iter().enumerate() {
+            let key = PropertyKey::from(name);
+            if !state.properties.iter().any(|entry| entry.key == key) {
+                state.properties.insert(
+                    index,
+                    PropertyEntry {
+                        key,
+                        descriptor: StoredDescriptor::Data {
+                            value: StoredValue::Null,
+                            writable: false,
+                            enumerable: false,
+                            configurable: false,
+                        },
+                    },
+                );
+            }
+        }
+    }
+
     fn materialize_function_prototype(&self, key: &PropertyKey) -> RuntimeResult<()> {
         if !matches!(key, PropertyKey::String(name) if name.code_units().iter().copied().eq("prototype".encode_utf16()))
         {
@@ -1420,6 +1459,11 @@ impl Object {
             drop(state);
             return super::proxy::get_own_property(self, key);
         }
+        if Self::legacy_property_key(key) {
+            drop(state);
+            self.materialize_legacy_function_properties();
+            state = self.0.state.borrow();
+        }
         if state.lazy_function_prototype.is_some() {
             // Materialization can mutate this object. Release the borrow first;
             // ordinary objects keep one read borrow for the complete lookup.
@@ -1496,6 +1540,9 @@ impl Object {
             return super::proxy::define_own_property(self, key, descriptor);
         }
         self.materialize_function_prototype(&key)?;
+        if Self::legacy_property_key(&key) {
+            self.materialize_legacy_function_properties();
+        }
         if self.0.state.borrow().string_data.is_some() {
             if let Some(current) = self.string_exotic_property(&key) {
                 return is_compatible_property_descriptor(false, &descriptor, Some(&current));
@@ -1949,6 +1996,9 @@ impl Object {
         if self.0.state.borrow().proxy.is_some() {
             return super::proxy::delete(self, key);
         }
+        if Self::legacy_property_key(key) {
+            self.materialize_legacy_function_properties();
+        }
         if self.string_exotic_property(key).is_some() {
             return Ok(false);
         }
@@ -2029,6 +2079,7 @@ impl Object {
         if self.0.state.borrow().proxy.is_some() {
             return super::proxy::own_keys(self);
         }
+        self.materialize_legacy_function_properties();
         let state = self.0.state.borrow();
         let string_keys = state.string_data.as_ref().map_or_else(Vec::new, |string| {
             (0..string.len())

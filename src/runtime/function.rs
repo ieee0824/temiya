@@ -5,9 +5,15 @@ use super::{
     execution::StoredRealm,
     stored::{StoredObject, StoredValue},
 };
-use std::rc::Rc;
+use std::{
+    cell::RefCell,
+    collections::HashMap,
+    ops::Deref,
+    rc::{Rc, Weak},
+};
 
 use crate::ast::{Expr, ExprKind, Function, FunctionBody, MethodKind};
+use crate::bytecode::{BytecodeCompiler, FunctionTemplate};
 
 use super::{
     Completion, Environment, ExpressionEvaluator, JsString, Object, PropertyKey, Realm,
@@ -26,9 +32,81 @@ pub enum FunctionKind {
     Method(MethodKind),
 }
 
+type FunctionCacheKey = (usize, usize, u8);
+type CodeCache = HashMap<FunctionCacheKey, Vec<Rc<FunctionCode>>>;
+pub(super) type FunctionCache = Rc<RefCell<CodeCache>>;
+
+#[derive(Debug)]
+pub(super) struct FunctionCode {
+    ast: Function,
+    kind: FunctionKind,
+    compiled: Option<Rc<FunctionTemplate>>,
+    auto_functions: bool,
+    cache: Weak<RefCell<CodeCache>>,
+}
+impl Deref for FunctionCode {
+    type Target = Function;
+    fn deref(&self) -> &Function {
+        &self.ast
+    }
+}
+impl FunctionCode {
+    fn context(&self) -> Option<FunctionCache> {
+        self.auto_functions
+            .then(|| self.cache.upgrade().unwrap_or_default())
+    }
+}
+
+fn prepare_code(
+    code: &Function,
+    kind: FunctionKind,
+    cache: &Option<FunctionCache>,
+) -> Rc<FunctionCode> {
+    let tag = match kind {
+        FunctionKind::Normal => 0,
+        FunctionKind::Arrow => 1,
+        FunctionKind::Method(MethodKind::Method) => 2,
+        FunctionKind::Method(MethodKind::Get) => 3,
+        FunctionKind::Method(MethodKind::Set) => 4,
+        FunctionKind::Method(MethodKind::Constructor) => 5,
+    };
+    let key = (code.span.start, code.span.end, tag);
+    if let Some(cache) = cache {
+        if let Some(found) = cache.borrow().get(&key).and_then(|entries| {
+            entries
+                .iter()
+                .find(|entry| entry.kind == kind && entry.ast == *code)
+        }) {
+            return found.clone();
+        }
+    }
+    let compiled = if cache.is_some() && kind != FunctionKind::Arrow {
+        BytecodeCompiler::compile_function_template(code)
+            .ok()
+            .map(Rc::new)
+    } else {
+        None
+    };
+    let prepared = Rc::new(FunctionCode {
+        ast: code.clone(),
+        kind,
+        compiled,
+        auto_functions: cache.is_some(),
+        cache: cache.as_ref().map_or_else(Weak::new, Rc::downgrade),
+    });
+    if let Some(cache) = cache {
+        cache
+            .borrow_mut()
+            .entry(key)
+            .or_default()
+            .push(prepared.clone());
+    }
+    prepared
+}
+
 #[derive(Clone)]
 pub(super) struct FunctionClosure {
-    pub(super) code: Rc<Function>,
+    pub(super) code: Rc<FunctionCode>,
     pub(super) kind: FunctionKind,
     pub(super) realm: Realm,
     pub(super) environment: Environment,
@@ -38,7 +116,7 @@ pub(super) struct FunctionClosure {
 }
 
 pub(super) struct StoredFunctionClosure {
-    code: Rc<Function>,
+    code: Rc<FunctionCode>,
     kind: FunctionKind,
     realm: StoredRealm,
     environment: StoredEnvironment,
@@ -46,6 +124,12 @@ pub(super) struct StoredFunctionClosure {
     home_object: Option<StoredObject>,
 }
 impl StoredFunctionClosure {
+    pub(super) fn has_legacy_properties(&self) -> bool {
+        self.kind == FunctionKind::Normal
+            && !self.code.strict
+            && !self.code.generator
+            && !self.code.asynchronous
+    }
     pub(super) fn source_realm(&self) -> &StoredRealm {
         &self.realm
     }
@@ -55,12 +139,22 @@ impl StoredFunctionClosure {
             kind: self.kind,
             realm: self.realm.load(owner)?,
             environment: self.environment.load(owner)?,
-            lexical_this: self.lexical_this.load(owner)?,
-            home_object: self
-                .home_object
-                .as_ref()
-                .map(|object| object.load(owner))
-                .transpose()?,
+            // Verified ordinary/method bodies use their prepared this binding;
+            // the compiler rejects arrows and super-dependent bodies here.
+            // Retain stored GC edges without reviving unused call-local roots.
+            lexical_this: if self.code.compiled.is_some() {
+                Value::Undefined
+            } else {
+                self.lexical_this.load(owner)?
+            },
+            home_object: if self.code.compiled.is_some() {
+                None
+            } else {
+                self.home_object
+                    .as_ref()
+                    .map(|object| object.load(owner))
+                    .transpose()?
+            },
         })
     }
     pub(super) fn is_constructor(&self) -> bool {
@@ -77,6 +171,25 @@ impl StoredFunctionClosure {
         this: Value,
         arguments: &[Value],
     ) -> RuntimeResult<Value> {
+        if self.kind == FunctionKind::Method(MethodKind::Constructor) {
+            return Err(self
+                .realm
+                .load(owner)?
+                .bind_exception(RuntimeError::type_error("class constructor requires new")));
+        }
+        if let Some(template) = &self.code.compiled {
+            let realm = self.realm.load(owner)?;
+            return super::bytecode_function::execute_template(
+                template.clone(),
+                realm.clone(),
+                self.environment.load(owner)?,
+                owner.clone(),
+                this,
+                arguments,
+                None,
+            )
+            .map_err(|error| realm.bind_exception(error));
+        }
         let closure = self.load(owner)?;
         if closure.code.generator {
             create_generator_object(&closure, owner.clone(), this, arguments).map(Value::Object)
@@ -137,7 +250,7 @@ pub(super) fn create_function(
             .intrinsic(super::IntrinsicId::FunctionPrototype),
     );
     let closure = StoredFunctionClosure {
-        code: Rc::new(code.clone()),
+        code: prepare_code(code, kind, &evaluator.function_cache),
         kind,
         realm: StoredRealm::store(&function, &evaluator.realm)?,
         environment: StoredEnvironment::store(
@@ -179,7 +292,7 @@ pub(super) fn create_function(
         function
             .create_data_property("name".into(), Value::String(JsString::from(name.as_str())))?;
     }
-    if constructable {
+    if constructable && kind != FunctionKind::Method(MethodKind::Constructor) {
         function.install_lazy_function_prototype(
             evaluator
                 .realm
@@ -196,6 +309,17 @@ fn call_function(
     arguments: &[Value],
     new_target: Option<Object>,
 ) -> RuntimeResult<Value> {
+    if let Some(template) = &closure.code.compiled {
+        return super::bytecode_function::execute_template(
+            template.clone(),
+            closure.realm.clone(),
+            closure.environment.clone(),
+            function,
+            this_argument,
+            arguments,
+            new_target,
+        );
+    }
     let lexical = closure.kind == FunctionKind::Arrow;
     let this_value = if lexical {
         closure.lexical_this.clone()
@@ -226,7 +350,8 @@ fn call_function(
         this_value.clone(),
         closure.code.strict,
     )
-    .with_new_target(new_target);
+    .with_new_target(new_target.clone())
+    .with_function_cache(closure.code.context());
     bind_parameters(
         &evaluator,
         &environment,
@@ -243,7 +368,9 @@ fn call_function(
                 environment,
                 this_value,
                 closure.code.strict,
-            );
+            )
+            .with_new_target(new_target)
+            .with_function_cache(evaluator.function_cache.clone());
             match statements.evaluate_statement(body)? {
                 Completion::Return(value) => Ok(value),
                 Completion::Normal(_) => Ok(Value::Undefined),
@@ -426,6 +553,35 @@ mod primitive_this_tests {
             );
             drop((global, realm));
             assert_eq!(runtime.collect_migration_graph().unwrap().retained, 0);
+        }
+    }
+}
+
+#[cfg(test)]
+mod auto_body_tests {
+    use crate::{Engine, embedding::ScriptBackend, runtime::Value};
+
+    #[test]
+    fn only_auto_fallback_enters_the_verified_function_runtime() {
+        for backend in [ScriptBackend::Ast, ScriptBackend::Auto] {
+            let engine = Engine::builder().script_backend(backend).build();
+            let realm = engine.create_realm();
+            let script = engine.compile(&realm, "class C { static total(n) { let sum = 0; for (let i = 0; i < n; i++) { sum += i; } return sum; } }").unwrap();
+            assert_eq!(script.backend(), ScriptBackend::Ast);
+            engine.evaluate(&script).unwrap();
+            let call = engine.compile(&realm, "C.total(4);").unwrap();
+            let before = super::super::bytecode_function::bridged_calls();
+            assert!(
+                engine
+                    .evaluate(&call)
+                    .unwrap()
+                    .value()
+                    .same_value(&Value::Number(6.0))
+            );
+            assert_eq!(
+                super::super::bytecode_function::bridged_calls() - before,
+                usize::from(backend == ScriptBackend::Auto)
+            );
         }
     }
 }

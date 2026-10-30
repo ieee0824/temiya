@@ -11,6 +11,10 @@ const root = path.dirname(fileURLToPath(import.meta.url));
 const repo = path.resolve(root, '../..');
 const evidence = JSON.parse(fs.readFileSync(path.join(root, 'evidence.json')));
 const sha = bytes => createHash('sha256').update(bytes).digest('hex');
+// Historical captures must use their original policy, independently of current additions.
+const productionPolicy = path.join(root, 'production-policy.json');
+assert.equal(sha(fs.readFileSync(productionPolicy)),
+  'd7031b0d18922a3a0333d47ff169f864334c9e57a23edbc1ce46bd3e83b36bfd');
 const canonical = name => typeof name === 'string' && /^[a-zA-Z0-9_./-]+$/.test(name) &&
   !path.isAbsolute(name) && !name.split('/').some(s => !s || s === '.' || s === '..');
 assert.equal(evidence.schema, 1);
@@ -70,7 +74,7 @@ for (const archive of evidence.archives) {
         path.join(repo, 'benchmarks/test262-feature-baseline'), reference]);
       const gate = JSON.parse(execFileSync(process.execPath,
         [path.join(repo, 'scripts/check-test262-regressions.mjs'), reference,
-          path.join(temporary, runner, 'capture'), path.join(repo, 'test262/regression-policy.json')],
+          path.join(temporary, runner, 'capture'), productionPolicy],
         {encoding: 'utf8'}));
       assert.deepEqual(gate, read(runner + '/check-test262-regressions.mjs.stdout'));
       assert.equal(gate.passed, true); assert.equal(gate.selected_files, 128);

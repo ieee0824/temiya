@@ -116,6 +116,14 @@ fn each_synchronous_test_gets_a_fresh_global() {
         for result in r["results"].as_array().unwrap() {
             assert_eq!(result["worker_exit"]["code"], 0);
             assert_eq!(result["resources"]["applied"], true);
+            assert_eq!(
+                result["resources"]["address_sanitizer"],
+                cfg!(temiya_address_sanitizer)
+            );
+            assert_eq!(
+                result["resources"]["address_space_limit_bytes"].is_null(),
+                cfg!(temiya_address_sanitizer)
+            );
             assert!(result["async_outcome"].is_null());
         }
     }
@@ -259,7 +267,14 @@ fn externally_signalled_worker_crashes_do_not_kill_the_suite_or_imply_oom() {
         };
         let limits = fs::read_to_string(format!("/proc/{worker}/limits")).unwrap();
         for (name, value) in [
-            ("Max address space", "536870912"),
+            (
+                "Max address space",
+                if cfg!(temiya_address_sanitizer) {
+                    "unlimited"
+                } else {
+                    "536870912"
+                },
+            ),
             ("Max stack size", "8388608"),
             ("Max core file size", "0"),
         ] {

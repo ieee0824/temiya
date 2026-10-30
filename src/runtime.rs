@@ -15,6 +15,7 @@ pub(crate) mod array_literal;
 mod array_methods;
 mod builtins;
 pub(crate) mod bytecode_function;
+mod class;
 mod coercion;
 mod collections;
 mod elements;

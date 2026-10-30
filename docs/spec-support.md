@@ -21,8 +21,8 @@ Each status applies only to the entry's stated scope:
 
 Schema 1 used `implemented` for broad groups even when only a subset worked.
 Schema 2 keeps the old group IDs, but reclassifies their incomplete scope as
-`partial`. Class evaluation and the callable Promise placeholder are explicitly
-`unconnected`. Engine runtime GC is integrated and no longer described as an
+`partial`. Base class evaluation is connected for the recorded examples; derived
+classes and the callable Promise placeholder remain `unconnected`. Engine runtime GC is integrated and no longer described as an
 unconnected collector; incremental/generational collection is still separate.
 
 ## Reading the data
@@ -38,7 +38,10 @@ unconnected collector; incremental/generational collection is still separate.
   JavaScript constructor or prototype method is exposed.
   The Engine-backed Test262 runner is one tooling boundary; its focused original
   cases do not qualify the whole corpus. Async completion has a separate partial
-  component; complete Promise globals and general resource limits remain open.
+  component; complete Promise globals remain open. The Linux CLI supervises
+  each executable variant with finite wall, memory and stack limits, recorded
+  separately in the process-isolation component. Non-Linux enforcement and a
+  general security sandbox remain unqualified.
 - `test262.status: "not-run"` means the entire entry has no corpus qualification.
   It never means pass or skip. Focused, historical suite results retain their own
   scope in [`test262/`](../test262/) and [qualification records](runtime-ownership.md).
@@ -64,7 +67,7 @@ Examples from the actual public Engine paths:
 | Ordinary closure returning 42 | accept | true | true | true |
 | Interpolated template string | accept | true | unsupported at compile | true |
 | Generator yielding 42 | accept | true | unsupported at compile | true |
-| Class declaration | accept | class engine failure | unsupported at compile | class engine failure |
+| Base class declaration | accept | true | unsupported at compile | true (AST fallback) |
 | Promise constructor call returns undefined | accept | true (stub observation) | true (stub observation) | true (stub observation) |
 | Array.prototype.map has no own implementation | accept | true (absence) | true (absence) | true (absence) |
 

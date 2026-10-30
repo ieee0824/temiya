@@ -1,6 +1,6 @@
 # Portable bytecode
 
-Engine defaults to whole-Script Auto selection: supported Scripts use verified bytecode and unsupported Scripts use AST before any observable execution. Explicit Ast and Bytecode selections remain available. Earlier sections describe historical implementation stages, including the former AST default. No AST-function loop tier is enabled by this integration. The pre-GC default API passed all 33 original-eleven Boa comparisons on both recorded x64 and ARM64 machines; see [integration scope and evidence](auto-backend-integration.md). The shared-heap migration and numeric-return path require fresh performance qualification.
+Engine defaults to whole-Script Auto selection: supported Scripts use verified bytecode and unsupported Scripts use AST before any observable execution. In an Auto AST Script, eligible ordinary/class function bodies can independently use the verified bytecode function runtime; unsupported bodies remain AST, and errors are never retried. Explicit Ast keeps AST bodies and explicit Bytecode still rejects an unsupported whole Script. This does not enable a JIT or hot-loop tier. Earlier sections describe historical implementation stages, including the former AST default. The pre-GC default API passed all 33 original-eleven Boa comparisons on both recorded x64 and ARM64 machines; see [integration scope and evidence](auto-backend-integration.md). Runtime changes require fresh performance qualification.
 
 ## Guarded numeric returns
 
@@ -375,3 +375,44 @@ iterator errors, operand checks and the scoped upstream observations.
 See [object data literals](object-data-literals.md) for bytecode instructions,
 key/value ordering, prototype setters, object spread, scoped upstream tests
 and remaining method/HomeObject limits.
+
+Private primitive-only function loops may keep var, let, and const slots outside
+managed environments. This requires a whole-body proof excluding captures, calls,
+property operations, arguments access, and escaping references, plus numeric
+arguments. Lexical slots retain TDZ and const assignment checks; per-iteration
+environment identities are omitted only when no observer can retain them. The
+public caller-prepared frame API continues publishing all binding writes.
+Empty block descriptors retain their verified scope entries while reusing the
+parent environment, since they introduce no binding identity or declaration.
+The existing explicit-Ast for-let header capture gap is tracked in #537; Auto's
+verified function-loop path already retains the distinct iteration bindings.
+
+Strict, non-arrow bytecode functions without an arguments object can execute a
+verified straight-line body without creating an activation Environment. The
+whole-body plan permits parameter/undefined-var reads, literal values, `this`,
+named property references and primitive operators; it rejects captures, local
+binding writes, closures, nonempty lexical scopes, calls, branches and
+`new.target`. Other bodies retain the normal VM path. This optimization also
+applies to eligible base constructors and methods inside Auto's AST fallback;
+explicit Ast is unchanged.
+
+Property reads/writes, updates and coercions use the existing runtime operations,
+including reentrant getters/setters and their original receivers. Function,
+newTarget, this, argument and outer-environment roots remain alive during these
+callbacks. A runtime error propagates directly and never replays the body. The
+public prepared-frame VM API continues to execute against its supplied frame.
+Tests verify zero managed activation allocations, original accessor/coercion
+order and thrown-value identity, source-Realm errors, BigInt updates and GC
+inside nested accessor execution. No JIT or benchmark-specific recognition is
+involved.
+
+Fresh internal function frames can reuse per-iteration let binding identities
+when a complete verified-body proof excludes closure creation, hoisted functions
+and eval references/bindings. No retained Reference or pending invocation may
+span a clone instruction. The opcode match is exhaustive, so new instructions
+require a review. Variable writes and lexical checks still use ordinary
+Environments; callbacks and property operations retain their usual semantics.
+Bodies that can expose iteration cells and the public prepared-frame API retain
+cloning. Tests cover escaped closures, closures returned by external factories,
+abrupt loop control, constant managed-allocation growth and handwritten verified
+code that holds a binding Reference across a clone.

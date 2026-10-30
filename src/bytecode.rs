@@ -5,6 +5,7 @@ use std::{collections::VecDeque, fmt, rc::Rc};
 use crate::runtime::JsString;
 
 mod compiler;
+mod leaf_function;
 mod numeric_return;
 mod vm;
 pub use compiler::{BytecodeCompiler, CompileError};
@@ -513,10 +514,25 @@ pub struct VerifiedBytecode {
     max_stack: usize,
     has_backedge: bool,
     has_own_property_cache: bool,
+    reuse_loop_bindings: bool,
     numeric_return: Option<numeric_return::NumericReturnPlan>,
+    leaf_function: Option<leaf_function::LeafFunctionPlan>,
 }
 
 impl VerifiedBytecode {
+    pub(crate) fn try_leaf_function(
+        &self,
+        parameters: &[JsString],
+        arguments: &[crate::runtime::Value],
+        this: &crate::runtime::Value,
+        realm: &crate::runtime::Realm,
+    ) -> Option<crate::runtime::RuntimeResult<crate::runtime::Value>> {
+        Some(
+            self.leaf_function
+                .as_ref()?
+                .execute(parameters, arguments, this, realm),
+        )
+    }
     pub(crate) fn try_numeric_return(
         &self,
         parameters: &[JsString],
@@ -632,6 +648,102 @@ struct FlowState {
     scopes: Vec<(u32, u32)>,
     references: Vec<u32>,
     calls: Vec<(u32, usize)>,
+}
+
+// Reusing a let loop's cells is valid only when this activation cannot create
+// a closure/eval observer and no reference or pending invocation spans a clone.
+// This exhaustive match requires a fresh review whenever an opcode is added.
+fn loop_bindings_are_unobserved(code: &Bytecode, states: &[Option<FlowState>]) -> bool {
+    if !matches!(code.instructions.first(), Some(Instruction::EnterScope(index))
+        if matches!(&code.constants[*index as usize], Constant::Scope(plan) if plan.kind == ScopeKind::Function))
+        || !code
+            .instructions
+            .iter()
+            .any(|op| matches!(op, Instruction::CloneLoopBindings))
+    {
+        return false;
+    }
+    let eval = JsString::from("eval");
+    code.instructions
+        .iter()
+        .enumerate()
+        .all(|(offset, instruction)| match *instruction {
+            Instruction::CreateFunction(_) => false,
+            Instruction::EnterScope(index) => {
+                let Constant::Scope(plan) = &code.constants[index as usize] else {
+                    return false;
+                };
+                plan.kind != ScopeKind::Global
+                    && plan.functions.is_empty()
+                    && plan.bindings.iter().all(|binding| binding.name != eval)
+            }
+            Instruction::LoadName(index)
+            | Instruction::GetName { name: index, .. }
+            | Instruction::ResolveName { name: index, .. } => {
+                matches!(&code.constants[index as usize], Constant::String(name) if *name != eval)
+            }
+            Instruction::CloneLoopBindings => states[offset]
+                .as_ref()
+                .is_some_and(|state| state.references.is_empty() && state.calls.is_empty()),
+            Instruction::CreateObject
+            | Instruction::CoercePropertyKey
+            | Instruction::DefineObjectProperty { .. }
+            | Instruction::DefineNamedObjectProperty { .. }
+            | Instruction::SpreadObject
+            | Instruction::CreateArray
+            | Instruction::AppendArray
+            | Instruction::ElideArray
+            | Instruction::SpreadArray
+            | Instruction::FinishArray
+            | Instruction::ExitScope
+            | Instruction::LoadBinding { .. }
+            | Instruction::InitializeBinding { .. }
+            | Instruction::StoreBinding { .. }
+            | Instruction::ResolveBinding { .. }
+            | Instruction::AppendStringBinding { .. }
+            | Instruction::UpdateBinding { .. }
+            | Instruction::LoadReference
+            | Instruction::DiscardReference
+            | Instruction::StoreReference
+            | Instruction::GetProperty { .. }
+            | Instruction::GetNamedProperty { .. }
+            | Instruction::ResolveProperty { .. }
+            | Instruction::ResolveNamedProperty { .. }
+            | Instruction::UpdateReference { .. }
+            | Instruction::TypeOfReference
+            | Instruction::UnaryNumeric(_)
+            | Instruction::TypeOf
+            | Instruction::DeleteReference
+            | Instruction::BeginCall
+            | Instruction::BeginReferenceCall
+            | Instruction::LoadReferenceCallTarget
+            | Instruction::AsCallTarget
+            | Instruction::BeginMethodCall
+            | Instruction::BeginConstruct
+            | Instruction::AppendArgument
+            | Instruction::SpreadArguments
+            | Instruction::Invoke
+            | Instruction::LoadNewTarget
+            | Instruction::LoadThis
+            | Instruction::JumpIfNullish(_)
+            | Instruction::LoadConstant(_)
+            | Instruction::LoadLocal(_)
+            | Instruction::StoreLocal(_)
+            | Instruction::Duplicate
+            | Instruction::Pop
+            | Instruction::Binary(_)
+            | Instruction::Add
+            | Instruction::Subtract
+            | Instruction::Multiply
+            | Instruction::Divide
+            | Instruction::StrictEqual
+            | Instruction::LogicalNot
+            | Instruction::Jump(_)
+            | Instruction::JumpIfFalse(_)
+            | Instruction::Return
+            | Instruction::Complete
+            | Instruction::Throw => true,
+        })
 }
 
 fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
@@ -995,7 +1107,11 @@ fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
             .iter()
             .any(|op| matches!(op, Instruction::GetNamedProperty { .. }));
     let numeric_return = numeric_return::NumericReturnPlan::compile(&bytecode, max_stack);
+    let reuse_loop_bindings = loop_bindings_are_unobserved(&bytecode, &states);
+    let leaf_function = leaf_function::LeafFunctionPlan::compile(&bytecode, max_stack);
     Ok(VerifiedBytecode {
+        reuse_loop_bindings,
+        leaf_function,
         bytecode,
         max_stack,
         has_backedge,

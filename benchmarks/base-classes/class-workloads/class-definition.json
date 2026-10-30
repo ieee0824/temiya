@@ -1,0 +1,8 @@
+{
+  "name": "class-definition",
+  "iterations": 1000,
+  "oracle": "sum-zero-to-n-minus-one",
+  "setup": "function bench(n) { let total = 0; for (let i = 0; i < n; i++) { let Point = class { constructor(value) { this.value = value; } read() { return this.value; } }; total += new Point(i).read(); } return total; }",
+  "invocation": "bench(1000);",
+  "expected": 499500
+}

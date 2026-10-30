@@ -823,7 +823,35 @@ fn install_function(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {
         let bound_this = arguments.first().cloned().unwrap_or(Value::Undefined);
         let prefix = arguments.get(1..).unwrap_or_default().to_vec();
         bound_function(target, bound_this, prefix).map(Value::Object)
-    })
+    })?;
+    // Classes and strict functions inherit these restrictions rather than
+    // gaining own caller/arguments properties. One thrower is shared per Realm.
+    let thrower = Object::native_function_with_metadata(&prototype, "", 0, |_, _| {
+        Err(RuntimeError::type_error("restricted function property"))
+    });
+    for name in ["name", "length"] {
+        thrower.define_own_property(
+            name.into(),
+            PropertyDescriptor {
+                configurable: Some(false),
+                ..PropertyDescriptor::default()
+            },
+        )?;
+    }
+    thrower.try_prevent_extensions()?;
+    for name in ["caller", "arguments"] {
+        prototype.define_own_property(
+            name.into(),
+            PropertyDescriptor {
+                get: Some(Some(thrower.clone())),
+                set: Some(Some(thrower.clone())),
+                enumerable: Some(false),
+                configurable: Some(true),
+                ..PropertyDescriptor::default()
+            },
+        )?;
+    }
+    Ok(())
 }
 
 fn install_reflect(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {

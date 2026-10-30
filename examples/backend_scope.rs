@@ -25,10 +25,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ));
     }
 
-    // Syntax acceptance and runtime support are separate contracts.
-    let class = "(class Example {});";
+    // Base classes execute through Auto's AST path; explicit bytecode rejects them.
+    let class = "let Example = class { constructor(answer) { this.answer = answer; } }; (new Example(42)).answer;";
     assert!(parse_script(class).is_ok());
     let script = engine.compile(&realm, class)?;
+    assert!(matches!(
+        engine.evaluate(&script)?.value(),
+        Value::Number(42.0)
+    ));
+    assert!(BytecodeCompiler::compile(class).is_err());
+
+    // Parsing derived classes still does not establish their runtime support.
+    let derived = "(class extends Object {});";
+    assert!(parse_script(derived).is_ok());
+    let script = engine.compile(&realm, derived)?;
     assert!(engine.evaluate(&script).is_err());
 
     let bytecode = BytecodeCompiler::compile("40 + 2;")?;

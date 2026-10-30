@@ -554,6 +554,12 @@ impl VerifiedBytecode {
         self.leaf_function.is_some()
     }
 
+    pub(crate) fn leaf_needs_environment(&self) -> bool {
+        self.leaf_function
+            .as_ref()
+            .is_some_and(|plan| plan.needs_environment())
+    }
+
     pub(crate) fn try_leaf_function(
         &self,
         parameters: &[JsString],
@@ -561,7 +567,7 @@ impl VerifiedBytecode {
         this: &crate::runtime::Value,
         realm: &crate::runtime::Realm,
         function: &crate::runtime::Object,
-        environment: &crate::runtime::Environment,
+        environment: Option<&crate::runtime::Environment>,
     ) -> Option<crate::runtime::RuntimeResult<crate::runtime::Value>> {
         Some(self.leaf_function.as_ref()?.execute(
             parameters,

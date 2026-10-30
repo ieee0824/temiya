@@ -285,17 +285,14 @@ impl StoredFunctionClosure {
                 .map_err(|error| realm.bind_exception(error));
         }
         if let Some(template) = &self.code.compiled {
-            let realm = self.realm.load(owner)?;
-            return super::bytecode_function::execute_template(
-                template.clone(),
-                realm.clone(),
-                self.environment.load(owner)?,
-                owner.clone(),
+            return super::bytecode_function::execute_stored_template(
+                template,
+                &self.realm,
+                &self.environment,
+                owner,
                 this,
                 arguments,
-                None,
-            )
-            .map_err(|error| realm.bind_exception(error));
+            );
         }
         let closure = self.load(owner)?;
         if closure.code.generator {

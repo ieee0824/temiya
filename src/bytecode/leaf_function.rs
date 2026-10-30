@@ -40,6 +40,7 @@ enum Step {
 pub(super) struct LeafFunctionPlan {
     steps: Vec<Step>,
     bindings: Vec<Local>,
+    needs_environment: bool,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -128,6 +129,9 @@ fn fuse_super_references(steps: Vec<Step>) -> Vec<Step> {
 }
 
 impl LeafFunctionPlan {
+    pub(super) fn needs_environment(&self) -> bool {
+        self.needs_environment
+    }
     pub(super) fn compile(code: &Bytecode, max_stack: usize) -> Option<Self> {
         if max_stack > LIMIT || !super_operands_do_not_escape(code) {
             return None;
@@ -299,9 +303,13 @@ impl LeafFunctionPlan {
                 Instruction::Return
                     if depth == 1 && references == 0 && offset + 1 == code.instructions.len() =>
                 {
+                    let needs_environment = steps
+                        .iter()
+                        .any(|step| matches!(step, Step::GetName(..) | Step::ResolveName(..)));
                     return Some(Self {
                         steps: fuse_super_references(steps),
                         bindings,
+                        needs_environment,
                     });
                 }
                 // No calls, closures, branches, new.target,
@@ -323,8 +331,13 @@ impl LeafFunctionPlan {
         this: &Value,
         realm: &Realm,
         function: &Object,
-        environment: &Environment,
+        environment: Option<&Environment>,
     ) -> RuntimeResult<Value> {
+        if self.needs_environment && environment.is_none() {
+            return Err(RuntimeError::internal_error(
+                "leaf capture environment missing",
+            ));
+        }
         let _roots = realm.enter_object_root_region();
         let mut context = PropertyReferenceContext::new(realm);
         let mut stack: [Value; LIMIT] = std::array::from_fn(|_| Value::Undefined);
@@ -383,6 +396,7 @@ impl LeafFunctionPlan {
                     None
                 }
                 Step::GetName(name, strict) | Step::ResolveName(name, strict) => {
+                    let environment = environment.expect("validated leaf capture environment");
                     let reference = match environment.resolve_binding(name)? {
                         Some(environment) => {
                             Reference::environment(environment, name.clone(), *strict)

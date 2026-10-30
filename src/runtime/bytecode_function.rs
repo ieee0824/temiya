@@ -109,6 +109,26 @@ pub(super) fn bridged_calls() -> usize {
     BRIDGED_CALLS.with(std::cell::Cell::get)
 }
 
+// Handles are already traced from owner. Reusing the stored-call path avoids
+// reviving an unused outer Environment for AST-created compiled methods.
+pub(super) fn execute_stored_template(
+    template: &Rc<FunctionTemplate>,
+    realm: &StoredRealm,
+    environment: &StoredEnvironment,
+    owner: &Object,
+    this: Value,
+    arguments: &[Value],
+) -> RuntimeResult<Value> {
+    #[cfg(test)]
+    BRIDGED_CALLS.with(|count| count.set(count.get() + 1));
+    StoredClosure {
+        template: template.clone(),
+        realm: realm.clone(),
+        environment: environment.clone(),
+    }
+    .call(owner, this, arguments)
+}
+
 pub(super) struct StoredClosure {
     template: Rc<FunctionTemplate>,
     realm: StoredRealm,
@@ -152,16 +172,41 @@ impl StoredClosure {
                 return Ok(value);
             }
         }
+        let realm = self.realm.load(owner)?;
+        if !self.template.arrow
+            && !self.template.arguments_object
+            && self.template.body.has_leaf_function()
+        {
+            let receiver = if self.template.strict {
+                this.clone()
+            } else {
+                super::function::ordinary_this(&realm, this.clone())
+                    .map_err(|error| realm.bind_exception(error))?
+            };
+            if self.template.body.leaf_needs_environment() && environment.is_none() {
+                environment = Some(self.environment.load(owner)?);
+            }
+            if let Some(result) = self.template.body.try_leaf_function(
+                &self.template.parameters,
+                arguments,
+                &receiver,
+                &realm,
+                owner,
+                environment.as_ref(),
+            ) {
+                return result.map_err(|error| realm.bind_exception(error));
+            }
+        }
         let closure = Closure {
             template: self.template.clone(),
-            realm: self.realm.load(owner)?,
+            realm,
             environment: match environment {
                 Some(environment) => environment,
                 None => self.environment.load(owner)?,
             },
         };
         closure
-            .call_leaf_or_fallback(owner.clone(), this, arguments, None)
+            .call_fallback(owner.clone(), this, arguments, None)
             .map_err(|error| closure.realm.bind_exception(error))
     }
     pub(super) fn construct(
@@ -277,7 +322,7 @@ impl Closure {
                 &receiver,
                 &self.realm,
                 &function,
-                &self.environment,
+                Some(&self.environment),
             ) {
                 // Function, newTarget, receiver and outer-environment roots
                 // remain live during property/coercion callbacks. Never retry.
@@ -405,6 +450,43 @@ mod numeric_return_tests {
         let (_, after, _) = runtime.profile_snapshot();
         assert_eq!(after, before);
         drop(function);
+        assert_eq!(runtime.collect_garbage().unwrap().retained, 0);
+    }
+
+    #[cfg(not(miri))]
+    #[test]
+    fn property_only_ast_methods_do_not_revive_unused_outer_environments() {
+        let runtime = Runtime::new();
+        let realm = Realm::ordinary_in(&runtime);
+        let code = BytecodeCompiler::compile(
+            "function make(){return {read(){return this.value;}}.read;}make();",
+        )
+        .unwrap();
+        let Completion::Normal(Some(Value::Object(function))) =
+            VirtualMachine::execute_in_realm(&code, &realm).unwrap()
+        else {
+            panic!("method")
+        };
+        let receiver = Object::new_in(&runtime);
+        receiver
+            .create_data_property("value".into(), Value::Number(42.0))
+            .unwrap();
+        runtime.collect_garbage().unwrap();
+        let (_, before, _) = runtime.profile_snapshot();
+        for _ in 0..100 {
+            assert!(
+                function
+                    .call(Value::Object(receiver.clone()), &[])
+                    .unwrap()
+                    .same_value(&Value::Number(42.0))
+            );
+        }
+        let (_, after, _) = runtime.profile_snapshot();
+        assert_eq!(
+            after, before,
+            "unused stored environment must not create transient roots"
+        );
+        drop((function, receiver, realm));
         assert_eq!(runtime.collect_garbage().unwrap().retained, 0);
     }
 

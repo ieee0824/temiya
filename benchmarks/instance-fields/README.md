@@ -17,3 +17,18 @@ initial-v1 retains the first implementation and both4098-variant captures per
 backend, including all failures/timeouts and429 added passes with0 prior-pass
 regressions. Its native Boa/self controls have5wins10noise and15noise. This
 source is not merge-qualified. verify-initial.mjs replays that exact history.
+
+field-capture-v1 retains the preceding optimized source f2b0083, all fixed
+4098-variant captures for both backends, and four native performance reports.
+verify-field-capture.mjs checks archive integrity and independently reconstructs
+the correctness and timing records. Its 13 Boa wins and two noise outcomes,
+15 improvements against the initial implementation, and 15 identical-binary
+noise outcomes are historical evidence, not final-source qualification.
+
+dependency-probes-v2 retains standalone reproductions for existing static/private
+class elements, eval, Symbol construction, Promise.resolve and async-generator
+issues. Basic async completion and well-known Symbol controls pass. These probes
+do not convert any official-suite failure to a pass. The rejected v1 probe setup
+omitted doneprintHandle.js and is not used as engine evidence. run-probes.mjs is
+the original local capture driver; its absolute paths identify the captured
+engine and corpus rather than a portable test command.

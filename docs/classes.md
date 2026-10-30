@@ -198,7 +198,7 @@ the unchanged per-variant outcomes and failure signatures against `8b01973`.
 The i686 record establishes type checking only. Hosted qualification remains
 separate from these native observations.
 
-Three complete upstream captures (`336a38d`, `2be3d7c`, `8b01973`) retain all
+Four complete upstream captures (`336a38d`, `2be3d7c`, `8b01973`, `13a91d1`) retain all
 100,211 variants each: 26,276 pass, 64,978 fail, 18 skip and 8,939 time out,
 with zero missing or unexecuted variants. `verify-full.mjs` independently
 reconstructs all eight known-pass gates for each source. Passing those gates

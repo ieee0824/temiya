@@ -9,6 +9,7 @@ import {fileURLToPath} from 'node:url';
 const root=path.dirname(fileURLToPath(import.meta.url)),repo=path.resolve(root,'../..');
 const read=p=>JSON.parse(fs.readFileSync(p));
 const captures=new Map([
+ ['full-anonymous-env-v1',{source:'13a91d105f205aeb2f0b5b296709702fa577082e',run:41062837342}],
  ['full-native-prototypes-v1',{source:'336a38dbc74242a107761680bed5c1f429b602a1',run:41044387471}],
  ['full-view-index-v1',{source:'2be3d7c82091d27f7d2fae58a346c44144d3666b',run:41047319155}],
  ['full-delegation-v1',{source:'8b019733ed8e08d3bb8a31319501a4d3c08bf070',run:41053545979}],

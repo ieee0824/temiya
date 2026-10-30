@@ -770,24 +770,24 @@ impl ExpressionEvaluator {
     fn super_member(&self, property: &Expr, computed: bool) -> RuntimeResult<Evaluation> {
         // Arrows share the nearest non-lexical function's this/super binding.
         // Resolve lazily so ordinary calls retain their existing fast path.
-        let environment = if let Some(environment) = &self.this_environment {
-            environment.clone()
+        let (receiver, function) = if let Some(environment) = &self.this_environment {
+            environment.super_reference_binding()?.ok_or_else(|| {
+                RuntimeError::reference_error("super property has no function environment")
+            })?
         } else {
             let mut current = Some(self.environment.clone());
             loop {
                 let environment = current.ok_or_else(|| {
                     RuntimeError::reference_error("super property has no function environment")
                 })?;
-                if environment.kind() == super::EnvironmentKind::Function
-                    && environment.has_this_binding()?
-                {
-                    break environment;
+                if let Some(binding) = environment.super_reference_binding()? {
+                    break binding;
                 }
                 current = environment.outer();
             }
         };
-        // An uninitialized derived this throws before evaluating the key.
-        let receiver = environment.get_this_binding()?;
+        // GetThisBinding above throws before evaluating the key. Only the
+        // immutable function edge is loaded early, never HomeObject's parent.
         let name = if computed {
             ReferencedName::Value(self.evaluate(property)?)
         } else {
@@ -795,7 +795,7 @@ impl ExpressionEvaluator {
         };
         // Key expression effects may change HomeObject's prototype. Capture
         // that current base before the deferred ToPropertyKey conversion.
-        let base = environment.function_object()?.super_base()?;
+        let base = function.super_base()?;
         let mut reference = Reference::property_in_realm(&self.realm, base, name, self.strict);
         reference.this_value = Some(receiver);
         Ok(Evaluation::Reference(reference))

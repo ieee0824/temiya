@@ -1084,6 +1084,26 @@ impl Environment {
         })
     }
 
+    // Resolve a non-lexical super receiver and its immutable function edge in
+    // one record borrow. No key expression or prototype operation runs here.
+    pub(super) fn super_reference_binding(&self) -> RuntimeResult<Option<(Value, Object)>> {
+        let record = self.0.record.borrow();
+        let EnvironmentRecord::Function(record) = &*record else {
+            return Ok(None);
+        };
+        let receiver = match record.this_status {
+            ThisBindingStatus::Lexical => return Ok(None),
+            ThisBindingStatus::Initialized => record.this_value.as_ref().unwrap().load(self)?,
+            ThisBindingStatus::Uninitialized => {
+                return Err(reference_error(
+                    &JsString::from("this"),
+                    "has not been initialized",
+                ));
+            }
+        };
+        Ok(Some((receiver, record.function_object.load(self)?)))
+    }
+
     /// Returns the function object associated with a function environment.
     pub fn function_object(&self) -> RuntimeResult<Object> {
         self.with_function(|record| record.function_object.load(self))

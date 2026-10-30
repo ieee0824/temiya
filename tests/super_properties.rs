@@ -128,6 +128,11 @@ fn captured_home_objects_and_receivers_survive_reentrant_collection() {
                 engine.evaluate(&script).unwrap().value(),
                 Value::Boolean(true)
             ));
+            let script = engine.compile(&realm, "function makeKeyReader(){let home={__proto__:{value:1},read(){return super[(gcNow(),Object.setPrototypeOf(home,{value:42}),'value')];}};return home.read;}let keyReader=makeKeyReader();gcNow();keyReader()===42;").unwrap();
+            assert!(matches!(
+                engine.evaluate(&script).unwrap().value(),
+                Value::Boolean(true)
+            ));
             let script = engine.compile(&realm, "function makeGenerator(receiver){return {__proto__:{read(){gcNow();return this.value;}},*values(){gcNow();yield super.read();gcNow();return super.read()+1;}}.values.call(receiver);}let iterator=makeGenerator({value:42});gcNow();let first=iterator.next();first.value===42 && first.done===false;").unwrap();
             assert!(matches!(
                 engine.evaluate(&script).unwrap().value(),

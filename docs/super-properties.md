@@ -67,8 +67,7 @@ surrounding supported loops run in the VM. Capturing initializers prevent scalar
 binding elision and unsafe loop-environment reuse. Definitions use immutable
 AST metadata and create fresh runtime objects, with no retry after an error.
 Top-level object methods remain outside the whole-Script compiler subset. This
-does not introduce general super-reference bytecode instructions or complete
-#299.
+does not complete general class bytecode lowering (#299).
 
 A method or arrow whose complete body only returns a named super-method call
 can omit its own activation when every formal parameter is simple and every
@@ -89,3 +88,28 @@ and computed-update workloads remain noisy, so the complete issue is still not
 speed-qualified. Run `node benchmarks/super-properties/verify-performance.mjs`
 to independently reconstruct all intermediate records, including adverse
 observations and unchanged fixed upstream failures.
+
+Verified function bytecode can resolve super references with two operations.
+LoadSuperBinding reads initialized this and the owning function before the key
+expression. ResolveSuperProperty reads the current HomeObject parent after that
+expression and retains a shared Reference with the original receiver. Key
+conversion remains deferred and cached by the Reference; arbitrary stack values
+are checked at runtime and missing function scopes are rejected by verification.
+
+Straight-line leaf plans can retain up to eight local bindings without managed
+activation environments, preserving parameter writes, lexical TDZ and const
+errors. Captured reads/writes resolve actual outer Environment references.
+Calls, eval, arguments observers, closure creation, branches and unsupported
+operations retain normal frames before any source effects. Lexical super arrows
+keep their shared AST path and existing sole-call delegation optimization.
+
+Source ca1f40f retains all120 worker runs and1920 checked values in
+`super-leaf-arrow-v1`. Its804 native tests pass with26 ignored; type checking
+for i686 is not a32-bit runtime claim. Fixed601 super and401 derived variants
+per backend keep every preceding outcome and failed diagnostic unchanged.
+Boa comparisons have10 significant wins and5 noisy results: object-call2/3,
+class-call3/3, arrow-call3/3, accessor1/3, computed-update1/3. The last two
+workloads remain unqualified. The same-binary control retains one apparent
+slowdown; earlier `super-leaf-v1` retains all three real before/after arrow
+slowdowns that led to restoring the AST path. No unchanged-source host selection
+or changed workload/noise criterion is used.

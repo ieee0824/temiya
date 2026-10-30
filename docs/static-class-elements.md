@@ -27,3 +27,8 @@ timeouts. Final official-suite and performance qualification are pending. The
 five authored workloads and pinned Boa oracle probes were frozen before runtime
 implementation under benchmarks/static-class-elements; rejected inputs remain
 recorded. No complete class conformance or unconditional speed claim is implied.
+
+Anonymous default-exported classes use the module default binding while their
+constructor name is set to default before static initialization. The ModuleGraph
+integration test checks the field/block observations and that no source-visible
+default binding is introduced.

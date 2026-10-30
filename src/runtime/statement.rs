@@ -771,7 +771,16 @@ impl StatementEvaluator {
                         .init
                         .as_ref()
                         .map_or(Ok(Value::Undefined), |init| {
-                            self.expression.evaluate_named(init, &name)
+                            // The module's synthetic default binding is not the
+                            // function/class name visible to JavaScript.
+                            if name.code_units() == [42, 100, 101, 102, 97, 117, 108, 116, 42]
+                                && self.expression.environment.kind() == EnvironmentKind::Module
+                            {
+                                self.expression
+                                    .evaluate_named(init, &JsString::from("default"))
+                            } else {
+                                self.expression.evaluate_named(init, &name)
+                            }
                         })?;
                     self.expression
                         .environment

@@ -595,18 +595,22 @@ impl SourceTextModule {
                     ExportKind::Declaration(statement) => body.push((**statement).clone()),
                     ExportKind::DefaultDeclaration(statement) => {
                         if statement_bound_names(statement).is_empty() {
-                            let StmtKind::FunctionDeclaration(function) = &statement.kind else {
-                                return Err(RuntimeError::internal_error(
-                                    "anonymous default class evaluation is not implemented",
-                                ));
-                            };
-                            body.push(default_variable(
-                                statement.span,
-                                Expr {
+                            let expression = match &statement.kind {
+                                StmtKind::FunctionDeclaration(function) => Expr {
                                     span: function.span,
                                     kind: ExprKind::Function(function.clone()),
                                 },
-                            ));
+                                StmtKind::ClassDeclaration(class) => Expr {
+                                    span: class.span,
+                                    kind: ExprKind::Class(class.clone()),
+                                },
+                                _ => {
+                                    return Err(RuntimeError::internal_error(
+                                        "invalid anonymous default declaration",
+                                    ));
+                                }
+                            };
+                            body.push(default_variable(statement.span, expression));
                         } else {
                             body.push((**statement).clone());
                         }

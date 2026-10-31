@@ -274,3 +274,20 @@ Every outcome matches preceding9835c41 and the other backend. verify-fixed.mjs
 replays all8 retained pairs including the original baseline failure/recovery.
 This establishes fixed-capture integrity and pass preservation,not full
 conformance or native speed.
+
+
+`full-catch-records-v1` retains current71009f3 atmetadataff67c89,run41211992339.
+All8 original gates and100211 outcomes independently replay:29701pass61923fail
+18skip8569timeout,0missing. All29701 preceding passes remain,with0regressions
+or newpasses. Replay with verify-full.mjs full-catch-records-v1. All failures
+and timeouts remain recorded; this is full-capture/pass-preservation proof,not
+complete conformance or native speed/security qualification.
+
+
+`hosted-catch-records-partial-v1` retains completed copy2 of current
+run41211990414:all34 reports independently replay. Prior46 workloads qualify;
+iterator wins3/3/3/3/1/0,so this job fails the native gate. This is explicitly
+a one-job capture. Original copy1 had no fixture observations because its
+reference build lacked space;that failure remains separate. Recovery41215109985
+measures only the missing job with separate provenance. No observed sample
+is replaced or repeated. Both independent jobs must qualify before merge.

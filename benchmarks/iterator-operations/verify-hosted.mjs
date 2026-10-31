@@ -9,7 +9,7 @@ import {execFileSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 const root=path.dirname(fileURLToPath(import.meta.url)),repo=path.resolve(root,'../..');
 const read=p=>JSON.parse(fs.readFileSync(p)),sha=b=>createHash('sha256').update(b).digest('hex');
-const captures=new Map([['hosted-hot-sites-v1',{source:'bb0d3268d7bfbb9b6910b3b86db3a5cf1abf49c7',run:41208962674,baseline:'702ee76165c04990ac517a993c3e194c279cf4a0'}],['hosted-literal-accessors-v1',{source:'702ee76165c04990ac517a993c3e194c279cf4a0',run:41204129150,baseline:'7eba69e8d8e5927b5f5c73dbdd57b30749e16442'}],['hosted-weak-environments-v1',{source:'fd4ad7b521537dc0266424c40bd59e7dc6bb3c59',run:41200250693,baseline:'7eba69e8d8e5927b5f5c73dbdd57b30749e16442'}],['hosted-owned-sites-v1',{source:'767add1afe9c03059cba1ebff05f7397d9a3f67e',run:41198352870,baseline:'7eba69e8d8e5927b5f5c73dbdd57b30749e16442'}],['hosted-outlined-strings-v1',{source:'375ad2dce49b04ce37d7f8c8015d2230dc248d82',run:41196855251,baseline:'7eba69e8d8e5927b5f5c73dbdd57b30749e16442'}],['hosted-inline-auxiliary-v1',{source:'d9906db3c26e0b6b3663206fe0617fa5dbd7bbfc',run:41192021887,baseline:'7eba69e8d8e5927b5f5c73dbdd57b30749e16442'}],['hosted-empty-frame-v1',{source:'4a4c103ade6b0acae5f5a16cfa68220f24c2300e',run:41186655959,baseline:'7eba69e8d8e5927b5f5c73dbdd57b30749e16442'}],['hosted-native-step-v1',{source:'1979ac3cb1454a8903d32d4886f71b86324f972c',run:41181490909,baseline:'7eba69e8d8e5927b5f5c73dbdd57b30749e16442'}],['hosted-definition-cache-v1',{source:'09766bba7308eaede7b76059b88b73dd2bbb4efe',run:41176605076,baseline:'7eba69e8d8e5927b5f5c73dbdd57b30749e16442'}],['hosted-initial-v1',{source:'7eba69e8d8e5927b5f5c73dbdd57b30749e16442',run:41169970601,baseline:'622bc975af697c49298d2fb5b71b575aeed6cdb5'}]]);
+const captures=new Map([['hosted-catch-records-partial-v1',{source:'ff67c89dc586cdf0d982e49aa1c72205ca5c4e66',run:41211990414,baseline:'bb0d3268d7bfbb9b6910b3b86db3a5cf1abf49c7',copies:[2]}],['hosted-hot-sites-v1',{source:'bb0d3268d7bfbb9b6910b3b86db3a5cf1abf49c7',run:41208962674,baseline:'702ee76165c04990ac517a993c3e194c279cf4a0'}],['hosted-literal-accessors-v1',{source:'702ee76165c04990ac517a993c3e194c279cf4a0',run:41204129150,baseline:'7eba69e8d8e5927b5f5c73dbdd57b30749e16442'}],['hosted-weak-environments-v1',{source:'fd4ad7b521537dc0266424c40bd59e7dc6bb3c59',run:41200250693,baseline:'7eba69e8d8e5927b5f5c73dbdd57b30749e16442'}],['hosted-owned-sites-v1',{source:'767add1afe9c03059cba1ebff05f7397d9a3f67e',run:41198352870,baseline:'7eba69e8d8e5927b5f5c73dbdd57b30749e16442'}],['hosted-outlined-strings-v1',{source:'375ad2dce49b04ce37d7f8c8015d2230dc248d82',run:41196855251,baseline:'7eba69e8d8e5927b5f5c73dbdd57b30749e16442'}],['hosted-inline-auxiliary-v1',{source:'d9906db3c26e0b6b3663206fe0617fa5dbd7bbfc',run:41192021887,baseline:'7eba69e8d8e5927b5f5c73dbdd57b30749e16442'}],['hosted-empty-frame-v1',{source:'4a4c103ade6b0acae5f5a16cfa68220f24c2300e',run:41186655959,baseline:'7eba69e8d8e5927b5f5c73dbdd57b30749e16442'}],['hosted-native-step-v1',{source:'1979ac3cb1454a8903d32d4886f71b86324f972c',run:41181490909,baseline:'7eba69e8d8e5927b5f5c73dbdd57b30749e16442'}],['hosted-definition-cache-v1',{source:'09766bba7308eaede7b76059b88b73dd2bbb4efe',run:41176605076,baseline:'7eba69e8d8e5927b5f5c73dbdd57b30749e16442'}],['hosted-initial-v1',{source:'7eba69e8d8e5927b5f5c73dbdd57b30749e16442',run:41169970601,baseline:'622bc975af697c49298d2fb5b71b575aeed6cdb5'}]]);
 const groups=[
  ['original','audit-original-workload-records.mjs',[],['beforeafter','boa','baseline-boa','same-binary-control']],
  ['class','audit-class-workload-records.mjs',[],['class-beforeafter','class-boa','class-baseline-boa','class-same-binary']],
@@ -36,7 +36,7 @@ for(const name of selected){
   assert(execFileSync('tar',['-tvzf',archive],{encoding:'utf8'}).trim().split('\n').every(n=>n[0]==='d'||n[0]==='-'));
   execFileSync('tar',['-xzf',archive,'--no-same-owner','--no-same-permissions','-C',temp]);
   const summaries=[];
-  for(const copy of [1,2]){
+  for(const copy of (expected.copies ?? [1,2])){
    const capture=temp+'/copy-'+copy,summary={copy,groups:[]};
    assert.equal(fs.readFileSync(capture+'/measured-revision.txt','utf8').trim(),e.source_revision);
    assert.equal(fs.readFileSync(capture+'/baseline-revision.txt','utf8').trim(),e.baseline_revision);
@@ -64,7 +64,7 @@ for(const name of selected){
    }
    summaries.push(summary);
   }
-  console.log(JSON.stringify({integrity:'pass',capture:name,source:e.source_revision,reports:68,summaries,scope:e.scope}));
+  console.log(JSON.stringify({integrity:'pass',capture:name,source:e.source_revision,reports:34*(expected.copies ?? [1,2]).length,summaries,scope:e.scope}));
  } finally {fs.rmSync(temp,{recursive:true,force:true});}
 }
 

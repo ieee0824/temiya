@@ -54,3 +54,19 @@ samples are retained. The shared-host native base suite records12/12 significant
 Boa wins, but hosted qualification and full-corpus/safety checks remain pending.
 Callgrind instruction counts decrease from323336903 to289996124; these profiler
 counts are diagnostic and are not wall-clock performance qualification.
+
+hosted-constructors-v1 retains all48 reports from source612d759 on two
+unselected hosts (EPYC9V45 and9V74). Each workload meets the frozen minimum
+two significant Boa wins out of three on each host. Candidate totals are105wins
+on copy1 and104wins/1noise on copy2; derived-definition has2/3wins on copy2.
+Class construction has3/3wins on both. Controls and historical failures remain
+retained; verify-hosted.mjs reconstructs every report without waiving gates.
+
+full-constructors-v1 retains the complete52133-file100211-variant run of
+source612d759:27200pass64114fail18skip8879timeout, no missing results.
+verify-full.mjs independently replays all eight known-pass gates. A direct
+comparison with preceding main also preserves all26826 passes and adds374;
+the comparison and raw records are retained. Native field controls additionally
+retain all1008 previous passes in each backend:1252pass2054fail792timeout over
+4098 variants, with identical Ast/Auto outcomes, in field-controls.tar.gz.
+Safety and final-head CI remain independent merge requirements.

@@ -352,7 +352,9 @@ pub(super) fn create_generator_object(
     );
     if !lexical {
         environment.bind_this_value(this_value.clone())?;
-        bind_arguments(&closure.realm, &environment, arguments)?;
+        if closure.code.needs_arguments_binding() {
+            bind_arguments(&closure.realm, &environment, arguments)?;
+        }
     }
     let evaluator = ExpressionEvaluator::with_environment(
         closure.realm.clone(),
@@ -367,6 +369,13 @@ pub(super) fn create_generator_object(
         None,
         arguments,
     )?;
+    let environment = closure.code.body_environment(environment)?;
+    let evaluator = ExpressionEvaluator::with_environment(
+        closure.realm.clone(),
+        environment.clone(),
+        this_value.clone(),
+        closure.code.strict,
+    );
     let FunctionBody::Block(body) = &closure.code.body else {
         return Err(RuntimeError::syntax_error(
             "generator requires a block body",

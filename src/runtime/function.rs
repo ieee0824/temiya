@@ -132,6 +132,17 @@ impl Deref for FunctionCode {
     }
 }
 impl FunctionCode {
+    pub(super) fn body_environment(&self, parameters: Environment) -> RuntimeResult<Environment> {
+        match &self.parameter_environment {
+            Some(plan) => plan.instantiate(&parameters),
+            None => Ok(parameters),
+        }
+    }
+
+    pub(super) fn needs_arguments_binding(&self) -> bool {
+        self.may_observe_arguments && !self.parameter_binds_arguments
+    }
+
     fn context(&self) -> Option<FunctionCache> {
         self.auto_functions
             .then(|| self.cache.upgrade().unwrap_or_default())
@@ -742,10 +753,7 @@ fn call_function(
         arguments,
     )?;
 
-    let environment = match &closure.code.parameter_environment {
-        Some(plan) => plan.instantiate(&environment)?,
-        None => environment,
-    };
+    let environment = closure.code.body_environment(environment)?;
 
     match &closure.code.body {
         FunctionBody::Expression(expression) => evaluator.evaluate(expression),
@@ -871,10 +879,7 @@ fn construct_derived(
         closure.code.parameter_names.as_deref(),
         arguments,
     )?;
-    let body_environment = match &closure.code.parameter_environment {
-        Some(plan) => plan.instantiate(&environment)?,
-        None => environment.clone(),
-    };
+    let body_environment = closure.code.body_environment(environment.clone())?;
     let FunctionBody::Block(body) = &closure.code.body else {
         return Err(RuntimeError::internal_error(
             "derived constructor requires a block body",

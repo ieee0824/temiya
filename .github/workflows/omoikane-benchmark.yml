@@ -416,6 +416,22 @@ jobs:
             reports+=("$RUNNER_TEMP/comparison-output/iterator-baseline-boa.json" "$RUNNER_TEMP/comparison-output/iterator-same-binary.json")
           fi
           node scripts/audit-class-workload-records.mjs --iterators "${reports[@]}" > "$RUNNER_TEMP/comparison-output/iterator-independent-audit.json"
+      - name: Measure frozen array binding workloads against actual Boa
+        if: inputs.include_controls && steps.hardware.outputs.matches == 'true' && hashFiles('temiya/benchmarks/array-binding/workloads-v1/manifest.json') != ''
+        run: |
+          export TEMIYA_REVISION="$(cat "$RUNNER_TEMP/comparison-output/measured-revision.txt")"
+          export BENCH_NOTES='Six array binding inputs frozen before implementation; unchanged15 samples/3pairs, noise, watchdog and limits. Baseline predates binding support, so no successful baseline comparison is claimed. Preserve every outcome; job success is not a speed pass.'
+          node scripts/compare-class-workloads.mjs --bindings benchmarks/array-binding/workloads-v1 "$RUNNER_TEMP/temiya-current-target/release/examples/measure_workload" "$RUNNER_TEMP/comparison-output/boa-build-info.json" 15 3 > "$RUNNER_TEMP/comparison-output/bindings-boa.json" 2> "$RUNNER_TEMP/comparison-output/bindings-boa.progress"
+      - name: Measure identical candidate array binding control
+        if: inputs.include_controls && steps.hardware.outputs.matches == 'true' && hashFiles('temiya/benchmarks/array-binding/workloads-v1/manifest.json') != ''
+        run: |
+          export TEMIYA_REVISION="$(cat "$RUNNER_TEMP/comparison-output/measured-revision.txt")"
+          export BENCH_NOTES='Identical executable array binding control; labels do not indicate a source change. Retain slow and noisy outcomes.'
+          node scripts/compare-class-workloads.mjs --bindings --temiya-baseline benchmarks/array-binding/workloads-v1 "$RUNNER_TEMP/temiya-current-target/release/examples/measure_workload" "$RUNNER_TEMP/comparison-output/same-binary-build-info.json" 15 3 > "$RUNNER_TEMP/comparison-output/bindings-same-binary.json" 2> "$RUNNER_TEMP/comparison-output/bindings-same-binary.progress"
+      - name: Independently reconstruct array binding measurement records
+        if: inputs.include_controls && steps.hardware.outputs.matches == 'true' && hashFiles('temiya/benchmarks/array-binding/workloads-v1/manifest.json') != ''
+        run: |
+          node scripts/audit-class-workload-records.mjs --bindings "$RUNNER_TEMP/comparison-output/bindings-boa.json" "$RUNNER_TEMP/comparison-output/bindings-same-binary.json" > "$RUNNER_TEMP/comparison-output/bindings-independent-audit.json"
       - name: Summarize validity and speed gates separately
         if: always()
         run: |

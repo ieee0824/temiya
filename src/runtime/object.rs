@@ -745,6 +745,63 @@ impl Object {
             result.map_err(|error| self.bind_native_exception(payload.source.as_ref(), error))
         })())
     }
+    // Only the unpublished ordinary object created for an AST literal uses
+    // these initializers. No property/proxy hooks or descriptor observers can
+    // see it before construction finishes.
+    pub(super) fn reserve_literal_properties(&self, count: usize) {
+        let mut state = self.0.state.borrow_mut();
+        debug_assert!(state.properties.is_empty() && state.proxy.is_none() && !state.array);
+        state.properties.reserve_exact(count.min(4));
+    }
+
+    pub(super) fn initialize_literal_accessor(
+        &self,
+        key: PropertyKey,
+        function: Object,
+        getter: bool,
+    ) -> RuntimeResult<()> {
+        debug_assert!(function.is_callable());
+        // A key/coercion callback can collect and promote the destination.
+        // Keep the checked store and old-to-young barrier even before publish.
+        let function = StoredObject::store(self, &function)?;
+        let mut state = self.0.state.borrow_mut();
+        debug_assert!(state.proxy.is_none() && !state.array && state.extensible);
+        let position = state.properties.iter().position(|entry| entry.key == key);
+        let (mut get, mut set) = match position.map(|i| &state.properties[i].descriptor) {
+            Some(StoredDescriptor::Accessor {
+                get,
+                set,
+                configurable,
+                ..
+            }) => {
+                debug_assert!(*configurable);
+                (get.clone(), set.clone())
+            }
+            Some(StoredDescriptor::Data { configurable, .. }) => {
+                debug_assert!(*configurable);
+                (None, None)
+            }
+            None => (None, None),
+        };
+        if getter {
+            get = Some(function);
+        } else {
+            set = Some(function);
+        }
+        let descriptor = StoredDescriptor::Accessor {
+            get,
+            set,
+            enumerable: true,
+            configurable: true,
+        };
+        if let Some(position) = position {
+            state.properties[position].descriptor = descriptor;
+        } else {
+            state.properties.push(PropertyEntry { key, descriptor });
+        }
+        Ok(())
+    }
+
     // Native exceptions are unpublished ordinary objects with one own data
     // property. Prototype and message are initialized before user code can run.
     pub(super) fn native_error(prototype: Self, message: JsString) -> Self {

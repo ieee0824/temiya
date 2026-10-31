@@ -16,6 +16,16 @@ Proxy errors from ownKeys, getOwnPropertyDescriptor and get propagate and stop
 later evaluation. String primitives contribute enumerable UTF-16 indices.
 Object copy does not use the iterator protocol.
 
+Method-bearing literals use the shared metadata evaluator. Its unpublished
+ordinary destination initializes accessor descriptors directly, preserving the
+opposite getter/setter half for duplicate keys and retaining the original key
+position. Replacing data with an accessor removes the old data fields. Checked
+stored edges and generational write barriers remain active even if key
+evaluation collected and promoted the destination. Literals without spread
+reserve up to four property slots using their known size; spread output keeps
+ordinary dynamic growth. Public Ast/Auto tests cover mixed redefinitions,
+symbol keys, descriptors, receiver/super behavior and reentrant collection.
+
 The instructions are `CreateObject` (+1 operand), `CoercePropertyKey`
 (replace one operand), `DefineObjectProperty` (object/key/value to object),
 `DefineNamedObjectProperty` (object/value to object using a String constant),

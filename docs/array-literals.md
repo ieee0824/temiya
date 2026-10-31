@@ -1,10 +1,16 @@
 # Array literals, holes and iterable spread
 
-AST and VM now accumulate array elements through shared operations. An empty
-Array with the Realm's Array prototype is created first. Elisions advance the
+AST and VM accumulate array elements through shared operations. The AST defers
+allocating its unpublished Array until the first value is stored or the literal
+finishes. A spread that fails before yielding a value needs no destination
+Array. The VM creates its Array/index operand pair eagerly. Both use the Realm's
+intrinsic Array prototype and preserve fresh identity. Elisions advance the
 next index without creating own properties, values create ordinary data
 properties, and a final length write preserves trailing holes and empty spreads.
 Nested arrays and spread elements are lowered without evaluating AST inside VM.
+Yielded values remain rooted across destination allocation. Public Ast/Auto
+tests collect during initial expressions, iterator calls and value getters,
+then check order, trailing holes, distinct empty arrays and release of roots.
 
 Array/call spread consumes `@@iterator`, captures `next` once, and reads each
 result's done then value. It does not read an arbitrary source's length, and

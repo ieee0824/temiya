@@ -23,7 +23,7 @@ pub(super) struct RuntimeData {
     collecting: Cell<bool>,
     allocation_interval: Cell<usize>,
     allocation_remaining: Cell<usize>,
-    active_objects: RefCell<Weak<RefCell<Vec<Object>>>>,
+    active_objects: RefCell<Weak<RefCell<ActiveObjects>>>,
     #[cfg(all(test, not(miri)))]
     collection_ns: Cell<u128>,
 }
@@ -47,13 +47,106 @@ impl Drop for CollectionTimer<'_> {
 // Leave room for the container as well as a small polymorphic receiver set.
 // The whole bounded region is still cleared before any collection.
 const ACTIVE_OBJECTS: usize = 16;
+const OBJECT_FINGERPRINTS: usize = 64;
+
+const NO_OBJECT: usize = usize::MAX;
+const _: () = assert!(ACTIVE_OBJECTS > 1 && ACTIVE_OBJECTS <= u16::BITS as usize);
+
+struct ActiveObject {
+    object: Object,
+    previous: usize,
+    next: usize,
+}
+
+struct ActiveObjects {
+    objects: Vec<ActiveObject>,
+    // Stable slots avoid shifting facades on every hit. Bucket bits only
+    // narrow candidates; full identity is checked even for colliding keys.
+    buckets: [u16; OBJECT_FINGERPRINTS],
+    oldest: usize,
+    newest: usize,
+}
+impl ActiveObjects {
+    fn new() -> Self {
+        Self {
+            objects: Vec::with_capacity(ACTIVE_OBJECTS),
+            buckets: [0; OBJECT_FINGERPRINTS],
+            oldest: NO_OBJECT,
+            newest: NO_OBJECT,
+        }
+    }
+    fn clear(&mut self) {
+        self.objects.clear();
+        self.buckets.fill(0);
+        self.oldest = NO_OBJECT;
+        self.newest = NO_OBJECT;
+    }
+    fn touch(&mut self, index: usize) {
+        if index == self.newest {
+            return;
+        }
+        let previous = self.objects[index].previous;
+        let next = self.objects[index].next;
+        if previous == NO_OBJECT {
+            self.oldest = next;
+        } else {
+            self.objects[previous].next = next;
+        }
+        if next != NO_OBJECT {
+            self.objects[next].previous = previous;
+        }
+        self.objects[self.newest].next = index;
+        self.objects[index].previous = self.newest;
+        self.objects[index].next = NO_OBJECT;
+        self.newest = index;
+    }
+    fn remember(&mut self, object: &Object) {
+        if self.newest != NO_OBJECT && self.objects[self.newest].object == *object {
+            return;
+        }
+        let fingerprint = object.identity() as usize & (OBJECT_FINGERPRINTS - 1);
+        let mut candidates = self.buckets[fingerprint];
+        while candidates != 0 {
+            let index = candidates.trailing_zeros() as usize;
+            if self.objects[index].object == *object {
+                self.touch(index);
+                return;
+            }
+            candidates &= candidates - 1;
+        }
+        let index = if self.objects.len() == ACTIVE_OBJECTS {
+            let index = self.oldest;
+            let previous =
+                self.objects[index].object.identity() as usize & (OBJECT_FINGERPRINTS - 1);
+            self.buckets[previous] &= !(1u16 << index);
+            self.objects[index].object = object.clone();
+            self.touch(index);
+            index
+        } else {
+            let index = self.objects.len();
+            self.objects.push(ActiveObject {
+                object: object.clone(),
+                previous: self.newest,
+                next: NO_OBJECT,
+            });
+            if self.newest == NO_OBJECT {
+                self.oldest = index;
+            } else {
+                self.objects[self.newest].next = index;
+            }
+            self.newest = index;
+            index
+        };
+        self.buckets[fingerprint] |= 1u16 << index;
+    }
+}
 
 // This is an external activation region, never a payload stored in the heap.
 // Nested VM calls share the outer region. Its bounded facade cache is cleared
 // before every collection, so cached facades cannot keep a dead JS graph live.
 pub(crate) struct ObjectRootRegion {
     runtime: Runtime,
-    objects: Rc<RefCell<Vec<Object>>>,
+    objects: Rc<RefCell<ActiveObjects>>,
 }
 impl Drop for ObjectRootRegion {
     fn drop(&mut self) {
@@ -137,7 +230,7 @@ impl Runtime {
         if active.upgrade().is_some() {
             return None;
         }
-        let objects = Rc::new(RefCell::new(Vec::with_capacity(ACTIVE_OBJECTS)));
+        let objects = Rc::new(RefCell::new(ActiveObjects::new()));
         *active = Rc::downgrade(&objects);
         Some(ObjectRootRegion {
             runtime: self.clone(),
@@ -148,19 +241,7 @@ impl Runtime {
         let Some(active) = self.0.active_objects.borrow().upgrade() else {
             return;
         };
-        let mut objects = active.borrow_mut();
-        if objects.last().is_some_and(|last| last == object) {
-            return;
-        }
-        if let Some(index) = objects.iter().rposition(|cached| cached == object) {
-            let cached = objects.remove(index);
-            objects.push(cached);
-        } else {
-            if objects.len() == ACTIVE_OBJECTS {
-                objects.remove(0);
-            }
-            objects.push(object.clone());
-        }
+        active.borrow_mut().remember(object);
     }
     fn clear_active_objects(&self) {
         if let Some(active) = self.0.active_objects.borrow().upgrade() {
@@ -547,6 +628,105 @@ mod tests {
             after, before,
             "warm reads must not allocate more Root registrations"
         );
+    }
+    #[cfg(not(miri))]
+    #[test]
+    fn stable_activation_slots_match_lru_order_and_bucket_membership() {
+        let runtime = Runtime::new();
+        runtime.set_allocation_collection_interval(usize::MAX);
+        let objects: Vec<_> = (0..80).map(|_| Object::new_in(&runtime)).collect();
+        let mut cache = ActiveObjects::new();
+        let mut expected: Vec<Object> = Vec::new();
+        let mut state = 42u32;
+        for step in 0..2_000 {
+            state = state.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+            let object = &objects[(state as usize >> 8) % objects.len()];
+            if let Some(index) = expected.iter().position(|value| value == object) {
+                expected.remove(index);
+            } else if expected.len() == ACTIVE_OBJECTS {
+                expected.remove(0);
+            }
+            expected.push(object.clone());
+            cache.remember(object);
+            let mut order = Vec::new();
+            let mut index = cache.oldest;
+            let mut previous = NO_OBJECT;
+            while index != NO_OBJECT {
+                assert!(order.len() < ACTIVE_OBJECTS, "cyclic LRU links");
+                let entry = &cache.objects[index];
+                assert_eq!(entry.previous, previous);
+                order.push(entry.object.clone());
+                previous = index;
+                index = entry.next;
+            }
+            assert_eq!(order, expected);
+            assert_eq!(previous, cache.newest);
+            let mut buckets = [0u16; OBJECT_FINGERPRINTS];
+            for (index, entry) in cache.objects.iter().enumerate() {
+                buckets[entry.object.identity() as usize & (OBJECT_FINGERPRINTS - 1)] |=
+                    1u16 << index;
+            }
+            assert_eq!(cache.buckets, buckets);
+            if step % 97 == 0 {
+                cache.clear();
+                expected.clear();
+                assert_eq!(cache.oldest, NO_OBJECT);
+                assert_eq!(cache.newest, NO_OBJECT);
+                assert_eq!(cache.buckets, [0; OBJECT_FINGERPRINTS]);
+            }
+        }
+    }
+    #[cfg(not(miri))]
+    #[test]
+    fn colliding_activation_fingerprints_keep_distinct_objects_and_warm_roots() {
+        let runtime = Runtime::new();
+        runtime.set_allocation_collection_interval(usize::MAX);
+        let owner = Object::new_in(&runtime);
+        let objects: Vec<_> = (0..=OBJECT_FINGERPRINTS)
+            .map(|_| Object::new_in(&runtime))
+            .collect();
+        let (first, second) = objects
+            .iter()
+            .enumerate()
+            .find_map(|(index, first)| {
+                objects[index + 1..]
+                    .iter()
+                    .find(|second| {
+                        first.identity() as usize & (OBJECT_FINGERPRINTS - 1)
+                            == second.identity() as usize & (OBJECT_FINGERPRINTS - 1)
+                    })
+                    .map(|second| (first.clone(), second.clone()))
+            })
+            .expect("more live objects than fingerprints must collide");
+        let identities = [first.identity(), second.identity()];
+        owner
+            .create_data_property("a".into(), super::super::Value::Object(first))
+            .unwrap();
+        owner
+            .create_data_property("b".into(), super::super::Value::Object(second))
+            .unwrap();
+        drop(objects);
+        let region = runtime.enter_object_root_region().unwrap();
+        let read = |key: &str| {
+            let super::super::Value::Object(object) = owner.get(&key.into()).unwrap() else {
+                panic!("object");
+            };
+            object.identity()
+        };
+        assert_eq!(read("a"), identities[0]);
+        assert_eq!(read("b"), identities[1]);
+        let (_, before, _) = runtime.profile_snapshot();
+        for _ in 0..100 {
+            assert_eq!(read("a"), identities[0]);
+            assert_eq!(read("b"), identities[1]);
+        }
+        let (_, after, _) = runtime.profile_snapshot();
+        assert_eq!(after, before);
+        runtime.collect_garbage().unwrap();
+        assert_eq!(read("a"), identities[0]);
+        assert_eq!(read("b"), identities[1]);
+        drop((owner, region));
+        assert_eq!(runtime.collect_garbage().unwrap().retained, 0);
     }
     #[test]
     fn activation_facades_are_bounded_and_do_not_retain_dead_graphs_at_collection() {

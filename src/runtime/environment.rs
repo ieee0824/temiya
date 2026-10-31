@@ -75,13 +75,19 @@ pub(super) struct EnvironmentRoot {
 pub(super) type ManagedEnvironment = EnvironmentData;
 
 #[derive(Clone)]
-pub(super) struct StoredEnvironment(pub(super) Handle<ManagedEnvironment>);
+pub(super) struct StoredEnvironment(
+    pub(super) Handle<ManagedEnvironment>,
+    // A facade hint, never a root or a substitute for the traced handle. The
+    // owning runtime must still match before an upgraded facade is returned.
+    Weak<EnvironmentRoot>,
+);
 impl StoredEnvironment {
     pub(super) fn initial(runtime: Option<&Runtime>, value: &Environment) -> RuntimeResult<Self> {
         match (runtime, value.runtime()) {
-            (Some(left), Some(right)) if left.same_heap(right) => {
-                Ok(Self(value.handle().expect("managed environment")))
-            }
+            (Some(left), Some(right)) if left.same_heap(right) => Ok(Self(
+                value.handle().expect("managed environment"),
+                Rc::downgrade(&value.0.0),
+            )),
             _ => Err(RuntimeError::type_error(
                 "Environment allocation context mismatch",
             )),
@@ -99,9 +105,15 @@ impl StoredEnvironment {
         Ok(stored)
     }
     pub(super) fn load(&self, owner: &impl StoredOwner) -> RuntimeResult<Environment> {
-        owner
-            .runtime()
-            .ok_or_else(|| RuntimeError::internal_error("Environment allocation context mismatch"))?
+        let runtime = owner.runtime().ok_or_else(|| {
+            RuntimeError::internal_error("Environment allocation context mismatch")
+        })?;
+        if let Some(facade) = self.1.upgrade() {
+            if runtime.same_heap(&facade.runtime) {
+                return Ok(Environment(EnvironmentReference(facade)));
+            }
+        }
+        runtime
             .root_environment(self.0)
             .ok_or_else(|| RuntimeError::internal_error("stale environment edge"))
     }
@@ -1522,6 +1534,44 @@ fn reference_error(name: &JsString, detail: &str) -> RuntimeError {
 #[cfg(test)]
 mod slot_hint_tests {
     use super::*;
+    #[test]
+    fn stored_environment_weak_hints_preserve_collection_revival_and_context_checks() {
+        let runtime = Runtime::new();
+        let parent = Environment::declarative_in(&runtime);
+        parent
+            .create_mutable_binding("answer".into(), false)
+            .unwrap();
+        parent
+            .initialize_binding(&"answer".into(), Value::Number(42.0))
+            .unwrap();
+        let child = Environment::declarative(parent.clone());
+        let edge = StoredEnvironment::initial(Some(&runtime), &parent).unwrap();
+        assert!(Rc::ptr_eq(&edge.load(&child).unwrap().0.0, &parent.0.0));
+        let foreign = Environment::declarative_in(&Runtime::new());
+        assert!(
+            edge.load(&foreign).is_err(),
+            "live hints must not cross heaps"
+        );
+        drop(parent);
+        assert!(
+            edge.1.upgrade().is_none(),
+            "stored hints must not keep facades alive"
+        );
+        runtime.collect_garbage().unwrap();
+        let revived = edge.load(&child).unwrap();
+        assert!(matches!(
+            revived.get_binding_value(&"answer".into(), true).unwrap(),
+            Value::Number(42.0)
+        ));
+        assert!(
+            edge.load(&foreign).is_err(),
+            "stale hints must not cross heaps"
+        );
+        drop(revived);
+        drop(child);
+        assert_eq!(runtime.collect_garbage().unwrap().retained, 0);
+        assert!(edge.load(&foreign).is_err());
+    }
     #[test]
     fn managed_object_and_global_records_do_not_root_their_stored_objects() {
         for global in [false, true] {

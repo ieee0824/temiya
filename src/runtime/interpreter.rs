@@ -1041,27 +1041,35 @@ impl ExpressionEvaluator {
     }
 
     fn array(&self, elements: &[Option<Expr>]) -> RuntimeResult<Value> {
-        let object = super::array_literal::create(&self.realm)?;
+        let mut object = None;
         let mut next = 0;
         for element in elements {
             match element {
                 Some(Expr {
                     kind: ExprKind::Spread(value),
                     ..
-                }) => super::array_literal::spread(
+                }) => super::array_literal::spread_deferred(
                     &self.realm,
-                    &object,
+                    &mut object,
                     &mut next,
                     self.evaluate(value)?,
                 )?,
                 Some(value) => {
-                    super::array_literal::append(&object, &mut next, self.evaluate(value)?)?
+                    let value = self.evaluate(value)?;
+                    super::array_literal::append(
+                        super::array_literal::materialize(&self.realm, &mut object)?,
+                        &mut next,
+                        value,
+                    )?
                 }
                 None => super::array_literal::elide(&mut next)?,
             }
         }
-        super::array_literal::finish(&object, next)?;
-        Ok(Value::Object(object))
+        super::array_literal::finish(
+            super::array_literal::materialize(&self.realm, &mut object)?,
+            next,
+        )?;
+        Ok(Value::Object(object.expect("finished array literal")))
     }
 
     fn literal(&self, literal: &Literal) -> RuntimeResult<Value> {
@@ -1078,6 +1086,10 @@ impl ExpressionEvaluator {
 
     fn object(&self, properties: &[crate::ast::ObjectProperty]) -> RuntimeResult<Value> {
         let object = super::object_literal::create(&self.realm);
+        // Spreads have unknown output size; retain ordinary Vec growth there.
+        if !properties.iter().any(|property| property.spread) {
+            object.reserve_literal_properties(properties.len());
+        }
         for property in properties {
             if property.spread {
                 super::object_literal::spread(&object, self.evaluate(&property.key)?)?;
@@ -1103,26 +1115,10 @@ impl ExpressionEvaluator {
                 )?;
                 match kind {
                     MethodKind::Get => {
-                        object.define_own_property(
-                            key,
-                            super::PropertyDescriptor {
-                                get: Some(Some(function)),
-                                enumerable: Some(true),
-                                configurable: Some(true),
-                                ..super::PropertyDescriptor::default()
-                            },
-                        )?;
+                        object.initialize_literal_accessor(key, function, true)?;
                     }
                     MethodKind::Set => {
-                        object.define_own_property(
-                            key,
-                            super::PropertyDescriptor {
-                                set: Some(Some(function)),
-                                enumerable: Some(true),
-                                configurable: Some(true),
-                                ..super::PropertyDescriptor::default()
-                            },
-                        )?;
+                        object.initialize_literal_accessor(key, function, false)?;
                     }
                     MethodKind::Method | MethodKind::Constructor => {
                         object.create_data_property(key, Value::Object(function))?;

@@ -1,0 +1,28 @@
+{
+  "source": "0e9c642fcc48fc9e1a3f870dda7482e7a220af27",
+  "toolchain": "nightly-2026-10-20",
+  "miri": "miri 0.1.0 (07e526db9d 2026-10-19)",
+  "flags": [
+    "-Zmiri-strict-provenance",
+    "-Zmiri-symbolic-alignment-check"
+  ],
+  "checks": [
+    {
+      "file": "owned-sites-strict-miri.log",
+      "passed": 2
+    },
+    {
+      "file": "literal-gc-strict-miri.log",
+      "passed": 1
+    },
+    {
+      "file": "weak-environment-strict-miri.log",
+      "passed": 1
+    }
+  ],
+  "integration_source": {
+    "file": "tests/bytecode_object_methods.rs",
+    "sha256": "6301260aa80cea0e760b6837ede0c502c470a7440d8a5bd5232bf1719b4b172c"
+  },
+  "scope": "Four focused executions including reentrant GC integration; not full-library Miri, full security or native speed qualification."
+}

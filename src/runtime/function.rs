@@ -1,6 +1,7 @@
 //! ECMAScript function objects, calls, constructors, and parameter binding.
 
 mod constructor_assignments;
+mod private_expression;
 mod super_call;
 
 use super::{
@@ -53,6 +54,7 @@ pub(super) struct FunctionCode {
     kind: FunctionKind,
     compiled: Option<Rc<FunctionTemplate>>,
     lexical_property: Option<PropertyKey>,
+    private_expression: Option<Rc<Expr>>,
     constructor_assignments: Option<constructor_assignments::Plan>,
     may_observe_arguments: bool,
     delegated_parameters: Option<Box<[usize]>>,
@@ -107,6 +109,9 @@ fn prepare_code(
         ast: code.clone(),
         kind,
         compiled,
+        private_expression: cache
+            .as_ref()
+            .and_then(|_| private_expression::prepare(code, kind)),
         constructor_assignments: if cache.is_some() {
             constructor_assignments::Plan::prepare(code, kind)
         } else {
@@ -323,6 +328,13 @@ impl StoredFunctionClosure {
             let realm = self.realm.load(owner)?;
             return plan
                 .execute(self, owner, this, arguments, &realm)
+                .map_err(|error| realm.bind_exception(error));
+        }
+        if let Some(expression) = &self.code.private_expression {
+            let realm = self.realm.load(owner)?;
+            let environment = self.environment.load(owner)?;
+            return ExpressionEvaluator::with_environment(realm.clone(), environment, this, true)
+                .evaluate(expression)
                 .map_err(|error| realm.bind_exception(error));
         }
         if let Some(key) = &self.code.lexical_property {

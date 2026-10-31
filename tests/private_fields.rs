@@ -93,3 +93,19 @@ fn private_values_and_lexical_names_survive_gc_then_release_cycles() {
         assert_eq!(engine.collect_garbage().unwrap().retained, 0);
     }
 }
+
+#[test]
+fn private_method_expressions_keep_numeric_coercion_errors_and_class_identity() {
+    check(
+        "class C{#n=41n;next(){return ++this.#n;}old(){return this.#n--;}}let c=new C();c.next()===42n && c.old()===42n && c.next()===42n;",
+    );
+    check(
+        "let marker={};let calls=0;class C{#n={valueOf(){calls++;throw marker;}};next(){return ++this.#n;}}let c=new C();let caught=false;try{c.next();}catch(e){caught=e===marker;}caught && calls===1;",
+    );
+    check(
+        "function make(v){return class{#n=v;read(){return this.#n;}};}let A=make(41);let B=make(42);let a=new A();let b=new B();let caught=false;try{A.prototype.read.call(b);}catch(e){caught=e instanceof TypeError;}caught && a.read()===41 && b.read()===42;",
+    );
+    check(
+        "class C{#n=41;next(){return ++this.#n;}}let c=new C();let caught=false;try{C.prototype.next.call(new Proxy(c,{}));}catch(e){caught=e instanceof TypeError;}caught && c.next()===42;",
+    );
+}

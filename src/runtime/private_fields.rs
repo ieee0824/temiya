@@ -7,8 +7,32 @@ use std::rc::Rc;
 // Sparse out-of-line payloads keep ordinary objects and environments small.
 #[derive(Default)]
 pub(super) struct Names(pub(super) Vec<(JsString, Name)>);
-#[derive(Default)]
-pub(super) struct Fields(pub(super) Vec<(Name, StoredValue)>);
+// The first private slot shares its allocation with the sparse payload. Larger
+// classes spill into a vector without enlarging ordinary ObjectState records.
+pub(super) struct Fields {
+    first: (Name, StoredValue),
+    rest: Vec<(Name, StoredValue)>,
+}
+impl Fields {
+    fn new(name: Name, value: StoredValue) -> Self {
+        Self {
+            first: (name, value),
+            rest: Vec::new(),
+        }
+    }
+    pub(super) fn iter(&self) -> impl Iterator<Item = &(Name, StoredValue)> {
+        std::iter::once(&self.first).chain(self.rest.iter())
+    }
+    fn iter_mut(&mut self) -> impl Iterator<Item = &mut (Name, StoredValue)> {
+        std::iter::once(&mut self.first).chain(self.rest.iter_mut())
+    }
+    fn push(&mut self, name: Name, value: StoredValue) {
+        if self.rest.len() == self.rest.capacity() {
+            self.rest.reserve_exact(self.rest.len().max(1));
+        }
+        self.rest.push((name, value));
+    }
+}
 
 #[derive(Clone, Debug)]
 pub(super) struct Name(Rc<()>);
@@ -54,7 +78,7 @@ impl Object {
             .borrow()
             .private_fields
             .as_ref()
-            .is_some_and(|fields| fields.0.iter().any(|(key, _)| key.same(name)))
+            .is_some_and(|fields| fields.iter().any(|(key, _)| key.same(name)))
     }
     pub(super) fn add_private(&self, name: Name, value: Value) -> RuntimeResult<()> {
         if self.has_private(&name) {
@@ -63,13 +87,11 @@ impl Object {
             ));
         }
         let stored = StoredValue::store_owned(self, value)?;
-        self.0
-            .state
-            .borrow_mut()
-            .private_fields
-            .get_or_insert_with(Default::default)
-            .0
-            .push((name, stored));
+        let mut state = self.0.state.borrow_mut();
+        match &mut state.private_fields {
+            Some(fields) => fields.push(name, stored),
+            None => state.private_fields = Some(Box::new(Fields::new(name, stored))),
+        }
         Ok(())
     }
     pub(super) fn get_private(&self, name: &Name) -> RuntimeResult<Value> {
@@ -79,7 +101,7 @@ impl Object {
             .borrow()
             .private_fields
             .as_ref()
-            .and_then(|fields| fields.0.iter().find(|(key, _)| key.same(name)))
+            .and_then(|fields| fields.iter().find(|(key, _)| key.same(name)))
             .map(|(_, value)| value.clone())
             .ok_or_else(|| {
                 RuntimeError::type_error("private field receiver has no matching brand")
@@ -98,7 +120,6 @@ impl Object {
             .private_fields
             .as_mut()
             .expect("checked brand")
-            .0
             .iter_mut()
             .find(|(key, _)| key.same(name))
             .expect("checked field");

@@ -2505,7 +2505,7 @@ impl super::ObjectData {
     pub(super) fn trace_object_edges(&self, tracer: &mut crate::gc::Tracer<'_>) {
         let state = self.state.borrow();
         if let Some(fields) = &state.private_fields {
-            for (_, value) in fields.0.iter() {
+            for (_, value) in fields.iter() {
                 value.trace(tracer);
             }
         }

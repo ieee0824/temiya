@@ -23,7 +23,7 @@ pub(super) struct RuntimeData {
     collecting: Cell<bool>,
     allocation_interval: Cell<usize>,
     allocation_remaining: Cell<usize>,
-    active_objects: RefCell<Weak<RefCell<ActiveObjects>>>,
+    active_objects: RefCell<Option<ActiveObjects>>,
     #[cfg(all(test, not(miri)))]
     collection_ns: Cell<u128>,
 }
@@ -146,13 +146,15 @@ impl ActiveObjects {
 // before every collection, so cached facades cannot keep a dead JS graph live.
 pub(crate) struct ObjectRootRegion {
     runtime: Runtime,
-    objects: Rc<RefCell<ActiveObjects>>,
 }
 impl Drop for ObjectRootRegion {
     fn drop(&mut self) {
-        let mut active = self.runtime.0.active_objects.borrow_mut();
-        debug_assert_eq!(active.as_ptr(), Rc::as_ptr(&self.objects));
-        *active = Weak::new();
+        // Remove the region before releasing facades, and release them outside
+        // the borrow. This also breaks the temporary Runtime/facade ownership
+        // cycle when the outer evaluation unwinds.
+        let objects = self.runtime.0.active_objects.borrow_mut().take();
+        debug_assert!(objects.is_some());
+        drop(objects);
     }
 }
 
@@ -227,25 +229,22 @@ impl WeakObjectRoot {
 impl Runtime {
     pub(crate) fn enter_object_root_region(&self) -> Option<ObjectRootRegion> {
         let mut active = self.0.active_objects.borrow_mut();
-        if active.upgrade().is_some() {
+        if active.is_some() {
             return None;
         }
-        let objects = Rc::new(RefCell::new(ActiveObjects::new()));
-        *active = Rc::downgrade(&objects);
+        *active = Some(ActiveObjects::new());
         Some(ObjectRootRegion {
             runtime: self.clone(),
-            objects,
         })
     }
     fn remember_active_object(&self, object: &Object) {
-        let Some(active) = self.0.active_objects.borrow().upgrade() else {
-            return;
-        };
-        active.borrow_mut().remember(object);
+        if let Some(active) = self.0.active_objects.borrow_mut().as_mut() {
+            active.remember(object);
+        }
     }
     fn clear_active_objects(&self) {
-        if let Some(active) = self.0.active_objects.borrow().upgrade() {
-            active.borrow_mut().clear();
+        if let Some(active) = self.0.active_objects.borrow_mut().as_mut() {
+            active.clear();
         }
     }
     fn allocation_safepoint(&self, incoming: &impl Trace) {
@@ -452,7 +451,7 @@ impl Runtime {
             collecting: Cell::new(false),
             allocation_interval: Cell::new(4096),
             allocation_remaining: Cell::new(4096),
-            active_objects: RefCell::new(Weak::new()),
+            active_objects: RefCell::new(None),
             #[cfg(all(test, not(miri)))]
             collection_ns: Cell::new(0),
         }))
@@ -728,6 +727,21 @@ mod tests {
         drop((owner, region));
         assert_eq!(runtime.collect_garbage().unwrap().retained, 0);
     }
+    #[test]
+    fn activation_region_releases_runtime_after_last_external_owner() {
+        let runtime = Runtime::new();
+        let weak = Rc::downgrade(&runtime.0);
+        let region = runtime.enter_object_root_region().unwrap();
+        let object = Object::new_in(&runtime);
+        drop((object, runtime));
+        assert!(weak.upgrade().is_some());
+        drop(region);
+        assert!(
+            weak.upgrade().is_none(),
+            "region teardown must break facade ownership cycles"
+        );
+    }
+
     #[test]
     fn activation_facades_are_bounded_and_do_not_retain_dead_graphs_at_collection() {
         let runtime = Runtime::new();

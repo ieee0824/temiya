@@ -72,3 +72,8 @@ the unchanged private-invalid-receiver input: Callgrind instructions fall from
 GC environment regression; Clippy, MSRV and stable i686 checks pass. Run
 verify-private-expression.mjs bound-private-diagnostic-v1 to replay this
 diagnostic. Its new hosted/full-corpus/safety qualification is pending.
+
+full-bound-private-v1 replays sourcea65fa12 across52133files100211variants:
+27855pass63525fail18skip8813timeout,0 missing. All27855 previous-candidate
+passes remain; all27200 previous-main passes remain with655 additions. This
+full-corpus gate does not replace the separate two-host speed and safety gates.

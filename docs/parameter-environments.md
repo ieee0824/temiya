@@ -24,3 +24,10 @@ Replay with `node benchmarks/parameter-environments/correctness-v1/verify.mjs`.
 It covers the initial 962-test all-target run, all six final integration tests
 under native Ast/Auto, strict Miri and Rust 1.85.0, plus Clippy and i686.
 The record does not qualify native Boa speed or full Test262 compatibility.
+
+Initial fixed-workload observations are retained in
+`benchmarks/parameter-environments/oracles-initial-v1`. Temiya validates all
+eight inputs; pinned actual Boa validates three and throws in five (four
+uninitialized-binding errors and one invariant failure). No input was dropped
+or changed. These failures prevent this reference capture from qualifying
+native speed; replay integrity success is not a performance pass.

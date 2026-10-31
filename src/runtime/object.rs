@@ -627,6 +627,57 @@ struct PropertyEntry {
     descriptor: StoredDescriptor,
 }
 
+// Ordinary objects share immutable empty optional storage. The first mutation
+// creates a unique record; a nonempty record is never shared between objects.
+#[derive(Default)]
+pub(super) struct ExtraState {
+    pub(super) buffer: Option<super::indexed::BufferSlot>,
+    pub(super) view: Option<Box<super::indexed::ViewSlot>>,
+    pub(super) string_data: Option<Box<JsString>>,
+    pub(super) regexp: Option<super::regexp::RegExpSlot>,
+    pub(super) primitive_data: Option<Box<Value>>,
+    pub(super) map_data: Option<super::collections::MapSlot>,
+    pub(super) set_data: Option<super::collections::SetSlot>,
+    pub(super) weak_map_data: Option<super::collections::WeakMapSlot>,
+    pub(super) weak_set_data: Option<super::collections::WeakSetSlot>,
+    pub(super) promise_data: Option<Rc<std::cell::RefCell<super::promise::PromiseData>>>,
+    pub(super) generator_data: Option<Rc<std::cell::RefCell<super::generator::GeneratorSlot>>>,
+    pub(super) module_namespace: Option<Box<super::pipeline::StoredModule>>,
+    pub(super) date_value: Option<f64>,
+}
+thread_local! {
+    static EMPTY_EXTRA_STATE: Rc<ExtraState> = Rc::new(ExtraState::default());
+}
+struct ExtraSlot(Rc<ExtraState>);
+impl Default for ExtraSlot {
+    fn default() -> Self {
+        Self(
+            EMPTY_EXTRA_STATE
+                .try_with(Rc::clone)
+                .unwrap_or_else(|_| Rc::new(ExtraState::default())),
+        )
+    }
+}
+impl std::ops::Deref for ObjectState {
+    type Target = ExtraState;
+    fn deref(&self) -> &ExtraState {
+        &self.extra.0
+    }
+}
+impl std::ops::DerefMut for ObjectState {
+    fn deref_mut(&mut self) -> &mut ExtraState {
+        if Rc::get_mut(&mut self.extra.0).is_none() {
+            debug_assert!(
+                EMPTY_EXTRA_STATE
+                    .try_with(|empty| Rc::ptr_eq(empty, &self.extra.0))
+                    .unwrap_or(true)
+            );
+            self.extra.0 = Rc::new(ExtraState::default());
+        }
+        Rc::get_mut(&mut self.extra.0).expect("nonempty optional state is uniquely owned")
+    }
+}
+
 #[derive(Default)]
 pub(super) struct ObjectState {
     pub(super) private_fields: Option<Box<super::private_fields::Fields>>,
@@ -645,21 +696,9 @@ pub(super) struct ObjectState {
     lazy_function_prototype: Option<StoredObject>,
     pub(super) array: bool,
     pub(super) elements: Option<Box<super::elements::Elements<StoredDescriptor>>>,
-    pub(super) buffer: Option<super::indexed::BufferSlot>,
-    pub(super) view: Option<Box<super::indexed::ViewSlot>>,
-    pub(super) string_data: Option<Box<JsString>>,
-    pub(super) regexp: Option<super::regexp::RegExpSlot>,
-    pub(super) primitive_data: Option<Box<Value>>,
-    pub(super) map_data: Option<super::collections::MapSlot>,
-    pub(super) set_data: Option<super::collections::SetSlot>,
-    pub(super) weak_map_data: Option<super::collections::WeakMapSlot>,
-    pub(super) weak_set_data: Option<super::collections::WeakSetSlot>,
-    pub(super) promise_data: Option<Rc<std::cell::RefCell<super::promise::PromiseData>>>,
-    pub(super) generator_data: Option<Rc<std::cell::RefCell<super::generator::GeneratorSlot>>>,
-    pub(super) module_namespace: Option<Box<super::pipeline::StoredModule>>,
-    pub(super) date_value: Option<f64>,
     pub(super) iterator: Option<Box<super::iterator::IteratorSlot>>,
     pub(super) proxy: Option<Box<super::proxy::ProxySlot>>,
+    extra: ExtraSlot,
 }
 
 pub(super) fn ordinary_state() -> ObjectState {

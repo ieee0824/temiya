@@ -18,3 +18,10 @@ not establish complete for-of or generator support. Issues #162 and #163 must
 land before #164.
 
 Specification: [ECMA-262 destructuring assignment](https://tc39.es/ecma262/multipage/ecmascript-language-expressions.html#sec-destructuring-assignment).
+
+Local correctness evidence is retained in
+`benchmarks/destructuring-assignment/correctness-v1`. Replay with
+`node benchmarks/destructuring-assignment/correctness-v1/verify.mjs`.
+It includes the initial 952-test all-target run and all nine final assignment
+tests under strict Miri. Earlier MSRV results cover eight tests. These records
+do not establish native speed or complete Test262 qualification.

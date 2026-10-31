@@ -49,3 +49,13 @@ full-initial-v1 retains the full source7eba69e capture from run41169970673:
 files. All29701 parent passes remain, with0newpasses and0regressions. The8
 known-pass gates independently replay via verify-full.mjs in CI. These results
 do not imply complete conformance or a passing two-host speed qualification.
+
+fixed-initial-v1 retains all four fixed before/after Ast/Auto captures and an
+independent replay in verify-fixed.mjs. Each candidate backend records235pass,
+1983fail,1662timeout across3880 variants; their outcomes agree exactly. Baseline
+Ast passes235 and Auto passes194; no prior pass regresses. The baseline Auto
+producer left8 variants wholly unreported after one failed CLI batch. Recovery
+used the identical binary/host/limits only for those8, preserving all3872
+reported outcomes, failed raw attempt and initial history. All130 baseline
+Auto timeout differences remain visible (41 now pass,89 now fail); they are
+not claimed as new semantic coverage. No timeout, failure or skip is a pass.

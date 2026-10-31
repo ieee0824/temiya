@@ -101,6 +101,8 @@ case "${1:-}" in
     node benchmarks/object-binding/verify-hosted.mjs
     node benchmarks/object-binding/verify-symbol-regression.mjs
     node benchmarks/object-binding/verify-full.mjs
+    node benchmarks/object-binding/latest-parent-diagnostic-v1/verify.mjs
+    node benchmarks/object-binding/security-current-integrated-v1/verify.mjs benchmarks/object-binding/security-current-integrated-v1 010ac60ddeb68ce702e1f3b2a4cfdd87345f2568
     ;;
   *)
     echo "usage: $0 {classes|fields|private|iterators|bindings|objects}" >&2

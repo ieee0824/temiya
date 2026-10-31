@@ -814,60 +814,14 @@ impl Environment {
 
     /// Resolves a name through the lexical environment chain.
     pub fn resolve_binding(&self, name: &JsString) -> RuntimeResult<Option<Self>> {
-        // The rooted descendant keeps its immutable outer chain alive. Pure
-        // records need no temporary public roots while we search them. Root
-        // object/global records before HasBinding can call Proxy/unscopables JS.
-        let runtime = &self.0.0.runtime;
-        let mut handle = self.0.0.root.handle();
-        let mut data = self.0.0.data.clone();
-        loop {
-            let pure = {
-                let record = data.record.borrow();
-                match &*record {
-                    EnvironmentRecord::Declarative(record) => Some(record.has_binding(name)),
-                    EnvironmentRecord::Function(record) => {
-                        Some(record.declarative_record.has_binding(name))
-                    }
-                    EnvironmentRecord::Module(record) => Some(
-                        record.declarative_record.has_binding(name)
-                            || record
-                                .imports
-                                .iter()
-                                .any(|binding| binding.local_name == *name),
-                    ),
-                    EnvironmentRecord::Global(record)
-                        if record.declarative_record.has_binding(name) =>
-                    {
-                        Some(true)
-                    }
-                    _ => None,
-                }
-            };
-            match pure {
-                Some(true) => {
-                    return runtime
-                        .root_environment(handle)
-                        .map(Some)
-                        .ok_or_else(|| RuntimeError::internal_error("stale environment edge"));
-                }
-                Some(false) => {}
-                None => {
-                    let current = runtime
-                        .root_environment(handle)
-                        .ok_or_else(|| RuntimeError::internal_error("stale environment edge"))?;
-                    if current.has_binding(name)? {
-                        return Ok(Some(current));
-                    }
-                }
+        let mut environment = Some(self.clone());
+        while let Some(current) = environment {
+            if current.has_binding(name)? {
+                return Ok(Some(current));
             }
-            let Some(outer) = &data.outer else {
-                return Ok(None);
-            };
-            handle = outer.0;
-            data = runtime
-                .environment_data(handle)
-                .ok_or_else(|| RuntimeError::internal_error("stale environment edge"))?;
+            environment = current.outer();
         }
+        Ok(None)
     }
 
     /// Reads a resolved identifier through the lexical environment chain.

@@ -46,6 +46,9 @@ fn catch_and_loop_declarations_initialize_patterns_in_their_scope() {
         "let answer=0;try{throw [20,[22]];}catch([a,[b]]){answer=a+b;}let total=0;for(let [a,b] of [[1,2],[3,4]]){total+=a+b;}let v=0;for(var [x,y] of [[20,22]]){v=x+y;}answer===42&&total===10&&v===42&&x===20;",
     );
     check("let total=0;for(let [i]=[0];i<3;i++){total+=i;}total===3;");
+    check(
+        "let outer=7;let plain=0;let pattern=0;let noParameter=0;let escaped;try{throw 42;}catch(outer){plain=outer;outer=20;escaped=()=>outer;}try{throw [];}catch([first=outer,second=first+1]){pattern=first+second;}try{throw 99;}catch{let outer=22;noParameter=outer;}outer===7&&plain===42&&escaped()===20&&pattern===15&&noParameter===22&&typeof first==='undefined'&&typeof second==='undefined';",
+    );
 }
 
 #[test]

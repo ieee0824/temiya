@@ -19,6 +19,17 @@ normal/throw closing and completion identity.
 
 The target is the [ECMAScript2026 iterator operations](https://tc39.es/ecma262/2026/multipage/abstract-operations.html#sec-getiterator).
 For-of integration is #171, array binding patterns #162. Global Iterator APIs and
-asynchronous iteration retain their own issues. Fixed official-suite and speed
-qualification for #161 remain pending; these integration examples do not imply
-complete conformance.
+asynchronous iteration retain their own issues.
+
+The fixed suite records 235 passes, 1983 failures and 1662 timeouts in each of
+Ast and Auto, with no missing outcomes. Full Test262 records 29701 passes, 61923
+failures, 18 skips and 8569 timeouts across 100211 variants, preserving every
+prior pass. These results do not establish complete language conformance.
+
+All 52 fixed native workloads qualify against pinned Boa on each of two
+independent x64 hosts, Intel8370C and AMD7763. All six iterator cases win every
+one of the three alternating pairs on both hosts under the unchanged sample,
+noise, watchdog and RSS gates. The results cover those workloads and conditions.
+See [native records](../benchmarks/iterator-operations/hosted-dense-marks-v1/evidence.json),
+[full capture](../benchmarks/iterator-operations/full-dense-marks-v1/evidence.json)
+and [security replay](../benchmarks/iterator-operations/security-dense-marks-v1/README.md).

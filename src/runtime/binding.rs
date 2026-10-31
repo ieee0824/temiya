@@ -23,6 +23,25 @@ pub(super) fn names(binding: &Expr, output: &mut Vec<JsString>) -> RuntimeResult
     Ok(())
 }
 
+// Identifier declarations must not allocate a temporary list just because
+// patterns are supported. Patterns still collect completely before callbacks,
+// retaining the previous failure order for unsupported nested syntax.
+#[inline]
+pub(super) fn for_each_name(
+    binding: &Expr,
+    mut visit: impl FnMut(JsString) -> RuntimeResult<()>,
+) -> RuntimeResult<()> {
+    if let ExprKind::Identifier(name) = &binding.kind {
+        return visit(name.as_str().into());
+    }
+    let mut bound_names = Vec::new();
+    names(binding, &mut bound_names)?;
+    for name in bound_names {
+        visit(name)?;
+    }
+    Ok(())
+}
+
 enum Target {
     Initialize(JsString),
     Assign(Reference),

@@ -550,11 +550,9 @@ impl StatementEvaluator {
     fn catch(&self, handler: &CatchClause, thrown: Value) -> RuntimeResult<Completion> {
         let environment = Environment::declarative(self.expression.environment.clone());
         if let Some(parameter) = &handler.param {
-            let mut names = Vec::new();
-            super::binding::names(parameter, &mut names)?;
-            for name in names {
-                environment.create_mutable_binding(name, false)?;
-            }
+            super::binding::for_each_name(parameter, |name| {
+                environment.create_mutable_binding(name, false)
+            })?;
             let nested = self.nested(environment.clone());
             super::binding::initialize(&nested.expression, parameter, thrown, true)?;
         }
@@ -586,16 +584,16 @@ impl StatementEvaluator {
             if let StmtKind::Variable { kind, declarations } = &statement.kind {
                 if *kind != VariableKind::Var {
                     for declaration in declarations {
-                        let mut bound_names = Vec::new();
-                        super::binding::names(&declaration.binding, &mut bound_names)?;
-                        for name in bound_names {
+                        super::binding::for_each_name(&declaration.binding, |name| {
                             if lexical.iter().any(|(other, _)| *other == name) {
                                 return Err(RuntimeError::syntax_error(
                                     "duplicate lexical declaration",
                                 ));
                             }
                             lexical.push((name, *kind == VariableKind::Const));
-                        }
+
+                            Ok(())
+                        })?;
                     }
                 }
             }
@@ -677,15 +675,15 @@ impl StatementEvaluator {
             if let StmtKind::Variable { kind, declarations } = &statement.kind {
                 if *kind != VariableKind::Var {
                     for declaration in declarations {
-                        let mut bound_names = Vec::new();
-                        super::binding::names(&declaration.binding, &mut bound_names)?;
-                        for name in bound_names {
+                        super::binding::for_each_name(&declaration.binding, |name| {
                             if *kind == VariableKind::Const {
                                 environment.create_immutable_binding(name, true)?;
                             } else {
                                 environment.create_mutable_binding(name, false)?;
                             }
-                        }
+
+                            Ok(())
+                        })?;
                     }
                 }
             }
@@ -836,9 +834,7 @@ impl StatementEvaluator {
         declarations: &[VariableDeclarator],
     ) -> RuntimeResult<()> {
         for declaration in declarations {
-            let mut bound_names = Vec::new();
-            super::binding::names(&declaration.binding, &mut bound_names)?;
-            for name in bound_names {
+            super::binding::for_each_name(&declaration.binding, |name| {
                 if kind == VariableKind::Const {
                     self.expression
                         .environment
@@ -848,7 +844,9 @@ impl StatementEvaluator {
                         .environment
                         .create_mutable_binding(name, false)?;
                 }
-            }
+
+                Ok(())
+            })?;
         }
         Ok(())
     }
@@ -919,13 +917,13 @@ fn collect_var_names(statements: &[Stmt], names: &mut Vec<JsString>) -> RuntimeR
                 declarations,
             } => {
                 for declaration in declarations {
-                    let mut bound_names = Vec::new();
-                    super::binding::names(&declaration.binding, &mut bound_names)?;
-                    for name in bound_names {
+                    super::binding::for_each_name(&declaration.binding, |name| {
                         if !names.contains(&name) {
                             names.push(name);
                         }
-                    }
+
+                        Ok(())
+                    })?;
                 }
             }
             StmtKind::Block(body) => collect_var_names(body, names)?,
@@ -986,13 +984,13 @@ fn collect_for_init_var(init: Option<&ForInit>, names: &mut Vec<JsString>) -> Ru
         return Ok(());
     };
     for declaration in declarations {
-        let mut bound_names = Vec::new();
-        super::binding::names(&declaration.binding, &mut bound_names)?;
-        for name in bound_names {
+        super::binding::for_each_name(&declaration.binding, |name| {
             if !names.contains(&name) {
                 names.push(name);
             }
-        }
+
+            Ok(())
+        })?;
     }
     Ok(())
 }

@@ -152,7 +152,7 @@ impl Runtime {
         if objects.last().is_some_and(|last| last == object) {
             return;
         }
-        if let Some(index) = objects.iter().position(|cached| cached == object) {
+        if let Some(index) = objects.iter().rposition(|cached| cached == object) {
             let cached = objects.remove(index);
             objects.push(cached);
         } else {

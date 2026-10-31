@@ -91,3 +91,49 @@ fn live_iterator_and_result_edges_survive_reentrant_collection_then_release() {
         assert_eq!(engine.collect_garbage().unwrap().retained, 0);
     }
 }
+
+#[test]
+fn builtin_iterator_results_keep_plain_object_order_and_mutable_descriptors() {
+    check(
+        "let iterator=[42][Symbol.iterator]();let first=iterator.next();let last=iterator.next();let value=Object.getOwnPropertyDescriptor(first,'value');let done=Object.getOwnPropertyDescriptor(first,'done');let keys=Reflect.ownKeys(first);let valid=Object.getPrototypeOf(first)===Object.prototype&&keys[0]==='value'&&keys[1]==='done'&&value.writable&&value.enumerable&&value.configurable&&done.writable&&done.enumerable&&done.configurable&&first.value===42&&!first.done&&last.value===undefined&&last.done;first.value=20;delete first.done;valid&&first.value===20&&!('done' in first);",
+    );
+}
+
+#[test]
+fn internal_consumers_keep_proxy_and_bound_next_calls_observable() {
+    check(
+        "let iterator=[1][Symbol.iterator]();let calls=0;iterator.next=new Proxy(iterator.next,{apply(target,receiver,args){if(receiver!==iterator||args.length!==0)throw 42;calls++;return {done:calls>2,value:calls===1?20:22};}});let input={[Symbol.iterator](){return iterator;}};let values=[...input];let other=[20,22][Symbol.iterator]();let source=[][Symbol.iterator]();source.next=source.next.bind(other);let bound=[...{[Symbol.iterator](){return source;}}];values[0]+values[1]===42&&calls===3&&bound[0]+bound[1]===42;",
+    );
+}
+
+#[test]
+fn captured_foreign_native_next_keeps_its_exception_realm() {
+    for backend in [ScriptBackend::Ast, ScriptBackend::Auto] {
+        let engine = Engine::builder().script_backend(backend).build();
+        let foreign = engine.create_realm();
+        let local = engine.create_realm();
+        for (name, source) in [
+            ("foreignNext", "[][Symbol.iterator]().next;"),
+            ("ForeignTypeError", "TypeError;"),
+        ] {
+            let script = engine.compile(&foreign, source).unwrap();
+            let value = engine.evaluate(&script).unwrap();
+            engine
+                .set_global(
+                    &local,
+                    name,
+                    engine.value(&local, value.value().clone()).unwrap(),
+                )
+                .unwrap();
+        }
+        let source = "let closed=0;let record={next:foreignNext,return(){closed++;return {};}};let input={[Symbol.iterator](){return record;}};let caught=false;try{[...input];}catch(e){caught=e instanceof ForeignTypeError&&!(e instanceof TypeError);}let iterator=[20,22][Symbol.iterator]();iterator.next=foreignNext;let values=[...{[Symbol.iterator](){return iterator;}}];caught&&closed===0&&values[0]+values[1]===42;";
+        let script = engine.compile(&local, source).unwrap();
+        assert!(
+            matches!(
+                engine.evaluate(&script).unwrap().value(),
+                Value::Boolean(true)
+            ),
+            "{backend:?}"
+        );
+    }
+}

@@ -10,7 +10,7 @@ import {fileURLToPath} from 'node:url';
 const root=path.dirname(fileURLToPath(import.meta.url)),repo=path.resolve(root,'../..');
 const read=file=>JSON.parse(fs.readFileSync(file));
 const sha=bytes=>createHash('sha256').update(bytes).digest('hex');
-const captures=new Map([['stored-constructor-correctness-v1',{source:'a65fa12bb7123b1af0e0a2b2254411ee7170c3e8',inputs:80,native:861}],['default-private-correctness-v1',{source:'eaeaf7118139839862b15dfabf05ee95ea7526ca',inputs:80,native:860}],['initial-v1',{source:'74823117133fd6713ced719f6976399f8d5b9507',inputs:79,native:855}],['private-expression-correctness-v1',{source:'e6722cb08955d588ef36bc9997a3679d89590125',inputs:80,native:856}]]);
+const captures=new Map([['identifier-values-correctness-v1',{source:'03d3724c7c827b73bd4c813eeb180e1e3cef32b0',inputs:80,native:862}],['stored-constructor-correctness-v1',{source:'a65fa12bb7123b1af0e0a2b2254411ee7170c3e8',inputs:80,native:861}],['default-private-correctness-v1',{source:'eaeaf7118139839862b15dfabf05ee95ea7526ca',inputs:80,native:860}],['initial-v1',{source:'74823117133fd6713ced719f6976399f8d5b9507',inputs:79,native:855}],['private-expression-correctness-v1',{source:'e6722cb08955d588ef36bc9997a3679d89590125',inputs:80,native:856}]]);
 const name=process.argv[2]??'initial-v1';assert(captures.has(name));const expected=captures.get(name);
 const evidence=read(root+'/'+name+'/evidence.json');
 assert.equal(evidence.source_revision,expected.source);

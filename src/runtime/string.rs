@@ -206,7 +206,18 @@ impl Default for JsString {
     }
 }
 impl From<&str> for JsString {
+    #[inline]
     fn from(value: &str) -> Self {
+        if value.len() <= INLINE_CAPACITY && value.is_ascii() {
+            let mut units = [0; INLINE_CAPACITY];
+            for (slot, byte) in units.iter_mut().zip(value.bytes()) {
+                *slot = u16::from(byte);
+            }
+            return Self(Storage::Inline {
+                len: value.len() as u8,
+                units,
+            });
+        }
         let mut units = [0; INLINE_CAPACITY];
         let mut encoded = value.encode_utf16();
         for (index, slot) in units.iter_mut().enumerate() {

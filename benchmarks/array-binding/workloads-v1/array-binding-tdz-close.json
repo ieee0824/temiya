@@ -1,0 +1,7 @@
+{
+  "name": "array-binding-tdz-close",
+  "setup": "function bench(n){let total=0;let closes=0;for(let i=1;i<=n;i++){let iterator={next(){return {value:undefined,done:false};},return(){if(this!==iterator)throw 42;closes++;throw 99;}};let input={[Symbol.iterator](){return iterator;}};try{let [value=value]=input;throw 42;}catch(error){if(!(error instanceof ReferenceError))throw error;total+=i;}}if(closes!==n)throw 42;return total;}",
+  "invocation": "bench(10000);",
+  "iterations": 10000,
+  "expected": 50005000
+}

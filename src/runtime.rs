@@ -13,6 +13,7 @@ use num_bigint::BigInt;
 
 pub(crate) mod array_literal;
 mod array_methods;
+mod binding;
 mod builtins;
 pub(crate) mod bytecode_function;
 mod class;

@@ -1,0 +1,7 @@
+{
+  "name": "array-binding-declaration",
+  "setup": "function bench(n){let total=0;for(let i=1;i<=n;i++){let [value,[nested]]=[i,[i]];if(nested!==i)throw 42;total+=value;}return total;}",
+  "invocation": "bench(10000);",
+  "iterations": 10000,
+  "expected": 50005000
+}

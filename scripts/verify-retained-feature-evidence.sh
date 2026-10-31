@@ -91,6 +91,7 @@ case "${1:-}" in
     node benchmarks/array-binding/array-finish-diagnostic-v1/verify.mjs
     node benchmarks/array-binding/reference-message-diagnostic-v1/verify.mjs
     node benchmarks/array-binding/outlined-slots-diagnostic-v1/verify.mjs
+    node benchmarks/array-binding/cache32-diagnostic-v1/verify.mjs
     node benchmarks/array-binding/security-array-data-properties-v1/verify.mjs benchmarks/array-binding/security-array-data-properties-v1 cd6c0294bba1a2f4ac2059dfb56cb6cd289aba8a
     ;;
   *)

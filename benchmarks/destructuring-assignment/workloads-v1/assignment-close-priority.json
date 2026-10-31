@@ -1,0 +1,7 @@
+{
+  "name": "assignment-close-priority",
+  "setup": "function bench(n){let total=0;for(let i=1;i<=n;i++){let a=0,closed=0,marker={},caught=false;let obj={set value(v){throw marker;}};let input={[Symbol.iterator](){return {next(){return {value:i,done:false};},return(){closed++;throw 99;}};}};try{[a,obj.value]=input;}catch(e){caught=e===marker;}if(a!==i||closed!==1||!caught)throw 42;total+=a;}return total;}",
+  "invocation": "bench(10000);",
+  "iterations": 10000,
+  "expected": 50005000
+}

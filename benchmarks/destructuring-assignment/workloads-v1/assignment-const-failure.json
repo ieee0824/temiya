@@ -1,0 +1,7 @@
+{
+  "name": "assignment-const-failure",
+  "setup": "function bench(n){let total=0;for(let i=1;i<=n;i++){let a=0;const fixed=0;let caught=false;try{[a,fixed]=[i,99];}catch(e){caught=e instanceof TypeError;}if(!caught||fixed!==0)throw 42;total+=a;}return total;}",
+  "invocation": "bench(10000);",
+  "iterations": 10000,
+  "expected": 50005000
+}

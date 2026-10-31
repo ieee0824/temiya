@@ -1,0 +1,7 @@
+{
+  "name": "assignment-rest-symbol",
+  "setup": "function bench(n){let total=0;for(let i=1;i<=n;i++){let obj={},sym=Symbol(),a;({value:a,...obj.rest}={value:i,[sym]:i,other:i});if(obj.rest[sym]!==i||obj.rest.other!==i||'value' in obj.rest)throw 42;total+=a;}return total;}",
+  "invocation": "bench(10000);",
+  "iterations": 10000,
+  "expected": 50005000
+}

@@ -487,7 +487,12 @@ Object and WeakObject have only the traced representation. Standalone
 explicit context. Native allocation callbacks can borrow their owner's context
 per invocation without capturing Runtime ownership. All facade families now
 hold rooted registrations in the shared heap, and all stored Object,
-Environment, Realm, JobQueue and Module edges hold only typed handles.
+Environment, Realm, JobQueue and Module strong edges trace typed handles.
+Stored Environment edges may additionally keep an immutable weak facade hint.
+An upgraded hint is used only in its original Runtime; it adds no root and
+never replaces the traced handle. Dead hints use the ordinary checked heap
+revival path. Tests cover live hints, stale-hint revival after collection,
+foreign-context rejection and complete reclamation after roots are dropped.
 
 The coordinated tracing migration changes `Realm::intrinsics()` from a borrowed
 registry to an owning `IntrinsicRegistry` snapshot. The snapshot and its clones

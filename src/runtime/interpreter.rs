@@ -1060,6 +1060,10 @@ impl ExpressionEvaluator {
 
     fn object(&self, properties: &[crate::ast::ObjectProperty]) -> RuntimeResult<Value> {
         let object = super::object_literal::create(&self.realm);
+        // Spreads have unknown output size; retain ordinary Vec growth there.
+        if !properties.iter().any(|property| property.spread) {
+            object.reserve_literal_properties(properties.len());
+        }
         for property in properties {
             if property.spread {
                 super::object_literal::spread(&object, self.evaluate(&property.key)?)?;
@@ -1085,26 +1089,10 @@ impl ExpressionEvaluator {
                 )?;
                 match kind {
                     MethodKind::Get => {
-                        object.define_own_property(
-                            key,
-                            super::PropertyDescriptor {
-                                get: Some(Some(function)),
-                                enumerable: Some(true),
-                                configurable: Some(true),
-                                ..super::PropertyDescriptor::default()
-                            },
-                        )?;
+                        object.initialize_literal_accessor(key, function, true)?;
                     }
                     MethodKind::Set => {
-                        object.define_own_property(
-                            key,
-                            super::PropertyDescriptor {
-                                set: Some(Some(function)),
-                                enumerable: Some(true),
-                                configurable: Some(true),
-                                ..super::PropertyDescriptor::default()
-                            },
-                        )?;
+                        object.initialize_literal_accessor(key, function, false)?;
                     }
                     MethodKind::Method | MethodKind::Constructor => {
                         object.create_data_property(key, Value::Object(function))?;

@@ -1,7 +1,9 @@
 # Array binding implementation inputs (#162)
 
 This branch depends on #161; it is not eligible to merge before #159, #160
-and #161. No array binding implementation or speed qualification is claimed.
+and #161. Array binding now executes through declarations, ordinary parameters,
+catch and supported loop declarations. Full corpus and Boa speed qualification
+remain pending; this branch is not eligible for merge yet.
 
 selection.json freezes all destructuring-binding metadata tests and every /dstr/
 path from the complete pinned Test262 catalog before implementation. Object
@@ -41,7 +43,7 @@ are mandatory for frozen binaries.
 The normative target is ECMAScript2026
 [IteratorBindingInitialization](https://tc39.es/ecma262/2026/#sec-runtime-semantics-iteratorbindinginitialization)
 and [BindingInitialization](https://tc39.es/ecma262/2026/#sec-runtime-semantics-bindinginitialization).
-The frozen selection contains8806 files and17414 variants; none has yet been
-claimed as a pass on this branch.
+The frozen selection contains8806 files and17414 variants. Baseline and initial
+candidate captures are running; focused integration tests are not Test262 passes.
 
 The workload manifest and array-binding-benchmark-reference.mjs are materialized from the preimplementation frozen hashes; none of the six input bytes changed. The hosted workflow auto-includes this suite when include_controls is true and the manifest exists, preserving all earlier suites and the two-job policy. It retains actual Boa and identical-binary reports. The preimplementation baseline lacks array binding, so it is not labeled a successful before/after comparison. No hosted qualification is claimed yet.

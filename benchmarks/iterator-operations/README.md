@@ -190,7 +190,7 @@ qualification remain required before merge.
 Ast and Auto each235 pass,1983 fail,1662 timeout across3880 variants, with
 zero missing outcomes or collection errors. Every outcome matches the prior
 d9906db capture and the other backend. The original baseline collection
-failure and missing-only recovery remain archived. Replay all five retained
+failure and missing-only recovery remain archived. Replay all retained
 fixed capture pairs with `node benchmarks/iterator-operations/verify-fixed.mjs`.
 These results do not qualify the later fdecf72 runtime.
 
@@ -245,3 +245,24 @@ removes unused Temiya intermediates and unused hosted-runner SDKs before the
 reference build, preserving worker hashes and checking worker execution again.
 The guard,compiler flags,fixtures,oracles,sample counts,statistical thresholds
 and runtime watchdog/RSS limits are unchanged. Copy2 observations remain intact.
+
+
+`fixed-hot-sites-v1` and `fixed-direct-region-v1` retain completed fdecf72
+and9835c41 Ast/Auto captures. Each backend records235pass1983fail1662timeout
+across3880 variants,with0missing/collection errors and every outcome matching
+preceding0e9c642. The original baseline collection failure and missing-only
+recovery remain included. verify-fixed.mjs now replays all7 historical pairs;
+these observations do not qualify the later71009f3 runtime or native speed.
+
+`hosted-hot-sites-v1` retains both jobs of41208962674 atbb0d326,compiled
+runtimefdecf72. All68 reports independently replay. Prior46 workloads qualify
+both hosts;iterator wins3/3/3/3/0/0 both,so qualification fails. Every adverse
+observation,CPU identity,noise estimate and control remains without filtering
+or repeated timing.
+
+`full-hot-sites-v1` retains all8 shards of41208965193 atbb0d326. All100211
+variants independently replay:29701pass61923fail18skip8569timeout. Comparison
+with full-literal-accessors-v1 preserves all29701 preceding passes,with0
+regressions/newpasses. Replay with verify-full.mjs full-hot-sites-v1. Full and
+fixed correctness records do not substitute for current-source native/security
+qualification.

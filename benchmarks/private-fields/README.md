@@ -97,3 +97,9 @@ and GetValue; reference contexts keep their original paths. Source03d3724 has
 862 native tests including1doctest,0fail26ignored and Clippy passed. The
 interrupted permission run and its recovery are retained separately. These
 instruction diagnostics do not establish native Boa speed qualification.
+
+identifier-values-correctness-v1 retains source03d3724 fixed Ast/Auto captures.
+Each has1407pass697fail152timeout across2256 variants; all752 preimplementation
+passes remain with655 additions. All2256 preceding-source072 outcomes also
+remain unchanged. verify-initial.mjs replays source/native/capture integrity.
+This correctness result does not establish the separate two-host Boa speed gate.

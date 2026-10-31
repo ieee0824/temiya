@@ -639,6 +639,11 @@ impl ExpressionEvaluator {
 
     /// Evaluates an expression and applies `GetValue` to its result.
     pub fn evaluate(&self, expression: &Expr) -> RuntimeResult<Value> {
+        if let ExprKind::Identifier(name) = &expression.kind {
+            return self
+                .environment
+                .get_identifier_value(&JsString::from(name.as_str()), self.strict);
+        }
         self.eval(expression)?.value()
     }
 

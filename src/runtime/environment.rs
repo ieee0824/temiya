@@ -865,9 +865,37 @@ impl Environment {
 
     /// Reads a resolved identifier through the lexical environment chain.
     pub fn get_identifier_value(&self, name: &JsString, strict: bool) -> RuntimeResult<Value> {
-        self.resolve_binding(name)?
-            .ok_or_else(|| reference_error(name, "is not defined"))?
-            .get_binding_value(name, strict)
+        let mut environment = Some(self.clone());
+        while let Some(current) = environment {
+            // Value contexts need neither a Reference nor a second search of
+            // pure bindings. Drop the record borrow before observable lookup.
+            let pure = {
+                let record = current.0.record.borrow();
+                let bindings = match &*record {
+                    EnvironmentRecord::Declarative(record) => Some(record),
+                    EnvironmentRecord::Function(record) => Some(&record.declarative_record),
+                    _ => None,
+                };
+                bindings.map(|record| {
+                    record
+                        .bindings
+                        .iter()
+                        .find(|binding| binding.name == *name)
+                        .map(|binding| binding.read(&current))
+                })
+            };
+            match pure {
+                Some(Some(value)) => return value,
+                Some(None) => {}
+                None => {
+                    if current.has_binding(name)? {
+                        return current.get_binding_value(name, strict);
+                    }
+                }
+            }
+            environment = current.outer();
+        }
+        Err(reference_error(name, "is not defined"))
     }
 
     /// Creates a live immutable import binding in a module environment.

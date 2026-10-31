@@ -1,0 +1,7 @@
+{
+  "name": "array-binding-close",
+  "setup": "function bench(n){let total=0;let closes=0;for(let i=1;i<=n;i++){let iterator={next(){return {value:i,done:false};},return(){if(this!==iterator)throw 42;closes++;return {};}};let input={[Symbol.iterator](){return iterator;}};let [value]=input;total+=value;}if(closes!==n)throw 42;return total;}",
+  "invocation": "bench(10000);",
+  "iterations": 10000,
+  "expected": 50005000
+}

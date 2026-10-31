@@ -8,6 +8,7 @@ mod compiler;
 mod empty_frame;
 mod leaf_function;
 mod numeric_return;
+mod short_function;
 mod vm;
 pub use compiler::{BytecodeCompiler, CompileError};
 pub use vm::VirtualMachine;
@@ -550,9 +551,13 @@ pub struct VerifiedBytecode {
     leaf_function: Option<leaf_function::LeafFunctionPlan>,
     definition_cache: Option<crate::runtime::bytecode_function::DefinitionCodeCache>,
     empty_function_frame: bool,
+    short_function: bool,
 }
 
 impl VerifiedBytecode {
+    pub(crate) fn has_short_function_path(&self) -> bool {
+        self.short_function
+    }
     pub(crate) fn can_elide_empty_function_frame(&self) -> bool {
         self.empty_function_frame
     }
@@ -1314,7 +1319,10 @@ fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
         })
         .then(Default::default);
     let empty_function_frame = empty_frame::proven(&bytecode);
+    let short_function =
+        empty_function_frame && short_function::proven(&bytecode, max_stack, has_backedge);
     Ok(VerifiedBytecode {
+        short_function,
         empty_function_frame,
         definition_cache,
         reuse_loop_bindings,

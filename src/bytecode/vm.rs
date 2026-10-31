@@ -62,6 +62,9 @@ impl VirtualMachine {
                 "function frame elision was not verified",
             ));
         }
+        if bytecode.has_short_function_path() {
+            return super::short_function::execute(bytecode, realm, outer);
+        }
         Self::run::<false>(bytecode, Some(realm), Some(outer), false)
     }
 

@@ -119,7 +119,9 @@ fn async_failures_and_duplicate_notifications_never_pass() {
             "duplicate-completion",
         ),
     ] {
-        let (o, r, _) = fixture.run("async, noStrict", source, &[]);
+        // These finite scripts verify the exact failure notification/rejection.
+        // Instrumented workers need the same budget as completion tests above.
+        let (o, r, _) = fixture.run("async, noStrict", source, &["--timeout-ms", "1500"]);
         expect(&o, &r, 1, kind);
         assert_eq!(r["counts"]["pass"], 0);
     }

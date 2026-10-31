@@ -226,3 +226,54 @@ fn module_await_reservations_apply_to_nested_syntax() {
     }
     assert!(parse_program("async function f(){return await g();}", options).is_ok());
 }
+
+#[test]
+fn accessor_named_fields_use_asi_before_generator_methods() {
+    for prefix in ["get", "set"] {
+        for static_prefix in ["", "static "] {
+            let source =
+                format!("class C{{{static_prefix}{prefix}\n*method(value){{return value;}}}}");
+            let program = parse_script(&source).unwrap();
+            program.validate(&SourceText::new(&source)).unwrap();
+            let StmtKind::ClassDeclaration(class) = &program.body[0].kind else {
+                panic!("class")
+            };
+            assert_eq!(class.elements.len(), 2);
+            assert!(matches!(
+                class.elements[0].kind,
+                ClassElementKind::Field(None)
+            ));
+            assert_eq!(class.elements[0].is_static, !static_prefix.is_empty());
+            assert!(!class.elements[1].is_static);
+            assert!(
+                matches!(&class.elements[1].kind,ClassElementKind::Method{function,kind:MethodKind::Method} if function.generator)
+            );
+        }
+    }
+    for source in [
+        "class C{get *method(){}}",
+        "class C{set *method(value){}}",
+        "({get\n*method(){}})",
+        "class C{get\nvalue=1}",
+    ] {
+        assert!(parse_script(source).is_err(), "{source}");
+    }
+    let program = parse_script("class C{get\nvalue(){return 42;}set\nvalue(value){}}").unwrap();
+    let StmtKind::ClassDeclaration(class) = &program.body[0].kind else {
+        panic!("class")
+    };
+    assert!(matches!(
+        class.elements[0].kind,
+        ClassElementKind::Method {
+            kind: MethodKind::Get,
+            ..
+        }
+    ));
+    assert!(matches!(
+        class.elements[1].kind,
+        ClassElementKind::Method {
+            kind: MethodKind::Set,
+            ..
+        }
+    ));
+}

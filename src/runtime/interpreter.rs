@@ -829,9 +829,9 @@ impl ExpressionEvaluator {
                 RuntimeError::type_error("super constructor is not a constructor")
             })?;
             let result = parent.construct(&arguments, new_target)?;
-            return environment
-                .bind_this_value(Value::Object(result))
-                .map(Evaluation::Value);
+            environment.bind_this_value(Value::Object(result.clone()))?;
+            function.initialize_instance_fields(&result)?;
+            return Ok(Evaluation::Value(Value::Object(result)));
         }
         let result = self.eval(callee)?;
         if matches!(result, Evaluation::ShortCircuit) {

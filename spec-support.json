@@ -10698,31 +10698,32 @@
     {
       "id": "syntax.class-field",
       "kind": "syntax",
-      "status": "unconnected",
+      "status": "partial",
       "reference": "ECMA-262 2026 language syntax and evaluation",
       "issues": [
         157
       ],
-      "rationale": "Authored public Engine probe covers the stated example only; complete specification semantics remain unqualified.",
+      "rationale": "Public instance fields execute in Ast/Auto with computed keys, per-instance initializers and own data definitions. Static/private fields remain unsupported; complete feature conformance is unqualified.",
       "tests": [
-        "tests/spec_support.rs"
+        "tests/spec_support.rs",
+        "tests/instance_fields.rs"
       ],
       "test262": {
         "status": "not-run"
       },
       "probes": [
         {
-          "source": "class A { x=42; } true;",
+          "source": "class A { x=42; } let a=new A(); let d=Object.getOwnPropertyDescriptor(a,'x'); a.x===42 && d.writable && d.enumerable && d.configurable;",
           "expected": {
             "parser": "accept",
-            "ast": "engine-error",
+            "ast": "true",
             "bytecode": "bytecode-unsupported",
-            "auto": "engine-error"
+            "auto": "true"
           },
           "diagnostic_contains": "class"
         }
       ],
-      "evidence_kind": "unconnected-boundary"
+      "evidence_kind": "examples"
     },
     {
       "id": "syntax.class-private-field",

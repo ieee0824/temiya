@@ -51,6 +51,7 @@ pub(super) struct FunctionCode {
     ast: Function,
     kind: FunctionKind,
     compiled: Option<Rc<FunctionTemplate>>,
+    lexical_property: Option<PropertyKey>,
     may_observe_arguments: bool,
     delegated_parameters: Option<Box<[usize]>>,
     super_call: Option<super_call::Plan>,
@@ -104,6 +105,11 @@ fn prepare_code(
         ast: code.clone(),
         kind,
         compiled,
+        lexical_property: if cache.is_some() {
+            lexical_property(code, kind)
+        } else {
+            None
+        },
         may_observe_arguments: may_observe_arguments(code),
         delegated_parameters: if kind == FunctionKind::Method(MethodKind::Constructor) {
             delegated_parameters(code)
@@ -122,6 +128,34 @@ fn prepare_code(
             .push(prepared.clone());
     }
     prepared
+}
+
+// A zero-parameter synchronous arrow with only a property read cannot expose
+// an activation. Keep getter/Proxy dispatch and lexical-this TDZ resolution.
+fn lexical_property(code: &Function, kind: FunctionKind) -> Option<PropertyKey> {
+    if kind != FunctionKind::Arrow
+        || code.asynchronous
+        || code.generator
+        || !code.parameters.is_empty()
+    {
+        return None;
+    }
+    let FunctionBody::Expression(expression) = &code.body else {
+        return None;
+    };
+    let ExprKind::Member {
+        object,
+        property,
+        computed: false,
+        optional: false,
+    } = &expression.kind
+    else {
+        return None;
+    };
+    let ExprKind::Identifier(name) = &property.kind else {
+        return None;
+    };
+    matches!(object.kind, ExprKind::This).then(|| PropertyKey::from(name.as_str()))
 }
 
 // A sole super(p, q, ...) with simple parameters cannot observe or retain its
@@ -283,6 +317,20 @@ impl StoredFunctionClosure {
             return plan
                 .execute(self, owner, this, arguments, &realm)
                 .map_err(|error| realm.bind_exception(error));
+        }
+        if let Some(key) = &self.code.lexical_property {
+            let realm = self.realm.load(owner)?;
+            let receiver = match &self.lexical_this_environment {
+                Some(environment) => environment.load(owner)?.get_this_binding(),
+                None => self.lexical_this.load(owner),
+            }
+            .map_err(|error| realm.bind_exception(error))?;
+            if let Value::Object(receiver) = receiver {
+                return receiver
+                    .get(key)
+                    .map_err(|error| realm.bind_exception(error));
+            }
+            // Primitive/null/undefined receivers retain normal coercion/errors.
         }
         if let Some(template) = &self.code.compiled {
             return super::bytecode_function::execute_stored_template(
@@ -569,6 +617,7 @@ fn construct_function(
     };
     let instance = Object::new_for(&new_target);
     instance.initialize_prototype(Some(prototype));
+    function.initialize_instance_fields(&instance)?;
     let result = call_function(
         closure,
         function,
@@ -595,12 +644,14 @@ fn construct_derived(
             .try_prototype()?
             .filter(Object::is_constructor)
             .ok_or_else(|| RuntimeError::type_error("super constructor is not a constructor"))?;
-        return parent.construct(arguments, new_target);
+        let instance = parent.construct(arguments, new_target)?;
+        function.initialize_instance_fields(&instance)?;
+        return Ok(instance);
     }
     if let Some(parameters) = &closure.code.delegated_parameters {
         // No this/arguments/eval, defaults, spread, closures or later statements
-        // can observe BindThisValue in this shape. Class fields are still
-        // rejected by class evaluation, so no instance initializer is omitted.
+        // can observe BindThisValue in this shape. Initialize own fields after
+        // the parent returns, before exposing the initialized receiver.
         let parent = function.try_prototype()?;
         let arguments: Cow<'_, [Value]> = if arguments.len() >= parameters.len()
             && parameters.iter().copied().eq(0..parameters.len())
@@ -617,7 +668,9 @@ fn construct_derived(
         let parent = parent
             .filter(Object::is_constructor)
             .ok_or_else(|| RuntimeError::type_error("super constructor is not a constructor"))?;
-        return parent.construct(&arguments, new_target);
+        let instance = parent.construct(&arguments, new_target)?;
+        function.initialize_instance_fields(&instance)?;
+        return Ok(instance);
     }
     let environment = Environment::function(
         Some(closure.environment.clone()),

@@ -42,6 +42,9 @@ impl Parser<'_> {
             let next = lexer.next_token(LexicalGoal::Div)?;
             if !matches!(next.text, "(" | "=" | ";" | "}" | ":" | ",")
                 && (first.text != "async" || !next.has_line_terminator_before)
+                // A star cannot name an accessor. Leave get/set as a field
+                // name so class ASI can separate a following generator.
+                && !(matches!(first.text, "get" | "set") && next.text == "*")
             {
                 self.take(LexicalGoal::Div)?;
                 match first.text {

@@ -23,6 +23,10 @@ on:
         description: Also record fixed super-property5 suite (baseline must support super properties)
         default: false
         type: boolean
+      include_fields:
+        description: Also record fixed instance-field5 suite (baseline must support public instance fields)
+        default: false
+        type: boolean
       two_runners:
         description: Record two independent hosted machines without selecting a CPU
         default: false
@@ -39,7 +43,8 @@ permissions:
 
 concurrency:
   group: omoikane-benchmark-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  # Finish active captures; queue a newer source without truncating raw data.
+  cancel-in-progress: false
 
 jobs:
   measure:
@@ -61,6 +66,7 @@ jobs:
       INCLUDE_CLASSES: ${{ inputs.include_classes || false }}
       INCLUDE_DERIVED: ${{ inputs.include_derived || false }}
       INCLUDE_SUPER: ${{ inputs.include_super || false }}
+      INCLUDE_FIELDS: ${{ inputs.include_fields || false }}
       REQUIRED_CPU_MODEL: ${{ inputs.required_cpu_model || '' }}
     steps:
       - name: Check out measured revision
@@ -264,6 +270,35 @@ jobs:
             reports+=("$RUNNER_TEMP/comparison-output/super-baseline-boa.json" "$RUNNER_TEMP/comparison-output/super-same-binary.json")
           fi
           node scripts/audit-class-workload-records.mjs --super "${reports[@]}" > "$RUNNER_TEMP/comparison-output/super-independent-audit.json"
+      - name: Measure fixed instance-field workloads before and after
+        if: inputs.include_fields && steps.hardware.outputs.matches == 'true'
+        run: |
+          export TEMIYA_REVISION="$(cat "$RUNNER_TEMP/comparison-output/measured-revision.txt")"
+          export BENCH_NOTES='Authored fixed instance-field5 suite; same compiler and binary builds as original11. 15 samples/3 alternating pairs, unchanged counts/oracles/limits. No builds during timing. Baseline must support public instance fields. Retain every outcome.'
+          node scripts/compare-class-workloads.mjs --fields --temiya-baseline benchmarks/instance-fields/workloads-v1 "$RUNNER_TEMP/temiya-current-target/release/examples/measure_workload" "$RUNNER_TEMP/comparison-output/baseline-build-info.json" 15 3 > "$RUNNER_TEMP/comparison-output/fields-beforeafter.json" 2> "$RUNNER_TEMP/comparison-output/fields-beforeafter.progress"
+      - name: Measure fixed instance-field workloads against actual Boa
+        if: inputs.include_fields && steps.hardware.outputs.matches == 'true'
+        run: |
+          export TEMIYA_REVISION="$(cat "$RUNNER_TEMP/comparison-output/measured-revision.txt")"
+          export BENCH_NOTES='Separate authored instance-field suite, not a replacement for original11. Same compiler/host, 15 samples and 3 alternating pairs, all raw results retained. Job success is not a speed pass.'
+          node scripts/compare-class-workloads.mjs --fields benchmarks/instance-fields/workloads-v1 "$RUNNER_TEMP/temiya-current-target/release/examples/measure_workload" "$RUNNER_TEMP/comparison-output/boa-build-info.json" 15 3 > "$RUNNER_TEMP/comparison-output/fields-boa.json" 2> "$RUNNER_TEMP/comparison-output/fields-boa.progress"
+      - name: Measure instance-field controls with the baseline and identical candidate
+        if: inputs.include_fields && inputs.include_controls && steps.hardware.outputs.matches == 'true'
+        run: |
+          export TEMIYA_REVISION="$(cat "$RUNNER_TEMP/comparison-output/baseline-revision.txt")"
+          export BENCH_NOTES='Direct baseline/actual Boa instance-field control on this same runner. Preserve slow and noisy outcomes.'
+          node scripts/compare-class-workloads.mjs --fields benchmarks/instance-fields/workloads-v1 "$RUNNER_TEMP/temiya-baseline-target/release/examples/measure_workload" "$RUNNER_TEMP/comparison-output/boa-build-info.json" 15 3 > "$RUNNER_TEMP/comparison-output/fields-baseline-boa.json" 2> "$RUNNER_TEMP/comparison-output/fields-baseline-boa.progress"
+          export TEMIYA_REVISION="$(cat "$RUNNER_TEMP/comparison-output/measured-revision.txt")"
+          export BENCH_NOTES='Same executable instance-field control: labels do not indicate a source change. Preserve all outcomes.'
+          node scripts/compare-class-workloads.mjs --fields --temiya-baseline benchmarks/instance-fields/workloads-v1 "$RUNNER_TEMP/temiya-current-target/release/examples/measure_workload" "$RUNNER_TEMP/comparison-output/same-binary-build-info.json" 15 3 > "$RUNNER_TEMP/comparison-output/fields-same-binary.json" 2> "$RUNNER_TEMP/comparison-output/fields-same-binary.progress"
+      - name: Independently reconstruct instance-field measurement records
+        if: inputs.include_fields && steps.hardware.outputs.matches == 'true'
+        run: |
+          reports=("$RUNNER_TEMP/comparison-output/fields-beforeafter.json" "$RUNNER_TEMP/comparison-output/fields-boa.json")
+          if [ "$INCLUDE_CONTROLS" = true ]; then
+            reports+=("$RUNNER_TEMP/comparison-output/fields-baseline-boa.json" "$RUNNER_TEMP/comparison-output/fields-same-binary.json")
+          fi
+          node scripts/audit-class-workload-records.mjs --fields "${reports[@]}" > "$RUNNER_TEMP/comparison-output/fields-independent-audit.json"
       - name: Summarize validity and speed gates separately
         if: always()
         run: |
@@ -311,6 +346,15 @@ jobs:
               try {
                 const r = JSON.parse(fs.readFileSync(path.join(process.env.RUNNER_TEMP, 'comparison-output', name + '.json')));
                 lines.push('- ' + name + ': correct outputs = ' + r.all_workloads_valid + '; all-super speed gate = ' + r.all_class_workloads_faster_beyond_threshold);
+              } catch { lines.push('- ' + name + ': no complete measurement report.'); }
+            }
+          }
+          if (process.env.INCLUDE_FIELDS === 'true') {
+            const classes = ['fields-beforeafter', 'fields-boa', ...(process.env.INCLUDE_CONTROLS === 'true' ? ['fields-baseline-boa', 'fields-same-binary'] : [])];
+            for (const name of classes) {
+              try {
+                const r = JSON.parse(fs.readFileSync(path.join(process.env.RUNNER_TEMP, 'comparison-output', name + '.json')));
+                lines.push('- ' + name + ': correct outputs = ' + r.all_workloads_valid + '; all-fields speed gate = ' + r.all_class_workloads_faster_beyond_threshold);
               } catch { lines.push('- ' + name + ': no complete measurement report.'); }
             }
           }

@@ -179,11 +179,11 @@ fn generator_throw_values_survive_both_active_and_completed_boundaries() {
 
 #[test]
 fn internal_failures_cannot_be_swallowed_by_catch_or_finally() {
-    // Public fields remain unsupported; base and derived constructors execute normally.
+    // Static fields remain unsupported; instance fields and constructors execute normally.
     let engine = Engine::default();
     let realm = engine.create_realm();
     let script = engine.compile(&realm,
-        "function f() { try { (class { field; }); } catch (e) { return true; } finally { return true; } } f();"
+        "function f() { try { (class { static field; }); } catch (e) { return true; } finally { return true; } } f();"
     ).unwrap();
     assert_eq!(
         engine.evaluate(&script).unwrap_err().kind(),

@@ -312,6 +312,16 @@ impl Compiler {
                 });
                 Ok(false)
             }
+            StmtKind::ClassDeclaration(class) => {
+                let name = class_binding_name(class)?;
+                let (scope, slot, _) = self
+                    .binding(name)
+                    .expect("class binding collected before lowering");
+                self.class_expression(class, None, statement.span)?;
+                self.code
+                    .push(Instruction::InitializeBinding { scope, slot });
+                Ok(false)
+            }
             StmtKind::Variable { kind, declarations } => {
                 for declaration in declarations {
                     let ExprKind::Identifier(name) = &declaration.binding.kind else {
@@ -1399,7 +1409,7 @@ fn collect_vars(statements: &[Stmt], vars: &mut Vec<String>) -> Result<(), Compi
                 }
                 collect_vars(std::slice::from_ref(body), vars)?;
             }
-            StmtKind::FunctionDeclaration(_) => {}
+            StmtKind::FunctionDeclaration(_) | StmtKind::ClassDeclaration(_) => {}
             StmtKind::Empty
             | StmtKind::Debugger
             | StmtKind::Expression(_)
@@ -1415,6 +1425,16 @@ fn collect_vars(statements: &[Stmt], vars: &mut Vec<String>) -> Result<(), Compi
         }
     }
     Ok(())
+}
+
+fn class_binding_name(class: &crate::ast::Class) -> Result<&str, CompileError> {
+    match class.name.as_ref().map(|name| &name.kind) {
+        Some(ExprKind::Identifier(name)) => Ok(name),
+        _ => Err(CompileError::new(
+            "class declaration requires a name",
+            Some(class.span),
+        )),
+    }
 }
 
 fn scope_bindings(
@@ -1453,6 +1473,18 @@ fn scope_bindings(
         }
     }
     for statement in statements {
+        if let StmtKind::ClassDeclaration(class) = &statement.kind {
+            let name = class_binding_name(class)?;
+            if vars.iter().any(|previous| previous == name)
+                || lexical.iter().any(|(previous, _)| previous == name)
+            {
+                return Err(CompileError::new(
+                    "duplicate lexical class binding",
+                    Some(statement.span),
+                ));
+            }
+            lexical.push((name.to_owned(), BindingKind::Let));
+        }
         if let StmtKind::Variable { kind, declarations } = &statement.kind {
             if *kind == VariableKind::Var {
                 continue;
@@ -1557,6 +1589,7 @@ fn body_shadows_arguments(function: &Function) -> bool {
     };
     statements.iter().any(|statement| match &statement.kind {
         StmtKind::FunctionDeclaration(function) => matches!(function.name.as_ref().map(|name| &name.kind), Some(ExprKind::Identifier(name)) if name == "arguments"),
+        StmtKind::ClassDeclaration(class) => matches!(class.name.as_ref().map(|name| &name.kind), Some(ExprKind::Identifier(name)) if name == "arguments"),
         StmtKind::Variable { kind, declarations } if *kind != VariableKind::Var => declarations.iter().any(|declaration| matches!(&declaration.binding.kind, ExprKind::Identifier(name) if name == "arguments")),
         _ => false,
     })

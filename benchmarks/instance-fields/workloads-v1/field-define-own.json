@@ -1,0 +1,8 @@
+{
+  "name": "field-define-own",
+  "iterations": 10000,
+  "oracle": "sum-one-to-n-and-per-case-invariants",
+  "setup": "function bench(n){let serial=0;class A{set value(value){throw 42;}}class C extends A{value=++serial;}let total=0;for(let i=0;i<n;i++)total+=new C().value;if(serial!==n)throw 42;return total;}",
+  "invocation": "bench(10000);",
+  "expected": 50005000
+}

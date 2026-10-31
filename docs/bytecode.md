@@ -2,12 +2,15 @@
 
 Engine defaults to whole-Script Auto selection: supported Scripts use verified bytecode and unsupported Scripts use AST before any observable execution. In an Auto AST Script, eligible ordinary/class function bodies can independently use the verified bytecode function runtime; unsupported bodies remain AST, and errors are never retried. Explicit Ast keeps AST bodies and explicit Bytecode still rejects an unsupported whole Script. This does not enable a JIT or hot-loop tier. Earlier sections describe historical implementation stages, including the former AST default. The pre-GC default API passed all 33 original-eleven Boa comparisons on both recorded x64 and ARM64 machines; see [integration scope and evidence](auto-backend-integration.md). Runtime changes require fresh performance qualification.
 
-Eligible function bodies can contain class expressions through verified `CreateClass`
+Eligible function bodies can contain class declarations and expressions through verified `CreateClass`
 metadata. The VM invokes the shared class evaluator with the current environment;
-class declarations and top-level class expressions still require AST selection.
+top-level classes still require AST selection. Declaration bindings enter their
+lexical scope uninitialized and are initialized only after class evaluation;
+the outer binding stays mutable while the class name environment stays distinct.
 This bridge preserves class name inference in variable initializers and simple
 identifier assignments, captures per-iteration environments, and does not enable
-class fields, private elements or general class bytecode lowering. Anonymous
+static fields, private elements or general class bytecode lowering. Public
+instance fields use the shared evaluator. Anonymous
 class object-property values and logical assignments require preexecution AST
 fallback. See [class execution](classes.md) for the bridge's this/new.target and
 ownership contracts.

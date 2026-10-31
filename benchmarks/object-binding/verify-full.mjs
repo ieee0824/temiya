@@ -12,6 +12,7 @@ assert.equal(e.source,'010ac60ddeb68ce702e1f3b2a4cfdd87345f2568');assert.equal(e
 assert.equal(e.parent.source,'91fb9f4e516e12b738e729f3f6441920ca642c49');assert.equal(e.parent.run,41187181537);
 assert.equal(e.comparison_basis,'previous fully audited array implementation, not immediate parent');
 assert.equal(e.immediate_parent_source,'6c65967973ad4de72986db751d7c7e30547251c2');
+assert.equal(e.immediate_parent.source,e.immediate_parent_source);assert.equal(e.immediate_parent.run,41207659226);
 for(const [file,hash]of Object.entries(e.files)){
  assert(!path.isAbsolute(file)&&!file.split('/').includes('..'));
  assert.equal(sha(fs.readFileSync(dir+'/'+file)),hash,file);
@@ -20,7 +21,7 @@ const temp=fs.mkdtempSync(path.join(os.tmpdir(),'temiya-object-full-'));
 try {
  const reference=temp+'/reference';
  execFileSync(process.execPath,[repo+'/scripts/verify-test262-archive.mjs',repo+'/benchmarks/test262-feature-baseline',reference],{cwd:repo});
- for(const [name,meta,policy]of [['candidate',e,'policy.json'],['parent',e.parent,'parent-policy.json']]){
+ for(const [name,meta,policy]of [['candidate',e,'policy.json'],['parent',e.parent,'parent-policy.json'],['immediate-parent',e.immediate_parent,'immediate-parent-policy.json']]){
   assert(!path.isAbsolute(meta.archive.file)&&!meta.archive.file.includes('/'));
   const archive=dir+'/'+meta.archive.file,bytes=fs.readFileSync(archive);
   assert.equal(bytes.length,meta.archive.bytes);assert.equal(sha(bytes),meta.archive.sha256);
@@ -37,13 +38,16 @@ try {
   const rows=[];for(let i=0;i<8;i++)rows.push(...read(`${temp}/${name}/test262-full-${i}-of-8/test262-regression/capture/outcomes.json`));
   const map=new Map(rows.map(r=>[JSON.stringify([r.path,r.variant]),r]));assert.equal(map.size,100211);return map;
  };
- const before=outcomes('parent'),after=outcomes('candidate'),regressions=[],newpasses=[];let preserved=0;
+ const after=outcomes('candidate');
+ for(const previous of [{name:'parent',source:e.parent.source,file:'previous-qualified-array-comparison.json'},{name:'immediate-parent',source:e.immediate_parent.source,file:'immediate-parent-comparison.json'}]){
+ const before=outcomes(previous.name),regressions=[],newpasses=[];let preserved=0;
  for(const [key,b]of before){
   const a=after.get(key);assert(a);
   if(b.outcome==='pass'){if(a.outcome==='pass')preserved++;else regressions.push({path:b.path,variant:b.variant,before:b.outcome,after:a.outcome});}
   else if(a.outcome==='pass')newpasses.push({path:b.path,variant:b.variant,before:b.outcome,after:a.outcome});
  }
  assert.equal(preserved,33565);assert.deepEqual(regressions,[]);assert.equal(newpasses.length,4354);
- assert.deepEqual({previous_source:e.parent.source,source:e.source,variants:after.size,preserved_passes:preserved,regressions,newpasses},read(dir+'/previous-qualified-array-comparison.json'));
- console.log(JSON.stringify({integrity:'pass',variants:100211,preserved_passes:preserved,newpasses:newpasses.length,regressions:0,scope:e.scope}));
+ assert.deepEqual({previous_source:previous.source,source:e.source,variants:after.size,preserved_passes:preserved,regressions,newpasses},read(dir+'/'+previous.file));
+ console.log(JSON.stringify({integrity:'pass',comparison:previous.name,variants:100211,preserved_passes:preserved,newpasses:newpasses.length,regressions:0,scope:e.scope}));
+ }
 } finally {fs.rmSync(temp,{recursive:true,force:true});}

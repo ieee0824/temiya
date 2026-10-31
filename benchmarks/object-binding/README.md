@@ -40,12 +40,11 @@ noise and controls are preserved without filtering or unchanged-source repeats.
 
 `full-current-integrated-v1` retains all8 shards of run41207723463 at010ac60:
 37919pass53705fail18skip8569timeout across100211 variants,0missing.
-`node benchmarks/object-binding/verify-full.mjs` replays candidate and previous
-qualified array91fb9f4 archives, including original known-pass gates, and
-compares every outcome:33565 preceding passes preserved,0regressions,4354new.
-The archived comparison uses the previous fully audited array implementation;
-it is explicitly not the immediate parent6c65967, whose full capture and
-separate comparison remain pending. All failures and timeouts are retained.
+`node benchmarks/object-binding/verify-full.mjs` replays the candidate,previous
+qualified array91fb9f4 and immediate parent6c65967 full archives, including
+all original known-pass gates. Separate comparisons against both complete
+100211-variant captures preserve33565passes,with0regressions and4354newpasses
+in each. The immediate-parent capture and comparison are now retained. All failures and timeouts are retained.
 The original Symbol constructor cases pass both variants within this full
 capture. Correctness evidence does not qualify native speed; both hosted
 object-binding captures still fail the performance gate. CI keeps all prior

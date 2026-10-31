@@ -94,6 +94,11 @@ fn private_values_and_lexical_names_survive_gc_then_release_cycles() {
                 engine.evaluate(&update).unwrap().value(),
                 Value::Boolean(true)
             ));
+            let constructor = engine.compile(&realm, "class Holder{#payload;constructor(value){this.#payload=value;this.touch=value;}set touch(value){gcNow();}value(){return this.#payload.value;}}let holder=new Holder({value:42});gcNow();holder.value()===42;").unwrap();
+            assert!(matches!(
+                engine.evaluate(&constructor).unwrap().value(),
+                Value::Boolean(true)
+            ));
         }
         assert_eq!(engine.collect_garbage().unwrap().retained, 0);
     }

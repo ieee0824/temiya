@@ -81,6 +81,7 @@ case "${1:-}" in
     node benchmarks/array-binding/verify-workloads.mjs
     node benchmarks/array-binding/verify-fixed.mjs
     node benchmarks/array-binding/fixed-array-data-properties-v1/verify.mjs
+    node benchmarks/array-binding/fixed-cache32-v1/verify.mjs
     node benchmarks/array-binding/verify-hosted.mjs
     node benchmarks/array-binding/verify-full.mjs
     node benchmarks/array-binding/parent-integration-diagnostic-v1/verify.mjs
@@ -93,6 +94,8 @@ case "${1:-}" in
     node benchmarks/array-binding/reference-message-diagnostic-v1/verify.mjs
     node benchmarks/array-binding/outlined-slots-diagnostic-v1/verify.mjs
     node benchmarks/array-binding/cache32-diagnostic-v1/verify.mjs
+    node benchmarks/array-binding/compact-error-diagnostic-v1/verify.mjs
+    node benchmarks/array-binding/inline-thrown-error-diagnostic-v1/verify.mjs
     node benchmarks/array-binding/security-array-data-properties-v1/verify.mjs benchmarks/array-binding/security-array-data-properties-v1 cd6c0294bba1a2f4ac2059dfb56cb6cd289aba8a
     node benchmarks/array-binding/security-cache32-v1/verify.mjs benchmarks/array-binding/security-cache32-v1 9f84bc5c6416911df51d76cf10b936ad3c3e003f
     ;;

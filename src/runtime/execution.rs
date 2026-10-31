@@ -200,9 +200,10 @@ impl Realm {
     /// Retains the originating Realm before a function crosses a caller boundary.
     /// Success paths and already-materialized exceptions allocate nothing here.
     pub(crate) fn bind_exception(&self, mut error: RuntimeError) -> RuntimeError {
-        if error.thrown.is_none() && error.kind() != super::RuntimeErrorKind::InternalError {
+        if error.thrown_value().is_none() && error.kind() != super::RuntimeErrorKind::InternalError
+        {
             match self.exception_value(&error) {
-                Ok(value) => error.thrown = Some(Box::new(value)),
+                Ok(value) => error.attach_thrown(value),
                 Err(failure) => return failure,
             }
         }

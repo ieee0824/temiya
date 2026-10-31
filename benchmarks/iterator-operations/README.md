@@ -23,3 +23,10 @@ their own issues. Their tests remain in this complete metadata selection, and
 failures/timeouts cannot count as passes. No runtime implementation or new speed
 qualification is claimed by this input freeze. Performance inputs must also be
 frozen and checked with actual pinned Boa before first candidate timing.
+
+The initial shared-record runtime is implemented locally. All878 native tests
+pass (0failed26ignored), with Clippy, MSRV and stable i686 all-target checks.
+Six10000-iteration workloads were frozen before implementation; actual pinned
+Boa and the immutable baseline each validated every warmup/sample oracle. These
+checks establish outputs only; no new native speed pass is claimed. The
+1947-file/3880-variant baseline remains in progress.

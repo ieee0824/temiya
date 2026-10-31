@@ -1,9 +1,9 @@
-//! Synchronous iterator records used by argument-list evaluation.
+//! Shared synchronous iterator operations for array and argument consumers.
 
 use super::{
-    IntrinsicId, IntrinsicRegistry, JsString, Object, PropertyDescriptor, PropertyKey, Realm,
-    Reference, ReferencedName, RuntimeError, RuntimeResult, Value, WellKnownSymbol,
-    WellKnownSymbols, coercion::primitive,
+    Completion, IntrinsicId, IntrinsicRegistry, JsString, Object, PropertyDescriptor, PropertyKey,
+    Realm, Reference, ReferencedName, RuntimeError, RuntimeErrorKind, RuntimeResult, Value,
+    WellKnownSymbol, WellKnownSymbols, coercion::primitive,
 };
 
 pub(crate) const MAX_ARGUMENTS: usize = 65_536;
@@ -47,53 +47,145 @@ pub(crate) fn spread_arguments(
     consume_iterable(realm, value, |value| push_argument(arguments, value))
 }
 
+/// A rooted record: no heap-state borrow survives an observable operation.
+/// Private consumers can reuse this record for stepping and closing separately.
+pub(crate) struct IteratorRecord {
+    iterator: Object,
+    next_method: Value,
+    done: bool,
+    done_key: PropertyKey,
+    value_key: PropertyKey,
+}
+
+impl IteratorRecord {
+    pub(crate) fn get(realm: &Realm, value: Value) -> RuntimeResult<Self> {
+        let method = Reference::property_in_realm(
+            realm,
+            value.clone(),
+            ReferencedName::PropertyKey(realm.well_known_symbol(WellKnownSymbol::Iterator).into()),
+            false,
+        )
+        .get_value()?;
+        let Value::Object(method) = method else {
+            return Err(RuntimeError::type_error("value is not iterable"));
+        };
+        let Value::Object(iterator) = method.call(value, &[])? else {
+            return Err(RuntimeError::type_error(
+                "iterator method returned a non-object",
+            ));
+        };
+        // GetIterator captures next once; callability is checked by IteratorNext.
+        let next_method = iterator.get(&"next".into())?;
+        Ok(Self {
+            iterator,
+            next_method,
+            done: false,
+            done_key: "done".into(),
+            value_key: "value".into(),
+        })
+    }
+
+    pub(crate) fn next(&mut self, value: Option<Value>) -> RuntimeResult<Object> {
+        let result = match &self.next_method {
+            Value::Object(method) => {
+                method.call(Value::Object(self.iterator.clone()), value.as_slice())
+            }
+            _ => Err(RuntimeError::type_error("iterator next is not callable")),
+        };
+        match result {
+            Ok(Value::Object(result)) => Ok(result),
+            Ok(_) => {
+                self.done = true;
+                Err(RuntimeError::type_error(
+                    "iterator next returned a non-object",
+                ))
+            }
+            Err(error) => {
+                self.done = true;
+                Err(error)
+            }
+        }
+    }
+
+    pub(crate) fn step(&mut self) -> RuntimeResult<Option<Object>> {
+        let result = self.next(None)?;
+        match result.get(&self.done_key) {
+            Ok(done) if done.to_boolean() => {
+                self.done = true;
+                Ok(None)
+            }
+            Ok(_) => Ok(Some(result)),
+            Err(error) => {
+                self.done = true;
+                Err(error)
+            }
+        }
+    }
+
+    pub(crate) fn step_value(&mut self) -> RuntimeResult<Option<Value>> {
+        let Some(result) = self.step()? else {
+            return Ok(None);
+        };
+        match result.get(&self.value_key) {
+            Ok(value) => Ok(Some(value)),
+            Err(error) => {
+                self.done = true;
+                Err(error)
+            }
+        }
+    }
+
+    pub(crate) fn close(&self, completion: RuntimeResult<Completion>) -> RuntimeResult<Completion> {
+        // Internal host/invariant errors are never converted to JS completions
+        // or made observable through a JavaScript cleanup callback.
+        if matches!(&completion, Err(error) if error.kind() == RuntimeErrorKind::InternalError) {
+            return completion;
+        }
+        let inner = (|| {
+            let method = self.iterator.get(&"return".into())?;
+            if matches!(method, Value::Undefined | Value::Null) {
+                return Ok(None);
+            }
+            let Value::Object(method) = method else {
+                return Err(RuntimeError::type_error("iterator return is not callable"));
+            };
+            method
+                .call(Value::Object(self.iterator.clone()), &[])
+                .map(Some)
+        })();
+        let inner = match inner {
+            Err(error) if error.kind() == RuntimeErrorKind::InternalError => return Err(error),
+            inner => inner,
+        };
+        // A pre-existing JS throw outranks return lookup/call/result failures.
+        if matches!(&completion, Err(_) | Ok(Completion::Throw(_))) {
+            return completion;
+        }
+        match inner? {
+            None | Some(Value::Object(_)) => completion,
+            Some(_) => Err(RuntimeError::type_error(
+                "iterator return returned a non-object",
+            )),
+        }
+    }
+}
+
 /// Consume a synchronous iterator without materializing an intermediate list.
 pub(crate) fn consume_iterable(
     realm: &Realm,
     value: Value,
     mut append: impl FnMut(Value) -> RuntimeResult<()>,
 ) -> RuntimeResult<()> {
-    let method = Reference::property_in_realm(
-        realm,
-        value.clone(),
-        ReferencedName::PropertyKey(realm.well_known_symbol(WellKnownSymbol::Iterator).into()),
-        false,
-    )
-    .get_value()?;
-    let Value::Object(method) = method else {
-        return Err(RuntimeError::type_error("spread value is not iterable"));
-    };
-    let Value::Object(iterator) = method.call(value, &[])? else {
-        return Err(RuntimeError::type_error(
-            "iterator method returned a non-object",
-        ));
-    };
-    // Capture next once; replacing iterator.next during iteration does not change
-    // this Iterator Record. No object/slot borrow survives any user callback.
-    let next = iterator.get(&"next".into())?;
-    loop {
-        let Value::Object(next) = &next else {
-            return Err(RuntimeError::type_error("iterator next is not callable"));
+    let mut record = IteratorRecord::get(realm, value)?;
+    while !record.done {
+        let Some(value) = record.step_value()? else {
+            break;
         };
-        let Value::Object(result) = next.call(Value::Object(iterator.clone()), &[])? else {
-            return Err(RuntimeError::type_error(
-                "iterator next returned a non-object",
-            ));
-        };
-        if result.get(&"done".into())?.to_boolean() {
-            return Ok(());
-        }
-        let value = result.get(&"value".into())?;
         if let Err(error) = append(value) {
-            // A consumer error (including the argument limit) interrupts consumption. Close the
-            // iterator with a throw completion; that completion takes priority
-            // over return getter/call failures (IteratorClose steps 3–5).
-            if let Ok(Value::Object(return_method)) = iterator.get(&"return".into()) {
-                let _ = return_method.call(Value::Object(iterator.clone()), &[]);
-            }
-            return Err(error);
+            return record.close(Err(error)).map(|_| ());
         }
     }
+    Ok(())
 }
 
 pub(super) fn install(
@@ -439,5 +531,173 @@ mod managed_tests {
         drop(iterator);
         drop(prototype);
         assert_eq!(runtime.collect_migration_graph().unwrap().retained, 0);
+    }
+}
+
+#[cfg(test)]
+mod operation_tests {
+    use super::*;
+    use crate::{parser::parse_script, runtime::StatementEvaluator};
+
+    fn evaluate(realm: &Realm, source: &str) -> Value {
+        let Completion::Normal(Some(value)) = StatementEvaluator::new(realm.clone())
+            .evaluate_program(&parse_script(source).unwrap())
+            .unwrap()
+        else {
+            panic!("normal value");
+        };
+        value
+    }
+    fn record(source: &str) -> (Realm, IteratorRecord) {
+        let context = crate::runtime::AllocationContext::new();
+        let realm = Realm::ordinary_in(&context);
+        let iterable = evaluate(&realm, source);
+        let record = IteratorRecord::get(&realm, iterable).unwrap();
+        (realm, record)
+    }
+
+    #[test]
+    fn captured_next_keeps_receiver_and_distinguishes_missing_from_undefined() {
+        let (realm, mut record) = record(
+            "var reads=0;var receiverOK=true;var iterator;var iterable={[Symbol.iterator](){iterator={get next(){reads++;return function(){receiverOK=receiverOK&&this===iterator;return {done:false,value:arguments.length};};}};return iterator;}};iterable;",
+        );
+        assert!(
+            record
+                .next(None)
+                .unwrap()
+                .get(&"value".into())
+                .unwrap()
+                .same_value(&Value::Number(0.0))
+        );
+        assert!(
+            record
+                .iterator
+                .create_data_property("next".into(), Value::Number(0.0))
+                .unwrap()
+        );
+        assert!(
+            record
+                .next(Some(Value::Undefined))
+                .unwrap()
+                .get(&"value".into())
+                .unwrap()
+                .same_value(&Value::Number(1.0))
+        );
+        assert!(evaluate(&realm, "reads===1&&receiverOK;").same_value(&Value::Boolean(true)));
+    }
+
+    #[test]
+    fn step_failures_mark_done_and_do_not_read_value_after_completion() {
+        for (body, kind) in [
+            ("throw 17;", RuntimeErrorKind::ThrownValue),
+            ("return 0;", RuntimeErrorKind::TypeError),
+            (
+                "return {get done(){throw 17;}};",
+                RuntimeErrorKind::ThrownValue,
+            ),
+            (
+                "return {done:false,get value(){throw 17;}};",
+                RuntimeErrorKind::ThrownValue,
+            ),
+        ] {
+            let (_realm, mut iterator) = record(&format!(
+                "({{[Symbol.iterator](){{return {{next(){{{body}}}}};}}}});"
+            ));
+            assert_eq!(iterator.step_value().unwrap_err().kind(), kind);
+            assert!(iterator.done);
+        }
+        let (_realm, mut iterator) = record(
+            "({[Symbol.iterator](){return {next(){return {done:true,get value(){throw 99;}};}};}});",
+        );
+        assert!(iterator.step_value().unwrap().is_none());
+        assert!(iterator.done);
+    }
+
+    #[test]
+    fn close_preserves_throw_but_validates_normal_return_and_its_result() {
+        for (property, kind) in [
+            ("get return(){throw 17;}", RuntimeErrorKind::ThrownValue),
+            (
+                "return:function(){throw 17;}",
+                RuntimeErrorKind::ThrownValue,
+            ),
+            ("return:0", RuntimeErrorKind::TypeError),
+            ("return:function(){return 0;}", RuntimeErrorKind::TypeError),
+        ] {
+            let (_realm, iterator) = record(&format!(
+                "({{[Symbol.iterator](){{return {{next(){{return {{done:false}};}},{property}}};}}}});"
+            ));
+            let result = iterator
+                .close(Ok(Completion::Throw(Value::Number(99.0))))
+                .unwrap();
+            assert!(matches!(result, Completion::Throw(Value::Number(99.0))));
+            let error = iterator
+                .close(Err(RuntimeError::thrown(Value::Number(99.0))))
+                .unwrap_err();
+            assert!(
+                error
+                    .thrown_value()
+                    .unwrap()
+                    .same_value(&Value::Number(99.0))
+            );
+            assert_eq!(
+                iterator
+                    .close(Ok(Completion::Return(Value::Number(42.0))))
+                    .unwrap_err()
+                    .kind(),
+                kind
+            );
+        }
+        for property in [
+            "return:undefined",
+            "return:null",
+            "return:function(){return {};}",
+        ] {
+            let (_realm, iterator) = record(&format!(
+                "({{[Symbol.iterator](){{return {{next(){{return {{done:false}};}},{property}}};}}}});"
+            ));
+            let result = iterator
+                .close(Ok(Completion::Break {
+                    value: Some(Value::Number(42.0)),
+                    target: Some("outer".into()),
+                }))
+                .unwrap();
+            assert!(
+                matches!(result,Completion::Break{value:Some(Value::Number(42.0)),target:Some(label)} if label=="outer")
+            );
+        }
+    }
+
+    #[test]
+    fn internal_failures_neither_run_cleanup_nor_get_hidden_by_javascript_throw() {
+        let (_realm, iterator) =
+            record("({[Symbol.iterator](){return {next(){return {done:false};}};}});");
+        let calls = std::rc::Rc::new(std::cell::Cell::new(0));
+        let observed = calls.clone();
+        let method =
+            Object::native_function_in(iterator.iterator.allocation_context(), move |_, _| {
+                observed.set(observed.get() + 1);
+                Err(RuntimeError::internal_error("host failure"))
+            });
+        iterator
+            .iterator
+            .create_data_property("return".into(), Value::Object(method))
+            .unwrap();
+        assert_eq!(
+            iterator
+                .close(Err(RuntimeError::internal_error("original host failure")))
+                .unwrap_err()
+                .kind(),
+            RuntimeErrorKind::InternalError
+        );
+        assert_eq!(calls.get(), 0);
+        assert_eq!(
+            iterator
+                .close(Ok(Completion::Throw(Value::Number(99.0))))
+                .unwrap_err()
+                .kind(),
+            RuntimeErrorKind::InternalError
+        );
+        assert_eq!(calls.get(), 1);
     }
 }

@@ -73,3 +73,12 @@ object state increases instructions in all six cases relative to direct-get;
 that prototype is withdrawn. The lifecycle regression test remains. Replay
 with `node benchmarks/object-binding/allocation-diagnostics-v1/verify.mjs`.
 These instrumented measurements do not establish native Boa speed.
+
+`full-inline-parent-v1` retains all eight shards of run 41245246099 at
+fe67ff5: 37,919 pass, 53,705 fail, 18 skip and 8,569 timeout across
+100,211 variants, with none missing. Its verifier replays this capture and
+the retained array7a154b1 and previous-object010ac60 captures, then compares
+every variant: all 33,565 array passes and 37,919 previous object passes
+remain, with zero regressions. This historical source still fails native
+speed qualification; these results do not transfer to changed runtime.
+Run `node benchmarks/object-binding/full-inline-parent-v1/verify.mjs`.

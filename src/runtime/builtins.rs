@@ -14,6 +14,7 @@ pub(super) fn initialize(
 ) -> RuntimeResult<()> {
     install_object(intrinsics, symbols)?;
     install_function(intrinsics)?;
+    install_symbol_call(intrinsics, symbols);
     install_reflect(intrinsics)
         .and_then(|()| install_indexed(intrinsics))
         .and_then(|()| install_regexp(intrinsics))
@@ -21,6 +22,23 @@ pub(super) fn initialize(
         .and_then(|()| install_collections(intrinsics))
         .and_then(|()| install_date_json(intrinsics, host_hooks))
         .and_then(|()| install_proxy(intrinsics))
+}
+
+// Object binding/rest needs genuine user-created symbol keys. Registry and
+// Symbol.prototype APIs remain the separate Symbol built-ins milestone (#204).
+fn install_symbol_call(intrinsics: &IntrinsicRegistry, symbols: &super::WellKnownSymbols) {
+    let constructor = intrinsics.get(IntrinsicId::Symbol);
+    let key = symbols.get(super::WellKnownSymbol::ToPrimitive).into();
+    constructor.set_native_call(move |_, arguments| {
+        let value = value_arg(arguments.first());
+        let description = if matches!(value, Value::Undefined) {
+            None
+        } else {
+            Some(super::coercion::primitive(&value, &key, true)?.to_js_string()?)
+        };
+        Ok(Value::Symbol(super::Symbol::new(description)))
+    });
+    constructor.clear_native_construct();
 }
 
 fn install_proxy(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {

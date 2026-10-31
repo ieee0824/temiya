@@ -1199,7 +1199,7 @@ fn set_property(
     }
 }
 
-fn member_name(expression: &Expr) -> RuntimeResult<JsString> {
+pub(super) fn member_name(expression: &Expr) -> RuntimeResult<JsString> {
     match &expression.kind {
         ExprKind::Identifier(name) | ExprKind::PrivateIdentifier(name) => {
             Ok(JsString::from(name.as_str()))

@@ -280,8 +280,8 @@ impl IntrinsicRegistry {
                     ObjectFactory::new(&constructor, &prototypes)?,
                 ));
                 constructor
-            } else if id == IntrinsicId::BigInt {
-                // BigInt is call-only; numeric installation replaces this
+            } else if matches!(id, IntrinsicId::BigInt | IntrinsicId::Symbol) {
+                // These are call-only; built-in installation replaces this
                 // capture-free body without a constructor payload to hide it.
                 Object::native_function_for(global, |_, _| Ok(Value::Undefined))
             } else if let Some((prototype_id, _)) = id.pair() {

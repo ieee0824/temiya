@@ -1,6 +1,7 @@
 # Object binding preparation (#163)
 
-Runtime implementation has not started. Commit 75d6b2a freezes the complete
+Initial runtime implementation is under correctness verification; no merge or
+speed qualification is claimed. Commit 75d6b2a freezes the complete
 17,415-variant selection and six authored workloads before candidate timing.
 The selection retains array, assignment, async and generator dependencies.
 Every workload executes 10,000 iterations with expected sum 50,005,000.

@@ -45,14 +45,26 @@ pub(crate) fn define_data(
 }
 
 pub(crate) fn spread(object: &Object, value: Value) -> RuntimeResult<()> {
+    spread_excluding(object, value, &[])
+}
+
+pub(super) fn spread_excluding(
+    object: &Object,
+    value: Value,
+    excluded: &[PropertyKey],
+) -> RuntimeResult<()> {
     let source = match value {
         Value::Object(source) => source,
         Value::String(string) => {
             // Only the enumerable UTF-16 indices of the boxed String are copied.
             for (index, unit) in string.code_units().iter().enumerate() {
+                let key = PropertyKey::String(index.to_string().into());
+                if excluded.contains(&key) {
+                    continue;
+                }
                 define_data(
                     object,
-                    PropertyKey::String(index.to_string().into()),
+                    key,
                     Value::String(JsString::from_code_units_slice(&[*unit])),
                     false,
                 )?;
@@ -62,6 +74,9 @@ pub(crate) fn spread(object: &Object, value: Value) -> RuntimeResult<()> {
         _ => return Ok(()),
     };
     for key in source.try_own_property_keys()? {
+        if excluded.contains(&key) {
+            continue;
+        }
         if source
             .try_get_own_property(&key)?
             .is_some_and(|descriptor| descriptor.enumerable == Some(true))

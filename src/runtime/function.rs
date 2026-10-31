@@ -637,7 +637,7 @@ fn construct_function(
     instance.initialize_prototype(Some(prototype));
     function.initialize_instance_fields(&instance)?;
     if let Some(plan) = &closure.code.constructor_assignments {
-        plan.execute(&instance, arguments)
+        plan.execute(&instance, arguments, &closure.environment)
             .map_err(|error| closure.realm.bind_exception(error))?;
         return Ok(instance);
     }

@@ -134,3 +134,16 @@ fn private_arrow_plans_preserve_lexical_this_and_pre_super_tdz() {
         "let before=false;let after=false;let brand=false;class A{}class B extends A{#x=42;constructor(){let read=()=>this.#x;let has=o=>#x in o;brand=!has({});try{read();}catch(e){before=e instanceof ReferenceError;}super();after=read()===42;}}new B();before && after && brand;",
     );
 }
+
+#[test]
+fn private_constructor_assignments_keep_mixed_order_and_abrupt_completion() {
+    check(
+        "let log='';class C{#x;constructor(a,b){this.#x=b;this.public=a;this.#x=a;}set public(v){log+=this.#x;}read(){return this.#x;}}let c=new C(42,41);log==='41' && c.read()===42;",
+    );
+    check(
+        "let marker={};let escaped;class C{#x;constructor(a,b){this.#x=b;this.public=a;this.#x=a;}set public(v){escaped=this;throw marker;}read(){return this.#x;}}let caught=false;try{new C(42,41);}catch(e){caught=e===marker;}caught && escaped.read()===41;",
+    );
+    check(
+        "class C{#x;constructor(a,b){this.#x=b;}read(){return this.#x;}}new C(42).read()===undefined;",
+    );
+}

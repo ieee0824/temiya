@@ -400,6 +400,29 @@ impl Environment {
         )
     }
 
+    // A catch parameter is the only binding in an unpublished fresh record.
+    // Validate its context before allocation; the incoming record traces both
+    // this value and the outer environment at the allocation safepoint.
+    pub(crate) fn declarative_initialized(
+        outer: Self,
+        name: JsString,
+        value: Value,
+    ) -> RuntimeResult<Self> {
+        let value = StoredValue::initial(outer.runtime(), &value)?;
+        Ok(Self::new(
+            Some(outer),
+            EnvironmentRecord::Declarative(DeclarativeRecord {
+                bindings: vec![Binding {
+                    name,
+                    value: Some(value),
+                    mutable: true,
+                    strict: false,
+                    deletable: false,
+                }],
+            }),
+        ))
+    }
+
     /// Creates a parentless declarative record in an explicit context.
     #[must_use]
     pub fn declarative_in(context: &super::AllocationContext) -> Self {
@@ -1534,6 +1557,52 @@ fn reference_error(name: &JsString, detail: &str) -> RuntimeError {
 #[cfg(test)]
 mod slot_hint_tests {
     use super::*;
+    #[test]
+    fn initialized_catch_record_traces_incoming_values_and_rejects_foreign_heaps() {
+        let runtime = Runtime::new();
+        runtime.set_allocation_collection_interval(1);
+        let outer = Environment::declarative_in(&runtime);
+        let marker = Object::new_in(&runtime);
+        let identity = marker.identity();
+        let weak = marker.downgrade();
+        let name: JsString = "caught".into();
+        let catch = Environment::declarative_initialized(
+            outer.clone(),
+            name.clone(),
+            Value::Object(marker),
+        )
+        .unwrap();
+        runtime.collect_garbage().unwrap();
+        let Value::Object(loaded) = catch.get_binding_value(&name, true).unwrap() else {
+            panic!("object")
+        };
+        assert_eq!(loaded.identity(), identity);
+        drop(loaded);
+        assert!(!catch.delete_binding(&name).unwrap());
+        catch
+            .set_mutable_binding(&name, Value::Number(42.0), true)
+            .unwrap();
+        runtime.collect_garbage().unwrap();
+        assert!(weak.upgrade().is_none());
+        assert!(
+            catch
+                .get_binding_value(&name, true)
+                .unwrap()
+                .same_value(&Value::Number(42.0))
+        );
+        let foreign = Object::new_in(&Runtime::new());
+        assert!(
+            Environment::declarative_initialized(
+                outer.clone(),
+                "foreign".into(),
+                Value::Object(foreign)
+            )
+            .is_err()
+        );
+        drop((catch, outer));
+        assert_eq!(runtime.collect_garbage().unwrap().retained, 0);
+    }
+
     #[test]
     fn stored_environment_weak_hints_preserve_collection_revival_and_context_checks() {
         let runtime = Runtime::new();

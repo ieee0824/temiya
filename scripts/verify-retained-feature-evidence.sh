@@ -81,6 +81,8 @@ case "${1:-}" in
     node benchmarks/array-binding/verify-fixed.mjs
     node benchmarks/array-binding/verify-hosted.mjs
     node benchmarks/array-binding/verify-full.mjs
+    node benchmarks/array-binding/parent-integration-diagnostic-v1/verify.mjs
+    node benchmarks/array-binding/security-current-integrated-v1/verify.mjs benchmarks/array-binding/security-current-integrated-v1 6c65967973ad4de72986db751d7c7e30547251c2
     ;;
   *)
     echo "usage: $0 {classes|fields|private|iterators|bindings}" >&2

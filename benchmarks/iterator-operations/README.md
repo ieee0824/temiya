@@ -82,3 +82,7 @@ native logs and all6 output oracles. These are instruction diagnostics only.
 `full-definition-cache-v1` retains run 41176606769 at source 09766bb. All eight full-corpus gates replay independently; all 29,701 preceding passes remain, with no new passes or regressions. Existing failures and timeouts remain recorded. This capture does not establish speed qualification.
 
 `hosted-definition-cache-v1` retains all 68 reports from run 41176605076. Existing 46 workloads qualify on both jobs; five of six Iterator workloads still fail the speed requirement. Integrity replay preserves the adverse timings and does not qualify this implementation for merge.
+
+The fourth diagnostic point (0269ef9 environment-root cache) is rejected and reverted: getter instructions improve but invalid-result instructions increase. Raw profiles and the successful bounded-root test remain evidence, not qualification.
+
+`key-and-result-diagnostic-v1` retains three source-specific Callgrind points for short key conversion and fresh iterator results. `verify-key-profiles.mjs` checks all raw counts, output oracles and 80 compiled inputs per point. Array instructions decline from 329,647,241 to 290,521,403; getter and invalid-result gains are smaller. These diagnostics do not satisfy the native Boa speed gate.

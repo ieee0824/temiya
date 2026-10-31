@@ -184,3 +184,12 @@ a 0.0052% captured-next increase. All six oracles validate twice. All-target
 tests912, Clippy, MSRV, i686, doctest and three focused strict Miri tests pass.
 These are instruction diagnostics; current-source native and full correctness
 qualification remain required before merge.
+
+
+`fixed-literal-accessors-v1` retains completed runtime0e9c642 fixed captures:
+Ast and Auto each235 pass,1983 fail,1662 timeout across3880 variants, with
+zero missing outcomes or collection errors. Every outcome matches the prior
+d9906db capture and the other backend. The original baseline collection
+failure and missing-only recovery remain archived. Replay all five retained
+fixed capture pairs with `node benchmarks/iterator-operations/verify-fixed.mjs`.
+These results do not qualify the later fdecf72 runtime.

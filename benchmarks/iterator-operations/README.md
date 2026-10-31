@@ -96,3 +96,13 @@ Native-error (c247cf3) and native-step (83dc7b0) diagnostics are also retained. 
 `done-value-order` and `invalid-next-result` each record 0/3 significant wins
 on both jobs. This capture does not meet the speed requirement. Replay its
 68 reports with `node benchmarks/iterator-operations/verify-hosted.mjs hosted-native-step-v1`.
+
+`full-native-step-v1` retains all eight shards of run 41181492659 at
+1979ac3: 29,701 pass, 61,923 fail, 18 skip and 8,569 timeout. All 29,701
+preceding candidate passes remain passes, with no new passes or regressions.
+Replay with `node benchmarks/iterator-operations/verify-full.mjs full-native-step-v1`.
+
+The `empty-frame` node in `key-and-result-diagnostic-v1` retains all six
+4a4c103 Callgrind profiles and source hashes, including the new 81st Rust
+input. Every worker output validates the unchanged expected value twice.
+These instrumented instruction counts do not establish native speed versus Boa.

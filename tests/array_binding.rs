@@ -126,3 +126,13 @@ fn rest_uses_own_data_properties_and_nested_patterns_accept_strings() {
         "let writes=0;Object.defineProperty(Array.prototype,'0',{set(value){writes++;},configurable:true});let [first,...rest]=[20,22];let descriptor=Object.getOwnPropertyDescriptor(rest,'0');delete Array.prototype[0];let [character,missing='default',...empty]='😀';let [head,...[tail]]=[20,22];first+rest[0]===42&&writes===0&&Array.isArray(rest)&&descriptor.value===22&&descriptor.writable&&descriptor.enumerable&&descriptor.configurable&&character==='😀'&&missing==='default'&&empty.length===0&&head+tail===42;",
     );
 }
+
+#[test]
+fn prepared_parameter_names_keep_fresh_tdz_cells_across_reentrant_calls() {
+    check(
+        "let saved=[];function f([a=()=>b],b=42){saved.push(a);return b;}f([],20);f([],22);let calls=0;function g([x=(calls++===0?g([7]):9)]){return x;}saved[0]()===20&&saved[1]()===22&&g([])===7&&g([])===9;",
+    );
+    check(
+        "let calls=0;function f([a=b],b=42){return a;}for(let i=0;i<2;i++){try{f([]);}catch(e){if(e instanceof ReferenceError)calls++;}}calls===2;",
+    );
+}

@@ -117,6 +117,7 @@ pub(super) struct FunctionCode {
     constructor_assignments: Option<constructor_assignments::Plan>,
     may_observe_arguments: bool,
     parameter_binds_arguments: bool,
+    parameter_names: Option<Box<[JsString]>>,
     delegated_parameters: Option<Box<[usize]>>,
     super_call: Option<super_call::Plan>,
     auto_functions: bool,
@@ -201,6 +202,22 @@ fn prepare_code(
                 .iter()
                 .any(|binding| binding.name == "arguments")
         }),
+        // Syntax-only preparation: collect all names before any call can run
+        // user code. Unsupported patterns retain the call-time error path.
+        parameter_names: if code
+            .parameters
+            .iter()
+            .any(|p| !matches!(p.kind, ExprKind::Identifier(_)))
+        {
+            let mut names = Vec::new();
+            code.parameters
+                .iter()
+                .try_for_each(|p| super::binding::names(p, &mut names))
+                .ok()
+                .map(|()| names.into_boxed_slice())
+        } else {
+            None
+        },
         delegated_parameters: if kind == FunctionKind::Method(MethodKind::Constructor) {
             delegated_parameters(code)
         } else {
@@ -718,6 +735,7 @@ fn call_function(
         &evaluator,
         &environment,
         &closure.code.parameters,
+        closure.code.parameter_names.as_deref(),
         arguments,
     )?;
 
@@ -842,6 +860,7 @@ fn construct_derived(
         &evaluator,
         &environment,
         &closure.code.parameters,
+        closure.code.parameter_names.as_deref(),
         arguments,
     )?;
     let FunctionBody::Block(body) = &closure.code.body else {
@@ -922,19 +941,25 @@ pub(super) fn bind_parameters(
     evaluator: &ExpressionEvaluator,
     environment: &Environment,
     parameters: &[Expr],
+    prepared_names: Option<&[JsString]>,
     arguments: &[Value],
 ) -> RuntimeResult<()> {
     if parameters
         .iter()
         .any(|parameter| !matches!(parameter.kind, ExprKind::Identifier(_)))
     {
-        let mut names = Vec::new();
-        for parameter in parameters {
-            super::binding::names(parameter, &mut names)?;
-        }
-        for name in names {
-            if !environment.has_binding(&name)? {
-                environment.create_mutable_binding(name, false)?;
+        let names = if let Some(names) = prepared_names {
+            Cow::Borrowed(names)
+        } else {
+            let mut names = Vec::new();
+            for parameter in parameters {
+                super::binding::names(parameter, &mut names)?;
+            }
+            Cow::Owned(names)
+        };
+        for name in names.iter() {
+            if !environment.has_binding(name)? {
+                environment.create_mutable_binding(name.clone(), false)?;
             }
         }
         for (index, parameter) in parameters.iter().enumerate() {

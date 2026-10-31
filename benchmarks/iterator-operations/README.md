@@ -67,3 +67,14 @@ hosts. Iterator wins in frozen order are0/0/2/3/0/0 on EPYC9V45 and
 done/value getters roughly4x, and invalid-next-result roughly2x. These
 adverse results do not qualify the source for merge. No input, limit, CPU
 selection or significance threshold has been changed.
+
+indexed-arguments-diagnostic-v1 retains source74ff04d: call-spread instructions
+5286694951 to343139030,882 tests including1doctest passed. Fresh indexed
+argument storage and fully checked lookup hints avoid quadratic property scans.
+definition-cache-diagnostic-v1 retains source09766bb: getter-order2990744792
+to1272405193 and invalid-next1624065902 to1148010885 instructions,884 tests
+including1doctest passed. Verified bodies retain syntax/code-only caches across
+calls; Realm, environments, function objects and private identities bind anew.
+Cross-Realm code reuse, escaping captures, code equality and heap release have
+public integration coverage. verify-profiles.mjs checks identities, raw profiles,
+native logs and all6 output oracles. These are instruction diagnostics only.

@@ -51,3 +51,11 @@ wins and3noisy arrow comparisons. Identical-executable controls retain one
 apparent improvement and one slowdown; neither is a source optimization.
 verify-native-cache.mjs checks the complete records and828native passes.
 This historical source is not speed-qualified.
+
+native-arrow-read-v1 preserves the following unqualified8wins7noise capture.
+native-direct-fields-v1 preserves runtime2639a70:832native passes and14Boa wins
+plus one noisy comparison. Each of the five fixed workloads meets the unchanged
+minimum2/3criterion. Same-executable control is15noise; source comparison is
+14noise and one improvement. Hosted and full-suite qualifications are separate.
+verify-arrow-read-v1.mjs and verify-direct-fields-v1.mjs independently check all
+raw values, statistical decisions and77compiled source hashes.

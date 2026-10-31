@@ -7,7 +7,7 @@ import {execFileSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 const root=path.dirname(fileURLToPath(import.meta.url)),repo=path.resolve(root,'../..');
 const read=p=>JSON.parse(fs.readFileSync(p)),sha=b=>createHash('sha256').update(b).digest('hex');
-for(const [name,source]of [['fixed-empty-frame-v1','f678ea70d4a5ab38703d6956a88f34151025c766'],['fixed-initial-v1','c2bc478647815fdc013f254f5e1e72cfd804945b'],['fixed-definition-cache-v1','09766bba7308eaede7b76059b88b73dd2bbb4efe']]) {
+for(const [name,source]of [['fixed-inline-auxiliary-v1','d9906db3c26e0b6b3663206fe0617fa5dbd7bbfc'],['fixed-empty-frame-v1','f678ea70d4a5ab38703d6956a88f34151025c766'],['fixed-initial-v1','c2bc478647815fdc013f254f5e1e72cfd804945b'],['fixed-definition-cache-v1','09766bba7308eaede7b76059b88b73dd2bbb4efe']]) {
 const dir=root+'/'+name;
 const e=read(dir+'/evidence.json'),comparison=read(dir+'/comparison.json'),freeze=read(root+'/selection-freeze.json');
 assert.equal(e.source,source);assert.equal(comparison.source,source);assert.equal(comparison.baseline_source,e.baseline_source);

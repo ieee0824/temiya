@@ -223,6 +223,66 @@
         }
       ],
       "scope": "Rejected operand-stack experiment: higher instruction counts in five of six inputs; raw results retained."
+    },
+    {
+      "name": "inline-auxiliary",
+      "source": "d9906db3c26e0b6b3663206fe0617fa5dbd7bbfc",
+      "profiles": [
+        {
+          "name": "array-spread",
+          "instructions": 221147588
+        },
+        {
+          "name": "call-spread",
+          "instructions": 223883777
+        },
+        {
+          "name": "captured-next",
+          "instructions": 330139954
+        },
+        {
+          "name": "string-codepoints",
+          "instructions": 206990816
+        },
+        {
+          "name": "done-value-order",
+          "instructions": 903872196
+        },
+        {
+          "name": "invalid-next-result",
+          "instructions": 889581736
+        }
+      ]
+    },
+    {
+      "name": "short-functions",
+      "source": "1eb7817260934b3ba9640bb477ee00ec068abeed",
+      "profiles": [
+        {
+          "name": "array-spread",
+          "instructions": 221195987
+        },
+        {
+          "name": "call-spread",
+          "instructions": 223935901
+        },
+        {
+          "name": "captured-next",
+          "instructions": 330324291
+        },
+        {
+          "name": "string-codepoints",
+          "instructions": 207002439
+        },
+        {
+          "name": "done-value-order",
+          "instructions": 896551496
+        },
+        {
+          "name": "invalid-next-result",
+          "instructions": 882537254
+        }
+      ]
     }
   ],
   "files": {
@@ -356,7 +416,45 @@
     "inline-stacks/string-codepoints-valgrind.log": "de36b4464ce019cc3bfa54b3dfe71feff4558631da04ec485d42a917c311dc88",
     "inline-stacks/string-codepoints-worker.json": "91ea7fcc86cfd7d87956fe2e9c046c14579b41d92e03d7bf0f1bad32db140841",
     "inline-stacks/string-codepoints.callgrind.gz": "2cb84fa845d0131bfcdabe9a67ca7396659608f2b0b7a8ebb46a3b753af20632",
-    "inline-stacks/worker-info.json": "77ee114afc69da5c4eecdb5c3234729f25e9d79e73f6cbb4fbe269a426549bb3"
+    "inline-stacks/worker-info.json": "77ee114afc69da5c4eecdb5c3234729f25e9d79e73f6cbb4fbe269a426549bb3",
+    "inline-auxiliary/worker-info.json": "68fde8c477c686d9c11d0c6f48317e72469d47fbff11d7a891894ffe273156d6",
+    "inline-auxiliary/array-spread.callgrind.gz": "38f86578d50e8f4a7ce42417a350c49b93bdd0cdf91b077955fa10518c8b49ee",
+    "inline-auxiliary/array-spread-worker.json": "fec2d0cf9753db359795d321f3c6cf44163e45eaff8027360ecdee5464ad1c56",
+    "inline-auxiliary/array-spread-valgrind.log": "5e660789f8de376154bbd46c643d0d3749705be1d770b0e3fef3aad95ae498ab",
+    "inline-auxiliary/call-spread.callgrind.gz": "368bb4255f35fc7c6094ecb06579b1dee4636b8b5c403bbe497c071fb3955cdf",
+    "inline-auxiliary/call-spread-worker.json": "08aba1d700135fbd9d252bee65b411b51a09fd3f58204261b69c76f538373d69",
+    "inline-auxiliary/call-spread-valgrind.log": "0159f3acb46a022d8460202c9df641997da60b8482f378df8083e956e56c0d30",
+    "inline-auxiliary/captured-next.callgrind.gz": "30ebe02f0f7da4a87c461bfa71efa07dfc364058c7ea585a3eed04d78a5a1c4f",
+    "inline-auxiliary/captured-next-worker.json": "09a4bc4b900510d4bc6e2c437b5f814d852398177f827514ad94e35c05dfc5a1",
+    "inline-auxiliary/captured-next-valgrind.log": "4ebeb0b44d8b3af00f92ff0abb910403a3a2a3f6825bd58e8d754ab287bc7794",
+    "inline-auxiliary/string-codepoints.callgrind.gz": "862ef6c3af6c12793707c5ee1f612499543aa784add8051921c37f9a16cad2a8",
+    "inline-auxiliary/string-codepoints-worker.json": "8b80ffaf02c61166acff8c23ad3b414048015afd971599d7d5a93d321ce9a938",
+    "inline-auxiliary/string-codepoints-valgrind.log": "659542158fbfa993e5cf7b98b35cf9b5557992aeecd0a5056ca921bd92dd3ffe",
+    "inline-auxiliary/done-value-order.callgrind.gz": "e04f156d148b6c54666903c6862b7e86550437c2b299cafdedabf7ec9021a0ae",
+    "inline-auxiliary/done-value-order-worker.json": "7ae18b6e571bd15d554d8af1e079fa5e8967370518f68567355336eb1bec0654",
+    "inline-auxiliary/done-value-order-valgrind.log": "42a6a868a8360854ef3377c5a86393978e5c1984dc4a92915e08bb02d3f98e44",
+    "inline-auxiliary/invalid-next-result.callgrind.gz": "cc3b7d1fcb24d25f0c5ebae40d0f41071b0c693d9547aa14ed8f6ba528b2e2be",
+    "inline-auxiliary/invalid-next-result-worker.json": "4dfece53205beaa65fbd41abcdc8be3aac9362a8d236c335c3c531b1ff9d8ab8",
+    "inline-auxiliary/invalid-next-result-valgrind.log": "672b167adab0277dd60dd988058f6caf059b052bfa28cbf45c56e51699b7d81a",
+    "short-functions/worker-info.json": "ca3444860966ff61408dfda1fc2533a0f6413200461a3221314d8a3288e6864b",
+    "short-functions/array-spread.callgrind.gz": "9412bffac0f65d960b50c284b9a9cdc85c0432072eaa550bda4982af0990326a",
+    "short-functions/array-spread-worker.json": "c6f8b28ed419e5aa9319af392afd781a0cc223893f65c3a0c286229b20a10f3a",
+    "short-functions/array-spread-valgrind.log": "dca824257ebf84149e7c1c6bedd0497cfb8dbb9e7c1b8ce427c3dd76f5641841",
+    "short-functions/call-spread.callgrind.gz": "f0d757865457a4c45546b42e19052fea9da45086b593c7e10642628df88c6886",
+    "short-functions/call-spread-worker.json": "52266b303339d95d3430b3257b5880399e2f323af356d6d40860585b91213c66",
+    "short-functions/call-spread-valgrind.log": "eaa75ad670392ccd2e56359b08c4e2eb83be629aa0179774e61b1089d2d087c3",
+    "short-functions/captured-next.callgrind.gz": "79c0e5b82322eb1a881c5570aa717e7bc2862e570b93acea74c94254717d01f5",
+    "short-functions/captured-next-worker.json": "77d1dc9a93057050b3d96cfcd0c7fdb0f88db9ebdddc69264d1ae0cd2759e504",
+    "short-functions/captured-next-valgrind.log": "655bb39cb2f309339e89a7874cd408bf3a2e1373569c2b2926b039d3c16af251",
+    "short-functions/string-codepoints.callgrind.gz": "9dc1f9256126b0521c5a66ab493b9b246ca0d55a3e9499e868603e3855528dfa",
+    "short-functions/string-codepoints-worker.json": "19c2e74b5c64fa7f74a680b02f43503fd4c94db5ce09a10aca7f5d69550ef61d",
+    "short-functions/string-codepoints-valgrind.log": "1c1e71f4aa707f0d23c1458b59aba484041bc23b1bf96b449e06a1ab7dc08d39",
+    "short-functions/done-value-order.callgrind.gz": "000054c2aaddd7647d2dea0c2cc382afba4241274a934e33ad42f0c7c4812a76",
+    "short-functions/done-value-order-worker.json": "0faa4ebcd0df77395461f76a83b14f3d51c9f75653ecd299a1998b13d06f9640",
+    "short-functions/done-value-order-valgrind.log": "d45559ffb3327bccb7134c32804650f450a4278b54c51648d960eb6a8157b9f1",
+    "short-functions/invalid-next-result.callgrind.gz": "42a91cd5626e954c22bc70aeb77d67903895ff4ca36abdd27ecf085790a4008d",
+    "short-functions/invalid-next-result-worker.json": "334c34c80d5743160453f514132a1531b21e16033cd2f438b45570034c707665",
+    "short-functions/invalid-next-result-valgrind.log": "44f0835f237da01b5fab993368d7958e243ffbf719eb5dfa9d2f6f63f78282ae"
   },
-  "scope": "Instruction diagnostics on identical frozen inputs. All three profiled outputs validate twice per point. Raw self profiles and source-input identities retained. Neither instruction reductions nor embedded single-sample timings establish native Boa speed qualification. Full correctness and two independent hosted speed gates remain separate requirements. Fourth point is a rejected bounded environment-root cache; its adverse invalid-result profile remains recorded and the runtime change is reverted. Native-error and native-step points retain their original diagnostics. Native-step validates all six frozen inputs twice; these remain instruction counts, not hosted Boa speed qualification."
+  "scope": "Instruction diagnostics on identical frozen inputs. All three profiled outputs validate twice per point. Raw self profiles and source-input identities retained. Neither instruction reductions nor embedded single-sample timings establish native Boa speed qualification. Full correctness and two independent hosted speed gates remain separate requirements. Fourth point is a rejected bounded environment-root cache; its adverse invalid-result profile remains recorded and the runtime change is reverted. Native-error and native-step points retain their original diagnostics. Native-step validates all six frozen inputs twice; these remain instruction counts, not hosted Boa speed qualification. Auxiliary-stack and short-function points retain all six unchanged inputs and do not establish native qualification."
 }

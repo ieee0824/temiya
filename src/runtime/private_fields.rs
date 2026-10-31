@@ -146,7 +146,6 @@ impl Object {
                     .private_fields
                     .as_ref()
                     .expect("checked brand")
-                    .0
                     .iter()
                     .find(|(key, _)| key.same(name))
                     .expect("checked entry")

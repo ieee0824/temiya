@@ -94,6 +94,7 @@ case "${1:-}" in
     node benchmarks/array-binding/outlined-slots-diagnostic-v1/verify.mjs
     node benchmarks/array-binding/cache32-diagnostic-v1/verify.mjs
     node benchmarks/array-binding/security-array-data-properties-v1/verify.mjs benchmarks/array-binding/security-array-data-properties-v1 cd6c0294bba1a2f4ac2059dfb56cb6cd289aba8a
+    node benchmarks/array-binding/security-cache32-v1/verify.mjs benchmarks/array-binding/security-cache32-v1 9f84bc5c6416911df51d76cf10b936ad3c3e003f
     ;;
   objects)
     node benchmarks/object-binding/verify-workloads.mjs

@@ -17,8 +17,10 @@ created as writable, enumerable, configurable data properties, without invoking
 prototype setters. String primitives copy UTF-16 index values. Source values,
 key symbols and partial results remain rooted across reentrant JavaScript/GC.
 
-The foundational Symbol call now creates unique symbol values after description
-coercion and rejects construction. Symbol registry and remaining Symbol.prototype
+The foundational Symbol call creates unique symbol values after description
+coercion. Symbol has a throwing `[[Construct]]`: it remains a valid constructor
+for `extends` and `Reflect.construct` newTarget checks, but `new Symbol()` and
+derived super calls throw TypeError. Symbol registry and remaining Symbol.prototype
 APIs remain #204; this is not completion of that issue. Destructuring assignment,
 complete for-of protocol, async and generator integration remain separate work.
 

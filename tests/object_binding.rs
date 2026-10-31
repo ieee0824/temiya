@@ -84,6 +84,13 @@ fn symbol_key_factory_is_unique_coerces_descriptions_and_cannot_construct() {
 }
 
 #[test]
+fn symbol_is_a_constructor_but_its_construct_operation_throws() {
+    check(
+        "let receiver=Reflect.construct(function(){this.answer=42;},[],Symbol);class Derived extends Symbol{}let threw=false;try{new Derived();}catch(e){threw=e instanceof TypeError;}let direct=false;try{new Symbol();}catch(e){direct=e instanceof TypeError;}receiver.answer===42&&Object.getPrototypeOf(receiver)===Symbol.prototype&&Object.getPrototypeOf(Symbol)===Function.prototype&&threw&&direct;",
+    );
+}
+
+#[test]
 fn reentrant_collection_preserves_source_and_rest_and_releases_everything() {
     for backend in [ScriptBackend::Ast, ScriptBackend::Auto] {
         let engine = Engine::builder().script_backend(backend).build();

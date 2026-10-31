@@ -281,8 +281,9 @@ impl IntrinsicRegistry {
                 ));
                 constructor
             } else if matches!(id, IntrinsicId::BigInt | IntrinsicId::Symbol) {
-                // These are call-only; built-in installation replaces this
-                // capture-free body without a constructor payload to hide it.
+                // Built-in installation replaces this capture-free call body.
+                // Symbol subsequently installs its throwing [[Construct]];
+                // no managed factory may hide these installed callbacks.
                 Object::native_function_for(global, |_, _| Ok(Value::Undefined))
             } else if let Some((prototype_id, _)) = id.pair() {
                 let prototype = objects.get(&prototype_id).cloned().ok_or_else(|| {

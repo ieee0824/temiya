@@ -38,7 +38,10 @@ fn install_symbol_call(intrinsics: &IntrinsicRegistry, symbols: &super::WellKnow
         };
         Ok(Value::Symbol(super::Symbol::new(description)))
     });
-    constructor.clear_native_construct();
+    // Symbol has [[Construct]] (and can be used as an extends/newTarget
+    // value), but invoking that internal method must always throw.
+    constructor
+        .set_native_construct(|_, _| Err(RuntimeError::type_error("Symbol cannot be constructed")));
 }
 
 fn install_proxy(intrinsics: &IntrinsicRegistry) -> RuntimeResult<()> {

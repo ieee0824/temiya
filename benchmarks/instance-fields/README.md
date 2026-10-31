@@ -64,3 +64,8 @@ full-direct-fields-v1 retains the current runtime2639a70 full run41147468864.
 All eight known-pass gates independently pass over52133files100211variants:
 26826pass,64484fail,18skip,8883timeout, with no missing outcomes or known-pass
 regressions. The remaining failures/skips/timeouts are not conformance passes.
+
+fixed-direct-fields-v1 retains both complete current4098-variant official
+captures and their preceding captures. verify-fixed-direct.mjs reconstructs
+1008preserved passes per backend and exact AST/Auto outcome equality. All
+2294failures796timeouts remain recorded; no dependency failure is waived.

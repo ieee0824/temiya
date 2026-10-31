@@ -7,36 +7,55 @@ use crate::gc::{Handle, Trace, Tracer};
 use num_bigint::BigInt;
 
 #[derive(Clone)]
-pub(super) struct StoredRuntimeError {
-    kind: super::RuntimeErrorKind,
-    message: std::rc::Rc<String>,
-    thrown: Option<StoredValue>,
+pub(super) enum StoredRuntimeError {
+    Native {
+        kind: super::RuntimeErrorKind,
+        message: super::ErrorMessage,
+        thrown: Option<StoredValue>,
+    },
+    Thrown(StoredValue),
 }
 impl StoredRuntimeError {
     pub(super) fn store(owner: &impl StoredOwner, error: RuntimeError) -> RuntimeResult<Self> {
-        Ok(Self {
-            kind: error.kind,
-            message: error.message,
-            thrown: error
-                .thrown
-                .map(|value| StoredValue::store_owned(owner, *value))
-                .transpose()?,
+        Ok(match error.0 {
+            super::RuntimeErrorData::Thrown(value) => {
+                Self::Thrown(StoredValue::store_owned(owner, value)?)
+            }
+            super::RuntimeErrorData::Native(error) => Self::Native {
+                kind: error.kind,
+                message: error.message,
+                thrown: error
+                    .thrown
+                    .map(|value| StoredValue::store_owned(owner, *value))
+                    .transpose()?,
+            },
         })
     }
     pub(super) fn load(&self, owner: &impl StoredOwner) -> RuntimeResult<RuntimeError> {
-        Ok(RuntimeError {
-            kind: self.kind,
-            message: self.message.clone(),
-            thrown: self
-                .thrown
-                .as_ref()
-                .map(|value| value.load(owner).map(Box::new))
-                .transpose()?,
+        Ok(match self {
+            Self::Thrown(value) => RuntimeError::thrown(value.load(owner)?),
+            Self::Native {
+                kind,
+                message,
+                thrown,
+            } => RuntimeError::native(
+                *kind,
+                message.clone(),
+                thrown
+                    .as_ref()
+                    .map(|value| value.load(owner).map(Box::new))
+                    .transpose()?,
+            ),
         })
     }
     pub(super) fn trace(&self, tracer: &mut Tracer<'_>) {
-        if let Some(value) = &self.thrown {
-            value.trace(tracer);
+        match self {
+            Self::Thrown(value) => value.trace(tracer),
+            Self::Native {
+                thrown: Some(value),
+                ..
+            } => value.trace(tracer),
+            _ => {}
         }
     }
 }
@@ -327,6 +346,70 @@ impl StoredDescriptor {
                     set.trace(tracer);
                 }
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod stored_error_tests {
+    use super::*;
+    #[test]
+    fn stored_errors_preserve_kind_identity_nonowning_edges_and_context_checks() {
+        let runtime = Runtime::new();
+        let owner = Object::new_in(&runtime);
+        let mut stored = Vec::new();
+        for native in [false, true] {
+            let value = Object::new_in(&runtime);
+            let weak = value.downgrade();
+            let mut error = if native {
+                RuntimeError::type_error("native diagnostic")
+            } else {
+                RuntimeError::thrown(Value::Object(value.clone()))
+            };
+            if native {
+                error.attach_thrown(Value::Object(value.clone()));
+            }
+            let kind = error.kind();
+            let message = error.message().to_owned();
+            let record = StoredRuntimeError::store(&owner, error).unwrap();
+            let loaded = record.load(&owner).unwrap();
+            assert_eq!(loaded.kind(), kind);
+            assert_eq!(loaded.message(), message);
+            assert!(
+                loaded
+                    .thrown_value()
+                    .unwrap()
+                    .same_value(&Value::Object(value.clone()))
+            );
+            drop(loaded);
+            drop(value);
+            stored.push((weak, record));
+        }
+        assert_eq!(runtime.collect_garbage().unwrap().retained, 1);
+        for (weak, error) in stored {
+            assert!(weak.upgrade().is_none());
+            assert!(error.load(&owner).is_err());
+        }
+        let other = Runtime::new();
+        let foreign = Object::new_in(&other);
+        assert!(
+            StoredRuntimeError::store(&owner, RuntimeError::thrown(Value::Object(foreign.clone())))
+                .is_err()
+        );
+        let mut native = RuntimeError::type_error("foreign native");
+        native.attach_thrown(Value::Object(foreign));
+        assert!(StoredRuntimeError::store(&owner, native).is_err());
+        for value in [Value::Undefined, Value::Null, Value::Number(-0.0)] {
+            let stored =
+                StoredRuntimeError::store(&owner, RuntimeError::thrown(value.clone())).unwrap();
+            assert!(
+                stored
+                    .load(&owner)
+                    .unwrap()
+                    .thrown_value()
+                    .unwrap()
+                    .same_value(&value)
+            );
         }
     }
 }

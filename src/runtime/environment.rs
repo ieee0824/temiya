@@ -1621,8 +1621,8 @@ fn reference_error(name: &JsString, detail: &str) -> RuntimeError {
     }
     message.push(' ');
     message.push_str(detail);
-    let error = RuntimeError::reference_error(message);
     if eligible {
+        let message = Rc::new(message);
         REFERENCE_MESSAGES.with(|cache| {
             let mut cache = cache.borrow_mut();
             if cache.len() == REFERENCE_MESSAGE_ENTRIES {
@@ -1632,11 +1632,13 @@ fn reference_error(name: &JsString, detail: &str) -> RuntimeError {
             cache.push((
                 JsString::from_code_units_slice(name.code_units()),
                 detail.to_owned(),
-                error.message.clone(),
+                message.clone(),
             ));
         });
+        RuntimeError::reference_error_shared(message)
+    } else {
+        RuntimeError::reference_error(message)
     }
-    error
 }
 
 #[cfg(test)]

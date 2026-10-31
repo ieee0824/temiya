@@ -39,3 +39,25 @@ fn exhausted_iterator_is_not_advanced_and_empty_pattern_closes() {
         "let calls=0;let closes=0;let input={[Symbol.iterator](){return {next(){calls++;return {done:true,get value(){throw 42;}};},return(){closes++;return {};}};}};let [a=20,,b=22,...rest]=input;let []=input;a+b===42&&calls===1&&closes===1&&rest.length===0;",
     );
 }
+
+#[test]
+fn catch_and_loop_declarations_initialize_patterns_in_their_scope() {
+    check(
+        "let answer=0;try{throw [20,[22]];}catch([a,[b]]){answer=a+b;}let total=0;for(let [a,b] of [[1,2],[3,4]]){total+=a+b;}let v=0;for(var [x,y] of [[20,22]]){v=x+y;}answer===42&&total===10&&v===42&&x===20;",
+    );
+    check("let total=0;for(let [i]=[0];i<3;i++){total+=i;}total===3;");
+}
+
+#[test]
+fn defaults_keep_names_and_step_errors_do_not_close() {
+    check("let [f=function(){},C=class{}]=[];f.name==='f'&&C.name==='C';");
+    for step in [
+        "next(){throw marker;}",
+        "next(){return {get done(){throw marker;}};}",
+        "next(){return {done:false,get value(){throw marker;}};}",
+    ] {
+        check(&format!(
+            "let marker={{}};let closes=0;let input={{[Symbol.iterator](){{return {{{step},return(){{closes++;return {{}};}}}};}}}};let caught=false;try{{let [value]=input;}}catch(e){{caught=e===marker;}}caught&&closes===0;"
+        ));
+    }
+}

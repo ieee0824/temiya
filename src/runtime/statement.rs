@@ -445,15 +445,16 @@ impl StatementEvaluator {
                     let declaration = declarations
                         .first()
                         .ok_or_else(|| RuntimeError::syntax_error("missing for-each binding"))?;
-                    let name = binding_name(&declaration.binding)?;
                     let environment = Environment::declarative(self.expression.environment.clone());
-                    if *kind == VariableKind::Const {
-                        environment.create_immutable_binding(name.clone(), true)?;
-                    } else {
-                        environment.create_mutable_binding(name.clone(), false)?;
-                    }
-                    environment.initialize_binding(&name, value)?;
-                    self.nested(environment).statement(body, &[])?
+                    let nested = self.nested(environment);
+                    nested.instantiate_declarations(*kind, declarations)?;
+                    super::binding::initialize(
+                        &nested.expression,
+                        &declaration.binding,
+                        value,
+                        true,
+                    )?;
+                    nested.statement(body, &[])?
                 }
                 _ => {
                     self.assign_for_init(left, value)?;
@@ -549,9 +550,13 @@ impl StatementEvaluator {
     fn catch(&self, handler: &CatchClause, thrown: Value) -> RuntimeResult<Completion> {
         let environment = Environment::declarative(self.expression.environment.clone());
         if let Some(parameter) = &handler.param {
-            let name = binding_name(parameter)?;
-            environment.create_mutable_binding(name.clone(), false)?;
-            environment.initialize_binding(&name, thrown)?;
+            let mut names = Vec::new();
+            super::binding::names(parameter, &mut names)?;
+            for name in names {
+                environment.create_mutable_binding(name, false)?;
+            }
+            let nested = self.nested(environment.clone());
+            super::binding::initialize(&nested.expression, parameter, thrown, true)?;
         }
         self.nested(environment).statement(&handler.body, &[])
     }
@@ -858,6 +863,17 @@ impl StatementEvaluator {
                 let Some(declaration) = declarations.first() else {
                     return Err(RuntimeError::syntax_error("missing for-each binding"));
                 };
+                if !matches!(declaration.binding.kind, ExprKind::Identifier(_)) {
+                    if *kind != VariableKind::Var {
+                        self.instantiate_declarations(*kind, declarations)?;
+                    }
+                    return super::binding::initialize(
+                        &self.expression,
+                        &declaration.binding,
+                        value,
+                        *kind != VariableKind::Var,
+                    );
+                }
                 let name = binding_name(&declaration.binding)?;
                 if *kind == VariableKind::Var {
                     return self

@@ -1,0 +1,3 @@
+Complete security capture for measured source18d3885, compiled runtime0546eea. All19 jobs pass; the verifier checks log hashes, all16 exact-test plans, their complete disjoint partition, strict Miri flags, ASan summaries and dependency audit. All157 actual Miri tests and916 ASan tests pass.
+
+Replay: `node benchmarks/iterator-operations/security-dense-marks-v1/verify.mjs benchmarks/iterator-operations/security-dense-marks-v1 18d3885b09a5b9c491b57ba5e35c36b094afd441`. Metadata-only PR38fcaf has identical Rust sources, tests, build inputs and workflow conditions. Native speed is verified separately.

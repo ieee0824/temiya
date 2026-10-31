@@ -75,6 +75,7 @@ case "${1:-}" in
     node benchmarks/iterator-operations/verify-hosted.mjs
     node benchmarks/iterator-operations/verify-profiles.mjs
     node benchmarks/iterator-operations/verify-key-profiles.mjs
+    node benchmarks/iterator-operations/security-dense-marks-v1/verify.mjs benchmarks/iterator-operations/security-dense-marks-v1 18d3885b09a5b9c491b57ba5e35c36b094afd441
     ;;
   bindings)
     node benchmarks/array-binding/verify-workloads.mjs

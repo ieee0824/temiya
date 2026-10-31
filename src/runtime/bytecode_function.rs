@@ -731,8 +731,21 @@ mod empty_frame_tests {
                         engine.value(&realm, Value::Object(gc)).unwrap(),
                     )
                     .unwrap();
+                let setup = engine.compile(&realm, "let receiverHits=0;function receiver(){'use strict';if(this!==17)throw 42;receiverHits++;return this;}").unwrap();
+                engine.evaluate(&setup).unwrap();
+                let before_probe = EMPTY_FRAME_CALLS.with(|count| count.get());
+                let probe = engine
+                    .compile(&realm, "receiver.call(17)===17&&receiverHits===1;")
+                    .unwrap();
+                assert!(matches!(
+                    engine.evaluate(&probe).unwrap().value(),
+                    Value::Boolean(true)
+                ));
+                if backend == ScriptBackend::Auto {
+                    assert!(EMPTY_FRAME_CALLS.with(|count| count.get()) > before_probe);
+                }
                 let before = EMPTY_FRAME_CALLS.with(|count| count.get());
-                let script = engine.compile(&realm, "let expectedGlobal=this;function strict(){'use strict';gcNow();return this;}function loose(){gcNow();return this;}let owner={answer:20,read(){gcNow();return this.answer;}};let boxed=loose.call(17);strict()===undefined&&strict.call(null)===null&&strict.call(17)===17&&1/strict.call(-0)===-Infinity&&owner.read()===20&&owner.read.call({answer:42})===42&&boxed.valueOf()===17&&loose.call(null)===expectedGlobal;").unwrap();
+                let script = engine.compile(&realm, "let expectedGlobal=this;let driver={valueOf(){gcNow();return 0;}};let tick=driver;function strict(){'use strict';tick++;if(tick!==1)throw 42;return this;}function loose(){tick++;if(tick!==1)throw 42;return this;}tick=driver;let first=strict();tick=driver;let second=strict.call(null);tick=driver;let third=strict.call(17);tick=driver;let fourth=strict.call(-0);tick=driver;let boxed=loose.call(17);tick=driver;let global=loose.call(null);let owner={answer:20,read(){gcNow();return this.answer;}};first===undefined&&second===null&&third===17&&1/fourth===-Infinity&&owner.read()===20&&owner.read.call({answer:42})===42&&boxed.valueOf()===17&&global===expectedGlobal;").unwrap();
                 assert!(
                     matches!(
                         engine.evaluate(&script).unwrap().value(),

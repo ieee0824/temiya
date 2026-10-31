@@ -165,6 +165,7 @@ mod tests {
     #[test]
     fn rejects_activation_observers_in_instructions_and_nested_metadata() {
         for source in [
+            "function f(){while(this){}}",
             "function f(){return new.target;}",
             "function f(){return arguments;}",
             "function f(){let local=1;return local;}",

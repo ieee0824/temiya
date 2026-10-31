@@ -7,8 +7,9 @@ execution contract. This is an allocation optimization of ordinary calls; the
 still define the observable Realm, receiver, binding and completion behavior.
 
 The verifier records eligibility only after ordinary bytecode validation. Every
-scope must have no bindings or declarations. Direct this reads use the receiver
-passed explicitly to the VM. Other activation reads, direct eval and
+scope must have no bindings or declarations. Direct this reads in the bounded
+short-function executor use the receiver passed explicitly to that executor.
+Larger bodies reading this keep their ordinary function environment. Other activation reads, direct eval and
 arguments names, function/class creation instructions and unknown instructions
 are excluded. Object-initializer metadata is scanned recursively; this, super,
 meta-properties, arrows, classes, imports, async/generator functions and unknown

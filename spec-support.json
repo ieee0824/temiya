@@ -21,9 +21,13 @@
       "tests": [
         "tests/array_binding.rs",
         "docs/array-binding.md",
-        "benchmarks/array-binding/selection-freeze.json"
+        "benchmarks/array-binding/selection-freeze.json",
+        "benchmarks/array-binding/full-inline-thrown-v1/evidence.json",
+        "benchmarks/array-binding/hosted-inline-thrown-v1/evidence.json",
+        "benchmarks/array-binding/security-inline-thrown-v1/evidence.json",
+        "benchmarks/array-binding/fixed-inline-thrown-v1/evidence.json"
       ],
-      "rationale": "Public Engine Ast/Auto initialize array patterns in declarations, ordinary parameters, catch and supported loop declarations. Coverage includes nested patterns, elision/default/rest, TDZ, anonymous default names, abrupt close priority and reentrant GC. Object patterns are covered by runtime.object-binding; assignment patterns, complete for-of and async/generator integration remain separate. Full fixed-corpus and hosted speed qualification are pending.",
+      "rationale": "Public Engine Ast/Auto initialize array patterns in declarations, ordinary parameters, catch and supported loop declarations. Coverage includes nested patterns, elision/default/rest, TDZ, anonymous default names, abrupt close priority and reentrant GC. Source7a154b1 preserves all33565 preceding full-corpus passes and qualifies all58 native workloads on both independent jobs. Complete security passes. Fixed Ast/Auto each preserve all5292 preceding passes with identical17414 outcomes; the array implementation is merged in main. Object patterns are covered by runtime.object-binding; assignment patterns, complete for-of and async/generator integration remain separate.",
       "kind": "group",
       "issues": [
         162,
@@ -33,7 +37,7 @@
       ],
       "test262": {
         "status": "not-run",
-        "rationale": "Preimplementation fixed baseline capture is running; no candidate corpus outcome or conformance pass is claimed."
+        "rationale": "Whole-feature conformance remains unqualified. Full source7a154b1 capture records33565pass58059fail18skip8569timeout over100211variants,0missing, with all33565 preceding passes preserved. These aggregate outcomes are separate retained evidence; fixed Ast/Auto each record5292pass7691fail4431timeout over17414variants with zero missing, zero regressions and identical outcomes to the preceding source."
       }
     },
     {

@@ -8,6 +8,7 @@ import {fileURLToPath} from 'node:url';
 const root=path.dirname(fileURLToPath(import.meta.url)),repo=path.resolve(root,'../..');
 const read=p=>JSON.parse(fs.readFileSync(p));
 const captures=[
+ {name:'full-inline-thrown-v1',source:'7a154b17dd6982913047b364e7bf4c293103798a',run:41243220284,parent:'9f84bc5c6416911df51d76cf10b936ad3c3e003f',parentRun:41234441785,preserved:33565,added:0},
  {name:'full-cache32-v1',source:'9f84bc5c6416911df51d76cf10b936ad3c3e003f',run:41234441785,parent:'1090d929ab73326097af7c5e0b8a9a685d761cd3',parentRun:41223794490,preserved:33565,added:0},
  {name:'full-array-data-properties-v1',source:'1090d929ab73326097af7c5e0b8a9a685d761cd3',run:41223794490,parent:'6c65967973ad4de72986db751d7c7e30547251c2',parentRun:41207659226,preserved:33565,added:0},
  {name:'full-initial-integrated-v1',source:'91fb9f4e516e12b738e729f3f6441920ca642c49',run:41187181537,parent:'4a4c103ade6b0acae5f5a16cfa68220f24c2300e',parentRun:41186658237,preserved:29701,added:3864},

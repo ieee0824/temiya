@@ -71,6 +71,29 @@ impl DefinitionEvaluationContext {
             .evaluate(expression)
     }
 
+    // Called only by the verified short-function executor: its empty-frame
+    // proof excludes lexical this/new.target/super, arrows and direct eval
+    // throughout the metadata expression. Ordinary methods establish their
+    // own call frame when invoked and still capture this environment.
+    pub(crate) fn evaluate_object_literal_without_frame_observers(
+        &mut self,
+        expression: &crate::ast::Expr,
+        strict: bool,
+        realm: &Realm,
+        environment: &Environment,
+    ) -> RuntimeResult<Value> {
+        super::ExpressionEvaluator::with_environment(
+            realm.clone(),
+            environment.clone(),
+            Value::Undefined,
+            strict,
+        )
+        .with_function_cache(Some(
+            self.cache.get_or_insert_with(Default::default).clone(),
+        ))
+        .evaluate(expression)
+    }
+
     fn evaluator(
         &mut self,
         realm: &Realm,

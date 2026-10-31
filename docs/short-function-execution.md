@@ -19,6 +19,12 @@ Receiver normalization, function ownership and exception-realm binding remain
 in the ordinary function caller. Reentrant GC and foreign Realm tests cover
 these boundaries through public Engine Ast/Auto APIs.
 
+Object metadata on this path also omits the search for enclosing `this` and
+`new.target` bindings. The same proof rejects those observers, arrows, `super`
+and direct `eval` throughout metadata expressions before execution. Metadata
+still uses the original environment, Realm and immutable function-code cache;
+computed keys and subsequently invoked ordinary methods keep their effects.
+
 This reduces general VM setup for eligible callbacks without changing workload
 inputs or statistical gates. Fixed/full corpus, security and two independent
 native Boa comparisons remain required for qualification.

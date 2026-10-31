@@ -230,9 +230,9 @@ pub(super) fn execute(
                 else {
                     unreachable!()
                 };
-                values.push(
-                    definitions.evaluate_object_literal(definition, *strict, realm, outer)?,
-                )?;
+                values.push(definitions.evaluate_object_literal_without_frame_observers(
+                    definition, *strict, realm, outer,
+                )?)?;
             }
             Instruction::Jump(target) => pc = target as usize,
             Instruction::JumpIfFalse(target) => {
@@ -288,6 +288,10 @@ mod tests {
             "function f(){a=(b=1);return a;}",
             "function f(){a=x?1:2;return a;}",
             "function f(){return callback();}",
+            "function f(){return {read:()=>this};}",
+            "function f(){return {value:new.target};}",
+            "function f(){return {value:arguments[0]};}",
+            "function f(){return {value:eval('this')};}",
         ] {
             assert!(!eligible(source), "{source}");
         }

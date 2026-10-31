@@ -95,3 +95,10 @@ fn binding_values_and_environments_survive_reentrant_gc_then_release() {
         assert_eq!(engine.collect_garbage().unwrap().retained, 0);
     }
 }
+
+#[test]
+fn parameter_bound_arguments_shadows_the_implicit_arguments_object_and_has_tdz() {
+    check(
+        "function array([arguments]){return arguments;}function defaults(arguments=22){return arguments;}function rest(...arguments){return Array.isArray(arguments)&&arguments[0]===20&&arguments.length===2;}let caught=false;function later(value=arguments,arguments=42){return value;}try{later();}catch(e){caught=e instanceof ReferenceError;}function Constructor([arguments]){this.answer=arguments;}array([20])+defaults()===42&&rest(20,22)&&caught&&new Constructor([42]).answer===42;",
+    );
+}

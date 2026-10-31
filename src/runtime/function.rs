@@ -57,6 +57,7 @@ pub(super) struct FunctionCode {
     private_expression: Option<private_expression::Plan>,
     constructor_assignments: Option<constructor_assignments::Plan>,
     may_observe_arguments: bool,
+    parameter_binds_arguments: bool,
     delegated_parameters: Option<Box<[usize]>>,
     super_call: Option<super_call::Plan>,
     auto_functions: bool,
@@ -123,6 +124,11 @@ fn prepare_code(
             None
         },
         may_observe_arguments: may_observe_arguments(code),
+        parameter_binds_arguments: code.parameters.iter().any(|parameter| {
+            crate::semantics::bound_names(parameter)
+                .iter()
+                .any(|binding| binding.name == "arguments")
+        }),
         delegated_parameters: if kind == FunctionKind::Method(MethodKind::Constructor) {
             delegated_parameters(code)
         } else {
@@ -622,7 +628,7 @@ fn call_function(
     // The complete syntax scan includes defaults, nested classes/functions,
     // arrows and direct eval. Retain the actual object whenever any of those
     // can observe arguments; otherwise this implicit binding is unreachable.
-    if !lexical && closure.code.may_observe_arguments {
+    if !lexical && closure.code.may_observe_arguments && !closure.code.parameter_binds_arguments {
         bind_arguments(&closure.realm, &environment, arguments)?;
     }
     let evaluator = ExpressionEvaluator::with_environment(
@@ -746,7 +752,7 @@ fn construct_derived(
         Some(new_target.clone()),
         ThisBindingStatus::Uninitialized,
     );
-    if closure.code.may_observe_arguments {
+    if closure.code.may_observe_arguments && !closure.code.parameter_binds_arguments {
         bind_arguments(&closure.realm, &environment, arguments)?;
     }
     let evaluator = ExpressionEvaluator::with_environment(

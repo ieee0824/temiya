@@ -25,3 +25,5 @@ metadata tests and every /dstr/ path: 8,806 files and 17,414 variants. Cross-fea
 failures remain in scope of recording. Full candidate results, toolchain checks
 and two-job Boa speed qualification remain pending; no conformance or performance
 completion is claimed by the focused integration tests.
+
+A parameter BoundName of `arguments` suppresses the implicit arguments object. Array/default/rest parameter bindings keep their own uninitialized slot until their turn, including TDZ when an earlier default reads a later `arguments` parameter. Ordinary calls and construction share this rule.

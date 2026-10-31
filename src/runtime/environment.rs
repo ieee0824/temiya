@@ -355,13 +355,13 @@ impl Environment {
     ) -> RuntimeResult<Value> {
         {
             let record = self.0.record.borrow();
-            if let (EnvironmentRecord::Function(record), Some(index)) = (&*record, index) {
-                if let Some(binding) = record
-                    .declarative_record
-                    .bindings
-                    .get(index)
-                    .filter(|binding| binding.name == *name)
-                {
+            let bindings = match &*record {
+                EnvironmentRecord::Function(record) => Some(&record.declarative_record.bindings),
+                EnvironmentRecord::Declarative(record) => Some(&record.bindings),
+                _ => None,
+            };
+            if let (Some(bindings), Some(index)) = (bindings, index) {
+                if let Some(binding) = bindings.get(index).filter(|binding| binding.name == *name) {
                     return binding.read(self);
                 }
             }
@@ -378,10 +378,15 @@ impl Environment {
     ) -> RuntimeResult<()> {
         {
             let mut record = self.0.record.borrow_mut();
-            if let (EnvironmentRecord::Function(record), Some(index)) = (&mut *record, index) {
-                if let Some(binding) = record
-                    .declarative_record
-                    .bindings
+            let bindings = match &mut *record {
+                EnvironmentRecord::Function(record) => {
+                    Some(&mut record.declarative_record.bindings)
+                }
+                EnvironmentRecord::Declarative(record) => Some(&mut record.bindings),
+                _ => None,
+            };
+            if let (Some(bindings), Some(index)) = (bindings, index) {
+                if let Some(binding) = bindings
                     .get_mut(index)
                     .filter(|binding| binding.name == *name)
                 {
@@ -884,6 +889,40 @@ impl Environment {
                 }
             }
         }
+    }
+
+    // Retain the position already found while resolving pure records. Object,
+    // global and module records keep their observable/indirect lookup paths.
+    // Consumers validate the name again before using a position after callbacks.
+    pub(crate) fn resolve_binding_with_hint(
+        &self,
+        name: &JsString,
+    ) -> RuntimeResult<Option<(Self, Option<usize>)>> {
+        let mut environment = Some(self.clone());
+        while let Some(current) = environment {
+            let pure = {
+                let record = current.0.record.borrow();
+                let bindings = match &*record {
+                    EnvironmentRecord::Function(record) => {
+                        Some(&record.declarative_record.bindings)
+                    }
+                    EnvironmentRecord::Declarative(record) => Some(&record.bindings),
+                    _ => None,
+                };
+                bindings.map(|bindings| bindings.iter().position(|binding| binding.name == *name))
+            };
+            match pure {
+                Some(Some(index)) => return Ok(Some((current, Some(index)))),
+                Some(None) => {}
+                None => {
+                    if current.has_binding(name)? {
+                        return Ok(Some((current, None)));
+                    }
+                }
+            }
+            environment = current.outer();
+        }
+        Ok(None)
     }
 
     /// Resolves a name through the lexical environment chain.

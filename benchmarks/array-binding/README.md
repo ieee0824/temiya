@@ -56,3 +56,10 @@ same-binary/same-limit diagnostic is retained without replacing that timeout.
 This is historical evidence; it does not qualify the later integrated source.
 Replay both raw captures and their comparison with
 `node benchmarks/array-binding/verify-fixed.mjs`.
+
+`hosted-initial-integrated-v1` preserves run 41187179432 at 91fb9f4. Both
+independent jobs record 0/3 significant wins for all six array-binding inputs
+and for the two remaining Iterator inputs. All prior 46 workloads qualify on
+both jobs. The candidate does not qualify for merging; all 72 raw reports and
+adverse outcomes are retained. Replay with
+`node benchmarks/array-binding/verify-hosted.mjs`.

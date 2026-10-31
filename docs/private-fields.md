@@ -31,3 +31,15 @@ including a subsequent readback. Getters/setters still run normally against the
 actual receiver, and readback invokes the getter after the setter returns.
 Optional calls, spread arguments and effectful RHS expressions retain AST
 evaluation. Shared code stores syntax while immutable names bind per closure.
+Auto private-expression plans bind immutable private names per closure. Shared
+FunctionCode stores syntax only, so repeated class evaluations keep separate
+brands. Names have no JavaScript edges; captured environments remain traced.
+Prepared simple base constructors avoid loading unused lexical-this roots while
+retaining field initialization, ordinary setters and caller/body exception realms.
+
+The sparse private payload holds its first slot directly and grows additional
+slots geometrically. Ordinary object records keep the same optional-box field.
+The collector traces both the first slot and all additional values. Prepared
+constructor private targets bind per closure; captured environments load only
+when a missing binding requires the ordinary fallback. Getter/setter effects and
+assignment order remain in the shared runtime.

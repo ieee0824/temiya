@@ -248,11 +248,16 @@ pub(super) struct FunctionClosure {
     constructor_kind: ConstructorKind,
 }
 
+// Bound private identities contain no JS edges and never enter shared code.
+// One optional box preserves the size of ordinary closure payloads.
+enum PrivateBindings {
+    Expression(super::private_fields::Name),
+    Constructor(constructor_assignments::Names),
+}
+
 pub(super) struct StoredFunctionClosure {
     code: Rc<FunctionCode>,
-    // Class-private identities contain no JS edges and belong to this closure,
-    // never to FunctionCode shared across repeated evaluations.
-    private_expression_name: Option<super::private_fields::Name>,
+    private_bindings: Option<Box<PrivateBindings>>,
     kind: FunctionKind,
     realm: StoredRealm,
     environment: StoredEnvironment,
@@ -412,8 +417,14 @@ impl StoredFunctionClosure {
                 let instance = Object::new_for(&new_target);
                 instance.initialize_prototype(Some(prototype));
                 owner.initialize_instance_fields(&instance)?;
-                plan.execute(&instance, arguments, &self.environment.load(owner)?)
-                    .map_err(|error| realm.bind_exception(error))?;
+                let bindings = match self.private_bindings.as_deref() {
+                    Some(PrivateBindings::Constructor(names)) => Some(names),
+                    _ => None,
+                };
+                plan.execute(&instance, arguments, bindings, || {
+                    self.environment.load(owner)
+                })
+                .map_err(|error| realm.bind_exception(error))?;
                 return Ok(instance);
             }
         }
@@ -478,13 +489,21 @@ pub(super) fn create_function_with_constructor(
             .intrinsic(super::IntrinsicId::FunctionPrototype)
     }));
     let prepared = prepare_code(code, kind, &evaluator.function_cache);
-    let private_expression_name = prepared
-        .private_expression
-        .as_ref()
-        .and_then(|plan| plan.bind(name_environment.as_ref().unwrap_or(&evaluator.environment)));
+    let captured = name_environment.as_ref().unwrap_or(&evaluator.environment);
+    let private_bindings = if let Some(plan) = &prepared.private_expression {
+        plan.bind(captured).map(PrivateBindings::Expression)
+    } else if constructor_kind == ConstructorKind::Base {
+        prepared
+            .constructor_assignments
+            .as_ref()
+            .and_then(|plan| plan.bind(captured).map(PrivateBindings::Constructor))
+    } else {
+        None
+    }
+    .map(Box::new);
     let closure = StoredFunctionClosure {
         code: prepared,
-        private_expression_name,
+        private_bindings,
         kind,
         realm: StoredRealm::store(&function, &evaluator.realm)?,
         environment: StoredEnvironment::store(

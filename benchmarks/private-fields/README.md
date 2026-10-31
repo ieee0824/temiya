@@ -83,3 +83,9 @@ private storage and bound constructor bindings:27855pass,63525fail,18skip,
 8813timeout,0missing. All previous candidate passes remain, and all27200 main
 passes remain with655 additions. The eight gates independently replay; this
 correctness result does not establish the separate pending two-host speed gate.
+
+hosted-bound-constructor-v1 retains run41168380212, source072f6315. Copy1
+EPYC7763 qualifies all40 workloads. Copy2 EPYC9V74 qualifies38; static-abrupt
+and private-invalid-receiver both have0/3 significant wins. All56 reports
+independently replay. Neither a successful job nor one passing host qualifies
+this source for merge. The original inputs and noise policy remain unchanged.

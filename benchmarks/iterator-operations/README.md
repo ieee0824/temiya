@@ -88,3 +88,5 @@ The fourth diagnostic point (0269ef9 environment-root cache) is rejected and rev
 `key-and-result-diagnostic-v1` retains three source-specific Callgrind points for short key conversion and fresh iterator results. `verify-key-profiles.mjs` checks all raw counts, output oracles and 80 compiled inputs per point. Array instructions decline from 329,647,241 to 290,521,403; getter and invalid-result gains are smaller. These diagnostics do not satisfy the native Boa speed gate.
 
 `fixed-definition-cache-v1` retains historical09766bb fixed Ast/Auto captures:235pass1983fail1662timeout each. Every outcome agrees with c2bc478; no regressions or missing records. These captures do not qualify the later key/result/native-step changes.
+
+Native-error (c247cf3) and native-step (83dc7b0) diagnostics are also retained. Native-step validates all six frozen outputs twice; array spread records219,270,403 instructions and call spread221,612,852. Custom getter/invalid-result cases remain recorded, and hosted speed qualification is pending.

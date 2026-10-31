@@ -72,6 +72,46 @@
         }
       ],
       "decision": "Rejected: getter instructions decrease but invalid-result increases; cache reverted. Original diagnostics retained."
+    },
+    {
+      "name": "native-errors",
+      "source": "c247cf3b794777aa8a2c05ce05c493af12cfd89b",
+      "profiles": [
+        {
+          "name": "invalid-next-result",
+          "instructions": 1066897374
+        }
+      ]
+    },
+    {
+      "name": "native-step",
+      "source": "83dc7b0cf01d949336831861e88f3583ac678acc",
+      "profiles": [
+        {
+          "name": "array-spread",
+          "instructions": 219270403
+        },
+        {
+          "name": "call-spread",
+          "instructions": 221612852
+        },
+        {
+          "name": "captured-next",
+          "instructions": 339066046
+        },
+        {
+          "name": "string-codepoints",
+          "instructions": 205375356
+        },
+        {
+          "name": "done-value-order",
+          "instructions": 1235517241
+        },
+        {
+          "name": "invalid-next-result",
+          "instructions": 1067910159
+        }
+      ]
     }
   ],
   "files": {
@@ -115,7 +155,30 @@
     "environment-roots/invalid-next-result-worker.json": "babd0f25520e993f981fc5635bddc8f4fae08665ebb8c93d62e8ec733dbc1e5d",
     "environment-roots/invalid-next-result.callgrind.gz": "a3121af72ab862ad6900ae9ef8b57289af54274e5fcddcb551c0665c9de7ea0d",
     "environment-roots/invalid-next-result.log": "b0123e23574dfa81e7d72bbf650c0739f4511ba08492a5f1b65823cdce944afc",
-    "environment-roots/worker-info.json": "30e95e12641dc328a5259227abd4788c1b8ae19aa9e06b8d6ebb01604df3e778"
+    "environment-roots/worker-info.json": "30e95e12641dc328a5259227abd4788c1b8ae19aa9e06b8d6ebb01604df3e778",
+    "native-errors/invalid-next-result-worker.json": "5b87cec1f1127e9119b2563fa7009a548a93964f532537f6450b615063e3b3ec",
+    "native-errors/invalid-next-result.callgrind.gz": "4cca4b4cf83b7f4609f91324177fce3fc2e580290c5e5a483bfafc515f3c8295",
+    "native-errors/invalid-next-result.log": "4ff31742bc1f65d67beb641af26fa8bcb3b52f392ec5c58ac9f8dc523e4594ec",
+    "native-errors/worker-info.json": "e7db274ae5cc9296a6c41568cf0fe7b694465332089da23abe0d1ec797c68f89",
+    "native-step/array-spread-worker.json": "5a5d7296941eac2d4a64719b43a04f53f33f86d75b885274041c9bc03998fb69",
+    "native-step/array-spread.callgrind.gz": "ec8e426e97b72fc24e5a557210aab38fbe619d111507efd505d87dbeb1bf9b76",
+    "native-step/array-spread.log": "135e02c4d97718fba9d867e75d9ee9c0f600c5ca882975c5063992092509de0b",
+    "native-step/call-spread-worker.json": "f0a50b21c496aeec3e700fedf5706655f43bcb256f0ef8c14f5a4c7ad26226fe",
+    "native-step/call-spread.callgrind.gz": "900d1a73bf708459530415482a6e183f0d5eedb9460192b35d562e4f96fcfe3a",
+    "native-step/call-spread.log": "c0f2e4fff98e41b4af912483e1aa1905e441c4b0efec7fcbc92cd3f686811993",
+    "native-step/captured-next-worker.json": "74d3621b3fd79c6281c9838ad459b013f052f5bb5bbd9a8909c65757543fd720",
+    "native-step/captured-next.callgrind.gz": "695839b1f8bf026d87749faead6621989b30dae515ad81370ff7fcad9ecab7e5",
+    "native-step/captured-next.log": "37e06d156f6d0808d35369dffe14011ef2f933c84cf6d614b19bc1b837469cf6",
+    "native-step/done-value-order-worker.json": "809761fa82f8153258664cd1aa2864853422ee9e8ba05aa3baf1f910a6f8a900",
+    "native-step/done-value-order.callgrind.gz": "e8b416ab250f51e8fd6ef63deed371f9baa214b6349e0011f20bb87dc2880b71",
+    "native-step/done-value-order.log": "6b6e59c0f456543fd95a1e6137ed02fd64654c6c2d46c934e8ef0d8250cd98a8",
+    "native-step/invalid-next-result-worker.json": "ed880f465d72b109029ae441b5b0724e0674eb00228461dfb7ac09d954b31f76",
+    "native-step/invalid-next-result.callgrind.gz": "a327d6775297dacd533ccb82376afa7ac62668f415be6cc5a067302df20cc669",
+    "native-step/invalid-next-result.log": "b61db52ca6d0494aa29cdf9787116ef83ce78684b61164e83c7e8410b7b76e89",
+    "native-step/string-codepoints-worker.json": "e9f7c518cb96c1182aff8671b7aaea14f29f1e5a62bcba7b58ec5f7a4b679c16",
+    "native-step/string-codepoints.callgrind.gz": "4f83d21fa2cf91aacf845a7788238b47d47a2a215559f6875a1d6ba8341de76b",
+    "native-step/string-codepoints.log": "02152bff89af915de5eb25886da2fd76a6be255479321da714960aa4bd7d2367",
+    "native-step/worker-info.json": "90e12839ee0bfa43f5e6426d9cbbf0f6f4f1bda87b29476c9cc75c5bce12ec89"
   },
-  "scope": "Instruction diagnostics on identical frozen inputs. All three profiled outputs validate twice per point. Raw self profiles and source-input identities retained. Neither instruction reductions nor embedded single-sample timings establish native Boa speed qualification. Full correctness and two independent hosted speed gates remain separate requirements. Fourth point is a rejected bounded environment-root cache; its adverse invalid-result profile remains recorded and the runtime change is reverted."
+  "scope": "Instruction diagnostics on identical frozen inputs. All three profiled outputs validate twice per point. Raw self profiles and source-input identities retained. Neither instruction reductions nor embedded single-sample timings establish native Boa speed qualification. Full correctness and two independent hosted speed gates remain separate requirements. Fourth point is a rejected bounded environment-root cache; its adverse invalid-result profile remains recorded and the runtime change is reverted. Native-error and native-step points retain their original diagnostics. Native-step validates all six frozen inputs twice; these remain instruction counts, not hosted Boa speed qualification."
 }

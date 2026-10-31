@@ -31,5 +31,20 @@ original file hashes, iteration counts and expected values. Run the existing
 comparison and independent audit scripts with --elements,15 samples and3
 alternating pairs. Require at least2 significant Boa wins per workload on each
 host, with the existing noise policy and same-binary controls unchanged. Native
-timing must run without competing local captures/builds. No candidate timing
-has been recorded yet.
+timing must run without competing local captures/builds. Native speed qualification remains pending; retain the initial hosted source
+43b3cfd separately from newer runtime candidates.
+
+Runtime622bc975 includes the private field optimizations from parenta65fa12
+and prepares simple private calls, getter reads, parameter assignments and
+setter readbacks. The shared code contains syntax/parameter positions; private
+identities stay per closure. Optional calls, spreads, complex RHS expressions
+and observable activations keep the ordinary evaluator path. Actual getters,
+setters, receivers, thrown values and GC edges remain in the shared runtime.
+
+private-plans-diagnostic-v1 retains870 passing native tests,0 failures and26
+ignored tests; Clippy, MSRV and stable i686 checks; all six output oracles; and
+complete Callgrind profiles. The fixed method-call input changes from256343432
+to129864291 instructions, and accessor input from507019863 to177651256. Run
+verify-private-plans.mjs to replay source/input identities and diagnostic totals.
+These profiled counts do not establish a Boa speed pass. The newer fixed
+Ast/Auto capture and final hosted/full-corpus/safety checks remain pending.

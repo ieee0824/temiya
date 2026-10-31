@@ -25,3 +25,9 @@ Public Engine integration and reentrant GC tests are in tests/private_fields.rs
 and tests/private_elements.rs. The fixed official-suite selection and performance
 workloads for #160 are under benchmarks/private-elements; qualification is still
 pending. These examples do not establish complete feature conformance.
+
+Auto also prepares simple private calls and parameter-to-private assignments,
+including a subsequent readback. Getters/setters still run normally against the
+actual receiver, and readback invokes the getter after the setter returns.
+Optional calls, spread arguments and effectful RHS expressions retain AST
+evaluation. Shared code stores syntax while immutable names bind per closure.

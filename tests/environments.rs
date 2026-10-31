@@ -446,3 +446,53 @@ fn record_specific_operations_reject_wrong_environment_kinds() {
             .is_err()
     );
 }
+
+#[test]
+fn ancestor_resolution_survives_gc_during_unscopables_then_continues_outward() {
+    let context = temiya::runtime::AllocationContext::new();
+    let outer = Environment::declarative_in(&context);
+    outer
+        .create_mutable_binding(name("visible"), false)
+        .unwrap();
+    outer
+        .initialize_binding(&name("visible"), Value::Number(42.0))
+        .unwrap();
+    let symbol = Symbol::new(None);
+    let object = Object::new_in(&context);
+    object
+        .create_data_property("visible".into(), Value::Number(1.0))
+        .unwrap();
+    let calls = Rc::new(std::cell::Cell::new(0));
+    let observed = calls.clone();
+    let getter = Object::native_function_with_context(&context, move |context, _, _| {
+        observed.set(observed.get() + 1);
+        context.collect_garbage()?;
+        let blocked = Object::new_in(context);
+        blocked.create_data_property("visible".into(), Value::Boolean(true))?;
+        Ok(Value::Object(blocked))
+    });
+    object
+        .define_own_property(
+            PropertyKey::from(symbol.clone()),
+            PropertyDescriptor::accessor(Some(getter), None, false, true),
+        )
+        .unwrap();
+    let with = Environment::object(
+        object,
+        Some(outer),
+        ObjectEnvironmentOptions {
+            with_environment: true,
+            unscopables_key: Some(PropertyKey::from(symbol)),
+        },
+    );
+    // Only the descendant stays publicly rooted while lookup skips pure records
+    // and crosses an observable object record that collects the managed heap.
+    let descendant = Environment::declarative(Environment::declarative(with));
+    assert_number(
+        descendant
+            .get_identifier_value(&name("visible"), true)
+            .unwrap(),
+        42.0,
+    );
+    assert_eq!(calls.get(), 1);
+}

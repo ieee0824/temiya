@@ -324,6 +324,14 @@ impl Runtime {
         *data.facade.borrow_mut() = Rc::downgrade(&facade);
         super::Realm(RealmReference(facade))
     }
+    // Borrowed lookup only: caller keeps a rooted descendant alive. This does
+    // not root the returned record and must not escape that traversal.
+    pub(super) fn environment_data(
+        &self,
+        handle: Handle<super::environment::ManagedEnvironment>,
+    ) -> Option<Rc<super::environment::EnvironmentData>> {
+        self.0.heap.borrow().shared(handle)
+    }
     pub(super) fn root_environment(
         &self,
         handle: Handle<super::environment::ManagedEnvironment>,

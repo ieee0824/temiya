@@ -73,3 +73,19 @@ passes time out (26 also passed before private elements). All68 pass in a
 separate same-binary, same1000ms/512MiB diagnostic across37 files; none of the69
 Ast/Auto differences reproduces a timeout. This does not replace the original
 outcomes or establish a root cause. Integrated-source full validation is required.
+
+full-integrated-bindings-v1 retains sourcef60a02c full-corpus results:
+29701pass61923fail18skip8569timeout,0missing across100211 variants; all29701
+preceding passes remain and8 gates independently replay. Hosted run41172659495
+in hosted-integrated-bindings-v1 qualifies all46 workloads on BOTH hosted jobs
+(both EPYC9V45), with3/3 wins for all6 new cases on each. All60 reports replay.
+Inputs,controls,noise/watchdogs remain unchanged; no CPU filter. Current-source
+fixed Ast/Auto capture, safety and final evidence-head CI remain separate.
+
+fixed-integrated-bindings-v1 retains sourcef60a02c full fixed before/after
+Ast/Auto captures and871 native tests. Ast3954pass2506fail2028timeout;
+Auto3950pass2506fail2032timeout across8488 variants. Four preceding baseline
+passes time out in one local Auto batch (raw RSS76..608KiB with no Engine
+diagnostic); all4 pass hosted full Auto and a separate unchanged-binary/limits
+diagnostic. Original timeouts remain unchanged. verify-fixed.mjs validates
+record integrity and preserves the4 adverse outcomes; it does not waive them.

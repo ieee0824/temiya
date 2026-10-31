@@ -42,3 +42,10 @@ allocation test fails before the proof with40 versus13 live allocations for
 thirty versus three iterations, then passes with a constant allocation count.
 Delayed initializers, nested arrows/defaults/classes and distinct body bindings
 retain their values. Fresh performance and upstream qualification remain pending.
+
+Auto shares immutable function code created by initializers while keeping
+instance environments separate. Zero-parameter synchronous arrows consisting
+only of this.property can read an object receiver without an extra activation.
+They resolve the captured this binding at call time, preserve getter/Proxy
+dispatch and exception identity, and retain the ordinary path for primitive
+receivers, defaults, async functions and other bodies.

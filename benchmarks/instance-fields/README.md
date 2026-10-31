@@ -38,3 +38,16 @@ comparisons exceed the fixed threshold; identical-binary and preceding-source
 controls are all within noise. verify-native-asi.mjs checks all 77 compiled
 source hashes against the measured revision, raw statistics and 827 passing
 native tests. Hosted and full-corpus qualification remain separate.
+
+full-fields-v1 replays all eight official corpus shards at source3f9cbec:
+26826pass,64484fail,18skip,8883timeout over100211variants, with no known-pass
+regressions. hosted-initial-fields-v1 retains all40reports from two independent
+EPYC7763 hosts. Copy1 arrow initializer has0/3significant Boa wins and fails
+the fixed minimum2/3gate; copy2 has2/3. This source is not merge-qualified.
+verify-full.mjs and verify-hosted.mjs preserve these respective results.
+
+native-cache-v1 retains the following cache-only source835b21d. It has12Boa
+wins and3noisy arrow comparisons. Identical-executable controls retain one
+apparent improvement and one slowdown; neither is a source optimization.
+verify-native-cache.mjs checks the complete records and828native passes.
+This historical source is not speed-qualified.

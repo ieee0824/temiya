@@ -14,11 +14,12 @@ pub(super) struct Field {
     initializer: Option<StoredObject>,
 }
 
-// These synchronous expressions cannot retain or inspect an initializer's
-// function environment. Calls, eval, super and function/class creation keep
-// the ordinary initializer path. Property callbacks have their own contexts.
-pub(super) fn can_evaluate_static_directly(expression: &Expr) -> bool {
+// No function-local binding is reachable from these expressions. Property
+// callbacks execute in their own contexts; eval, calls, super and escaping
+// definitions retain the initializer's ordinary function environment.
+pub(super) fn can_evaluate_without_function_environment(expression: &Expr) -> bool {
     use ExprKind as E;
+    let simple = can_evaluate_without_function_environment;
     match &expression.kind {
         E::Literal(_) | E::This => true,
         E::Identifier(name) => !matches!(name.as_str(), "eval" | "arguments"),
@@ -29,32 +30,21 @@ pub(super) fn can_evaluate_static_directly(expression: &Expr) -> bool {
         }
         | E::Update {
             argument: inner, ..
-        } => can_evaluate_static_directly(inner),
-        E::Binary { left, right, .. } => {
-            can_evaluate_static_directly(left) && can_evaluate_static_directly(right)
-        }
-        E::Assignment { target, value, .. } => {
-            can_evaluate_static_directly(target) && can_evaluate_static_directly(value)
-        }
+        } => simple(inner),
+        E::Binary { left, right, .. } => simple(left) && simple(right),
+        E::Assignment { target, value, .. } => simple(target) && simple(value),
         E::Conditional {
             test,
             consequent,
             alternate,
-        } => {
-            can_evaluate_static_directly(test)
-                && can_evaluate_static_directly(consequent)
-                && can_evaluate_static_directly(alternate)
-        }
-        E::Sequence(expressions) => expressions.iter().all(can_evaluate_static_directly),
+        } => simple(test) && simple(consequent) && simple(alternate),
+        E::Sequence(expressions) => expressions.iter().all(simple),
         E::Member {
             object,
             property,
             computed,
             ..
-        } => {
-            can_evaluate_static_directly(object)
-                && (!computed || can_evaluate_static_directly(property))
-        }
+        } => simple(object) && (!computed || simple(property)),
         _ => false,
     }
 }
@@ -68,6 +58,10 @@ impl Field {
 
 pub(super) struct Initializer {
     expression: Rc<Expr>,
+    // Immutable code cache only: it owns no Realm, environment or JS objects.
+    // Each call still creates its own receiver/lexical environment.
+    cache: Option<super::function::FunctionCache>,
+    direct: bool,
     name: JsString,
     realm: StoredRealm,
     environment: StoredEnvironment,
@@ -91,16 +85,21 @@ impl Initializer {
     }
     pub(super) fn call(&self, owner: &Object, this: Value) -> RuntimeResult<Value> {
         let realm = self.realm.load(owner)?;
-        let environment = Environment::function(
-            Some(self.environment.load(owner)?),
-            owner.clone(),
-            None,
-            ThisBindingStatus::Uninitialized,
-        );
-        environment.bind_this_value(this.clone())?;
-        let evaluator =
+        let captured = self.environment.load(owner)?;
+        let evaluator = if self.direct {
+            ExpressionEvaluator::with_environment(realm.clone(), captured, this, true)
+        } else {
+            let environment = Environment::function(
+                Some(captured),
+                owner.clone(),
+                None,
+                ThisBindingStatus::Uninitialized,
+            );
+            environment.bind_this_value(this.clone())?;
             ExpressionEvaluator::with_environment(realm.clone(), environment.clone(), this, true)
-                .with_this_environment(Some(environment));
+                .with_this_environment(Some(environment))
+        };
+        let evaluator = evaluator.with_function_cache(self.cache.clone());
         let value = evaluator
             .evaluate_named(&self.expression, &self.name)
             .map_err(|error| realm.bind_exception(error))?;
@@ -122,28 +121,6 @@ impl Initializer {
         }
         Ok(value)
     }
-}
-
-pub(super) fn add(
-    constructor: &Object,
-    home: &Object,
-    evaluator: &ExpressionEvaluator,
-    key: PropertyKey,
-    expression: Option<&Expr>,
-) -> RuntimeResult<()> {
-    let initializer = expression
-        .map(|expression| {
-            let function = initializer(home, evaluator, &key, expression)?;
-            StoredObject::store(constructor, &function)
-        })
-        .transpose()?;
-    constructor
-        .0
-        .state
-        .borrow_mut()
-        .instance_fields
-        .push(Field { key, initializer });
-    Ok(())
 }
 
 pub(super) fn initializer(
@@ -169,6 +146,8 @@ pub(super) fn initializer(
     };
     let initializer = Initializer {
         expression: Rc::new(expression.clone()),
+        cache: evaluator.function_cache.clone(),
+        direct: can_evaluate_without_function_environment(expression),
         name,
         realm: StoredRealm::store(&function, &evaluator.realm)?,
         environment: StoredEnvironment::store(&function, &evaluator.environment)?,
@@ -178,6 +157,28 @@ pub(super) fn initializer(
         initializer,
     ));
     Ok(function)
+}
+
+pub(super) fn add(
+    constructor: &Object,
+    home: &Object,
+    evaluator: &ExpressionEvaluator,
+    key: PropertyKey,
+    expression: Option<&Expr>,
+) -> RuntimeResult<()> {
+    let initializer = expression
+        .map(|expression| {
+            let function = initializer(home, evaluator, &key, expression)?;
+            StoredObject::store(constructor, &function)
+        })
+        .transpose()?;
+    constructor
+        .0
+        .state
+        .borrow_mut()
+        .instance_fields
+        .push(Field { key, initializer });
+    Ok(())
 }
 
 impl Object {

@@ -180,7 +180,7 @@ pub(super) fn evaluate(
         if let ClassElementKind::Field(expression) = &element.kind {
             if element.is_static {
                 if let Some(expression) = expression.as_ref().filter(|expression| {
-                    super::class_fields::can_evaluate_static_directly(expression)
+                    super::class_fields::can_evaluate_without_function_environment(expression)
                 }) {
                     static_initializers.push(StaticInitializer::DirectField(key, expression));
                     continue;

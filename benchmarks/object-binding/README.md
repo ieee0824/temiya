@@ -15,3 +15,9 @@ Coverage planned: declarations and parameters, nested patterns, computed key
 conversion order, defaults and TDZ, rest key exclusions, symbols, enumerability,
 getter order/abrupt completions, null/undefined and primitive sources. Merge
 after #161 and #162, with independent correctness and unchanged speed gates.
+
+`initial-profiles-v1` retains the first six Callgrind captures at 1076d17,
+including all 82 build input hashes, worker outputs, raw compressed instruction
+profiles and logs. Every output validates the original expected value twice.
+Replay with `node benchmarks/object-binding/verify-profiles.mjs`. These are
+instrumented instruction diagnostics and do not qualify native Boa performance.

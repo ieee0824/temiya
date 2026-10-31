@@ -10,6 +10,7 @@ enum Operation {
     Read,
     Update { increment: bool, prefix: bool },
     Has,
+    Call(Box<[usize]>),
 }
 
 // Shared code caches syntax and parameter positions only. A closure may bind
@@ -71,6 +72,22 @@ pub(super) fn prepare(function: &Function, kind: FunctionKind) -> Option<Plan> {
                 receiver: receiver(right, &parameters)?,
                 operation: Operation::Has,
             });
+        }
+        ExprKind::Call {
+            callee,
+            arguments,
+            optional: false,
+        } => {
+            let positions = arguments
+                .iter()
+                .map(|argument| {
+                    let ExprKind::Identifier(name) = &argument.kind else {
+                        return None;
+                    };
+                    parameters.get(name.as_str()).copied()
+                })
+                .collect::<Option<Box<[_]>>>()?;
+            (callee.as_ref(), Operation::Call(positions))
         }
         ExprKind::Update {
             operator,
@@ -155,7 +172,7 @@ impl Plan {
                 .load(owner)?
                 .resolve_private_key(&self.name)?,
         };
-        match self.operation {
+        match &self.operation {
             Operation::Has => {
                 let Value::Object(object) = receiver else {
                     unreachable!()
@@ -163,12 +180,30 @@ impl Plan {
                 Ok(Value::Boolean(object.has_private(&name)))
             }
             Operation::Read => super::super::Reference::private(receiver, name).get_value(),
+            Operation::Call(positions) => {
+                // Resolve the callee/getter before selecting arguments. Simple
+                // parameter reads cannot expose an activation; keep the actual
+                // receiver and ordinary callable/error/GC behavior.
+                let callee =
+                    super::super::Reference::private(receiver.clone(), name).get_value()?;
+                let values = positions
+                    .iter()
+                    .map(|index| arguments.get(*index).cloned().unwrap_or(Value::Undefined))
+                    .collect::<Vec<_>>();
+                let Value::Object(function) = callee else {
+                    return Err(RuntimeError::type_error("value is not callable"));
+                };
+                if !function.is_callable() {
+                    return Err(RuntimeError::type_error("value is not callable"));
+                }
+                function.call(receiver, &values)
+            }
             Operation::Update { increment, prefix } => {
                 super::super::interpreter::update_reference_in_realm(
                     realm,
                     &super::super::Reference::private(receiver, name),
-                    increment,
-                    prefix,
+                    *increment,
+                    *prefix,
                 )
             }
         }

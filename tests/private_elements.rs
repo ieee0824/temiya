@@ -101,7 +101,43 @@ fn private_method_and_accessor_edges_survive_reentrant_gc_then_release() {
                 engine.evaluate(&script).unwrap().value(),
                 Value::Boolean(true)
             ));
+            let calls = engine.compile(&realm, "class PrivateCallGC{base=40;get #fn(){gcNow();return function(v){gcNow();return this.base+v;};}call(v){return this.#fn(v);}}let privateCallGC=new PrivateCallGC();gcNow();privateCallGC.call(2)===42;").unwrap();
+            assert!(matches!(
+                engine.evaluate(&calls).unwrap().value(),
+                Value::Boolean(true)
+            ));
         }
         assert_eq!(engine.collect_garbage().unwrap().retained, 0);
     }
+}
+
+#[test]
+fn private_calls_keep_receiver_argument_positions_and_fallback_semantics() {
+    check(
+        "class C{#base=40;#m(a,b){return this.#base+a-b;}call(ignored,b,a){return this.#m(a,b);}}new C().call(0,1,3)===42;",
+    );
+    check(
+        "class C{base=40;#fn=function(v=2){return this.base+v;};call(v){return this.#fn(v);}}new C().call()===42;",
+    );
+    check(
+        "let reads=0;class C{base=40;get #fn(){reads++;return function(v){return this.base+v;};}call(v){return this.#fn(v);}}let c=new C();c.call(2)===42 && c.call(1)===41 && reads===2;",
+    );
+    check(
+        "let marker={};class C{get #fn(){throw marker;}call(v){return this.#fn(v);}}let caught=false;try{new C().call(2);}catch(e){caught=e===marker;}caught;",
+    );
+    check(
+        "class C{#m(v){return v;}call(o,v){return o.#m(v);}}let c=new C();let rejected=0;for(let o of [{},new Proxy(c,{})]){try{c.call(o,42);}catch(e){if(e instanceof TypeError)rejected++;}}c.call(c,42)===42 && rejected===2;",
+    );
+    check(
+        "class C{#fn=null;optional(v){return this.#fn?.(v);}call(v){return this.#fn(v);}}let c=new C();let caught=false;try{c.call(42);}catch(e){caught=e instanceof TypeError;}caught && c.optional(42)===undefined;",
+    );
+    check(
+        "class C{#m(a,b){return a+b;}call(values){return this.#m(...values);}}new C().call([40,2])===42;",
+    );
+    check(
+        "function make(v){return class{#m(x){return v+x;}call(x){return this.#m(x);}};}let A=make(40);let B=make(41);let a=new A();let b=new B();let caught=false;try{A.prototype.call.call(b,2);}catch(e){caught=e instanceof TypeError;}caught && a.call(2)===42 && b.call(1)===42;",
+    );
+    check(
+        "class C{static #m(v){return v;}static call(v){return this.#m(v);}}class D extends C{}let caught=false;try{D.call(42);}catch(e){caught=e instanceof TypeError;}caught && C.call(42)===42;",
+    );
 }

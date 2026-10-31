@@ -8,7 +8,7 @@ import {execFileSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 const root=path.dirname(fileURLToPath(import.meta.url)),repo=path.resolve(root,'../..');
 const read=p=>JSON.parse(fs.readFileSync(p));
-const captures=new Map([['full-fields-v1',{source:'3f9cbec87efb6f0cab9a6f84684082711b37566f',run:41141068452,historicalFailure:false}]]);
+const captures=new Map([['full-fields-v1',{source:'3f9cbec87efb6f0cab9a6f84684082711b37566f',run:41141068452,historicalFailure:false}],['full-direct-fields-v1',{source:'2639a709f4cc0d445473e0833f709464c57fda60',run:41147468864,historicalFailure:false}]]);
 const selected=process.argv.slice(2);if(selected.length===0)selected.push(...captures.keys());
 assert.equal(new Set(selected).size,selected.length);
 for(const name of selected){

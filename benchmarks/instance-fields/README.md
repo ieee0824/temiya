@@ -51,3 +51,34 @@ wins and3noisy arrow comparisons. Identical-executable controls retain one
 apparent improvement and one slowdown; neither is a source optimization.
 verify-native-cache.mjs checks the complete records and828native passes.
 This historical source is not speed-qualified.
+
+native-arrow-read-v1 preserves the following unqualified8wins7noise capture.
+native-direct-fields-v1 preserves runtime2639a70:832native passes and14Boa wins
+plus one noisy comparison. Each of the five fixed workloads meets the unchanged
+minimum2/3criterion. Same-executable control is15noise; source comparison is
+14noise and one improvement. Hosted and full-suite qualifications are separate.
+verify-arrow-read-v1.mjs and verify-direct-fields-v1.mjs independently check all
+raw values, statistical decisions and77compiled source hashes.
+
+full-direct-fields-v1 retains the current runtime2639a70 full run41147468864.
+All eight known-pass gates independently pass over52133files100211variants:
+26826pass,64484fail,18skip,8883timeout, with no missing outcomes or known-pass
+regressions. The remaining failures/skips/timeouts are not conformance passes.
+
+fixed-direct-fields-v1 retains both complete current4098-variant official
+captures and their preceding captures. verify-fixed-direct.mjs reconstructs
+1008preserved passes per backend and exact AST/Auto outcome equality. All
+2294failures796timeouts remain recorded; no dependency failure is waived.
+
+hosted-cache-fields-v1 retains the intervening cache-only source835b21d on
+EPYC7763 and9V74. Both field suites have15/15significant Boa wins, but9V74
+class-construct has0/3wins (and its baseline also0/3); this source remains
+unqualified. All40reports and controls are replayed by verify-hosted.mjs.
+
+hosted-direct-fields-v1 retains all40current reports on9V45 and9V74. Every
+workload meets the fixed minimum2/3gate per host; fields15/15 on both.
+validation-direct-fields-v1 retains16passing Miri shards, dependency audit and
+the initial ASan failure: a finite async rejection case hit its200ms test
+budget. Only that attribution test now uses the existing1500ms semantic budget;
+200ms deadline tests remain. Native/ARM-ASan semantic tests and complete x86 ASan
+rerun pass. verify-validation.mjs checks the recorded outcomes and source identity.

@@ -1,0 +1,20 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import assert from 'node:assert/strict';
+import {createHash} from 'node:crypto';
+import {execFileSync} from 'node:child_process';
+import {fileURLToPath} from 'node:url';
+const root=path.dirname(fileURLToPath(import.meta.url)),repo=path.resolve(root,'../..'),dir=root+'/validation-direct-fields-v1';
+const read=n=>JSON.parse(fs.readFileSync(dir+'/'+n));
+for(const[file,hash]of Object.entries(read('files.json')))assert.equal(createHash('sha256').update(fs.readFileSync(dir+'/'+file)).digest('hex'),hash,file);
+const before=read('security-before-budget-fix.json'),after=read('asan-after-budget-fix.json'),ci=read('runtime-ci.json');
+assert.equal(before.headSha,'2639a709f4cc0d445473e0833f709464c57fda60');
+const shards=before.jobs.filter(j=>/^Miri library tests \(shard \d+\)$/.test(j.name));assert.equal(shards.length,16);assert(shards.every(j=>j.conclusion==='success'));
+for(const name of ['Miri library tests','Dependency audit'])assert.equal(before.jobs.find(j=>j.name===name).conclusion,'success');
+assert.equal(before.jobs.find(j=>j.name==='AddressSanitizer integration tests').conclusion,'failure');
+assert.equal(after.headSha,'ad6e686d31d8b60fcfd4c9b127f8f4c5e486a73c');assert.equal(after.conclusion,'success');assert.equal(after.jobs.find(j=>j.name==='AddressSanitizer integration tests').conclusion,'success');
+assert.equal(ci.conclusion,'success');
+const info=JSON.parse(fs.readFileSync(root+'/native-direct-fields-v1/worker-info.json'));
+for(const input of info.provenance.source_inputs){const bytes=execFileSync('git',['show',after.headSha+':'+input.file],{cwd:repo,maxBuffer:16*1024*1024});assert.equal(createHash('sha256').update(bytes).digest('hex'),input.sha256,input.file);}
+for(const file of ['async-semantic-release.log','async-semantic-arm-asan.log'])assert(fs.readFileSync(dir+'/'+file,'utf8').includes('9 passed; 0 failed; 1 ignored'));
+console.log(JSON.stringify({integrity:'pass',miri_shards:16,x86_asan:'pass',compiled_inputs_match:77,scope:'Original ASan semantic-budget failure retained. Runtime unchanged; finite failure-attribution test uses1500ms, dedicated200ms deadline assertions preserved. Final-head CI is separately required.'}));

@@ -12,7 +12,7 @@ for(const [file,hash] of Object.entries(evidence.files)){
  assert(!path.isAbsolute(file)&&!file.split('/').includes('..'));
  assert.equal(sha(fs.readFileSync(dir+'/'+file)),hash);
 }
-const stages=['inline-parent','direct-get','extra-state'],summaries=[];
+const stages=['inline-parent','direct-get','extra-state','name-visitor'],summaries=[];
 for(const stage of stages){
  const base=dir+'/'+stage,summary=read(base+'/summary.json'),info=read(base+'/worker-info.json');
  assert.equal(info.source_revision,summary.source);assert.equal(info.source_clean,true);assert.equal(info.profile,'release');

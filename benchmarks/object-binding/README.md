@@ -82,3 +82,10 @@ every variant: all 33,565 array passes and 37,919 previous object passes
 remain, with zero regressions. This historical source still fails native
 speed qualification; these results do not transfer to changed runtime.
 Run `node benchmarks/object-binding/full-inline-parent-v1/verify.mjs`.
+
+The fourth allocation diagnostic, `name-visitor` (3d08637), validates the
+complete binding pattern before visiting names directly. It removes the
+temporary name Vec while retaining callback failure order. All949 tests
+(26 ignored), Clippy and release build pass. Five instruction profiles
+improve relative to direct-get; parameters rise by about0.063%. This is
+retained as mixed evidence and is not a native performance qualification.

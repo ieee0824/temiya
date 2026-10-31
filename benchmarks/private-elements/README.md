@@ -66,3 +66,10 @@ private-invalid-receiver records0/3 on both, and copy2 derived-definition1/3.
 verify-hosted.mjs recomputes every report, control and per-case gate, preserving
 these failures. Parent159 changes and current-source requalification remain
 required before merge.
+
+auto-timeouts-v1 retains the complete optimized Auto capture:3886pass,2505fail,
+2097timeout across8488 variants. Compared with the initial implementation,68
+passes time out (26 also passed before private elements). All68 pass in a
+separate same-binary, same1000ms/512MiB diagnostic across37 files; none of the69
+Ast/Auto differences reproduces a timeout. This does not replace the original
+outcomes or establish a root cause. Integrated-source full validation is required.

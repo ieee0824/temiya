@@ -1,5 +1,6 @@
 // Integrity replay deliberately accepts retained adverse speed observations.
 import fs from 'node:fs';
+import {gunzipSync} from 'node:zlib';
 import path from 'node:path';
 import os from 'node:os';
 import assert from 'node:assert/strict';
@@ -65,4 +66,30 @@ for(const name of selected){
   }
   console.log(JSON.stringify({integrity:'pass',capture:name,source:e.source_revision,reports:68,summaries,scope:e.scope}));
  } finally {fs.rmSync(temp,{recursive:true,force:true});}
+}
+
+// Infrastructure failure precedes fixture measurement; never count it as speed evidence.
+{
+ const dir=root+'/hosted-catch-records-build-failure-v1',e=read(dir+'/evidence.json');
+ assert.equal(e.run,41211990414);assert.equal(e.job,124573094646);assert.equal(e.copy,1);
+ assert.equal(e.source,'ff67c89dc586cdf0d982e49aa1c72205ca5c4e66');
+ assert.equal(e.compiled_runtime,'71009f3ea4f70a5ca471d35ca6c2857f8226dec4');
+ assert.equal(e.baseline,'bb0d3268d7bfbb9b6910b3b86db3a5cf1abf49c7');assert.equal(e.workload_reports,0);
+ assert.equal(e.free_gib,10.9);assert.equal(e.required_gib,14);
+ for(const [file,hash]of Object.entries(e.files)){assert(!file.includes('/'));assert.equal(sha(fs.readFileSync(dir+'/'+file)),hash);}
+ assert.equal(Object.keys(e.files).length,8);
+ assert.equal(e.cleanup_validation.workflow_revision,'839a17a237e7e5cedf84b246168f20e2d3065bad');
+ const cleanup=read(dir+'/'+e.cleanup_validation.file);
+ assert.equal(cleanup.workflow_sha256,sha(execFileSync('git',['-c','safe.directory='+repo,'show',e.cleanup_validation.workflow_revision+':.github/workflows/omoikane-benchmark.yml'],{cwd:repo})));
+ assert.equal(cleanup.cache_removal,true);assert.equal(cleanup.worker_sha_preserved,true);
+ assert.equal(cleanup.hosted_sdk_cleanup_exercised,false);assert.equal(cleanup.worker_probes.length,2);
+ for(const worker of cleanup.worker_probes){assert.equal(worker.probe.expected,42);assert.equal(worker.probe.validated_passes,2);}
+ const log=gunzipSync(fs.readFileSync(dir+'/job.log.gz')).toString();
+ assert(log.includes('cargo-space-guard: insufficient space before build: free=10.9 GiB, required=14.0 GiB'));
+ assert.equal(fs.readFileSync(dir+'/measured-revision.txt','utf8').trim(),e.source);
+ assert.equal(fs.readFileSync(dir+'/baseline-revision.txt','utf8').trim(),e.baseline);
+ const current=read(dir+'/same-binary-build-info.json'),baseline=read(dir+'/baseline-build-info.json');
+ assert.equal(current.revision,e.source);assert.equal(baseline.revision,e.baseline);
+ for(const info of [current,baseline]){assert.match(info.executable_sha256,/^[a-f0-9]{64}$/);assert.equal(info.mode_probe.expected,42);assert.equal(info.mode_probe.validated_passes,2);}
+ console.log(JSON.stringify({integrity:'pass',unavailable_attempt:e.run,copy:1,workload_reports:0,scope:e.scope}));
 }

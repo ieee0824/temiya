@@ -234,3 +234,14 @@ foreign-heap rejection, mutable/nondeletable bindings and eventual graph release
 Invalid-result instructions decline1.06%; other5 cases increase0.0006–0.0062%,
 all retained. Every unchanged expected value validates twice. These diagnostics
 do not qualify native speed or replace current full/fixed/security gates.
+
+
+`hosted-catch-records-build-failure-v1` retains copy1 of run41211990414,
+which stopped before Boa compilation because the space guard found10.9GiB
+free against its unchanged14GiB requirement. No frozen workload was measured;
+40+2 mode probes are not qualification evidence. The original log and all6
+artifact files remain hash-checked by verify-hosted.mjs. The workflow now
+removes unused Temiya intermediates and unused hosted-runner SDKs before the
+reference build, preserving worker hashes and checking worker execution again.
+The guard,compiler flags,fixtures,oracles,sample counts,statistical thresholds
+and runtime watchdog/RSS limits are unchanged. Copy2 observations remain intact.

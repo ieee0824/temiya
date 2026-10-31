@@ -37,3 +37,9 @@ parameter names, function names and duplicate vars. This avoids repeated scans
 as parameter/var lists grow. A 192-parameter Unicode-name regression checks
 initial values and repeated var declarations. No native speed claim follows
 from this preparation change; earlier retained captures keep their source IDs.
+
+The separate `large-preparation-v1` diagnostic retains one whole-process
+Callgrind capture per source for the same 192-parameter/384-var input. Both
+return 193; instructions decrease from 17,464,899 to 16,834,912 (3.607%).
+This includes setup and is not a native Boa qualification. Replay with
+`node benchmarks/parameter-environments/large-preparation-v1/verify.mjs`.

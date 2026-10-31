@@ -49,42 +49,95 @@ impl Drop for CollectionTimer<'_> {
 const ACTIVE_OBJECTS: usize = 16;
 const OBJECT_FINGERPRINTS: usize = 64;
 
+const NO_OBJECT: usize = usize::MAX;
+const _: () = assert!(ACTIVE_OBJECTS > 1 && ACTIVE_OBJECTS <= u16::BITS as usize);
+
+struct ActiveObject {
+    object: Object,
+    previous: usize,
+    next: usize,
+}
+
 struct ActiveObjects {
-    objects: Vec<Object>,
-    // A zero count proves absence. Collisions still use full object identity,
-    // preserving the fully associative cache and its existing eviction order.
-    fingerprints: [u8; OBJECT_FINGERPRINTS],
+    objects: Vec<ActiveObject>,
+    // Stable slots avoid shifting facades on every hit. Bucket bits only
+    // narrow candidates; full identity is checked even for colliding keys.
+    buckets: [u16; OBJECT_FINGERPRINTS],
+    oldest: usize,
+    newest: usize,
 }
 impl ActiveObjects {
     fn new() -> Self {
         Self {
             objects: Vec::with_capacity(ACTIVE_OBJECTS),
-            fingerprints: [0; OBJECT_FINGERPRINTS],
+            buckets: [0; OBJECT_FINGERPRINTS],
+            oldest: NO_OBJECT,
+            newest: NO_OBJECT,
         }
     }
     fn clear(&mut self) {
         self.objects.clear();
-        self.fingerprints.fill(0);
+        self.buckets.fill(0);
+        self.oldest = NO_OBJECT;
+        self.newest = NO_OBJECT;
+    }
+    fn touch(&mut self, index: usize) {
+        if index == self.newest {
+            return;
+        }
+        let previous = self.objects[index].previous;
+        let next = self.objects[index].next;
+        if previous == NO_OBJECT {
+            self.oldest = next;
+        } else {
+            self.objects[previous].next = next;
+        }
+        if next != NO_OBJECT {
+            self.objects[next].previous = previous;
+        }
+        self.objects[self.newest].next = index;
+        self.objects[index].previous = self.newest;
+        self.objects[index].next = NO_OBJECT;
+        self.newest = index;
     }
     fn remember(&mut self, object: &Object) {
-        if self.objects.last().is_some_and(|last| last == object) {
+        if self.newest != NO_OBJECT && self.objects[self.newest].object == *object {
             return;
         }
         let fingerprint = object.identity() as usize & (OBJECT_FINGERPRINTS - 1);
-        if self.fingerprints[fingerprint] != 0 {
-            if let Some(index) = self.objects.iter().rposition(|cached| cached == object) {
-                let cached = self.objects.remove(index);
-                self.objects.push(cached);
+        let mut candidates = self.buckets[fingerprint];
+        while candidates != 0 {
+            let index = candidates.trailing_zeros() as usize;
+            if self.objects[index].object == *object {
+                self.touch(index);
                 return;
             }
+            candidates &= candidates - 1;
         }
-        if self.objects.len() == ACTIVE_OBJECTS {
-            let retired = self.objects.remove(0);
-            let previous = retired.identity() as usize & (OBJECT_FINGERPRINTS - 1);
-            self.fingerprints[previous] -= 1;
-        }
-        self.objects.push(object.clone());
-        self.fingerprints[fingerprint] += 1;
+        let index = if self.objects.len() == ACTIVE_OBJECTS {
+            let index = self.oldest;
+            let previous =
+                self.objects[index].object.identity() as usize & (OBJECT_FINGERPRINTS - 1);
+            self.buckets[previous] &= !(1u16 << index);
+            self.objects[index].object = object.clone();
+            self.touch(index);
+            index
+        } else {
+            let index = self.objects.len();
+            self.objects.push(ActiveObject {
+                object: object.clone(),
+                previous: self.newest,
+                next: NO_OBJECT,
+            });
+            if self.newest == NO_OBJECT {
+                self.oldest = index;
+            } else {
+                self.objects[self.newest].next = index;
+            }
+            self.newest = index;
+            index
+        };
+        self.buckets[fingerprint] |= 1u16 << index;
     }
 }
 
@@ -575,6 +628,53 @@ mod tests {
             after, before,
             "warm reads must not allocate more Root registrations"
         );
+    }
+    #[cfg(not(miri))]
+    #[test]
+    fn stable_activation_slots_match_lru_order_and_bucket_membership() {
+        let runtime = Runtime::new();
+        runtime.set_allocation_collection_interval(usize::MAX);
+        let objects: Vec<_> = (0..80).map(|_| Object::new_in(&runtime)).collect();
+        let mut cache = ActiveObjects::new();
+        let mut expected: Vec<Object> = Vec::new();
+        let mut state = 42u32;
+        for step in 0..2_000 {
+            state = state.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+            let object = &objects[(state as usize >> 8) % objects.len()];
+            if let Some(index) = expected.iter().position(|value| value == object) {
+                expected.remove(index);
+            } else if expected.len() == ACTIVE_OBJECTS {
+                expected.remove(0);
+            }
+            expected.push(object.clone());
+            cache.remember(object);
+            let mut order = Vec::new();
+            let mut index = cache.oldest;
+            let mut previous = NO_OBJECT;
+            while index != NO_OBJECT {
+                assert!(order.len() < ACTIVE_OBJECTS, "cyclic LRU links");
+                let entry = &cache.objects[index];
+                assert_eq!(entry.previous, previous);
+                order.push(entry.object.clone());
+                previous = index;
+                index = entry.next;
+            }
+            assert_eq!(order, expected);
+            assert_eq!(previous, cache.newest);
+            let mut buckets = [0u16; OBJECT_FINGERPRINTS];
+            for (index, entry) in cache.objects.iter().enumerate() {
+                buckets[entry.object.identity() as usize & (OBJECT_FINGERPRINTS - 1)] |=
+                    1u16 << index;
+            }
+            assert_eq!(cache.buckets, buckets);
+            if step % 97 == 0 {
+                cache.clear();
+                expected.clear();
+                assert_eq!(cache.oldest, NO_OBJECT);
+                assert_eq!(cache.newest, NO_OBJECT);
+                assert_eq!(cache.buckets, [0; OBJECT_FINGERPRINTS]);
+            }
+        }
     }
     #[cfg(not(miri))]
     #[test]

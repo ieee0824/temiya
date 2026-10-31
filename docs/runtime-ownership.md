@@ -715,6 +715,14 @@ history of allocated objects between collection points. Tests cover cache bounds
 slot retirement under allocation collection, explicit collection while a clone
 remains live, nested region sharing and unwind cleanup.
 
+The 16-entry activation cache uses stable facade slots and an index-linked LRU
+order. A 64-bucket bitset narrows identity checks without treating a fingerprint
+collision as a hit. Hits relink indices rather than moving facade arrays;
+eviction still retires exactly the least recently used object. Clearing drops
+every facade and resets both the index links and bucket bits. A deterministic
+reference-model test checks collision membership, eviction order and reuse after
+clearing, alongside the collection and warm-root tests above.
+
 Primitive property References in one VM invocation may also retain the five
 primitive-prototype facades from that invocation's fixed, borrowed Realm.
 The stored intrinsic registry is initialized once and does not change identity;

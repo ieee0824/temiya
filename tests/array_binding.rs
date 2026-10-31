@@ -61,3 +61,37 @@ fn defaults_keep_names_and_step_errors_do_not_close() {
         ));
     }
 }
+
+#[test]
+fn binding_values_and_environments_survive_reentrant_gc_then_release() {
+    for backend in [ScriptBackend::Ast, ScriptBackend::Auto] {
+        let engine = Engine::builder().script_backend(backend).build();
+        {
+            let realm = engine.create_realm();
+            let gc = temiya::runtime::Object::native_function_with_context(
+                engine.allocation_context(),
+                |context, _, _| {
+                    context.collect_garbage()?;
+                    Ok(Value::Undefined)
+                },
+            );
+            engine
+                .set_global(
+                    &realm,
+                    "gcNow",
+                    engine.value(&realm, Value::Object(gc)).unwrap(),
+                )
+                .unwrap();
+            let source = "function make(){let index=0;return {[Symbol.iterator](){gcNow();return {next(){gcNow();let current=++index;return {get done(){gcNow();return current>3;},get value(){gcNow();return current===1?undefined:{answer:current===2?20:22};}};},return(){gcNow();return {};}};}};}function bind([first=(gcNow(),{answer:1}),...rest]){gcNow();return first.answer+rest[0].answer+rest[1].answer;}let [a=(gcNow(),{answer:20}),b]=[undefined,{answer:22}];gcNow();bind(make())===43&&a.answer+b.answer===42;";
+            let script = engine.compile(&realm, source).unwrap();
+            assert!(
+                matches!(
+                    engine.evaluate(&script).unwrap().value(),
+                    Value::Boolean(true)
+                ),
+                "{backend:?}"
+            );
+        }
+        assert_eq!(engine.collect_garbage().unwrap().retained, 0);
+    }
+}

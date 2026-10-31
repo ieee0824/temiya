@@ -103,7 +103,7 @@ impl VirtualMachine {
         let mut scopes: SingleStack<ScopeFrame<'_>> = SingleStack::new();
         let mut references: SingleStack<Reference> = SingleStack::new();
         let mut calls: SingleStack<Invocation> = SingleStack::new();
-        let mut stack = ValueStack::with_capacity(bytecode.max_stack());
+        let mut stack = Vec::with_capacity(bytecode.max_stack());
         let mut locals = vec![Value::Undefined; body.local_count as usize];
         let mut property_hints = bytecode
             .has_own_property_cache()
@@ -856,7 +856,7 @@ pub(super) fn constant(constant: &Constant) -> Value {
     }
 }
 
-fn array_prefix(stack: &mut ValueStack) -> RuntimeResult<(Object, u64)> {
+fn array_prefix(stack: &mut Vec<Value>) -> RuntimeResult<(Object, u64)> {
     let Value::Number(next) = pop(stack)? else {
         return Err(RuntimeError::type_error(
             "Array initializer index is not a number",
@@ -878,7 +878,7 @@ fn array_prefix(stack: &mut ValueStack) -> RuntimeResult<(Object, u64)> {
     Ok((object, next as u64))
 }
 
-fn pop(stack: &mut ValueStack) -> RuntimeResult<Value> {
+fn pop(stack: &mut Vec<Value>) -> RuntimeResult<Value> {
     stack
         .pop()
         .ok_or_else(|| RuntimeError::internal_error("verified stack was empty"))
@@ -886,7 +886,7 @@ fn pop(stack: &mut ValueStack) -> RuntimeResult<Value> {
 
 #[inline]
 fn binary(
-    stack: &mut ValueStack,
+    stack: &mut Vec<Value>,
     operator: BinaryOperator,
     realm: Option<&Realm>,
 ) -> RuntimeResult<()> {
@@ -966,105 +966,10 @@ impl<T> std::ops::DerefMut for SingleStack<T> {
     }
 }
 
-// Small callbacks need no operand allocation. Both representations own actual
-// Values, so reentrant GC sees the same roots and popped slots release them.
-enum ValueStack {
-    Inline { values: [Value; 4], len: usize },
-    Heap(Vec<Value>),
-}
-impl ValueStack {
-    fn with_capacity(capacity: usize) -> Self {
-        if capacity <= 4 {
-            Self::Inline {
-                values: [const { Value::Undefined }; 4],
-                len: 0,
-            }
-        } else {
-            Self::Heap(Vec::with_capacity(capacity))
-        }
-    }
-    fn push(&mut self, value: Value) {
-        match self {
-            Self::Inline { values, len } if *len < values.len() => {
-                values[*len] = value;
-                *len += 1;
-            }
-            Self::Heap(values) => values.push(value),
-            Self::Inline { .. } => {
-                // Defensive growth also preserves roots if a future producer
-                // overestimates the amount of stack space it can elide.
-                let Self::Inline { values, len } = std::mem::replace(self, Self::Heap(Vec::new()))
-                else {
-                    unreachable!()
-                };
-                let mut heap: Vec<_> = values.into_iter().take(len).collect();
-                heap.push(value);
-                *self = Self::Heap(heap);
-            }
-        }
-    }
-    fn pop(&mut self) -> Option<Value> {
-        match self {
-            Self::Inline { values, len } if *len != 0 => {
-                *len -= 1;
-                Some(std::mem::replace(&mut values[*len], Value::Undefined))
-            }
-            Self::Inline { .. } => None,
-            Self::Heap(values) => values.pop(),
-        }
-    }
-    fn truncate(&mut self, length: usize) {
-        match self {
-            Self::Inline { len, .. } => {
-                let remove = len.saturating_sub(length);
-                for _ in 0..remove {
-                    self.pop();
-                }
-            }
-            Self::Heap(values) => values.truncate(length),
-        }
-    }
-}
-impl std::ops::Deref for ValueStack {
-    type Target = [Value];
-    fn deref(&self) -> &[Value] {
-        match self {
-            Self::Inline { values, len } => &values[..*len],
-            Self::Heap(values) => values,
-        }
-    }
-}
-impl std::ops::DerefMut for ValueStack {
-    fn deref_mut(&mut self) -> &mut [Value] {
-        match self {
-            Self::Inline { values, len } => &mut values[..*len],
-            Self::Heap(values) => values,
-        }
-    }
-}
-
 #[cfg(test)]
-mod operand_storage_tests {
+mod auxiliary_storage_tests {
     use super::*;
 
-    #[test]
-    fn inline_spilled_and_heap_operands_release_roots_on_pop_truncate_and_drop() {
-        for capacity in [0, 4, 8] {
-            let runtime = crate::runtime::Runtime::new();
-            runtime.set_allocation_collection_interval(usize::MAX);
-            let mut stack = ValueStack::with_capacity(capacity);
-            for _ in 0..6 {
-                stack.push(Value::Object(Object::new_in(&runtime)));
-            }
-            assert_eq!(runtime.collect_garbage().unwrap().retained, 6);
-            drop(stack.pop());
-            assert_eq!(runtime.collect_garbage().unwrap().retained, 5);
-            stack.truncate(2);
-            assert_eq!(runtime.collect_garbage().unwrap().retained, 2);
-            drop(stack);
-            assert_eq!(runtime.collect_garbage().unwrap().retained, 0);
-        }
-    }
     #[test]
     fn single_and_nested_auxiliary_stacks_own_and_release_their_roots() {
         for count in [1, 3] {

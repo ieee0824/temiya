@@ -59,3 +59,11 @@ used the identical binary/host/limits only for those8, preserving all3872
 reported outcomes, failed raw attempt and initial history. All130 baseline
 Auto timeout differences remain visible (41 now pass,89 now fail); they are
 not claimed as new semantic coverage. No timeout, failure or skip is a pass.
+
+hosted-initial-v1 retains all68 independently replayed reports from
+run41169970601, source7eba69e. All46 preceding workload gates pass on both
+hosts. Iterator wins in frozen order are0/0/2/3/0/0 on EPYC9V45 and
+0/0/0/1/0/0 on Xeon8573C. Call spread is roughly11x/21x Boa time,
+done/value getters roughly4x, and invalid-next-result roughly2x. These
+adverse results do not qualify the source for merge. No input, limit, CPU
+selection or significance threshold has been changed.

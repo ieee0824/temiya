@@ -58,6 +58,10 @@ pub(crate) struct IteratorRecord {
 }
 
 impl IteratorRecord {
+    pub(super) fn is_done(&self) -> bool {
+        self.done
+    }
+
     pub(crate) fn get(realm: &Realm, value: Value) -> RuntimeResult<Self> {
         let method = Reference::property_in_realm(
             realm,

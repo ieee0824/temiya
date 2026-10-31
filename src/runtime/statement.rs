@@ -581,13 +581,16 @@ impl StatementEvaluator {
             if let StmtKind::Variable { kind, declarations } = &statement.kind {
                 if *kind != VariableKind::Var {
                     for declaration in declarations {
-                        let name = binding_name(&declaration.binding)?;
-                        if lexical.iter().any(|(other, _)| *other == name) {
-                            return Err(RuntimeError::syntax_error(
-                                "duplicate lexical declaration",
-                            ));
+                        let mut bound_names = Vec::new();
+                        super::binding::names(&declaration.binding, &mut bound_names)?;
+                        for name in bound_names {
+                            if lexical.iter().any(|(other, _)| *other == name) {
+                                return Err(RuntimeError::syntax_error(
+                                    "duplicate lexical declaration",
+                                ));
+                            }
+                            lexical.push((name, *kind == VariableKind::Const));
                         }
-                        lexical.push((name, *kind == VariableKind::Const));
                     }
                 }
             }
@@ -669,11 +672,14 @@ impl StatementEvaluator {
             if let StmtKind::Variable { kind, declarations } = &statement.kind {
                 if *kind != VariableKind::Var {
                     for declaration in declarations {
-                        let name = binding_name(&declaration.binding)?;
-                        if *kind == VariableKind::Const {
-                            environment.create_immutable_binding(name, true)?;
-                        } else {
-                            environment.create_mutable_binding(name, false)?;
+                        let mut bound_names = Vec::new();
+                        super::binding::names(&declaration.binding, &mut bound_names)?;
+                        for name in bound_names {
+                            if *kind == VariableKind::Const {
+                                environment.create_immutable_binding(name, true)?;
+                            } else {
+                                environment.create_mutable_binding(name, false)?;
+                            }
                         }
                     }
                 }
@@ -742,6 +748,19 @@ impl StatementEvaluator {
         declarations: &[VariableDeclarator],
     ) -> RuntimeResult<Completion> {
         for declaration in declarations {
+            if !matches!(declaration.binding.kind, ExprKind::Identifier(_)) {
+                let value = declaration
+                    .init
+                    .as_ref()
+                    .map_or(Ok(Value::Undefined), |init| self.expression.evaluate(init))?;
+                super::binding::initialize(
+                    &self.expression,
+                    &declaration.binding,
+                    value,
+                    kind != VariableKind::Var,
+                )?;
+                continue;
+            }
             let name = binding_name(&declaration.binding)?;
             match kind {
                 VariableKind::Var => {
@@ -812,15 +831,18 @@ impl StatementEvaluator {
         declarations: &[VariableDeclarator],
     ) -> RuntimeResult<()> {
         for declaration in declarations {
-            let name = binding_name(&declaration.binding)?;
-            if kind == VariableKind::Const {
-                self.expression
-                    .environment
-                    .create_immutable_binding(name, true)?;
-            } else {
-                self.expression
-                    .environment
-                    .create_mutable_binding(name, false)?;
+            let mut bound_names = Vec::new();
+            super::binding::names(&declaration.binding, &mut bound_names)?;
+            for name in bound_names {
+                if kind == VariableKind::Const {
+                    self.expression
+                        .environment
+                        .create_immutable_binding(name, true)?;
+                } else {
+                    self.expression
+                        .environment
+                        .create_mutable_binding(name, false)?;
+                }
             }
         }
         Ok(())
@@ -881,9 +903,12 @@ fn collect_var_names(statements: &[Stmt], names: &mut Vec<JsString>) -> RuntimeR
                 declarations,
             } => {
                 for declaration in declarations {
-                    let name = binding_name(&declaration.binding)?;
-                    if !names.contains(&name) {
-                        names.push(name);
+                    let mut bound_names = Vec::new();
+                    super::binding::names(&declaration.binding, &mut bound_names)?;
+                    for name in bound_names {
+                        if !names.contains(&name) {
+                            names.push(name);
+                        }
                     }
                 }
             }
@@ -945,9 +970,12 @@ fn collect_for_init_var(init: Option<&ForInit>, names: &mut Vec<JsString>) -> Ru
         return Ok(());
     };
     for declaration in declarations {
-        let name = binding_name(&declaration.binding)?;
-        if !names.contains(&name) {
-            names.push(name);
+        let mut bound_names = Vec::new();
+        super::binding::names(&declaration.binding, &mut bound_names)?;
+        for name in bound_names {
+            if !names.contains(&name) {
+                names.push(name);
+            }
         }
     }
     Ok(())

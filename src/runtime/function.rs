@@ -844,6 +844,39 @@ pub(super) fn bind_parameters(
     parameters: &[Expr],
     arguments: &[Value],
 ) -> RuntimeResult<()> {
+    if parameters
+        .iter()
+        .any(|parameter| !matches!(parameter.kind, ExprKind::Identifier(_)))
+    {
+        let mut names = Vec::new();
+        for parameter in parameters {
+            super::binding::names(parameter, &mut names)?;
+        }
+        for name in names {
+            if !environment.has_binding(&name)? {
+                environment.create_mutable_binding(name, false)?;
+            }
+        }
+        for (index, parameter) in parameters.iter().enumerate() {
+            if let ExprKind::Spread(binding) = &parameter.kind {
+                let array = super::array_literal::create(&evaluator.realm)?;
+                let mut next = 0;
+                for value in arguments.get(index..).unwrap_or_default() {
+                    super::array_literal::append(&array, &mut next, value.clone())?;
+                }
+                super::array_literal::finish(&array, next)?;
+                super::binding::initialize(evaluator, binding, Value::Object(array), true)?;
+                break;
+            }
+            super::binding::initialize(
+                evaluator,
+                parameter,
+                arguments.get(index).cloned().unwrap_or(Value::Undefined),
+                true,
+            )?;
+        }
+        return Ok(());
+    }
     let mut index = 0;
     for parameter in parameters {
         match &parameter.kind {

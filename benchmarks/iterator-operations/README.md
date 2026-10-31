@@ -134,3 +134,10 @@ fail and 1,662 timeout across 3,880 variants, with every outcome matching the
 preceding 09766bba source. The original baseline collection failure and its
 missing-only recovery remain archived. `verify-fixed.mjs` checks the raw reports
 and runtime/build source equivalence. This does not qualify later runtime edits.
+
+`full-inline-auxiliary-v1` retains run 41192023972 at d9906db. All eight
+complete-corpus known-pass gates replay independently, and all 29,701 preceding
+4a4c103 passes remain passes, with zero new passes or regressions. Failures,
+skips and timeouts remain recorded. Replay with
+`node benchmarks/iterator-operations/verify-full.mjs full-inline-auxiliary-v1`.
+This is correctness evidence and does not establish native speed qualification.

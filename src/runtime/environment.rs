@@ -665,6 +665,22 @@ impl Environment {
 
     /// Initializes an existing binding, ending its temporal dead zone.
     pub fn initialize_binding(&self, name: &JsString, value: Value) -> RuntimeResult<()> {
+        // Declarative/function bindings cannot invoke JavaScript. Complete the
+        // operation under one record borrow instead of probing object/import
+        // records first; observable object/module paths remain below.
+        {
+            let mut record = self.0.record.borrow_mut();
+            match &mut *record {
+                EnvironmentRecord::Declarative(record) => {
+                    return record.initialize(self, name, value);
+                }
+                EnvironmentRecord::Function(record) => {
+                    return record.declarative_record.initialize(self, name, value);
+                }
+                _ => {}
+            }
+        }
+
         if let Some(record) = self.object_record_for_binding(name) {
             return record.initialize(self, name, value);
         }
@@ -701,6 +717,18 @@ impl Environment {
         value: Value,
         strict: bool,
     ) -> RuntimeResult<()> {
+        {
+            let mut record = self.0.record.borrow_mut();
+            match &mut *record {
+                EnvironmentRecord::Declarative(record) => {
+                    return record.set(self, name, value, strict);
+                }
+                EnvironmentRecord::Function(record) => {
+                    return record.declarative_record.set(self, name, value, strict);
+                }
+                _ => {}
+            }
+        }
         if let Some(record) = self.object_record_for_binding(name) {
             return record.set(self, name, value, strict);
         }
@@ -736,6 +764,17 @@ impl Environment {
 
     /// Reads a binding, raising ReferenceError for absent or uninitialized names.
     pub fn get_binding_value(&self, name: &JsString, strict: bool) -> RuntimeResult<Value> {
+        {
+            let record = self.0.record.borrow();
+            match &*record {
+                EnvironmentRecord::Declarative(record) => return record.get(self, name),
+                EnvironmentRecord::Function(record) => {
+                    return record.declarative_record.get(self, name);
+                }
+                _ => {}
+            }
+        }
+
         if let Some(record) = self.object_record_for_binding(name) {
             return record.get(self, name, strict);
         }

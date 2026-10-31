@@ -10,11 +10,13 @@ import {fileURLToPath} from 'node:url';
 const root=path.dirname(fileURLToPath(import.meta.url)),repo=path.resolve(root,'../..');
 const read=file=>JSON.parse(fs.readFileSync(file));
 const sha=bytes=>createHash('sha256').update(bytes).digest('hex');
-const evidence=read(root+'/initial-v1/evidence.json');
-assert.equal(evidence.source_revision,'74823117133fd6713ced719f6976399f8d5b9507');
+const captures=new Map([['initial-v1',{source:'74823117133fd6713ced719f6976399f8d5b9507',inputs:79,native:855}],['private-expression-correctness-v1',{source:'e6722cb08955d588ef36bc9997a3679d89590125',inputs:80,native:856}]]);
+const name=process.argv[2]??'initial-v1';assert(captures.has(name));const expected=captures.get(name);
+const evidence=read(root+'/'+name+'/evidence.json');
+assert.equal(evidence.source_revision,expected.source);
 assert.equal(evidence.baseline_revision,'612d7599f2a09598bb834b75c30f2ffc4e987006');
 assert.equal(sha(fs.readFileSync(root+'/selection.json')),read(root+'/selection-freeze.json').selection_sha256);
-const archive=root+'/initial-v1/capture.tar.gz',bytes=fs.readFileSync(archive);
+const archive=root+'/'+name+'/capture.tar.gz',bytes=fs.readFileSync(archive);
 assert.equal(bytes.length,evidence.archive.bytes);assert.equal(sha(bytes),evidence.archive.sha256);
 const temp=fs.mkdtempSync(path.join(os.tmpdir(),'temiya-private-replay-'));
 const options={encoding:'utf8',maxBuffer:16*1024*1024};
@@ -50,9 +52,9 @@ try {
   }
   const outcomes=mode=>read(temp+'/after-'+mode+'/outcomes.json').map(r=>[r.path,r.variant,r.outcome]);
   assert.deepEqual(outcomes('ast'),outcomes('auto'));
-  const worker=read(temp+'/worker-info.json');assert.equal(worker.revision,evidence.source_revision);assert.equal(worker.provenance.source_inputs.length,79);
+  const worker=read(temp+'/worker-info.json');assert.equal(worker.revision,evidence.source_revision);assert.equal(worker.provenance.source_inputs.length,expected.inputs);
   for(const input of worker.provenance.source_inputs)assert.equal(sha(execFileSync('git',['show',evidence.source_revision+':'+input.file],{cwd:repo})),input.sha256,input.file);
   const tests=[...fs.readFileSync(temp+'/native-tests.log','utf8').matchAll(/test result: ok\. (\d+) passed; (\d+) failed; (\d+) ignored/g)];
-  assert.equal(tests.reduce((n,r)=>n+Number(r[1]),0),855);assert(tests.every(r=>Number(r[2])===0));assert.equal(tests.reduce((n,r)=>n+Number(r[3]),0),26);
+  assert.equal(tests.reduce((n,r)=>n+Number(r[1]),0),expected.native);assert(tests.every(r=>Number(r[2])===0));assert.equal(tests.reduce((n,r)=>n+Number(r[3]),0),26);
   console.log(JSON.stringify({integrity:'pass',source:evidence.source_revision,summaries,remaining_each_backend:{fail:697,timeout:152},scope:'Fixed recorded original outcomes only; performance and full conformance remain separate.'}));
 } finally {fs.rmSync(temp,{recursive:true,force:true});}

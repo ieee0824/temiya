@@ -106,3 +106,18 @@ fn reentrant_gc_preserves_ephemeral_targets_and_releases_references() {
         assert_eq!(engine.collect_garbage().unwrap().retained, 0);
     }
 }
+
+#[test]
+fn computed_target_key_coercion_waits_until_put_value() {
+    // ECMA-262 2026 keeps the computed name value in the Reference. Its
+    // ToPropertyKey runs at PutValue, after source reads and defaults.
+    check(
+        "let trace='',obj={},name='old';let key={[Symbol.toPrimitive](){trace+='K';return name;}};({value:obj[key]=(trace+='D',name='answer',42)}={get value(){trace+='G';return undefined;}});obj.answer===42&&obj.old===undefined&&trace==='GDK';",
+    );
+    check(
+        "let trace='',obj={};let key={[Symbol.toPrimitive](){trace+='K';return 'answer';}};let input={[Symbol.iterator](){return {next(){trace+='N';return {value:undefined,done:false};},return(){trace+='C';return {};}};}};[obj[key]=(trace+='D',42)]=input;obj.answer===42&&trace==='NDKC';",
+    );
+    check(
+        "let steps=0,closed=0,keys=0,caught=false;let key={[Symbol.toPrimitive](){keys++;throw 99;}};let input={[Symbol.iterator](){return {next(){steps++;return {value:42,done:false};},return(){closed++;return {};}};}};try{[null[key]]=input;}catch(e){caught=e instanceof TypeError;}caught&&steps===1&&closed===1&&keys===0;",
+    );
+}

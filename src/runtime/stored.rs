@@ -9,7 +9,7 @@ use num_bigint::BigInt;
 #[derive(Clone)]
 pub(super) struct StoredRuntimeError {
     kind: super::RuntimeErrorKind,
-    message: String,
+    message: std::rc::Rc<String>,
     thrown: Option<StoredValue>,
 }
 impl StoredRuntimeError {

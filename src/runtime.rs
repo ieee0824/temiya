@@ -129,21 +129,59 @@ pub enum PrimitiveHint {
     String,
 }
 
+const RUNTIME_MESSAGE_ENTRIES: usize = 8;
+const RUNTIME_MESSAGE_BYTES: usize = 256;
+thread_local! {
+    // Immutable Rust strings only; neither JS values nor Realm roots live here.
+    static RUNTIME_MESSAGES: RefCell<Vec<Rc<String>>> = const { RefCell::new(Vec::new()) };
+}
+fn shared_runtime_message(message: std::borrow::Cow<'static, str>) -> Rc<String> {
+    let oversized = message.len() > RUNTIME_MESSAGE_BYTES
+        || matches!(&message, std::borrow::Cow::Owned(text) if text.capacity() > RUNTIME_MESSAGE_BYTES);
+    if oversized {
+        return Rc::new(message.into_owned());
+    }
+    RUNTIME_MESSAGES.with(|cache| {
+        let mut cache = cache.borrow_mut();
+        if let Some(text) = cache
+            .iter()
+            .rev()
+            .find(|text| text.as_str() == message.as_ref())
+        {
+            return text.clone();
+        }
+        let text = Rc::new(message.into_owned());
+        if cache.len() == RUNTIME_MESSAGE_ENTRIES {
+            cache.remove(0);
+        }
+        cache.push(text.clone());
+        text
+    })
+}
+
 /// Runtime failures raised by abstract operations.
 #[derive(Clone, Debug)]
 pub struct RuntimeError {
     kind: RuntimeErrorKind,
-    message: String,
+    message: Rc<String>,
     thrown: Option<Box<Value>>,
 }
 
 impl RuntimeError {
+    fn reference_error_shared(message: Rc<String>) -> Self {
+        Self {
+            kind: RuntimeErrorKind::ReferenceError,
+            message,
+            thrown: None,
+        }
+    }
+
     /// Creates a TypeError completion.
     #[must_use]
     pub fn type_error(message: impl Into<String>) -> Self {
         Self {
             kind: RuntimeErrorKind::TypeError,
-            message: message.into(),
+            message: shared_runtime_message(std::borrow::Cow::Owned(message.into())),
             thrown: None,
         }
     }
@@ -153,7 +191,7 @@ impl RuntimeError {
     pub fn syntax_error(message: impl Into<String>) -> Self {
         Self {
             kind: RuntimeErrorKind::SyntaxError,
-            message: message.into(),
+            message: shared_runtime_message(std::borrow::Cow::Owned(message.into())),
             thrown: None,
         }
     }
@@ -163,7 +201,7 @@ impl RuntimeError {
     pub fn reference_error(message: impl Into<String>) -> Self {
         Self {
             kind: RuntimeErrorKind::ReferenceError,
-            message: message.into(),
+            message: shared_runtime_message(std::borrow::Cow::Owned(message.into())),
             thrown: None,
         }
     }
@@ -173,7 +211,7 @@ impl RuntimeError {
     pub fn range_error(message: impl Into<String>) -> Self {
         Self {
             kind: RuntimeErrorKind::RangeError,
-            message: message.into(),
+            message: shared_runtime_message(std::borrow::Cow::Owned(message.into())),
             thrown: None,
         }
     }
@@ -183,7 +221,7 @@ impl RuntimeError {
     pub fn internal_error(message: impl Into<String>) -> Self {
         Self {
             kind: RuntimeErrorKind::InternalError,
-            message: message.into(),
+            message: shared_runtime_message(std::borrow::Cow::Owned(message.into())),
             thrown: None,
         }
     }
@@ -194,7 +232,9 @@ impl RuntimeError {
     pub fn thrown(value: Value) -> Self {
         Self {
             kind: RuntimeErrorKind::ThrownValue,
-            message: "JavaScript throw completion".into(),
+            message: shared_runtime_message(std::borrow::Cow::Borrowed(
+                "JavaScript throw completion",
+            )),
             thrown: Some(Box::new(value)),
         }
     }
@@ -735,4 +775,38 @@ fn number_to_js_string(value: f64) -> JsString {
         return "-Infinity".into();
     }
     JsString::from(ryu_js::Buffer::new().format(value))
+}
+
+#[cfg(test)]
+mod shared_runtime_message_tests {
+    use super::*;
+    #[test]
+    fn shared_messages_preserve_error_kinds_values_and_bound_storage() {
+        for i in 0..80 {
+            let text = format!("diagnostic {i} 日本語😀");
+            let a = RuntimeError::type_error(text.clone());
+            let b = RuntimeError::syntax_error(text.clone());
+            assert_eq!(a.message(), text);
+            assert_eq!(b.message(), text);
+            assert_ne!(a, b);
+            assert_eq!(a, a.clone());
+        }
+        let mut oversized = String::with_capacity(4096);
+        oversized.push_str("small");
+        assert_eq!(RuntimeError::reference_error(oversized).message(), "small");
+        for value in [Value::Undefined, Value::Null, Value::Number(-0.0)] {
+            let error = RuntimeError::thrown(value.clone());
+            assert!(error.thrown_value().unwrap().same_value(&value));
+            assert_eq!(error, error.clone());
+        }
+        RUNTIME_MESSAGES.with(|cache| {
+            let cache = cache.borrow();
+            assert!(cache.len() <= RUNTIME_MESSAGE_ENTRIES);
+            assert!(
+                cache
+                    .iter()
+                    .all(|text| text.capacity() <= RUNTIME_MESSAGE_BYTES)
+            );
+        });
+    }
 }

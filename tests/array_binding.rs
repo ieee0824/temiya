@@ -136,3 +136,10 @@ fn prepared_parameter_names_keep_fresh_tdz_cells_across_reentrant_calls() {
         "let calls=0;function f([a=b],b=42){return a;}for(let i=0;i<2;i++){try{f([]);}catch(e){if(e instanceof ReferenceError)calls++;}}calls===2;",
     );
 }
+
+#[test]
+fn repeated_tdz_errors_keep_fresh_identity_and_mutable_messages() {
+    check(
+        "let errors=[],closes=0;let input={[Symbol.iterator](){return {next(){return {done:false,value:undefined};},return(){closes++;throw 99;}};}};for(let i=0;i<2;i++){try{let [missing=missing]=input;}catch(e){errors.push(e);}}let original=errors[1].message;errors[0].message='changed';errors[0]!==errors[1]&&errors[0] instanceof ReferenceError&&errors[1] instanceof ReferenceError&&errors[1].message===original&&original==='missing is in the temporal dead zone'&&closes===2;",
+    );
+}

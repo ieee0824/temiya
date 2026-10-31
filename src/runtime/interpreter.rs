@@ -1015,27 +1015,35 @@ impl ExpressionEvaluator {
     }
 
     fn array(&self, elements: &[Option<Expr>]) -> RuntimeResult<Value> {
-        let object = super::array_literal::create(&self.realm)?;
+        let mut object = None;
         let mut next = 0;
         for element in elements {
             match element {
                 Some(Expr {
                     kind: ExprKind::Spread(value),
                     ..
-                }) => super::array_literal::spread(
+                }) => super::array_literal::spread_deferred(
                     &self.realm,
-                    &object,
+                    &mut object,
                     &mut next,
                     self.evaluate(value)?,
                 )?,
                 Some(value) => {
-                    super::array_literal::append(&object, &mut next, self.evaluate(value)?)?
+                    let value = self.evaluate(value)?;
+                    super::array_literal::append(
+                        super::array_literal::materialize(&self.realm, &mut object)?,
+                        &mut next,
+                        value,
+                    )?
                 }
                 None => super::array_literal::elide(&mut next)?,
             }
         }
-        super::array_literal::finish(&object, next)?;
-        Ok(Value::Object(object))
+        super::array_literal::finish(
+            super::array_literal::materialize(&self.realm, &mut object)?,
+            next,
+        )?;
+        Ok(Value::Object(object.expect("finished array literal")))
     }
 
     fn literal(&self, literal: &Literal) -> RuntimeResult<Value> {

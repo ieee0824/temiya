@@ -20,6 +20,40 @@ fn check(source: &str) {
 }
 
 #[test]
+fn array_materialization_preserves_holes_identity_order_and_live_values_during_gc() {
+    for backend in [ScriptBackend::Ast, ScriptBackend::Auto] {
+        let engine = Engine::builder().script_backend(backend).build();
+        {
+            let realm = engine.create_realm();
+            let gc = Object::native_function_with_context(
+                engine.allocation_context(),
+                |context, _, _| {
+                    context.collect_garbage()?;
+                    Ok(Value::Undefined)
+                },
+            );
+            engine
+                .set_global(
+                    &realm,
+                    "gcNow",
+                    engine.value(&realm, Value::Object(gc)).unwrap(),
+                )
+                .unwrap();
+            let source = "let trace='';function empty(){trace+='E';gcNow();return {[Symbol.iterator](){return {next(){gcNow();return {done:true};}};}};}function mark(value){trace+='M';gcNow();return {answer:value};}let index=0;let iterable={[Symbol.iterator](){trace+='I';return {next(){trace+='N';gcNow();return {done:index++!==0,get value(){trace+='V';gcNow();return {answer:22};}};}};}};let array=[,...empty(),mark(20),...iterable,,mark(42)];let a=[...empty()],b=[...empty()];let holes=[,,...empty()];gcNow();array.length===5&&!(0 in array)&&array[1].answer+array[2].answer===42&&!(3 in array)&&array[4].answer===42&&a!==b&&a.length===0&&b.length===0&&holes.length===2&&!(0 in holes)&&!(1 in holes)&&Object.getPrototypeOf(array)===Array.prototype&&trace==='EMINVNMEEE';";
+            let script = engine.compile(&realm, source).unwrap();
+            assert!(
+                matches!(
+                    engine.evaluate(&script).unwrap().value(),
+                    Value::Boolean(true)
+                ),
+                "{backend:?}"
+            );
+        }
+        assert_eq!(engine.collect_garbage().unwrap().retained, 0);
+    }
+}
+
+#[test]
 fn public_array_and_argument_consumers_keep_protocol_order_and_cached_next() {
     for consumer in [
         "let values=[...iterable];let result=values[0]+values[1];",

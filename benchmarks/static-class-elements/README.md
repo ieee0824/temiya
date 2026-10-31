@@ -27,3 +27,9 @@ hosted-initial-v1 retains all48reports of source31a13af on Xeon6973P-C and
 Xeon8370C. Both static suites fail the fixed minimum2/3gate; copy1 also fails
 a class workload. Adverse identical-executable controls remain recorded. Run
 verify-hosted.mjs to independently reconstruct the unqualified history.
+
+native-integrated-v1 retains current runtimec4b65d6:844native passes and all
+15Boa comparisons faster beyond the fixed threshold. Same-executable controls
+are15noise; preceding-source comparisons are11improvements4noise. Run
+verify-native-integrated.mjs to check all raw values and77compiled source
+hashes. Hosted, complete-corpus and safety qualification remain separate.

@@ -16,6 +16,33 @@ for(const [file,hash]of Object.entries(e.files)){
 for(const node of e.nodes){
  const info=read(dir+'/'+node.name+'/worker-info.json');assert.equal(info.revision,node.source);assert.equal(info.profile,'release');assert.deepEqual(info.features,[]);assert.equal(info.provenance.source_clean,true);assert.equal(info.provenance.source_inputs.length,['short-functions','metadata-observers','stable-roots','outlined-strings','deferred-arrays','owned-sites','weak-environments','literal-accessors','weak-objects','hot-sites','reference-updates','direct-region','catch-records','resolved-hints','active-handles','dense-marks'].includes(node.name)?82:['empty-frame','error-strings','activation-fingerprints','inline-stacks','inline-auxiliary'].includes(node.name)?81:80);
  for(const input of info.provenance.source_inputs)assert.equal(sha(execFileSync('git',['-c','safe.directory='+repo,'show',node.source+':'+input.file],{cwd:repo})),input.sha256,input.file);
+ if(['resolved-hints','active-handles','dense-marks'].includes(node.name)){
+  const previousName={'resolved-hints':'catch-records','active-handles':'resolved-hints','dense-marks':'active-handles'}[node.name];
+  const previous=e.nodes.find(n=>n.name===previousName);assert(previous);
+  const summary=read(dir+'/'+node.name+'/diagnostic-summary.json');
+  assert.equal(summary.revision,node.source);assert.equal(summary.baseline,previous.source);
+  assert.equal(summary.results.length,6);
+  for(const p of summary.results){
+   assert.equal(p.before,previous.profiles.find(q=>q.name===p.name)?.instructions);
+   assert.equal(p.after,node.profiles.find(q=>q.name===p.name)?.instructions);
+   assert.equal(p.changePercent,100*(p.after/p.before-1));
+   assert.equal(p.inputSha256,sha(execFileSync('git',['-c','safe.directory='+repo,'show',node.source+':benchmarks/iterator-operations/workloads-v1/iterator-'+p.name+'.json'],{cwd:repo})));
+  }
+  const log=fs.readFileSync(dir+'/'+node.name+'/all-targets.log','utf8');
+  const results=[...log.matchAll(/test result: ok\. (\d+) passed; 0 failed; (\d+) ignored;/g)];
+  assert.equal(results.reduce((n,m)=>n+Number(m[1]),0),{'resolved-hints':914,'active-handles':915,'dense-marks':916}[node.name]);
+  assert.equal(results.reduce((n,m)=>n+Number(m[2]),0),26);assert(!log.includes('test result: FAILED'));
+  for(const name of node.name==='resolved-hints'?['miri']:node.name==='active-handles'?['miri','foreign-miri']:[]){
+   const text=fs.readFileSync(dir+'/'+node.name+'/'+name+'.log','utf8');
+   assert(text.includes('test result: ok. 1 passed; 0 failed; 0 ignored;'));
+  }
+  if(node.name==='dense-marks'){
+   const v=read(dir+'/'+node.name+'/validation.json');assert.equal(v.source,node.source);
+   assert.equal(v.miri.toolchain,'nightly-2026-10-20');assert.deepEqual(v.miri.flags,['-Zmiri-strict-provenance','-Zmiri-symbolic-alignment-check']);
+   const text=fs.readFileSync(dir+'/'+node.name+'/collector-miri.log','utf8');
+   assert.deepEqual([...text.matchAll(/test result: ok\. (\d+) passed; 0 failed; 0 ignored;/g)].map(m=>Number(m[1])),[4,4,9]);
+  }
+ }
  if(node.name==='catch-records'){
   const v=read(dir+'/'+node.name+'/validation.json');assert.equal(v.source,node.source);assert.equal(v.miri.status,'pass');
   assert.equal(v.miri.toolchain,'nightly-2026-10-20');assert.deepEqual(v.miri.flags,['-Zmiri-strict-provenance','-Zmiri-symbolic-alignment-check']);

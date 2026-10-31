@@ -14,6 +14,28 @@
   },
   "features": [
     {
+      "id": "runtime.destructuring-assignment",
+      "area": "ECMA-262 core",
+      "status": "partial",
+      "reference": "DestructuringAssignmentEvaluation / PutValue (#164)",
+      "tests": [
+        "tests/destructuring_assignment.rs",
+        "docs/destructuring-assignment.md"
+      ],
+      "rationale": "Ast/Auto execute array and object assignment patterns through References, including member targets, nested defaults/rest, RHS identity, ordered effects, abrupt completion and supported loop expression targets. Full corpus, safety and native speed qualification are pending; broader loop and generator semantics remain separate.",
+      "kind": "group",
+      "issues": [
+        164,
+        162,
+        163,
+        171
+      ],
+      "test262": {
+        "status": "not-run",
+        "rationale": "Fixed upstream capture has not yet been recorded for this implementation."
+      }
+    },
+    {
       "id": "runtime.array-binding",
       "area": "ECMA-262 core",
       "status": "partial",

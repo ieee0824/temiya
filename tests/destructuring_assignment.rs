@@ -48,3 +48,27 @@ fn for_of_assignment_targets_and_nested_defaults() {
         "let obj={},a=0;for([a,obj.value] of [[20,22],[40,2]]){}let b=0;({missing:[b]=[42]}={});a+obj.value===42&&b===42;",
     );
 }
+
+#[test]
+fn rest_member_reference_precedes_copy_and_iteration() {
+    check(
+        "let order='',obj={};function target(){order+='T';return obj;}let input={get value(){order+='G';return 42;}};({...target().rest}=input);obj.rest.value===42&&order==='TG';",
+    );
+    check(
+        "let order='',obj={};function target(){order+='T';return obj;}let input={[Symbol.iterator](){order+='I';return {next(){order+='N';return {done:true};}};}};[...target().rest]=input;obj.rest.length===0&&order==='ITN';",
+    );
+}
+
+#[test]
+fn failed_target_closes_before_stepping_and_preserves_original_throw() {
+    check(
+        "let steps=0,closed=0,marker={},caught=false;function target(){throw marker;}let input={[Symbol.iterator](){return {next(){steps++;return {value:42,done:false};},return(){closed++;throw 99;}};}};try{[target().value]=input;}catch(e){caught=e===marker;}steps===0&&closed===1&&caught;",
+    );
+}
+
+#[test]
+fn strict_const_and_readonly_failures_preserve_prior_assignments() {
+    check(
+        "'use strict';let a=0;const b=0;let caught=false;try{[a,b]=[42,99];}catch(e){caught=e instanceof TypeError;}let obj={};Object.defineProperty(obj,'value',{value:0,writable:false});let readonly=false;try{({value:obj.value}={value:42});}catch(e){readonly=e instanceof TypeError;}a===42&&b===0&&caught&&readonly&&obj.value===0;",
+    );
+}

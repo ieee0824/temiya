@@ -1019,6 +1019,11 @@ impl ExpressionEvaluator {
     }
 
     fn assignment(&self, operator: &str, target: &Expr, value: &Expr) -> RuntimeResult<Value> {
+        if operator == "=" && matches!(target.kind, ExprKind::Array { .. } | ExprKind::Object(_)) {
+            let assigned = self.evaluate(value)?;
+            super::binding::initialize(self, target, assigned.clone(), false)?;
+            return Ok(assigned);
+        }
         let reference = self.evaluate_reference(target)?;
         let assigned = if operator == "=" {
             match &reference.name {

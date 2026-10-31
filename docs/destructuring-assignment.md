@@ -1,0 +1,20 @@
+# Destructuring assignment
+
+The interpreter evaluates array and object assignment patterns through the
+existing iterator and property-copy machinery. Identifier and member targets
+produce References; writes use PutValue rather than declaration initialization.
+The assignment expression returns its original right-hand value. Supported
+for-in/of expression targets use the same path.
+
+Target references are evaluated before the corresponding iterator step or
+property get, followed by default evaluation and the write. Earlier writes
+remain observable if a later target throws. IteratorClose preserves the original
+throw completion. Object rest resolves its target before copying properties.
+
+Public Engine tests exercise Ast and Auto in
+`tests/destructuring_assignment.rs`. The implementation is pending fixed
+Test262, safety, toolchain, and native Boa performance qualification. It does
+not establish complete for-of or generator support. Issues #162 and #163 must
+land before #164.
+
+Specification: [ECMA-262 destructuring assignment](https://tc39.es/ecma262/multipage/ecmascript-language-expressions.html#sec-destructuring-assignment).

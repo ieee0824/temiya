@@ -1,4 +1,4 @@
-//! Binding initialization shared by declarations and formal parameters.
+//! Pattern evaluation shared by declarations, parameters, and assignment.
 use super::{
     Completion, ExpressionEvaluator, JsString, PropertyKey, Reference, ReferencedName,
     RuntimeError, RuntimeResult, Value, iterator::IteratorRecord,
@@ -55,6 +55,14 @@ impl Target {
         binding: &Expr,
         initialize: bool,
     ) -> RuntimeResult<Option<Self>> {
+        if !initialize
+            && matches!(
+                binding.kind,
+                ExprKind::Member { .. } | ExprKind::Parenthesized(_)
+            )
+        {
+            return Ok(Some(Self::Assign(evaluator.evaluate_reference(binding)?)));
+        }
         let ExprKind::Identifier(name) = &binding.kind else {
             return Ok(None);
         };
@@ -91,8 +99,9 @@ fn element(
         ExprKind::Assignment { target, value, .. } => (target.as_ref(), Some(value.as_ref())),
         _ => (binding, None),
     };
-    // Resolving a var binding can invoke an object environment's HasBinding.
-    // It precedes IteratorStepValue and default evaluation.
+    // Resolving a var binding can invoke an object environment's HasBinding;
+    // assignment member targets can also run user code. Both precede the
+    // iterator step/property get and default evaluation.
     let target = Target::prepare(evaluator, binding, initialize)?;
     let mut value = get_value()?;
     if matches!(value, Value::Undefined) {

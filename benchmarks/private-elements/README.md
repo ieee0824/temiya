@@ -48,3 +48,9 @@ to129864291 instructions, and accessor input from507019863 to177651256. Run
 verify-private-plans.mjs to replay source/input identities and diagnostic totals.
 These profiled counts do not establish a Boa speed pass. The newer fixed
 Ast/Auto capture and final hosted/full-corpus/safety checks remain pending.
+
+initial-ast-v1 retains the complete initial runtime6e3cbf4 Ast comparison:
+2108 baseline passes preserved and1846 added (3954pass2506fail2028timeout).
+verify-initial-ast.mjs reconstructs both captures and checks every prior pass.
+Observed failure diagnostics are retained without waiving any result; this
+Ast-only historical capture cannot qualify Auto or the newer optimized source.

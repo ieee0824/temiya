@@ -22,3 +22,8 @@ Both backends preserve all 462 initial passes and add one official module test;
 84 failures remain. verify-default-class.mjs reconstructs all 547 outcomes per
 backend and checks the 838 passing native tests. New-source performance remains
 separate from the preceding hosted measurement.
+
+hosted-initial-v1 retains all48reports of source31a13af on Xeon6973P-C and
+Xeon8370C. Both static suites fail the fixed minimum2/3gate; copy1 also fails
+a class workload. Adverse identical-executable controls remain recorded. Run
+verify-hosted.mjs to independently reconstruct the unqualified history.

@@ -67,7 +67,7 @@ const workloads = manifest.workloads.map((entry, index) => {
 });
 const timeout_ms = 180000, rss_limit_kib = 512 * 1024;
 const identities = [manifestPath, ...workloads.map(row => row.path), ...workers.map(row => row.executable),
-  fileURLToPath(import.meta.url), fileURLToPath(new URL(privateFields ? './private-field-benchmark-reference.mjs' : staticElements ? './static-class-benchmark-reference.mjs' : instanceFields ? './instance-field-benchmark-reference.mjs' : superProperties ? './super-property-benchmark-reference.mjs' : './class-benchmark-reference.mjs', import.meta.url))]
+  fileURLToPath(import.meta.url), fileURLToPath(new URL(privateElements ? './private-element-benchmark-reference.mjs' : privateFields ? './private-field-benchmark-reference.mjs' : staticElements ? './static-class-benchmark-reference.mjs' : instanceFields ? './instance-field-benchmark-reference.mjs' : superProperties ? './super-property-benchmark-reference.mjs' : './class-benchmark-reference.mjs', import.meta.url))]
   .map(file => ({file, sha256: hash(readFileSync(file))}));
 const report = {comparison_kind: beforeAfter ? 'Temiya class before/after or control' : 'Temiya class versus actual Boa',
   recorded_at: new Date().toISOString(), rustc, manifest, workers, samples, pairs, identities,

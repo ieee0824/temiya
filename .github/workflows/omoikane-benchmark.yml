@@ -32,7 +32,7 @@ on:
         default: false
         type: boolean
       include_private:
-        description: Also record fixed private-field5 suite (baseline must support private instance fields)
+        description: Also record private-field5 and, when present, private-element6 suites
         default: false
         type: boolean
       two_runners:
@@ -367,6 +367,26 @@ jobs:
             reports+=("$RUNNER_TEMP/comparison-output/private-baseline-boa.json" "$RUNNER_TEMP/comparison-output/private-same-binary.json")
           fi
           node scripts/audit-class-workload-records.mjs --private "${reports[@]}" > "$RUNNER_TEMP/comparison-output/private-independent-audit.json"
+      - name: Measure fixed private-element workloads against actual Boa
+        if: inputs.include_private && steps.hardware.outputs.matches == 'true' && hashFiles('temiya/benchmarks/private-elements/workloads-v1/manifest.json') != ''
+        run: |
+          export TEMIYA_REVISION="$(cat "$RUNNER_TEMP/comparison-output/measured-revision.txt")"
+          export BENCH_NOTES='Six private-element workloads frozen before implementation. Actual Boa comparison; unchanged15 samples/3 alternating pairs and watchdog/noise policy. A successful job is not a speed pass. Baseline source predates this feature; no successful before/after comparison is claimed.'
+          node scripts/compare-class-workloads.mjs --elements benchmarks/private-elements/workloads-v1 "$RUNNER_TEMP/temiya-current-target/release/examples/measure_workload" "$RUNNER_TEMP/comparison-output/boa-build-info.json" 15 3 > "$RUNNER_TEMP/comparison-output/elements-boa.json" 2> "$RUNNER_TEMP/comparison-output/elements-boa.progress"
+      - name: Measure identical candidate private-element control
+        if: inputs.include_private && inputs.include_controls && steps.hardware.outputs.matches == 'true' && hashFiles('temiya/benchmarks/private-elements/workloads-v1/manifest.json') != ''
+        run: |
+          export TEMIYA_REVISION="$(cat "$RUNNER_TEMP/comparison-output/measured-revision.txt")"
+          export BENCH_NOTES='Identical executable private-element control. Retain every slow/noisy outcome. Labels do not indicate a source improvement.'
+          node scripts/compare-class-workloads.mjs --elements --temiya-baseline benchmarks/private-elements/workloads-v1 "$RUNNER_TEMP/temiya-current-target/release/examples/measure_workload" "$RUNNER_TEMP/comparison-output/same-binary-build-info.json" 15 3 > "$RUNNER_TEMP/comparison-output/elements-same-binary.json" 2> "$RUNNER_TEMP/comparison-output/elements-same-binary.progress"
+      - name: Independently reconstruct private-element measurement records
+        if: inputs.include_private && steps.hardware.outputs.matches == 'true' && hashFiles('temiya/benchmarks/private-elements/workloads-v1/manifest.json') != ''
+        run: |
+          reports=("$RUNNER_TEMP/comparison-output/elements-boa.json")
+          if [ "$INCLUDE_CONTROLS" = true ]; then
+            reports+=("$RUNNER_TEMP/comparison-output/elements-same-binary.json")
+          fi
+          node scripts/audit-class-workload-records.mjs --elements "${reports[@]}" > "$RUNNER_TEMP/comparison-output/elements-independent-audit.json"
       - name: Summarize validity and speed gates separately
         if: always()
         run: |
@@ -389,6 +409,15 @@ jobs:
             } catch {
               lines.push(`- ${name}: no complete measurement report; inspect logs and artifacts.`);
             }
+          }
+          if (process.env.INCLUDE_PRIVATE === 'true' && fs.existsSync('benchmarks/private-elements/workloads-v1/manifest.json')) {
+            for (const name of ['elements-boa', ...(process.env.INCLUDE_CONTROLS === 'true' ? ['elements-same-binary'] : [])]) {
+              try {
+                const r = JSON.parse(fs.readFileSync(path.join(process.env.RUNNER_TEMP, 'comparison-output', name + '.json')));
+                lines.push('- ' + name + ': correct outputs = ' + r.all_workloads_valid + '; all-private-element speed gate = ' + r.all_class_workloads_faster_beyond_threshold);
+              } catch { lines.push('- ' + name + ': no complete measurement report.'); }
+            }
+            lines.push('Private-element baseline before/after is not measured: the selected parent baseline predates this feature.');
           }
           if (process.env.INCLUDE_CLASSES === 'true') {
             const classes = ['class-beforeafter', 'class-boa', ...(process.env.INCLUDE_CONTROLS === 'true' ? ['class-baseline-boa', 'class-same-binary'] : [])];

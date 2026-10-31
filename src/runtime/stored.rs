@@ -1,10 +1,11 @@
 //! Non-owning heap edges. Public Values/Objects remain owning rooted facades.
 use super::{
     JsString, Object, PropertyDescriptor, Runtime, RuntimeError, RuntimeResult, Symbol, Value,
-    managed::ManagedObject,
+    managed::{ManagedObject, ObjectRoot},
 };
 use crate::gc::{Handle, Trace, Tracer};
 use num_bigint::BigInt;
+use std::rc::Weak;
 
 #[derive(Clone)]
 pub(super) struct StoredRuntimeError {
@@ -59,14 +60,19 @@ impl StoredOwner for Object {
 }
 
 #[derive(Clone, Debug)]
-pub(super) struct StoredObject(pub(super) Handle<ManagedObject>);
+pub(super) struct StoredObject(
+    pub(super) Handle<ManagedObject>,
+    // Non-owning facade hint: tracing and write barriers still use the handle.
+    pub(super) Weak<ObjectRoot>,
+);
 impl StoredObject {
     // For edges prepared before allocation of their new, young owner.
     pub(super) fn initial(runtime: Option<&Runtime>, value: &Object) -> RuntimeResult<Self> {
         match (runtime, value.0.runtime()) {
-            (Some(left), Some(right)) if left.same_heap(right) => {
-                Ok(Self(value.0.handle().expect("managed object handle")))
-            }
+            (Some(left), Some(right)) if left.same_heap(right) => Ok(Self(
+                value.0.handle().expect("managed object handle"),
+                value.0.facade_hint(),
+            )),
             _ => Err(RuntimeError::type_error(
                 "object belongs to a different allocation context",
             )),
@@ -85,7 +91,7 @@ impl StoredObject {
             (Some(left), Some(right)) if left.same_heap(right) => {
                 let target = value.0.handle().expect("managed object handle");
                 left.record_object_edge(owner.handle().expect("managed owner handle"), target)?;
-                Ok(Self(target))
+                Ok(Self(target, value.0.facade_hint()))
             }
             _ => Err(RuntimeError::type_error(
                 "object belongs to a different allocation context",
@@ -95,7 +101,7 @@ impl StoredObject {
     pub(super) fn load(&self, owner: &impl StoredOwner) -> RuntimeResult<Object> {
         match owner.runtime() {
             Some(runtime) => runtime
-                .root_object(self.0)
+                .root_object_with_hint(self.0, &self.1)
                 .ok_or_else(|| RuntimeError::internal_error("stale managed object edge")),
             _ => Err(RuntimeError::internal_error(
                 "object edge allocation context mismatch",
@@ -141,7 +147,7 @@ impl StoredValue {
             (Self::String(a), Value::String(b)) => a == b,
             (Self::Symbol(a), Value::Symbol(b)) => a == b,
             (Self::BigInt(a), Value::BigInt(b)) => a == b,
-            (Self::Object(StoredObject(a)), Value::Object(b)) => Some(*a) == b.0.handle(),
+            (Self::Object(StoredObject(a, _)), Value::Object(b)) => Some(*a) == b.0.handle(),
             _ => false,
         }
     }

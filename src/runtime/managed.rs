@@ -164,7 +164,7 @@ impl Trace for ObjectData {
 }
 
 // One shared facade registration, not a registration per facade clone. Internal
-// stored edges will contain only Handle<ManagedObject>, never this owner.
+// stored edges contain traced handles and optional weak hints, never this owner.
 pub(super) struct ObjectRoot {
     // Drop the registration and data reference before the last Runtime owner.
     root: Root<ManagedObject>,
@@ -180,6 +180,9 @@ impl Deref for ObjectReference {
     }
 }
 impl ObjectReference {
+    pub(super) fn facade_hint(&self) -> Weak<ObjectRoot> {
+        Rc::downgrade(&self.0)
+    }
     pub(super) fn runtime(&self) -> Option<&Runtime> {
         Some(&self.0.runtime)
     }
@@ -474,6 +477,20 @@ impl Runtime {
         self.remember_active_object(&object);
         object
     }
+    pub(super) fn root_object_with_hint(
+        &self,
+        handle: Handle<ManagedObject>,
+        hint: &Weak<ObjectRoot>,
+    ) -> Option<Object> {
+        if let Some(facade) = hint.upgrade() {
+            if self.same_heap(&facade.runtime) && facade.root.handle() == handle {
+                let object = Object(ObjectReference(facade));
+                self.remember_active_object(&object);
+                return Some(object);
+            }
+        }
+        self.root_object(handle)
+    }
     pub(super) fn root_object(&self, handle: Handle<ManagedObject>) -> Option<Object> {
         let heap = self.0.heap.borrow();
         let data = heap.shared(handle)?;
@@ -567,6 +584,37 @@ impl Runtime {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn stored_object_hints_are_non_owning_and_preserve_heap_checks_and_revival() {
+        use super::super::{Value, stored::StoredObject};
+        let runtime = Runtime::new();
+        let owner = Object::new_in(&runtime);
+        let child = Object::new_in(&runtime);
+        owner
+            .create_data_property("child".into(), Value::Object(child.clone()))
+            .unwrap();
+        let edge = StoredObject::store(&owner, &child).unwrap();
+        let loaded = edge.load(&owner).unwrap();
+        assert!(Rc::ptr_eq(&loaded.0.0, &child.0.0));
+        drop(loaded);
+        let foreign = Object::new_in(&Runtime::new());
+        assert!(edge.load(&foreign).is_err());
+        drop(child);
+        assert!(edge.1.upgrade().is_none(), "hints do not own facades");
+        runtime.collect_garbage().unwrap();
+        let revived = edge.load(&owner).unwrap();
+        assert_eq!(revived.0.handle(), Some(edge.0));
+        assert!(edge.load(&foreign).is_err());
+        drop(revived);
+        owner
+            .create_data_property("child".into(), Value::Undefined)
+            .unwrap();
+        runtime.collect_garbage().unwrap();
+        assert!(edge.load(&owner).is_err(), "stale handles remain checked");
+        drop(owner);
+        assert_eq!(runtime.collect_garbage().unwrap().retained, 0);
+    }
+
     #[test]
     fn unpublished_prototype_edge_protects_the_last_root_at_allocation() {
         let runtime = Runtime::new();
@@ -1241,7 +1289,7 @@ mod stored_graph_tests {
             &capture,
             Some("answer".into()),
             |owner, capture, key, _, arguments| {
-                let super::super::stored::StoredObject(handle) = capture;
+                let super::super::stored::StoredObject(handle, _) = capture;
                 let runtime = owner.0.runtime().unwrap();
                 assert!(
                     runtime

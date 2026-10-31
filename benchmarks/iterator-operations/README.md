@@ -78,3 +78,5 @@ calls; Realm, environments, function objects and private identities bind anew.
 Cross-Realm code reuse, escaping captures, code equality and heap release have
 public integration coverage. verify-profiles.mjs checks identities, raw profiles,
 native logs and all6 output oracles. These are instruction diagnostics only.
+
+`full-definition-cache-v1` retains run 41176606769 at source 09766bb. All eight full-corpus gates replay independently; all 29,701 preceding passes remain, with no new passes or regressions. Existing failures and timeouts remain recorded. This capture does not establish speed qualification.

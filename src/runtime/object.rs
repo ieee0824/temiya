@@ -2084,7 +2084,7 @@ impl Object {
         Some(end)
     }
 
-    fn ordinary_array_length_info(&self) -> Option<(u32, bool)> {
+    pub(super) fn ordinary_array_length_info(&self) -> Option<(u32, bool)> {
         let state = self.0.state.borrow();
         if !state.array
             || state.proxy.is_some()

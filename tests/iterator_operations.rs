@@ -171,3 +171,20 @@ fn captured_foreign_native_next_keeps_its_exception_realm() {
         );
     }
 }
+
+#[test]
+fn builtin_array_steps_keep_live_length_and_observable_element_access() {
+    check(
+        "let a=[20];let it=a[Symbol.iterator]();let x=it.next().value;a.push(22);let y=it.next().value;it.next();a.push(99);x+y===42&&it.next().done;",
+    );
+    check("let a=[20,22];let it=a[Symbol.iterator]();it.next();a.length=1;it.next().done;");
+    check(
+        "let a=[,22];let calls=0;let proto=Object.create(Array.prototype);Object.defineProperty(proto,'0',{get(){calls++;if(this!==a)throw 42;return 20;}});Object.setPrototypeOf(a,proto);let [x,y]=a;x+y===42&&calls===1;",
+    );
+    check(
+        "let a=[0,22];let calls=0;Object.defineProperty(a,'0',{get(){calls++;a[1]=23;return 19;}});let [x,y]=a;x+y===42&&calls===1;",
+    );
+    check(
+        "let trace='';let a=new Proxy([20,22],{get(target,key,receiver){if(key==='length')trace+='L';if(key==='0'||key==='1')trace+=key;return Reflect.get(target,key,receiver);}});let [x,y]=a;x+y===42&&trace==='L0L1';",
+    );
+}

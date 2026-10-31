@@ -3,8 +3,7 @@
 This branch builds on merged #161. Array binding now executes through
 declarations, ordinary parameters,
 catch and supported loop declarations. Native Boa qualification and full recorded-outcome preservation pass for
-source7a154b1. Current fixed Ast/Auto preservation and final CI remain required
-before merge.
+source7a154b1. Fixed Ast/Auto preservation is complete; final merging requires current PR CI.
 
 selection.json freezes all destructuring-binding metadata tests and every /dstr/
 path from the complete pinned Test262 catalog before implementation. Object
@@ -110,10 +109,18 @@ jobs in run `41243217454`. No CPU filter was used. Every same-binary control
 stays within noise in at least two pairs. Array-case wins are 3/3/3/3/3/2
 and 3/3/3/2/3/3; all 72 reports and adverse/noisy observations are retained.
 Replay with `node benchmarks/array-binding/verify-hosted.mjs hosted-inline-thrown-v1`.
-Fixed Ast/Auto and current PR CI remain separate merge requirements.
+Fixed Ast/Auto preservation is recorded separately; current PR CI remains a merge requirement.
 
 `full-inline-thrown-v1` retains the complete source7a154b1 capture and the
 preceding source9f84bc5 capture. Independent replay preserves all 33,565 prior
 passes across 100,211 variants, with no regressions or missing results. Outcomes
 remain 33,565 pass, 58,059 fail, 18 skip and 8,569 timeout. This aggregate is
 recorded-outcome preservation, not whole-feature conformance.
+
+`fixed-inline-thrown-v1` retains nine captures, including the original failed
+Auto collection and its missing-only recovery. Current runtime5b88 compiler
+inputs equal qualified source7a. Ast and Auto each record 5,292 pass, 7,691
+fail and 4,431 timeout across 17,414 variants, with no missing results or
+collection errors. Every outcome matches preceding cache32 in each backend;
+all 5,292 prior passes remain. Earlier baseline/initial passes also remain.
+Replay with `node benchmarks/array-binding/fixed-inline-thrown-v1/verify.mjs`.

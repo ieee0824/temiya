@@ -81,6 +81,7 @@ case "${1:-}" in
     node benchmarks/array-binding/verify-workloads.mjs
     node benchmarks/array-binding/verify-fixed.mjs
     node benchmarks/array-binding/fixed-array-data-properties-v1/verify.mjs
+    node benchmarks/array-binding/fixed-inline-thrown-v1/verify.mjs
     node benchmarks/array-binding/fixed-cache32-v1/verify.mjs
     node benchmarks/array-binding/verify-hosted.mjs
     node benchmarks/array-binding/verify-full.mjs

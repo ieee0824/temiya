@@ -25,8 +25,9 @@ metadata tests and every /dstr/ path: 8,806 files and 17,414 variants. Cross-fea
 failures remain in scope of recording. Full source7a154b1 outcomes are 33,565 pass, 58,059 fail, 18 skip and
 8,569 timeout over 100,211 variants, with no missing results and all 33,565
 preceding passes preserved. All 58 native workloads qualify on both independent
-jobs at unchanged thresholds, and complete security passes. Fixed Ast/Auto
-preservation and current PR CI remain pending. These records do not establish
+jobs at unchanged thresholds, and complete security passes. Fixed Ast/Auto each preserve all 5,292 preceding passes; all 17,414
+outcomes are identical to the previous source, with no missing results.
+Final merging requires current PR CI. These records do not establish
 complete ECMAScript conformance.
 
 A parameter BoundName of `arguments` suppresses the implicit arguments object. Array/default/rest parameter bindings keep their own uninitialized slot until their turn, including TDZ when an earlier default reads a later `arguments` parameter. Ordinary calls and construction share this rule.

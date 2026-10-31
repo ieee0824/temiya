@@ -2797,7 +2797,7 @@ impl super::ObjectData {
         }
         if let Some(entries) = &state.weak_map_data {
             for (key, value) in entries.borrow().iter() {
-                if let (Some(key), StoredValue::Object(StoredObject(value, _))) =
+                if let (Some(key), StoredValue::Object(StoredObject(value))) =
                     (key.0.handle(), value)
                 {
                     tracer.ephemeron(key, *value);

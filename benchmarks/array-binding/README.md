@@ -95,3 +95,9 @@ Runtime9f84bc5 has completed two-job native collection, but TDZ-close fails the 
 `fixed-cache32-v1` preserves completed frozen sourcee9854f8 (all83compiler inputs match9f84bc5): Ast/Auto each5292pass7691fail4431timeout,0missing/errors; all17414outcomes match the preceding866runtime, with zero pass regressions. Native9f84bc5 remains unqualified because AMD TDZ-close fails.
 
 `compact-error-diagnostic-v1` preserves the rejected compact-error experiment54e5ea9, whose six instruction counts regress. `inline-thrown-error-diagnostic-v1` retains source5b88eea: explicit throws use an inline Value, normal errors retain their40byte layout, and reference diagnostics use bounded immutable Rust strings.936tests and4focused strict Miri tests pass; all six instruction counts decrease0.46–1.19%. Fresh native/full/security/fixed qualification is required; previous results do not qualify this source.
+
+Current inline-thrown-error source `7a154b17dd6982913047b364e7bf4c293103798a`
+completed security run `41243222743`: all 19 jobs passed, with 163 unique
+exact strict Miri tests and 936 ASan test passes. Canonical logs and independent
+replay are retained in `security-inline-thrown-v1`. This is safety evidence;
+native speed and full Test262 qualification remain separate.

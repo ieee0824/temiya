@@ -9,7 +9,7 @@ import {execFileSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 const root=path.dirname(fileURLToPath(import.meta.url)),repo=path.resolve(root,'../..');
 const read=p=>JSON.parse(fs.readFileSync(p)),sha=b=>createHash('sha256').update(b).digest('hex');
-const captures=new Map([['hosted-catch-records-partial-v1',{source:'ff67c89dc586cdf0d982e49aa1c72205ca5c4e66',run:41211990414,baseline:'bb0d3268d7bfbb9b6910b3b86db3a5cf1abf49c7',copies:[2]}],['hosted-hot-sites-v1',{source:'bb0d3268d7bfbb9b6910b3b86db3a5cf1abf49c7',run:41208962674,baseline:'702ee76165c04990ac517a993c3e194c279cf4a0'}],['hosted-literal-accessors-v1',{source:'702ee76165c04990ac517a993c3e194c279cf4a0',run:41204129150,baseline:'7eba69e8d8e5927b5f5c73dbdd57b30749e16442'}],['hosted-weak-environments-v1',{source:'fd4ad7b521537dc0266424c40bd59e7dc6bb3c59',run:41200250693,baseline:'7eba69e8d8e5927b5f5c73dbdd57b30749e16442'}],['hosted-owned-sites-v1',{source:'767add1afe9c03059cba1ebff05f7397d9a3f67e',run:41198352870,baseline:'7eba69e8d8e5927b5f5c73dbdd57b30749e16442'}],['hosted-outlined-strings-v1',{source:'375ad2dce49b04ce37d7f8c8015d2230dc248d82',run:41196855251,baseline:'7eba69e8d8e5927b5f5c73dbdd57b30749e16442'}],['hosted-inline-auxiliary-v1',{source:'d9906db3c26e0b6b3663206fe0617fa5dbd7bbfc',run:41192021887,baseline:'7eba69e8d8e5927b5f5c73dbdd57b30749e16442'}],['hosted-empty-frame-v1',{source:'4a4c103ade6b0acae5f5a16cfa68220f24c2300e',run:41186655959,baseline:'7eba69e8d8e5927b5f5c73dbdd57b30749e16442'}],['hosted-native-step-v1',{source:'1979ac3cb1454a8903d32d4886f71b86324f972c',run:41181490909,baseline:'7eba69e8d8e5927b5f5c73dbdd57b30749e16442'}],['hosted-definition-cache-v1',{source:'09766bba7308eaede7b76059b88b73dd2bbb4efe',run:41176605076,baseline:'7eba69e8d8e5927b5f5c73dbdd57b30749e16442'}],['hosted-initial-v1',{source:'7eba69e8d8e5927b5f5c73dbdd57b30749e16442',run:41169970601,baseline:'622bc975af697c49298d2fb5b71b575aeed6cdb5'}]]);
+const captures=new Map([['hosted-catch-records-recovery-v1',{source:'869c5405ee5c30b9c4900dc4e2de48faa21c873f',run:41215109985,baseline:'bb0d3268d7bfbb9b6910b3b86db3a5cf1abf49c7',copies:[1],recovery:true}],['hosted-catch-records-partial-v1',{source:'ff67c89dc586cdf0d982e49aa1c72205ca5c4e66',run:41211990414,baseline:'bb0d3268d7bfbb9b6910b3b86db3a5cf1abf49c7',copies:[2]}],['hosted-hot-sites-v1',{source:'bb0d3268d7bfbb9b6910b3b86db3a5cf1abf49c7',run:41208962674,baseline:'702ee76165c04990ac517a993c3e194c279cf4a0'}],['hosted-literal-accessors-v1',{source:'702ee76165c04990ac517a993c3e194c279cf4a0',run:41204129150,baseline:'7eba69e8d8e5927b5f5c73dbdd57b30749e16442'}],['hosted-weak-environments-v1',{source:'fd4ad7b521537dc0266424c40bd59e7dc6bb3c59',run:41200250693,baseline:'7eba69e8d8e5927b5f5c73dbdd57b30749e16442'}],['hosted-owned-sites-v1',{source:'767add1afe9c03059cba1ebff05f7397d9a3f67e',run:41198352870,baseline:'7eba69e8d8e5927b5f5c73dbdd57b30749e16442'}],['hosted-outlined-strings-v1',{source:'375ad2dce49b04ce37d7f8c8015d2230dc248d82',run:41196855251,baseline:'7eba69e8d8e5927b5f5c73dbdd57b30749e16442'}],['hosted-inline-auxiliary-v1',{source:'d9906db3c26e0b6b3663206fe0617fa5dbd7bbfc',run:41192021887,baseline:'7eba69e8d8e5927b5f5c73dbdd57b30749e16442'}],['hosted-empty-frame-v1',{source:'4a4c103ade6b0acae5f5a16cfa68220f24c2300e',run:41186655959,baseline:'7eba69e8d8e5927b5f5c73dbdd57b30749e16442'}],['hosted-native-step-v1',{source:'1979ac3cb1454a8903d32d4886f71b86324f972c',run:41181490909,baseline:'7eba69e8d8e5927b5f5c73dbdd57b30749e16442'}],['hosted-definition-cache-v1',{source:'09766bba7308eaede7b76059b88b73dd2bbb4efe',run:41176605076,baseline:'7eba69e8d8e5927b5f5c73dbdd57b30749e16442'}],['hosted-initial-v1',{source:'7eba69e8d8e5927b5f5c73dbdd57b30749e16442',run:41169970601,baseline:'622bc975af697c49298d2fb5b71b575aeed6cdb5'}]]);
 const groups=[
  ['original','audit-original-workload-records.mjs',[],['beforeafter','boa','baseline-boa','same-binary-control']],
  ['class','audit-class-workload-records.mjs',[],['class-beforeafter','class-boa','class-baseline-boa','class-same-binary']],
@@ -27,6 +27,11 @@ for(const name of selected){
  assert(captures.has(name));const dir=root+'/'+name,e=read(dir+'/evidence.json'),expected=captures.get(name);
  assert.equal(e.source_revision,expected.source);assert.equal(e.run,expected.run);
  assert.equal(e.baseline_revision,expected.baseline ?? 'f1ed7c0ab3260de78cbf169651e5093ca8239aa0');
+ if(expected.recovery){
+  assert.equal(e.recovery.original_run,41211990414);assert.equal(e.recovery.original_copy,1);assert.equal(e.recovery.original_job,124573094646);
+  assert.equal(e.recovery.original_source,'ff67c89dc586cdf0d982e49aa1c72205ca5c4e66');assert.equal(e.recovery.compiled_runtime,'71009f3ea4f70a5ca471d35ca6c2857f8226dec4');
+  assert.equal(execFileSync('git',['-c','safe.directory='+repo,'diff',e.recovery.original_source,e.source_revision,'--','Cargo.lock','Cargo.toml','build.rs','src','examples'],{cwd:repo,encoding:'utf8'}),'');
+ }
  assert.equal(e.archive.file,'capture.tar.gz');const archive=dir+'/'+e.archive.file,bytes=fs.readFileSync(archive);
  assert.equal(bytes.length,e.archive.bytes);assert.equal(sha(bytes),e.archive.sha256);
  const temp=fs.mkdtempSync(path.join(os.tmpdir(),'temiya-derived-hosted-'));
@@ -43,6 +48,13 @@ for(const name of selected){
    assert.equal(read(capture+'/hardware-availability.json').target_available,true);
    const identity=JSON.parse(execFileSync(process.execPath,[repo+'/scripts/audit-omoikane-hosted-identities.mjs',capture,e.source_revision,e.baseline_revision],{encoding:'utf8',cwd:repo}));
    const baseline=read(capture+'/baseline-build-info.json');
+   if(expected.recovery){
+    const before=fs.readFileSync(capture+'/workers-before-cleanup.sha256','utf8').trim().split('\n');
+    assert.equal(before.length,2);assert.equal(before[0].split(/\s+/)[0],identity.same_binary_hash);assert.equal(before[1].split(/\s+/)[0],baseline.executable_sha256);
+    assert.equal(fs.readFileSync(capture+'/workers-after-cleanup.txt','utf8').trim().split('\n').filter(line=>line.endsWith(': OK')).length,2);
+    const probes=read(capture+'/workers-after-cleanup.json');assert.equal(probes.length,2);
+    for(const {probe}of probes){assert.equal(probe.expected,42);assert.equal(probe.validated_passes,2);assert.equal(probe.mode,'Auto Script');}
+   }
    for(const [group,script,flags,reports] of groups){
     const audit=JSON.parse(execFileSync(process.execPath,[repo+'/scripts/'+script,...flags,...reports.map(n=>capture+'/'+n+'.json')],{encoding:'utf8',cwd:repo,maxBuffer:16*1024*1024}));
     const saved=e.summaries.find(r=>r.copy===copy).groups.find(r=>r.name===group);

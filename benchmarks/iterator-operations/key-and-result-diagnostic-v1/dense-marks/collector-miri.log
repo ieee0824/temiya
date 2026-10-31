@@ -1,0 +1,37 @@
+   Compiling temiya v0.2.0 (/tmp/temiya-iterator-operations)
+    Finished `test` profile [unoptimized] target(s) in 2.99s
+     Running tests/gc_collector.rs (/tmp/temiya-161-miri-proof-target/miri/aarch64-unknown-linux-gnu/debug/build/temiya/00be3c4423d022b7/out/gc_collector-00be3c4423d022b7)
+
+running 4 tests
+test allocation_limit_reports_oom_only_after_collection ... ok
+test allocation_threshold_collects_before_reusing_a_slot ... ok
+test collector_reclaims_unrooted_cycles ... ok
+test collector_retains_the_transitive_root_graph ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.65s
+
+     Running tests/gc_generational.rs (/tmp/temiya-161-miri-proof-target/miri/aarch64-unknown-linux-gnu/debug/build/temiya/baf5a732b90eb03b/out/gc_generational-baf5a732b90eb03b)
+
+running 4 tests
+test barrier_rejects_dead_targets ... ok
+test minor_collection_matches_full_collection_under_stress ... ok
+test verifier_detects_a_missing_old_to_young_barrier ... ok
+test write_barrier_keeps_young_values_reachable_from_old_values ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.54s
+
+     Running tests/gc_weak.rs (/tmp/temiya-161-miri-proof-target/miri/aarch64-unknown-linux-gnu/debug/build/temiya/a268b2926cdbd3c5/out/gc_weak-a268b2926cdbd3c5)
+
+running 9 tests
+test automatic_collection_preserves_edges_in_the_incoming_allocation ... ok
+test cleanup_runs_after_sweep_in_registration_order ... ok
+test ephemerons_reach_a_fixpoint_without_retaining_keys ... ok
+test live_targets_do_not_schedule_cleanup ... ok
+test minor_owned_ephemerons_distinguish_live_young_keys_and_unreachable_owners ... ok
+test owned_ephemeron_barriers_cover_young_values_and_minor_collection ... ok
+test owned_ephemerons_discover_nested_owners_at_a_fixed_point ... ok
+test owned_ephemerons_require_a_live_owner_and_do_not_bootstrap_key_cycles ... ok
+test weak_handles_never_keep_targets_alive ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.83s
+

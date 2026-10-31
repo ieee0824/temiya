@@ -39,6 +39,12 @@ for(const node of e.nodes){
   if(node.name==='dense-marks'){
    const v=read(dir+'/'+node.name+'/validation.json');assert.equal(v.source,node.source);
    assert.equal(v.miri.toolchain,'nightly-2026-10-20');assert.deepEqual(v.miri.flags,['-Zmiri-strict-provenance','-Zmiri-symbolic-alignment-check']);
+   const plan=read(dir+'/'+node.name+'/measurement-plan.json');assert.equal(plan.superseded_run,41218484435);assert.equal(plan.new_run,41219770645);assert.equal(plan.new_source,node.source);
+   assert.equal(plan.before_cancel.status,'pending');assert.deepEqual(plan.before_cancel.jobs,[]);assert.equal(plan.before_cancel.headSha,'e1477737dd889d71945338ff0c823faafe9316b9');
+   assert.equal(plan.after_cancel.status,'completed');assert.equal(plan.after_cancel.conclusion,'cancelled');assert.deepEqual(plan.after_cancel.jobs,[]);
+   assert.notEqual(execFileSync('git',['-c','safe.directory='+repo,'diff',plan.before_cancel.headSha,node.source,'--','src'],{cwd:repo,encoding:'utf8'}),'');
+   assert.equal(v.miri.property_model,'pass: 2000-step complete-identity set-equivalence test');
+   assert(fs.readFileSync(dir+'/'+node.name+'/miri.log','utf8').includes('test result: ok. 1 passed; 0 failed; 0 ignored;'));
    const text=fs.readFileSync(dir+'/'+node.name+'/collector-miri.log','utf8');
    assert.deepEqual([...text.matchAll(/test result: ok\. (\d+) passed; 0 failed; 0 ignored;/g)].map(m=>Number(m[1])),[4,4,9]);
   }

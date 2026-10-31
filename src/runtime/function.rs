@@ -561,10 +561,7 @@ pub(super) fn create_function_with_constructor(
         // reviving property descriptors. No user code runs before publication.
         function.initialize_function_properties(length, name, None)?;
     } else {
-        function.define_own_property(
-            "length".into(),
-            super::PropertyDescriptor::data(Value::Number(length as f64), false, false, true),
-        )?;
+        function.initialize_function_length(length, constructable);
         if let Some(ExprKind::Identifier(name)) = code.name.as_ref().map(|name| &name.kind) {
             function.create_data_property(
                 "name".into(),

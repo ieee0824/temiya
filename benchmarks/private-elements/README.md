@@ -81,3 +81,11 @@ in hosted-integrated-bindings-v1 qualifies all46 workloads on BOTH hosted jobs
 (both EPYC9V45), with3/3 wins for all6 new cases on each. All60 reports replay.
 Inputs,controls,noise/watchdogs remain unchanged; no CPU filter. Current-source
 fixed Ast/Auto capture, safety and final evidence-head CI remain separate.
+
+fixed-integrated-bindings-v1 retains sourcef60a02c full fixed before/after
+Ast/Auto captures and871 native tests. Ast3954pass2506fail2028timeout;
+Auto3950pass2506fail2032timeout across8488 variants. Four preceding baseline
+passes time out in one local Auto batch (raw RSS76..608KiB with no Engine
+diagnostic); all4 pass hosted full Auto and a separate unchanged-binary/limits
+diagnostic. Original timeouts remain unchanged. verify-fixed.mjs validates
+record integrity and preserves the4 adverse outcomes; it does not waive them.

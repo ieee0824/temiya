@@ -26,9 +26,33 @@ pub(super) fn names(binding: &Expr, output: &mut Vec<JsString>) -> RuntimeResult
     Ok(())
 }
 
-// Identifier declarations must not allocate a temporary list just because
-// patterns are supported. Patterns still collect completely before callbacks,
-// retaining the previous failure order for unsupported nested syntax.
+// Validate the complete pattern before invoking callbacks, preserving the
+// failure order without allocating an intermediate list of bound names.
+fn visit_names(
+    binding: &Expr,
+    visit: &mut impl FnMut(&str) -> RuntimeResult<()>,
+) -> RuntimeResult<()> {
+    match &binding.kind {
+        ExprKind::Identifier(name) => visit(name.as_str()),
+        ExprKind::Assignment { target, .. } | ExprKind::Spread(target) => {
+            visit_names(target, visit)
+        }
+        ExprKind::Array { elements, .. } => {
+            for element in elements.iter().flatten() {
+                visit_names(element, visit)?;
+            }
+            Ok(())
+        }
+        ExprKind::Object(properties) => {
+            for property in properties {
+                visit_names(property.value.as_ref().unwrap_or(&property.key), visit)?;
+            }
+            Ok(())
+        }
+        _ => Err(RuntimeError::internal_error("invalid binding pattern")),
+    }
+}
+
 #[inline]
 pub(super) fn for_each_name(
     binding: &Expr,
@@ -37,12 +61,8 @@ pub(super) fn for_each_name(
     if let ExprKind::Identifier(name) = &binding.kind {
         return visit(name.as_str().into());
     }
-    let mut bound_names = Vec::new();
-    names(binding, &mut bound_names)?;
-    for name in bound_names {
-        visit(name)?;
-    }
-    Ok(())
+    visit_names(binding, &mut |_| Ok(()))?;
+    visit_names(binding, &mut |name| visit(name.into()))
 }
 
 enum Target {
@@ -226,4 +246,36 @@ fn object(
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn malformed_nested_pattern_is_rejected_before_binding_callbacks() {
+        let expr = |kind| Expr {
+            span: crate::lexer::Span { start: 0, end: 0 },
+            kind,
+        };
+        let pattern = expr(ExprKind::Array {
+            elements: vec![
+                Some(expr(ExprKind::Identifier("first".into()))),
+                Some(expr(ExprKind::Array {
+                    elements: vec![Some(expr(ExprKind::This))],
+                    trailing_comma: false,
+                })),
+            ],
+            trailing_comma: false,
+        });
+        let mut callbacks = 0;
+        assert!(
+            for_each_name(&pattern, |_| {
+                callbacks += 1;
+                Ok(())
+            })
+            .is_err()
+        );
+        assert_eq!(callbacks, 0);
+    }
 }

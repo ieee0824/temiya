@@ -69,3 +69,8 @@ fixed-direct-fields-v1 retains both complete current4098-variant official
 captures and their preceding captures. verify-fixed-direct.mjs reconstructs
 1008preserved passes per backend and exact AST/Auto outcome equality. All
 2294failures796timeouts remain recorded; no dependency failure is waived.
+
+hosted-cache-fields-v1 retains the intervening cache-only source835b21d on
+EPYC7763 and9V74. Both field suites have15/15significant Boa wins, but9V74
+class-construct has0/3wins (and its baseline also0/3); this source remains
+unqualified. All40reports and controls are replayed by verify-hosted.mjs.

@@ -27,3 +27,12 @@ jobs record 0/3 significant wins for all six object-binding workloads. Every
 original/control observation is retained; the source does not qualify for
 merging. Independently replay all 76 reports with
 `node benchmarks/object-binding/verify-hosted.mjs`.
+
+
+`hosted-current-integrated-v1` retains both hosted jobs of run41207721402
+at source010ac60 (array parent6c65967). All76 reports independently replay
+with `node benchmarks/object-binding/verify-hosted.mjs hosted-current-integrated-v1`.
+Prior46 workloads qualify both hosts, but all6 array-binding cases are0/3
+both. Object-binding cases are0/3 except getter-order1/3 on copy2. Iterator
+wins are3/3/3/3/0/0 both. Qualification fails; adverse timings, CPU identities,
+noise and controls are preserved without filtering or unchanged-source repeats.

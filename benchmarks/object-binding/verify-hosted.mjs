@@ -8,7 +8,7 @@ import {execFileSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 const root=path.dirname(fileURLToPath(import.meta.url)),repo=path.resolve(root,'../..');
 const read=p=>JSON.parse(fs.readFileSync(p)),sha=b=>createHash('sha256').update(b).digest('hex');
-const captures=new Map([['hosted-initial-v1',{source:'1076d17e57f8367c47c1017424fc885f9f14cfe6',run:41188431466,baseline:'7eba69e8d8e5927b5f5c73dbdd57b30749e16442'}]]);
+const captures=new Map([['hosted-current-integrated-v1',{source:'010ac60ddeb68ce702e1f3b2a4cfdd87345f2568',run:41207721402,baseline:'6c65967973ad4de72986db751d7c7e30547251c2'}],['hosted-initial-v1',{source:'1076d17e57f8367c47c1017424fc885f9f14cfe6',run:41188431466,baseline:'7eba69e8d8e5927b5f5c73dbdd57b30749e16442'}]]);
 const groups=[
  ['original','audit-original-workload-records.mjs',[],['beforeafter','boa','baseline-boa','same-binary-control']],
  ['class','audit-class-workload-records.mjs',[],['class-beforeafter','class-boa','class-baseline-boa','class-same-binary']],

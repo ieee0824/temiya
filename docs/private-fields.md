@@ -18,3 +18,9 @@ class side effects; those are #160. Auto falls back to AST for private operation
 that the bytecode compiler cannot represent. Public API integration and GC tests
 are in tests/private_fields.rs. Fixed Test262 results, complete conformance,
 performance qualification and merge approval checks remain pending.
+
+Auto private-expression plans bind immutable private names per closure. Shared
+FunctionCode stores syntax only, so repeated class evaluations keep separate
+brands. Names have no JavaScript edges; captured environments remain traced.
+Prepared simple base constructors avoid loading unused lexical-this roots while
+retaining field initialization, ordinary setters and caller/body exception realms.

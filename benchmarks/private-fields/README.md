@@ -58,3 +58,17 @@ including752 preserved passes,655 new passes and all remaining failures/timeouts
 verify-private-expression.mjs checks both source/binary identities, native tests
 and the complete Callgrind instruction totals. These integrity checks do not
 establish a Boa speed pass. Both verifiers run in CI.
+
+Current qualification is incomplete. full-default-private-v1 preserves all27200
+preceding-main passes and adds655 across100211 variants. The sourcee3eb587
+two-host run41158818113 is retained in hosted-default-private-v1: both machines
+fail private-invalid-receiver (0/3 significant wins), and copy2 also fails
+static-abrupt (1/3). Successful capture integrity is not a speed pass.
+
+Sourcea65fa12 binds private-expression identities per closure and avoids unused
+closure roots in prepared base constructors. bound-private-diagnostic-v1 retains
+the unchanged private-invalid-receiver input: Callgrind instructions fall from
+536133532 to512342212. All861 native tests pass, including the added reentrant
+GC environment regression; Clippy, MSRV and stable i686 checks pass. Run
+verify-private-expression.mjs bound-private-diagnostic-v1 to replay this
+diagnostic. Its new hosted/full-corpus/safety qualification is pending.

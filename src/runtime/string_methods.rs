@@ -61,7 +61,8 @@ pub(super) fn install(
                     .state
                     .borrow()
                     .string_data
-                    .clone()
+                    .as_deref()
+                    .cloned()
                     .map(Value::String)
                     .ok_or_else(|| RuntimeError::type_error("receiver has no String data")),
                 _ => Err(RuntimeError::type_error("receiver has no String data")),

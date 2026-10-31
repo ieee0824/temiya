@@ -174,11 +174,11 @@ impl TypedArray {
     pub fn new(buffer: &ArrayBuffer, byte_offset: usize, length: usize) -> RuntimeResult<Self> {
         checked_range(buffer, byte_offset, length)?;
         let object = Object::new_for(&buffer.0);
-        object.0.state.borrow_mut().view = Some(ViewSlot {
+        object.0.state.borrow_mut().view = Some(Box::new(ViewSlot {
             buffer: buffer.slot(),
             byte_offset,
             byte_length: length,
-        });
+        }));
         Ok(Self(object))
     }
 
@@ -247,7 +247,8 @@ impl TypedArray {
             .state
             .borrow()
             .view
-            .clone()
+            .as_deref()
+            .cloned()
             .ok_or_else(|| RuntimeError::type_error("receiver is not a TypedArray"))?;
         if view.buffer.borrow().is_none() {
             return Err(detached());

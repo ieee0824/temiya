@@ -250,6 +250,9 @@ pub(super) struct FunctionClosure {
 
 pub(super) struct StoredFunctionClosure {
     code: Rc<FunctionCode>,
+    // Class-private identities contain no JS edges and belong to this closure,
+    // never to FunctionCode shared across repeated evaluations.
+    private_expression_name: Option<super::private_fields::Name>,
     kind: FunctionKind,
     realm: StoredRealm,
     environment: StoredEnvironment,
@@ -452,8 +455,14 @@ pub(super) fn create_function_with_constructor(
             .realm
             .intrinsic(super::IntrinsicId::FunctionPrototype)
     }));
+    let prepared = prepare_code(code, kind, &evaluator.function_cache);
+    let private_expression_name = prepared
+        .private_expression
+        .as_ref()
+        .and_then(|plan| plan.bind(name_environment.as_ref().unwrap_or(&evaluator.environment)));
     let closure = StoredFunctionClosure {
-        code: prepare_code(code, kind, &evaluator.function_cache),
+        code: prepared,
+        private_expression_name,
         kind,
         realm: StoredRealm::store(&function, &evaluator.realm)?,
         environment: StoredEnvironment::store(

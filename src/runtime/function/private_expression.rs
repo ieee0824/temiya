@@ -12,8 +12,8 @@ enum Operation {
     Has,
 }
 
-// Cache syntax and parameter positions only. Each closure resolves private
-// identities through its own captured class environment on every invocation.
+// Shared code caches syntax and parameter positions only. A closure may bind
+// its immutable private identity once, after class names have been declared.
 #[derive(Debug)]
 pub(super) struct Plan {
     name: JsString,
@@ -116,6 +116,14 @@ fn receiver(expression: &Expr, parameters: &HashMap<&str, usize>) -> Option<Rece
 }
 
 impl Plan {
+    pub(super) fn bind(
+        &self,
+        environment: &Environment,
+    ) -> Option<super::super::private_fields::Name> {
+        // A missing name must still fail at invocation, preserving error order.
+        environment.resolve_private_key(&self.name).ok()
+    }
+
     pub(super) fn execute(
         &self,
         closure: &StoredFunctionClosure,
@@ -140,10 +148,13 @@ impl Plan {
                 "private in receiver is not an object",
             ));
         }
-        let name = closure
-            .environment
-            .load(owner)?
-            .resolve_private_key(&self.name)?;
+        let name = match &closure.private_expression_name {
+            Some(name) => name.clone(),
+            None => closure
+                .environment
+                .load(owner)?
+                .resolve_private_key(&self.name)?,
+        };
         match self.operation {
             Operation::Has => {
                 let Value::Object(object) = receiver else {

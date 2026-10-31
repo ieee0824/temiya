@@ -33,6 +33,26 @@ for(const name of selected){
   assert.equal(result.failures.length,expected.historicalFailure?1:0);if(expected.historicalFailure){assert.deepEqual(result.failures,e.knownpass_regressions);assert.equal(result.gate,'historical failure retained:7 gates passed, namespace membership regression in shard3');}else{assert.deepEqual(result.failures,[]);assert.equal(result.gate,'all8 independently replayed known-pass gates passed');}
   assert.deepEqual(result.totals,e.totals);
   const actual=read(temp+'/independent-candidate-audit.json');assert.deepEqual(actual,read(dir+'/independent-audit.json'));
+  if(name==='full-native-step-v1'){
+   const previous=root+'/full-definition-cache-v1',prior=read(previous+'/evidence.json');
+   const archiveBytes=fs.readFileSync(previous+'/capture.tar.gz');
+   assert.equal(archiveBytes.length,prior.archive.bytes);
+   assert.equal(createHash('sha256').update(archiveBytes).digest('hex'),prior.archive.sha256);
+   const priorRoot=temp+'/previous';fs.mkdirSync(priorRoot);
+   const files=Array.from({length:8},(_,i)=>`test262-full-${i}-of-8/test262-regression/capture/outcomes.json`);
+   execFileSync('tar',['-xzf',previous+'/capture.tar.gz','--no-same-owner','--no-same-permissions','-C',priorRoot,...files]);
+   const outcomes=base=>{const rows=new Map();for(const file of files)for(const row of read(base+'/'+file)){
+    const key=JSON.stringify([row.path,row.variant]);assert(!rows.has(key));rows.set(key,row.outcome);
+   }assert.equal(rows.size,100211);return rows;};
+   const before=outcomes(priorRoot),after=outcomes(temp),regressions=[],newpasses=[];let preserved=0;
+   for(const [key,value] of before){assert(after.has(key));if(value==='pass'){
+    if(after.get(key)==='pass')preserved++;else regressions.push({key:JSON.parse(key),before:value,after:after.get(key)});
+   }else if(after.get(key)==='pass')newpasses.push(JSON.parse(key));}
+   assert.deepEqual(read(dir+'/previous-parent-comparison.json'),{
+    previous_source:prior.source_revision,source:e.source_revision,variants:after.size,
+    preserved_passes:preserved,regressions,newpasses
+   });
+  }
   for(const row of actual.results){
    assert.equal(row.engine.profile,'release');assert.deepEqual(row.engine.features,[]);
    assert.match(row.engine.executable_sha256,/^[a-f0-9]{64}$/);

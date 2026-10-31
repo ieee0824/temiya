@@ -85,7 +85,7 @@ native logs and all6 output oracles. These are instruction diagnostics only.
 
 The fourth diagnostic point (0269ef9 environment-root cache) is rejected and reverted: getter instructions improve but invalid-result instructions increase. Raw profiles and the successful bounded-root test remain evidence, not qualification.
 
-`key-and-result-diagnostic-v1` retains 21 source-specific Callgrind points, including rejected experiments. `verify-key-profiles.mjs` checks raw counts, output oracles and the exact compiled-input inventory for each historical source (80, 81 or 82 inputs). Later points cover function frames, activation roots, short callbacks, owned function sites, weak environment hints and literal accessor initialization. These diagnostics do not satisfy the native Boa speed gate.
+`key-and-result-diagnostic-v1` retains 22 source-specific Callgrind points, including rejected experiments. `verify-key-profiles.mjs` checks raw counts, output oracles and the exact compiled-input inventory for each historical source (80, 81 or 82 inputs). Later points cover function frames, activation roots, short callbacks, owned function sites, weak environment hints and literal accessor initialization. These diagnostics do not satisfy the native Boa speed gate.
 
 `fixed-definition-cache-v1` retains historical09766bb fixed Ast/Auto captures:235pass1983fail1662timeout each. Every outcome agrees with c2bc478; no regressions or missing records. These captures do not qualify the later key/result/native-step changes.
 
@@ -193,3 +193,19 @@ d9906db capture and the other backend. The original baseline collection
 failure and missing-only recovery remain archived. Replay all five retained
 fixed capture pairs with `node benchmarks/iterator-operations/verify-fixed.mjs`.
 These results do not qualify the later fdecf72 runtime.
+
+
+`hosted-literal-accessors-v1` retains both jobs of run41204129150. All68
+reports independently replay. Iterator wins3/3/2/3/0/0 and3/3/3/3/1/1 fail
+the unchanged two-host gate; copy2 derived-definition also qualifies only1/3
+pairs. CPU models, noise, controls and adverse observations remain recorded.
+
+The `reference-updates` diagnostic retains runtime77e9c10, which reuses
+the VM checked numeric-binding write for resolved reference updates. BigInt,
+coercion, property and unresolvable references retain the complete operation.
+Relative to fdecf72, instructions decline4.73% for done/value,1.76% for invalid
+results and4.04% for captured-next; other cases are nearly unchanged, including
+a0.0020% array increase. All6 expected outputs validate twice. All-target
+tests912, Clippy, MSRV, i686 and doctest pass. Focused strict Miri is still
+running at this checkpoint and is not counted as passed. This diagnostic
+does not qualify native speed or replace current-source full/fixed/security gates.

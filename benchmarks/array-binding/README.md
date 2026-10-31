@@ -101,3 +101,12 @@ completed security run `41243222743`: all 19 jobs passed, with 163 unique
 exact strict Miri tests and 936 ASan test passes. Canonical logs and independent
 replay are retained in `security-inline-thrown-v1`. This is safety evidence;
 native speed and full Test262 qualification remain separate.
+
+Current source `7a154b17dd6982913047b364e7bf4c293103798a` qualifies native
+speed in `hosted-inline-thrown-v1`: all 58 workloads meet the unchanged
+threshold in at least two of three pairs on both independent AMD EPYC 7763
+jobs in run `41243217454`. No CPU filter was used. Every same-binary control
+stays within noise in at least two pairs. Array-case wins are 3/3/3/3/3/2
+and 3/3/3/2/3/3; all 72 reports and adverse/noisy observations are retained.
+Replay with `node benchmarks/array-binding/verify-hosted.mjs hosted-inline-thrown-v1`.
+Fixed Ast/Auto and current PR CI remain separate merge requirements.

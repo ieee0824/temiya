@@ -100,6 +100,8 @@ case "${1:-}" in
     node benchmarks/array-binding/security-cache32-v1/verify.mjs benchmarks/array-binding/security-cache32-v1 9f84bc5c6416911df51d76cf10b936ad3c3e003f
     ;;
   objects)
+    node benchmarks/destructuring-assignment/verify-selection.mjs
+    node benchmarks/destructuring-assignment/verify-oracles.mjs
     node benchmarks/object-binding/verify-workloads.mjs
     node benchmarks/object-binding/verify-profiles.mjs
     node benchmarks/object-binding/verify-hosted.mjs

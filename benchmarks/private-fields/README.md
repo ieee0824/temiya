@@ -77,3 +77,9 @@ full-bound-private-v1 replays sourcea65fa12 across52133files100211variants:
 27855pass63525fail18skip8813timeout,0 missing. All27855 previous-candidate
 passes remain; all27200 previous-main passes remain with655 additions. This
 full-corpus gate does not replace the separate two-host speed and safety gates.
+
+full-bound-constructor-v1 retains source072f6315 full-corpus results after inline
+private storage and bound constructor bindings:27855pass,63525fail,18skip,
+8813timeout,0missing. All previous candidate passes remain, and all27200 main
+passes remain with655 additions. The eight gates independently replay; this
+correctness result does not establish the separate pending two-host speed gate.

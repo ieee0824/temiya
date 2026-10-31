@@ -1,0 +1,7 @@
+{
+  "name": "object-binding-rest-symbol",
+  "setup": "let key=Symbol(\"remaining\");function bench(n){let total=0;for(let i=1;i<=n;i++){let input={drop:0,keep:i,[key]:i};Object.defineProperty(input,\"hidden\",{value:99,enumerable:false});let {drop,...rest}=input;if(drop!==0||rest[key]!==i||\"drop\" in rest||\"hidden\" in rest||Reflect.ownKeys(rest).length!==2)throw 42;total+=rest.keep;}return total;}",
+  "invocation": "bench(10000);",
+  "iterations": 10000,
+  "expected": 50005000
+}

@@ -1,0 +1,7 @@
+{
+  "name": "object-binding-getter-order",
+  "setup": "function bench(n){let total=0;for(let i=1;i<=n;i++){let order=\"\";let input={get first(){order+=\"a\";return i;},get second(){order+=\"b\";return i;}};let {first:value,...rest}=input;if(order!==\"ab\"||rest.second!==i||\"first\" in rest)throw 42;total+=value;}return total;}",
+  "invocation": "bench(10000);",
+  "iterations": 10000,
+  "expected": 50005000
+}

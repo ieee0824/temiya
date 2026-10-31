@@ -63,6 +63,7 @@ struct ActiveObjects {
     // Stable slots avoid shifting facades on every hit. Bucket bits only
     // narrow candidates; full identity is checked even for colliding keys.
     buckets: [u16; OBJECT_FINGERPRINTS],
+    handle_buckets: [u16; OBJECT_FINGERPRINTS],
     oldest: usize,
     newest: usize,
 }
@@ -71,6 +72,7 @@ impl ActiveObjects {
         Self {
             objects: Vec::with_capacity(ACTIVE_OBJECTS),
             buckets: [0; OBJECT_FINGERPRINTS],
+            handle_buckets: [0; OBJECT_FINGERPRINTS],
             oldest: NO_OBJECT,
             newest: NO_OBJECT,
         }
@@ -78,6 +80,7 @@ impl ActiveObjects {
     fn clear(&mut self) {
         self.objects.clear();
         self.buckets.fill(0);
+        self.handle_buckets.fill(0);
         self.oldest = NO_OBJECT;
         self.newest = NO_OBJECT;
     }
@@ -100,6 +103,20 @@ impl ActiveObjects {
         self.objects[index].next = NO_OBJECT;
         self.newest = index;
     }
+    fn get(&mut self, handle: Handle<ManagedObject>) -> Option<Object> {
+        let mut candidates = self.handle_buckets[handle.slot_index() & (OBJECT_FINGERPRINTS - 1)];
+        while candidates != 0 {
+            let index = candidates.trailing_zeros() as usize;
+            let object = &self.objects[index].object;
+            if object.0.0.root.handle() == handle {
+                let object = object.clone();
+                self.touch(index);
+                return Some(object);
+            }
+            candidates &= candidates - 1;
+        }
+        None
+    }
     fn remember(&mut self, object: &Object) {
         if self.newest != NO_OBJECT && self.objects[self.newest].object == *object {
             return;
@@ -119,6 +136,9 @@ impl ActiveObjects {
             let previous =
                 self.objects[index].object.identity() as usize & (OBJECT_FINGERPRINTS - 1);
             self.buckets[previous] &= !(1u16 << index);
+            let previous_handle = self.objects[index].object.0.0.root.handle();
+            self.handle_buckets[previous_handle.slot_index() & (OBJECT_FINGERPRINTS - 1)] &=
+                !(1u16 << index);
             self.objects[index].object = object.clone();
             self.touch(index);
             index
@@ -138,6 +158,8 @@ impl ActiveObjects {
             index
         };
         self.buckets[fingerprint] |= 1u16 << index;
+        self.handle_buckets[object.0.0.root.handle().slot_index() & (OBJECT_FINGERPRINTS - 1)] |=
+            1u16 << index;
     }
 }
 
@@ -474,6 +496,17 @@ impl Runtime {
         object
     }
     pub(super) fn root_object(&self, handle: Handle<ManagedObject>) -> Option<Object> {
+        // Region entries own live roots and are cleared before collection. A
+        // full handle comparison includes heap and generation, even on collisions.
+        if let Some(object) = self
+            .0
+            .active_objects
+            .borrow_mut()
+            .as_mut()
+            .and_then(|active| active.get(handle))
+        {
+            return Some(object);
+        }
         let heap = self.0.heap.borrow();
         let data = heap.shared(handle)?;
         if let Some(facade) = data.facade.borrow().upgrade() {
@@ -666,6 +699,13 @@ mod tests {
                     1u16 << index;
             }
             assert_eq!(cache.buckets, buckets);
+            let mut handle_buckets = [0u16; OBJECT_FINGERPRINTS];
+            for (index, entry) in cache.objects.iter().enumerate() {
+                handle_buckets
+                    [entry.object.0.0.root.handle().slot_index() & (OBJECT_FINGERPRINTS - 1)] |=
+                    1u16 << index;
+            }
+            assert_eq!(cache.handle_buckets, handle_buckets);
             if step % 97 == 0 {
                 cache.clear();
                 expected.clear();
@@ -1189,12 +1229,56 @@ mod tests {
         assert!(weak.upgrade().is_none());
     }
     #[test]
+    fn active_handle_lookup_checks_collisions_and_collection() {
+        let runtime = Runtime::new();
+        runtime.set_allocation_collection_interval(usize::MAX);
+        let region = runtime.enter_object_root_region().unwrap();
+        let objects: Vec<_> = (0..=OBJECT_FINGERPRINTS)
+            .map(|_| Object::new_in(&runtime))
+            .collect();
+        let first = &objects[0];
+        let last = &objects[OBJECT_FINGERPRINTS];
+        let first_handle = first.0.handle().unwrap();
+        let last_handle = last.0.handle().unwrap();
+        assert_eq!(
+            first_handle.slot_index() & (OBJECT_FINGERPRINTS - 1),
+            last_handle.slot_index() & (OBJECT_FINGERPRINTS - 1)
+        );
+        // Revive the evicted first facade, then check both colliding cache entries.
+        assert_eq!(runtime.root_object(first_handle).unwrap(), *first);
+        assert_eq!(runtime.root_object(last_handle).unwrap(), *last);
+        assert_eq!(runtime.root_object(first_handle).unwrap(), *first);
+        drop(objects);
+        runtime.collect_garbage().unwrap();
+        assert!(runtime.root_object(first_handle).is_none());
+        let replacement = Object::new_in(&runtime);
+        assert!(runtime.root_object(first_handle).is_none());
+        assert_eq!(
+            runtime
+                .root_object(replacement.0.handle().unwrap())
+                .unwrap(),
+            replacement
+        );
+        drop(region);
+    }
+    #[test]
     fn another_runtime_cannot_root_a_foreign_handle() {
         let first = Runtime::new();
         let second = Runtime::new();
         let object = Object::new_in(&first);
+        let region = second.enter_object_root_region().unwrap();
+        let local = Object::new_in(&second);
+        assert_eq!(
+            object.0.handle().unwrap().slot_index(),
+            local.0.handle().unwrap().slot_index()
+        );
         assert!(!first.same_heap(&second));
         assert!(second.root_object(object.0.handle().unwrap()).is_none());
+        assert_eq!(
+            second.root_object(local.0.handle().unwrap()).unwrap(),
+            local
+        );
+        drop(region);
     }
 }
 

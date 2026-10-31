@@ -35,6 +35,11 @@ impl<T: Trace> Handle<T> {
         self.raw
     }
 
+    // A cache bucket hint only; callers must compare the complete handle.
+    pub(crate) fn slot_index(self) -> usize {
+        self.raw.slot
+    }
+
     /// Creates a weak handle that does not contribute to reachability.
     #[must_use]
     pub fn downgrade(self) -> WeakHandle<T> {

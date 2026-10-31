@@ -252,6 +252,15 @@ impl<'a> PropertyReferenceContext<'a> {
 }
 
 impl Reference {
+    pub(super) fn private(base: Value, name: super::private_fields::Name) -> Self {
+        Self {
+            base: ReferenceBase::Property(base),
+            name: ReferenceName::Private(name),
+            strict: true,
+            this_value: None,
+            primitive_prototype: None,
+        }
+    }
     // Only VM-verified function slots provide hints. Each read/write validates
     // the name again, so reentrant deletion or insertion cannot retarget it.
     pub(crate) fn function_binding(
@@ -796,14 +805,7 @@ impl ExpressionEvaluator {
         }
         if let ExprKind::PrivateIdentifier(name) = &property.kind {
             let name = self.environment.resolve_private(name)?;
-            let mut reference = Reference::property(
-                base,
-                ReferencedName::PropertyKey(PropertyKey::from("")),
-                true,
-                None,
-            );
-            reference.name = ReferenceName::Private(name);
-            return Ok(Evaluation::Reference(reference));
+            return Ok(Evaluation::Reference(Reference::private(base, name)));
         }
         let name = if computed {
             ReferencedName::Value(self.evaluate(property)?)

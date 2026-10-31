@@ -31,11 +31,13 @@ impl Environment {
             .push((name, Name::new()));
     }
     pub(super) fn resolve_private(&self, name: &str) -> RuntimeResult<Name> {
-        let key = JsString::from(name);
+        self.resolve_private_key(&JsString::from(name))
+    }
+    pub(super) fn resolve_private_key(&self, name: &JsString) -> RuntimeResult<Name> {
         let mut environment = Some(self.clone());
         while let Some(current) = environment {
             if let Some(names) = current.0.private_names.borrow().as_ref() {
-                if let Some((_, identity)) = names.0.iter().find(|(n, _)| n == &key) {
+                if let Some((_, identity)) = names.0.iter().find(|(n, _)| n == name) {
                     return Ok(identity.clone());
                 }
             }

@@ -89,6 +89,11 @@ fn private_values_and_lexical_names_survive_gc_then_release_cycles() {
                 engine.evaluate(&script).unwrap().value(),
                 Value::Boolean(true)
             ));
+            let update = engine.compile(&realm, "class Counter{#value={valueOf(){gcNow();return 41;}};next(){return ++this.#value;}}new Counter().next()===42;").unwrap();
+            assert!(matches!(
+                engine.evaluate(&update).unwrap().value(),
+                Value::Boolean(true)
+            ));
         }
         assert_eq!(engine.collect_garbage().unwrap().retained, 0);
     }
@@ -107,5 +112,25 @@ fn private_method_expressions_keep_numeric_coercion_errors_and_class_identity() 
     );
     check(
         "class C{#n=41;next(){return ++this.#n;}}let c=new C();let caught=false;try{C.prototype.next.call(new Proxy(c,{}));}catch(e){caught=e instanceof TypeError;}caught && c.next()===42;",
+    );
+}
+
+#[test]
+fn private_parameter_receivers_keep_positions_missing_values_and_defaults() {
+    check(
+        "let effects=0;class C{#x=42;has(ignored,o){return #x in o;}read(ignored,o){return o.#x;}}let c=new C();let caught=0;try{c.has();}catch(e){if(e instanceof TypeError)caught++;}try{c.read();}catch(e){if(e instanceof TypeError)caught++;}c.has(0,c,effects++) && c.read(0,c)===42 && caught===2 && effects===1;",
+    );
+    check(
+        "let defaults=0;class C{#x=42;has(o=(defaults++,this)){return #x in o;}}let c=new C();c.has() && defaults===1;",
+    );
+}
+
+#[test]
+fn private_arrow_plans_preserve_lexical_this_and_pre_super_tdz() {
+    check(
+        "class C{#x=41;reader(){return ()=>++this.#x;}}let c=new C();let read=c.reader();read.call({})===42;",
+    );
+    check(
+        "let before=false;let after=false;let brand=false;class A{}class B extends A{#x=42;constructor(){let read=()=>this.#x;let has=o=>#x in o;brand=!has({});try{read();}catch(e){before=e instanceof ReferenceError;}super();after=read()===42;}}new B();before && after && brand;",
     );
 }

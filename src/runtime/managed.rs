@@ -23,7 +23,7 @@ pub(super) struct RuntimeData {
     collecting: Cell<bool>,
     allocation_interval: Cell<usize>,
     allocation_remaining: Cell<usize>,
-    active_objects: RefCell<Weak<RefCell<Vec<Object>>>>,
+    active_objects: RefCell<Weak<RefCell<ActiveObjects>>>,
     #[cfg(all(test, not(miri)))]
     collection_ns: Cell<u128>,
 }
@@ -47,13 +47,53 @@ impl Drop for CollectionTimer<'_> {
 // Leave room for the container as well as a small polymorphic receiver set.
 // The whole bounded region is still cleared before any collection.
 const ACTIVE_OBJECTS: usize = 16;
+const OBJECT_FINGERPRINTS: usize = 64;
+
+struct ActiveObjects {
+    objects: Vec<Object>,
+    // A zero count proves absence. Collisions still use full object identity,
+    // preserving the fully associative cache and its existing eviction order.
+    fingerprints: [u8; OBJECT_FINGERPRINTS],
+}
+impl ActiveObjects {
+    fn new() -> Self {
+        Self {
+            objects: Vec::with_capacity(ACTIVE_OBJECTS),
+            fingerprints: [0; OBJECT_FINGERPRINTS],
+        }
+    }
+    fn clear(&mut self) {
+        self.objects.clear();
+        self.fingerprints.fill(0);
+    }
+    fn remember(&mut self, object: &Object) {
+        if self.objects.last().is_some_and(|last| last == object) {
+            return;
+        }
+        let fingerprint = object.identity() as usize & (OBJECT_FINGERPRINTS - 1);
+        if self.fingerprints[fingerprint] != 0 {
+            if let Some(index) = self.objects.iter().rposition(|cached| cached == object) {
+                let cached = self.objects.remove(index);
+                self.objects.push(cached);
+                return;
+            }
+        }
+        if self.objects.len() == ACTIVE_OBJECTS {
+            let retired = self.objects.remove(0);
+            let previous = retired.identity() as usize & (OBJECT_FINGERPRINTS - 1);
+            self.fingerprints[previous] -= 1;
+        }
+        self.objects.push(object.clone());
+        self.fingerprints[fingerprint] += 1;
+    }
+}
 
 // This is an external activation region, never a payload stored in the heap.
 // Nested VM calls share the outer region. Its bounded facade cache is cleared
 // before every collection, so cached facades cannot keep a dead JS graph live.
 pub(crate) struct ObjectRootRegion {
     runtime: Runtime,
-    objects: Rc<RefCell<Vec<Object>>>,
+    objects: Rc<RefCell<ActiveObjects>>,
 }
 impl Drop for ObjectRootRegion {
     fn drop(&mut self) {
@@ -137,7 +177,7 @@ impl Runtime {
         if active.upgrade().is_some() {
             return None;
         }
-        let objects = Rc::new(RefCell::new(Vec::with_capacity(ACTIVE_OBJECTS)));
+        let objects = Rc::new(RefCell::new(ActiveObjects::new()));
         *active = Rc::downgrade(&objects);
         Some(ObjectRootRegion {
             runtime: self.clone(),
@@ -148,19 +188,7 @@ impl Runtime {
         let Some(active) = self.0.active_objects.borrow().upgrade() else {
             return;
         };
-        let mut objects = active.borrow_mut();
-        if objects.last().is_some_and(|last| last == object) {
-            return;
-        }
-        if let Some(index) = objects.iter().rposition(|cached| cached == object) {
-            let cached = objects.remove(index);
-            objects.push(cached);
-        } else {
-            if objects.len() == ACTIVE_OBJECTS {
-                objects.remove(0);
-            }
-            objects.push(object.clone());
-        }
+        active.borrow_mut().remember(object);
     }
     fn clear_active_objects(&self) {
         if let Some(active) = self.0.active_objects.borrow().upgrade() {
@@ -547,6 +575,58 @@ mod tests {
             after, before,
             "warm reads must not allocate more Root registrations"
         );
+    }
+    #[cfg(not(miri))]
+    #[test]
+    fn colliding_activation_fingerprints_keep_distinct_objects_and_warm_roots() {
+        let runtime = Runtime::new();
+        runtime.set_allocation_collection_interval(usize::MAX);
+        let owner = Object::new_in(&runtime);
+        let objects: Vec<_> = (0..=OBJECT_FINGERPRINTS)
+            .map(|_| Object::new_in(&runtime))
+            .collect();
+        let (first, second) = objects
+            .iter()
+            .enumerate()
+            .find_map(|(index, first)| {
+                objects[index + 1..]
+                    .iter()
+                    .find(|second| {
+                        first.identity() as usize & (OBJECT_FINGERPRINTS - 1)
+                            == second.identity() as usize & (OBJECT_FINGERPRINTS - 1)
+                    })
+                    .map(|second| (first.clone(), second.clone()))
+            })
+            .expect("more live objects than fingerprints must collide");
+        let identities = [first.identity(), second.identity()];
+        owner
+            .create_data_property("a".into(), super::super::Value::Object(first))
+            .unwrap();
+        owner
+            .create_data_property("b".into(), super::super::Value::Object(second))
+            .unwrap();
+        drop(objects);
+        let region = runtime.enter_object_root_region().unwrap();
+        let read = |key: &str| {
+            let super::super::Value::Object(object) = owner.get(&key.into()).unwrap() else {
+                panic!("object");
+            };
+            object.identity()
+        };
+        assert_eq!(read("a"), identities[0]);
+        assert_eq!(read("b"), identities[1]);
+        let (_, before, _) = runtime.profile_snapshot();
+        for _ in 0..100 {
+            assert_eq!(read("a"), identities[0]);
+            assert_eq!(read("b"), identities[1]);
+        }
+        let (_, after, _) = runtime.profile_snapshot();
+        assert_eq!(after, before);
+        runtime.collect_garbage().unwrap();
+        assert_eq!(read("a"), identities[0]);
+        assert_eq!(read("b"), identities[1]);
+        drop((owner, region));
+        assert_eq!(runtime.collect_garbage().unwrap().retained, 0);
     }
     #[test]
     fn activation_facades_are_bounded_and_do_not_retain_dead_graphs_at_collection() {

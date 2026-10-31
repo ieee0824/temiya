@@ -85,7 +85,7 @@ native logs and all6 output oracles. These are instruction diagnostics only.
 
 The fourth diagnostic point (0269ef9 environment-root cache) is rejected and reverted: getter instructions improve but invalid-result instructions increase. Raw profiles and the successful bounded-root test remain evidence, not qualification.
 
-`key-and-result-diagnostic-v1` retains 22 source-specific Callgrind points, including rejected experiments. `verify-key-profiles.mjs` checks raw counts, output oracles and the exact compiled-input inventory for each historical source (80, 81 or 82 inputs). Later points cover function frames, activation roots, short callbacks, owned function sites, weak environment hints and literal accessor initialization. These diagnostics do not satisfy the native Boa speed gate.
+`key-and-result-diagnostic-v1` retains 23 source-specific Callgrind points, including rejected experiments. `verify-key-profiles.mjs` checks raw counts, output oracles and the exact compiled-input inventory for each historical source (80, 81 or 82 inputs). Later points cover function frames, activation roots, short callbacks, owned function sites, weak environment hints and literal accessor initialization. These diagnostics do not satisfy the native Boa speed gate.
 
 `fixed-definition-cache-v1` retains historical09766bb fixed Ast/Auto captures:235pass1983fail1662timeout each. Every outcome agrees with c2bc478; no regressions or missing records. These captures do not qualify the later key/result/native-step changes.
 
@@ -210,3 +210,16 @@ tests912, Clippy, MSRV, i686 and doctest pass. The focused strict Miri
 Ast/VM numeric-update integration test also passes (one test,194.48seconds);
 its raw log, flags and test-source hash are retained. This diagnostic
 does not qualify native speed or replace current-source full/fixed/security gates.
+
+
+The `direct-region` diagnostic retains runtime9835c41. The activation guard
+owns the bounded root region through Runtime state, avoiding weak promotion
+and a second borrow at every object load. Teardown removes the region before
+dropping facades, breaking temporary ownership cycles; cache capacity, eviction
+and pre-collection clearing are unchanged. A new last-external-owner test
+checks Runtime release. All913 tests,Clippy,MSRV,i686 and doctest pass.
+All6 instruction counts improve by0.74–2.08% relative to77e9c10; unchanged
+expected outputs validate twice. The focused strict Miri6-test selection
+also passes (220.36seconds), covering reentrant GC, bounded retention, unwind
+and final Runtime release; its complete raw log and strict flags are retained. Current full correctness, security
+and two-host native qualification remain required.

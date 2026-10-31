@@ -49,3 +49,10 @@ The original Symbol constructor cases pass both variants within this full
 capture. Correctness evidence does not qualify native speed; both hosted
 object-binding captures still fail the performance gate. CI keeps all prior
 72 evidence commands and adds this full replay as command73.
+
+Local correctness on source `5ff8f9a6f99736fde85e966564d6468f813ce68b`
+is retained in `inline-parent-correctness-v1`: 947 all-target tests, one doc
+test, Clippy, i686 check, and all 11 object-binding integration tests under
+strict Miri passed. Replay with
+`node benchmarks/object-binding/inline-parent-correctness-v1/verify.mjs`.
+These logs do not establish native speed or full Test262 qualification.

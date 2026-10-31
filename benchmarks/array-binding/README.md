@@ -2,7 +2,7 @@
 
 This branch builds on merged #161. Array binding now executes through
 declarations, ordinary parameters,
-catch and supported loop declarations. Full corpus and Boa speed qualification
+catch and supported loop declarations. Boa speed qualification and current fixed-capture preservation
 remain pending; this branch is not eligible for merge yet.
 
 selection.json freezes all destructuring-binding metadata tests and every /dstr/
@@ -86,4 +86,6 @@ retained. These correctness results do not establish native Boa speed.
 
 `fixed-array-data-properties-v1` retains historical runtime86679b1 fixed Ast/Auto captures, each5292pass7691fail4431timeout over17414variants, with zero missing results or collection errors. All1500 baseline Ast passes and1504 baseline Auto passes remain, adding3792/3788 passes. All5291 initial Ast passes and5292 initial Auto passes remain. The two new captures have identical outcomes. The original initial Auto collection failure (8unreported variants) and the separate missing-only recovery are preserved and independently reconstructed; the failed capture is never relabeled successful. Replay with `node benchmarks/array-binding/fixed-array-data-properties-v1/verify.mjs`. This historical result does not qualify the changed runtime9f84bc5.
 
-Runtime9f84bc5 has separate two-job native, full Test262, complete security and fixed Ast/Auto qualification in progress. The fixed engine records its actual frozen sourcee9854f8; all83 recorded compiler input hashes match9f84bc5. No active capture is restarted or replaced by a newer observation.
+Runtime9f84bc5 has separate two-job native and fixed Ast/Auto qualification in progress. Complete security independently replays19successful jobs:160exact Miri tests and932ASan tests. Its full Test262 run41234441785 independently audits100211variants with33565pass58059fail18skip8569timeout,0missing, and all33565previous array passes preserved. The fixed engine records its actual frozen sourcee9854f8; all83 recorded compiler input hashes match9f84bc5. No active capture is restarted or replaced by a newer observation.
+
+`full-cache32-v1` retains the complete source9f84bc5 capture and its actual previous integrated source1090d929. Replay all four retained full-capture pairs with `node benchmarks/array-binding/verify-full.mjs`. Every older capture remains intact. `security-cache32-v1` preserves the complete source9f84bc5 security run41234443964, including all19job logs,16Miri plans/160executed exact tests and932ASan tests. Replay with `node benchmarks/array-binding/security-cache32-v1/verify.mjs benchmarks/array-binding/security-cache32-v1 9f84bc5c6416911df51d76cf10b936ad3c3e003f`. Neither result establishes native speed.

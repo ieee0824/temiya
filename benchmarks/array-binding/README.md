@@ -63,3 +63,13 @@ and for the two remaining Iterator inputs. All prior 46 workloads qualify on
 both jobs. The candidate does not qualify for merging; all 72 raw reports and
 adverse outcomes are retained. Replay with
 `node benchmarks/array-binding/verify-hosted.mjs`.
+
+
+`hosted-current-integrated-v1` retains run41207657318 at integrated source
+6c65967. All72 reports independently replay with
+`node benchmarks/array-binding/verify-hosted.mjs hosted-current-integrated-v1`.
+All prior46 workloads qualify on both hosts. All6 array-binding cases record
+0/3 significant wins on both; iterator wins3/3/3/3/0/0 both. Qualification
+fails. Every adverse observation, CPU identity, noise and control remains.
+The explicit beforeafter baseline is fd4ad7b; it is not the immediate parent.
+No CPU filtering, workload/statistical/resource changes or timing repeats.

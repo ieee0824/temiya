@@ -8,7 +8,7 @@ import {execFileSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 const root=path.dirname(fileURLToPath(import.meta.url)),repo=path.resolve(root,'../..');
 const read=p=>JSON.parse(fs.readFileSync(p)),sha=b=>createHash('sha256').update(b).digest('hex');
-const captures=new Map([['hosted-initial-integrated-v1',{source:'91fb9f4e516e12b738e729f3f6441920ca642c49',run:41187179432,baseline:'7eba69e8d8e5927b5f5c73dbdd57b30749e16442'}]]);
+const captures=new Map([['hosted-current-integrated-v1',{source:'6c65967973ad4de72986db751d7c7e30547251c2',run:41207657318,baseline:'fd4ad7b521537dc0266424c40bd59e7dc6bb3c59'}],['hosted-initial-integrated-v1',{source:'91fb9f4e516e12b738e729f3f6441920ca642c49',run:41187179432,baseline:'7eba69e8d8e5927b5f5c73dbdd57b30749e16442'}]]);
 const groups=[
  ['original','audit-original-workload-records.mjs',[],['beforeafter','boa','baseline-boa','same-binary-control']],
  ['class','audit-class-workload-records.mjs',[],['class-beforeafter','class-boa','class-baseline-boa','class-same-binary']],

@@ -14,6 +14,29 @@
   },
   "features": [
     {
+      "id": "runtime.array-binding",
+      "area": "ECMA-262 core",
+      "status": "partial",
+      "reference": "Array BindingInitialization / IteratorBindingInitialization (#162)",
+      "tests": [
+        "tests/array_binding.rs",
+        "docs/array-binding.md",
+        "benchmarks/array-binding/selection-freeze.json"
+      ],
+      "rationale": "Public Engine Ast/Auto initialize array patterns in declarations, ordinary parameters, catch and supported loop declarations. Coverage includes nested patterns, elision/default/rest, TDZ, anonymous default names, abrupt close priority and reentrant GC. Object patterns, assignment patterns, complete for-of and async/generator integration remain separate. Full fixed-corpus and hosted speed qualification are pending.",
+      "kind": "group",
+      "issues": [
+        162,
+        161,
+        163,
+        171
+      ],
+      "test262": {
+        "status": "not-run",
+        "rationale": "Preimplementation fixed baseline capture is running; no candidate corpus outcome or conformance pass is claimed."
+      }
+    },
+    {
       "id": "runtime.bytecode-operator-integration",
       "area": "ECMA-262 core",
       "status": "partial",

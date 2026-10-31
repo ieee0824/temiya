@@ -120,7 +120,7 @@ impl Realm {
     /// Materializes a catchable exception without invoking a potentially
     /// replaced global constructor. Internal failures remain Rust errors.
     pub(crate) fn exception_value(&self, error: &RuntimeError) -> RuntimeResult<Value> {
-        use super::{PropertyDescriptor, RuntimeErrorKind};
+        use super::RuntimeErrorKind;
         if let Some(value) = error.thrown_value() {
             return Ok(value.clone());
         }
@@ -132,13 +132,10 @@ impl Realm {
             RuntimeErrorKind::RangeError => IntrinsicId::RangeErrorPrototype,
             RuntimeErrorKind::InternalError => return Err(error.clone()),
         };
-        let object = Object::new_for(&self.global_object());
-        object.set_prototype(Some(self.intrinsic(prototype)));
-        object.define_own_property(
-            "message".into(),
-            PropertyDescriptor::data(Value::String(error.message().into()), true, false, true),
-        )?;
-        Ok(Value::Object(object))
+        Ok(Value::Object(Object::native_error(
+            self.intrinsic(prototype),
+            error.message().into(),
+        )))
     }
 
     /// Retains the originating Realm before a function crosses a caller boundary.

@@ -699,6 +699,21 @@ impl ObjectState {
 }
 
 impl Object {
+    // Native exceptions are unpublished ordinary objects with one own data
+    // property. Prototype and message are initialized before user code can run.
+    pub(super) fn native_error(prototype: Self, message: JsString) -> Self {
+        let object = Self::new_with_prototype(prototype);
+        object.0.state.borrow_mut().properties = vec![PropertyEntry {
+            key: "message".into(),
+            descriptor: StoredDescriptor::Data {
+                value: StoredValue::String(message),
+                writable: true,
+                enumerable: false,
+                configurable: true,
+            },
+        }];
+        object
+    }
     // Only freshly allocated ordinary iterator results use this constructor.
     // The incoming value remains rooted across allocation and its stored edge
     // is validated before the result becomes observable.

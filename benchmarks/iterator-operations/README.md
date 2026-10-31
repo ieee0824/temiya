@@ -90,3 +90,9 @@ The fourth diagnostic point (0269ef9 environment-root cache) is rejected and rev
 `fixed-definition-cache-v1` retains historical09766bb fixed Ast/Auto captures:235pass1983fail1662timeout each. Every outcome agrees with c2bc478; no regressions or missing records. These captures do not qualify the later key/result/native-step changes.
 
 Native-error (c247cf3) and native-step (83dc7b0) diagnostics are also retained. Native-step validates all six frozen outputs twice; array spread records219,270,403 instructions and call spread221,612,852. Custom getter/invalid-result cases remain recorded, and hosted speed qualification is pending.
+
+`hosted-native-step-v1` retains run 41181490909 at 1979ac3. All previous
+46 workloads qualify on both independent jobs. Four iterator workloads qualify;
+`done-value-order` and `invalid-next-result` each record 0/3 significant wins
+on both jobs. This capture does not meet the speed requirement. Replay its
+68 reports with `node benchmarks/iterator-operations/verify-hosted.mjs hosted-native-step-v1`.

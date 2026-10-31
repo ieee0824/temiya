@@ -106,6 +106,11 @@ fn private_method_and_accessor_edges_survive_reentrant_gc_then_release() {
                 engine.evaluate(&calls).unwrap().value(),
                 Value::Boolean(true)
             ));
+            let writes = engine.compile(&realm, "class PrivateWriteGC{#x;get #v(){gcNow();return this.#x;}set #v(v){gcNow();this.#x=v;}put(v){this.#v=v;return this.#v;}}new PrivateWriteGC().put({answer:42}).answer===42;").unwrap();
+            assert!(matches!(
+                engine.evaluate(&writes).unwrap().value(),
+                Value::Boolean(true)
+            ));
         }
         assert_eq!(engine.collect_garbage().unwrap().retained, 0);
     }
@@ -139,5 +144,24 @@ fn private_calls_keep_receiver_argument_positions_and_fallback_semantics() {
     );
     check(
         "class C{static #m(v){return v;}static call(v){return this.#m(v);}}class D extends C{}let caught=false;try{D.call(42);}catch(e){caught=e instanceof TypeError;}caught && C.call(42)===42;",
+    );
+}
+
+#[test]
+fn private_assignment_plans_keep_setter_readback_and_implicit_returns() {
+    check(
+        "class C{#x=0;set(v){this.#x=v;}put(v){this.#x=v;return this.#x;}get value(){return this.#x;}set value(v){this.#x=v;}}let c=new C();let descriptor=Object.getOwnPropertyDescriptor(C.prototype,'value');c.set(41)===undefined && c.value===41 && c.put(42)===42 && descriptor.set.call(c,40)===undefined && c.value===40;",
+    );
+    check(
+        "let gets=0;class C{#x=0;get #v(){gets++;return this.#x;}set #v(v){this.#x=v+1;}put(v){this.#v=v;return this.#v;}}let c=new C();c.put(41)===42 && gets===1;",
+    );
+    check(
+        "let gets=0;let marker={};class C{get #v(){gets++;return 1;}set #v(v){throw marker;}put(v){this.#v=v;return this.#v;}}let caught=false;try{new C().put(41);}catch(e){caught=e===marker;}caught && gets===0;",
+    );
+    check(
+        "class C{#x=0;writer(){return (v)=>{this.#x=v;};}read(){return this.#x;}}let c=new C();let write=c.writer();write(42)===undefined && c.read()===42;",
+    );
+    check(
+        "class C{#x=0;put(o,v){o.#x=v;return o.#x;}}let c=new C();let caught=false;try{c.put({},42);}catch(e){caught=e instanceof TypeError;}caught && c.put(c,41)===41;",
     );
 }

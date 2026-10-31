@@ -1,9 +1,9 @@
-//! Array binding initialization shared by declarations and formal parameters.
+//! Binding initialization shared by declarations and formal parameters.
 use super::{
-    Completion, ExpressionEvaluator, JsString, Reference, RuntimeError, RuntimeResult, Value,
-    iterator::IteratorRecord,
+    Completion, ExpressionEvaluator, JsString, PropertyKey, Reference, ReferencedName,
+    RuntimeError, RuntimeResult, Value, iterator::IteratorRecord,
 };
-use crate::ast::{Expr, ExprKind};
+use crate::ast::{Expr, ExprKind, Literal, ObjectProperty};
 
 pub(super) fn names(binding: &Expr, output: &mut Vec<JsString>) -> RuntimeResult<()> {
     match &binding.kind {
@@ -14,10 +14,13 @@ pub(super) fn names(binding: &Expr, output: &mut Vec<JsString>) -> RuntimeResult
                 names(element, output)?;
             }
         }
+        ExprKind::Object(properties) => {
+            for property in properties {
+                names(property.value.as_ref().unwrap_or(&property.key), output)?;
+            }
+        }
         _ => {
-            return Err(RuntimeError::internal_error(
-                "object binding execution is not implemented",
-            ));
+            return Err(RuntimeError::internal_error("invalid binding pattern"));
         }
     }
     Ok(())
@@ -104,10 +107,11 @@ fn element(
     if let Some(target) = target {
         return target.put(evaluator, value);
     }
+    if let ExprKind::Object(properties) = &binding.kind {
+        return object(evaluator, properties, value, initialize);
+    }
     let ExprKind::Array { elements, .. } = &binding.kind else {
-        return Err(RuntimeError::internal_error(
-            "object binding execution is not implemented",
-        ));
+        return Err(RuntimeError::internal_error("invalid binding pattern"));
     };
     let mut iterator = IteratorRecord::get(&evaluator.realm, value)?;
     let result = (|| {
@@ -160,4 +164,58 @@ fn element(
     } else {
         iterator.close(result).map(|_| ())
     }
+}
+
+fn object(
+    evaluator: &ExpressionEvaluator,
+    properties: &[ObjectProperty],
+    value: Value,
+    initialize: bool,
+) -> RuntimeResult<()> {
+    // RequireObjectCoercible precedes even computed-key evaluation and empty
+    // patterns. GetV below retains the original primitive as the receiver.
+    if matches!(value, Value::Undefined | Value::Null) {
+        return Err(RuntimeError::type_error(
+            "cannot destructure null or undefined",
+        ));
+    }
+    let mut excluded = Vec::with_capacity(properties.len());
+    for property in properties {
+        if property.spread {
+            let target = Target::prepare(evaluator, &property.key, initialize)?;
+            let rest = super::object_literal::create(&evaluator.realm);
+            super::object_literal::spread_excluding(&rest, value.clone(), &excluded)?;
+            let target = target
+                .ok_or_else(|| RuntimeError::internal_error("invalid object rest binding"))?;
+            target.put(evaluator, Value::Object(rest))?;
+            continue;
+        }
+        let key = if property.computed
+            || matches!(property.key.kind, ExprKind::Literal(Literal::Number { .. }))
+        {
+            super::object_literal::property_key(
+                &evaluator.realm,
+                evaluator.evaluate(&property.key)?,
+            )?
+        } else {
+            PropertyKey::String(super::interpreter::member_name(&property.key)?)
+        };
+        let binding = property.value.as_ref().unwrap_or(&property.key);
+        element(
+            evaluator,
+            binding,
+            &mut || {
+                Reference::property_in_realm(
+                    &evaluator.realm,
+                    value.clone(),
+                    ReferencedName::PropertyKey(key.clone()),
+                    evaluator.strict,
+                )
+                .get_value()
+            },
+            initialize,
+        )?;
+        excluded.push(key);
+    }
+    Ok(())
 }

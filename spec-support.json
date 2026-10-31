@@ -23,7 +23,7 @@
         "docs/array-binding.md",
         "benchmarks/array-binding/selection-freeze.json"
       ],
-      "rationale": "Public Engine Ast/Auto initialize array patterns in declarations, ordinary parameters, catch and supported loop declarations. Coverage includes nested patterns, elision/default/rest, TDZ, anonymous default names, abrupt close priority and reentrant GC. Object patterns, assignment patterns, complete for-of and async/generator integration remain separate. Full fixed-corpus and hosted speed qualification are pending.",
+      "rationale": "Public Engine Ast/Auto initialize array patterns in declarations, ordinary parameters, catch and supported loop declarations. Coverage includes nested patterns, elision/default/rest, TDZ, anonymous default names, abrupt close priority and reentrant GC. Object patterns are covered by runtime.object-binding; assignment patterns, complete for-of and async/generator integration remain separate. Full fixed-corpus and hosted speed qualification are pending.",
       "kind": "group",
       "issues": [
         162,
@@ -1137,6 +1137,30 @@
       "test262": {
         "status": "not-run",
         "rationale": "This aggregate has no whole-group Test262 qualification. Focused suites, if available, retain their own scope and outcomes in test262/; authored probes are not corpus passes."
+      }
+    },
+    {
+      "id": "runtime.object-binding",
+      "area": "ECMA-262 core",
+      "status": "partial",
+      "reference": "PropertyBindingInitialization / KeyedBindingInitialization / RestBindingInitialization (#163)",
+      "tests": [
+        "tests/object_binding.rs",
+        "docs/object-binding.md",
+        "benchmarks/object-binding/selection-freeze.json"
+      ],
+      "rationale": "Public Engine Ast/Auto initialize object patterns in declarations, ordinary parameters, catch and supported loop declarations. Computed keys/defaults, nested patterns, rest string/symbol exclusions, getter/Proxy order, primitive receivers, nullish rejection, TDZ, abrupt close and reentrant GC have focused tests. Fixed/full corpus, hosted speed and complete async/generator integration remain pending.",
+      "kind": "group",
+      "issues": [
+        163,
+        161,
+        162,
+        171,
+        204
+      ],
+      "test262": {
+        "status": "not-run",
+        "rationale": "Fixed selection frozen before runtime edits; candidate results and speed qualification remain pending."
       }
     }
   ],
@@ -3286,21 +3310,22 @@
     {
       "id": "api.constructor.Symbol",
       "kind": "constructor",
-      "status": "unconnected",
+      "status": "partial",
       "reference": "ECMA-262 2026 constructor.Symbol",
       "issues": [
         204
       ],
-      "rationale": "The global is callable but its placeholder body returns undefined. This is evidence of a stub, not constructor implementation.",
+      "rationale": "Symbol calls create distinct primitives with Realm-aware description coercion and construction throws TypeError. Registry and remaining Symbol.prototype APIs remain #204; full conformance is unqualified.",
       "tests": [
-        "tests/spec_support.rs"
+        "tests/spec_support.rs",
+        "tests/object_binding.rs"
       ],
       "test262": {
         "status": "not-run"
       },
       "probes": [
         {
-          "source": "Symbol(42) === undefined;",
+          "source": "typeof Symbol(42)==='symbol'&&Symbol('same')!==Symbol('same');",
           "expected": {
             "parser": "accept",
             "ast": "true",
@@ -3309,7 +3334,7 @@
           }
         }
       ],
-      "evidence_kind": "stub"
+      "evidence_kind": "examples"
     },
     {
       "id": "api.constructor.SyntaxError",

@@ -49,11 +49,12 @@ The execution paths currently have different capabilities:
 | Bytecode interpreter | `BytecodeCompiler::compile` then `VirtualMachine::execute` | The default Engine uses Auto to select this whole-Script subset when supported: primitive operations, global/function/block bindings, TDZ/const, property references, calls/construct and simple-parameter functions, conditionals, while/for/do-while, break/continue and labels. Use `execute_in_realm` for persistent globals; standalone function-body execution requires a caller-prepared frame. Array literals, holes, iterable spread, data object literals, computed keys, object spread and prototype setters are supported; object literals with methods/accessors inside eligible function bodies use the shared evaluator through verified metadata; top-level object methods and for-in/of remain unsupported. `Engine::builder().script_backend(ScriptBackend::Bytecode)` selects this backend and reports unsupported syntax during compilation; `Auto` falls back to AST before executing an unsupported Script and never retries a runtime error. |
 | Experimental JIT | `BaselineJit::compile` with `--features jit` | Separate straight-line numeric backend on x86-64 Unix. For example, `40 + 2;` is supported, but `1 === 1;` is rejected. Other platforms, including ARM64, return `UnsupportedPlatform`. Enabling the feature does not make `Engine` use JIT execution. |
 
-Array binding patterns execute through Ast/Auto for declarations, ordinary function
-parameters, catch parameters and supported loop declarations. Object patterns,
-destructuring assignment and complete for-of iteration remain separate work.
-See [array binding](docs/array-binding.md) for behavior and pending corpus/performance
-qualification.
+Array and object binding patterns execute through Ast/Auto for declarations,
+ordinary function parameters, catch parameters and supported loop declarations.
+Computed keys, defaults and object rest preserve property access order and key
+exclusions. Destructuring assignment and complete for-of iteration remain separate
+work. See [array binding](docs/array-binding.md) and [object binding](docs/object-binding.md)
+for behavior and pending corpus/performance qualification.
 
 Run `cargo run --example backend_scope --all-features` to check these examples
 through the public APIs, including the unsupported cases. See

@@ -82,8 +82,15 @@ case "${1:-}" in
     node benchmarks/array-binding/verify-hosted.mjs
     node benchmarks/array-binding/verify-full.mjs
     ;;
+  objects)
+    node benchmarks/object-binding/verify-workloads.mjs
+    node benchmarks/object-binding/verify-profiles.mjs
+    node benchmarks/object-binding/verify-hosted.mjs
+    node benchmarks/object-binding/verify-symbol-regression.mjs
+    node benchmarks/object-binding/verify-full.mjs
+    ;;
   *)
-    echo "usage: $0 {classes|fields|private|iterators|bindings}" >&2
+    echo "usage: $0 {classes|fields|private|iterators|bindings|objects}" >&2
     exit 2
     ;;
 esac

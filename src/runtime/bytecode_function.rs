@@ -129,7 +129,10 @@ pub(super) fn execute_template(
 }
 
 #[cfg(test)]
-thread_local! { static BRIDGED_CALLS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) }; }
+thread_local! {
+    static BRIDGED_CALLS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+    static EMPTY_FRAME_CALLS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
 #[cfg(test)]
 pub(super) fn bridged_calls() -> usize {
     BRIDGED_CALLS.with(std::cell::Cell::get)
@@ -376,6 +379,32 @@ impl Closure {
                 boxed_this(&self.realm, this)?
             })
         };
+        if new_target.is_none()
+            && !self.template.arrow
+            && !self.template.arguments_object
+            && self.template.parameters.is_empty()
+            && self.template.body.can_elide_empty_function_frame()
+        {
+            #[cfg(test)]
+            EMPTY_FRAME_CALLS.with(|count| count.set(count.get() + 1));
+            let result = VirtualMachine::execute_without_own_frame(
+                &self.template.body,
+                &self.realm,
+                &self.environment,
+            )?;
+            // Preserve receiver boxing and the live function root across every
+            // callback, even though their empty environment is unobservable.
+            drop(this);
+            drop(function);
+            return match result {
+                Completion::Return(value) => Ok(value),
+                Completion::Normal(_) => Ok(Value::Undefined),
+                Completion::Throw(value) => Err(RuntimeError::thrown(value)),
+                _ => Err(RuntimeError::internal_error(
+                    "invalid bytecode function completion",
+                )),
+            };
+        }
         let frame = if !self.template.arguments_object {
             let body = self.template.body.bytecode();
             let capacity = match body.instructions.first() {
@@ -619,5 +648,65 @@ mod numeric_return_tests {
         assert_eq!(runtime.collect_garbage().unwrap().retained, 0);
         // Keep the compiled templates/plans alive through this collection.
         assert!(!code.bytecode().instructions.is_empty());
+    }
+}
+
+#[cfg(test)]
+mod empty_frame_tests {
+    use super::EMPTY_FRAME_CALLS;
+    use crate::{
+        Engine,
+        embedding::ScriptBackend,
+        runtime::{Object, Value},
+    };
+
+    #[test]
+    fn fresh_object_factories_really_elide_empty_frames() {
+        let engine = Engine::default();
+        {
+            let realm = engine.create_realm();
+            let before = EMPTY_FRAME_CALLS.with(|count| count.get());
+            let script=engine.compile(&realm,"function make(){return {next(){return 0;},return(){throw 99;}};}let record=make();record.next()===0;").unwrap();
+            assert!(matches!(
+                engine.evaluate(&script).unwrap().value(),
+                Value::Boolean(true)
+            ));
+            assert!(EMPTY_FRAME_CALLS.with(|count| count.get()) > before);
+        }
+        assert_eq!(engine.collect_garbage().unwrap().retained, 0);
+    }
+
+    #[test]
+    fn captured_mutations_and_activation_observers_survive_reentrant_gc() {
+        for backend in [ScriptBackend::Ast, ScriptBackend::Auto] {
+            let engine = Engine::builder().script_backend(backend).build();
+            {
+                let realm = engine.create_realm();
+                let gc = Object::native_function_with_context(
+                    engine.allocation_context(),
+                    |context, _, _| {
+                        context.collect_garbage()?;
+                        Ok(Value::Undefined)
+                    },
+                );
+                engine
+                    .set_global(
+                        &realm,
+                        "gcNow",
+                        engine.value(&realm, Value::Object(gc)).unwrap(),
+                    )
+                    .unwrap();
+                let source = "let state=0;let reads=0;let marker={};function make(v){return {get value(){gcNow();if(state!==0)throw marker;state=1;reads++;return v;}};}let a=make(20);let b=make(22);let first=a.value;state=0;let second=b.value;state=0;function own(){return {read:()=>this.answer};}let receiver={answer:42};function args(){return {read:()=>arguments[0]};}function construct(){return {answer:new.target};}function local(){let value=41;return {get next(){gcNow();return ++value;}};}let x=local();let y=local();let caught=false;state=1;try{a.value;}catch(e){caught=e===marker;}first+second===42&&reads===2&&own.call(receiver).read()===42&&args(42).read()===42&&new construct().answer===construct&&x.next===42&&y.next===42&&x.next===43&&caught;";
+                let script = engine.compile(&realm, source).unwrap();
+                assert!(
+                    matches!(
+                        engine.evaluate(&script).unwrap().value(),
+                        Value::Boolean(true)
+                    ),
+                    "{backend:?}"
+                );
+            }
+            assert_eq!(engine.collect_garbage().unwrap().retained, 0);
+        }
     }
 }

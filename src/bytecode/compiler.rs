@@ -1541,7 +1541,16 @@ fn bytecode_may_observe_arguments(body: &VerifiedBytecode) -> bool {
                     .eq("arguments".encode_utf16())
                     || name.code_units().iter().copied().eq("eval".encode_utf16())
             }
-            Constant::Class { .. } | Constant::ObjectLiteral { .. } => true,
+            Constant::Class { .. } => true,
+            Constant::ObjectLiteral { definition, .. } => {
+                let mut observed = false;
+                definition.visit(&mut |expression| {
+                    if let ExprKind::Identifier(name) = &expression.kind {
+                        observed |= name == "arguments" || name == "eval";
+                    }
+                });
+                observed
+            }
             Constant::Function(template) => bytecode_may_observe_arguments(&template.body),
             Constant::Scope(scope) => {
                 scope.bindings.iter().any(|binding| {

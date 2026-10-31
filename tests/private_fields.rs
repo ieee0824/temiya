@@ -147,3 +147,13 @@ fn private_constructor_assignments_keep_mixed_order_and_abrupt_completion() {
         "class C{#x;constructor(a,b){this.#x=b;}read(){return this.#x;}}new C(42).read()===undefined;",
     );
 }
+
+#[test]
+fn default_private_slots_allow_constructor_aliases_and_proxy_stamping() {
+    check(
+        "class A{constructor(o){return o;}}class C extends A{#x;static has(o){return #x in o;}static read(o){return o.#x;}}new C(C);let duplicate=false;try{new C(C);}catch(e){duplicate=e instanceof TypeError;}C.has(C) && C.read(C)===undefined && duplicate;",
+    );
+    check(
+        "let traps=0;class A{constructor(o){return o;}}class C extends A{#x;constructor(o){super(o);this.#x=42;}static read(o){return o.#x;}}let target=Object.preventExtensions({});let proxy=new Proxy(target,{defineProperty(){traps++;throw 99;},set(){traps++;throw 99;}});new C(proxy);let rejected=false;try{C.read(target);}catch(e){rejected=e instanceof TypeError;}C.read(proxy)===42 && traps===0 && rejected;",
+    );
+}

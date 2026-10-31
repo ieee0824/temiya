@@ -216,6 +216,27 @@ pub(super) fn add_private(
 
 impl Object {
     pub(super) fn initialize_instance_fields(&self, receiver: &Object) -> RuntimeResult<()> {
+        {
+            let state = self.0.state.borrow();
+            // Default private slots neither invoke JS nor allocate managed heap
+            // objects. Avoid cloning the definition list in this case. A
+            // stamped receiver can be the constructor itself, so keep that
+            // alias on the snapshot path before borrowing its state mutably.
+            if self != receiver
+                && state
+                    .instance_fields
+                    .iter()
+                    .all(|field| field.private.is_some() && field.initializer.is_none())
+            {
+                for field in &state.instance_fields {
+                    receiver.add_private(
+                        field.private.as_ref().expect("private field").clone(),
+                        Value::Undefined,
+                    )?;
+                }
+                return Ok(());
+            }
+        }
         // Release the state borrow before invoking an initializer or a Proxy
         // defineProperty trap. Snapshot stored edges while self roots the list.
         let fields = self.0.state.borrow().instance_fields.clone();

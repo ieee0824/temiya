@@ -266,3 +266,11 @@ with full-literal-accessors-v1 preserves all29701 preceding passes,with0
 regressions/newpasses. Replay with verify-full.mjs full-hot-sites-v1. Full and
 fixed correctness records do not substitute for current-source native/security
 qualification.
+
+
+`fixed-catch-records-v1` retains current71009f3 Ast/Auto captures:each235
+pass,1983fail,1662timeout across3880 variants,0collection errors/missing.
+Every outcome matches preceding9835c41 and the other backend. verify-fixed.mjs
+replays all8 retained pairs including the original baseline failure/recovery.
+This establishes fixed-capture integrity and pass preservation,not full
+conformance or native speed.

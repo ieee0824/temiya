@@ -1506,6 +1506,24 @@ pub(crate) fn update_reference_in_realm(
     increment: bool,
     prefix: bool,
 ) -> RuntimeResult<Value> {
+    // A resolved pure numeric binding needs no observable coercion. Reuse the
+    // VM's checked write so reads and writes share one binding-table search;
+    // all other reference and value kinds retain the complete operation below.
+    let binding = match &reference.base {
+        ReferenceBase::Environment(environment) => Some((environment, None)),
+        ReferenceBase::FunctionBinding(environment, index) => Some((environment, Some(*index))),
+        _ => None,
+    };
+    if let Some((environment, hint)) = binding {
+        if let Some((old, new)) = environment.update_number_binding(
+            &reference.name.binding_name()?,
+            hint,
+            increment,
+            reference.strict,
+        )? {
+            return Ok(Value::Number(if prefix { new } else { old }));
+        }
+    }
     let old = reference.get_value()?;
     let old = if matches!(old, Value::Object(_)) {
         super::coercion::primitive(

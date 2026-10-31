@@ -1,0 +1,7 @@
+{
+  "name": "private-invalid-receiver",
+  "setup": "class Box{#value;constructor(v){this.#value=v;}read(o){return o.#value;}}function bench(n){let total=0;for(let i=0;i<n;i++){let box=new Box(i+1);try{total+=box.read(i===n-1?{}:box);}catch(e){if(!(e instanceof TypeError))throw e;total+=n;}}return total;}",
+  "invocation": "bench(10000);",
+  "expected": 50005000,
+  "iterations": 10000
+}

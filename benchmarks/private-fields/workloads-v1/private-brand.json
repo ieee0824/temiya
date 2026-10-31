@@ -1,0 +1,7 @@
+{
+  "name": "private-brand",
+  "setup": "class Box{#value;static owns(o){return #value in o;}}function bench(n){let total=0;let good=new Box();let bad=Object.create(good);for(let i=0;i<n;i++){total+=Box.owns(good)&&!Box.owns(bad)?i+1:0;}return total;}",
+  "invocation": "bench(10000);",
+  "expected": 50005000,
+  "iterations": 10000
+}

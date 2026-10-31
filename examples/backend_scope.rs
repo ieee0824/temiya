@@ -50,8 +50,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Value::Number(42.0)
     ));
 
-    // Private fields remain a separate unsupported runtime boundary.
-    let script = engine.compile(&realm, "(class { #field; });")?;
+    let private_fields = "class PrivateExample { #field=42; read(){return this.#field;} has(value){return #field in value;} } let privateExample=new PrivateExample(); privateExample.has(privateExample) && privateExample.read()===42;";
+    let script = engine.compile(&realm, private_fields)?;
+    assert!(matches!(
+        engine.evaluate(&script)?.value(),
+        Value::Boolean(true)
+    ));
+    assert!(BytecodeCompiler::compile(private_fields).is_err());
+
+    // Private methods retain a separate unsupported runtime boundary.
+    let script = engine.compile(&realm, "(class { #method() {} });")?;
     assert!(engine.evaluate(&script).is_err());
 
     let bytecode = BytecodeCompiler::compile("40 + 2;")?;

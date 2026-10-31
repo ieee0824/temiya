@@ -446,3 +446,74 @@ fn record_specific_operations_reject_wrong_environment_kinds() {
             .is_err()
     );
 }
+
+#[test]
+fn ancestor_resolution_survives_gc_during_unscopables_then_continues_outward() {
+    let context = temiya::runtime::AllocationContext::new();
+    let outer = Environment::declarative_in(&context);
+    outer
+        .create_mutable_binding(name("visible"), false)
+        .unwrap();
+    outer
+        .initialize_binding(&name("visible"), Value::Number(42.0))
+        .unwrap();
+    let symbol = Symbol::new(None);
+    let object = Object::new_in(&context);
+    object
+        .create_data_property("visible".into(), Value::Number(1.0))
+        .unwrap();
+    let calls = Rc::new(std::cell::Cell::new(0));
+    let observed = calls.clone();
+    let getter = Object::native_function_with_context(&context, move |context, _, _| {
+        observed.set(observed.get() + 1);
+        context.collect_garbage()?;
+        let blocked = Object::new_in(context);
+        blocked.create_data_property("visible".into(), Value::Boolean(true))?;
+        Ok(Value::Object(blocked))
+    });
+    object
+        .define_own_property(
+            PropertyKey::from(symbol.clone()),
+            PropertyDescriptor::accessor(Some(getter), None, false, true),
+        )
+        .unwrap();
+    let with = Environment::object(
+        object,
+        Some(outer),
+        ObjectEnvironmentOptions {
+            with_environment: true,
+            unscopables_key: Some(PropertyKey::from(symbol)),
+        },
+    );
+    // Only the descendant stays publicly rooted while lookup skips pure records
+    // and crosses an observable object record that collects the managed heap.
+    let descendant = Environment::declarative(Environment::declarative(with));
+    assert_number(
+        descendant
+            .get_identifier_value(&name("visible"), true)
+            .unwrap(),
+        42.0,
+    );
+    assert_eq!(calls.get(), 1);
+}
+
+#[test]
+fn identifier_value_reads_preserve_tdz_with_receivers_and_closure_scope() {
+    use temiya::{Engine, embedding::ScriptBackend};
+    for backend in [ScriptBackend::Ast, ScriptBackend::Auto] {
+        let engine = Engine::builder().script_backend(backend).build();
+        let realm = engine.create_realm();
+        let source = "let events='';let x=41;let value=0;let scope={get x(){events+='g';return 42;},method(){return this===scope;}};with(scope){value=x;if(!method())throw 1;}let blocked={};with(blocked){value+=x-41;}let tdz=false;try{let a=b;let b=1;}catch(e){tdz=e instanceof ReferenceError;}let missing=false;try{value+=noSuchBinding;}catch(e){missing=e instanceof ReferenceError;}function direct(){let local=42;return (()=>local)();}value===42 && events==='g' && tdz && missing && direct()===42;";
+        let script = engine.compile(&realm, source).unwrap();
+        let result = engine.evaluate(&script).unwrap();
+        if !matches!(result.value(), Value::Boolean(true)) {
+            let details = engine
+                .compile(&realm, "value+':'+events+':'+tdz+':'+missing+':'+direct();")
+                .unwrap();
+            panic!(
+                "{backend:?}: {:?}",
+                engine.evaluate(&details).unwrap().value()
+            );
+        }
+    }
+}

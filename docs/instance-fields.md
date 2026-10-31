@@ -19,8 +19,10 @@ HomeObject for super properties. Initializer code, defining environments and
 HomeObjects are traced from the constructor. Public Engine tests in
 `tests/instance_fields.rs` cover reentrant collection and reclamation.
 
-Static fields, static blocks and private elements remain unsupported and are
-rejected before class effects. Eligible function-body declarations enter the VM
+Public static fields and static blocks execute in declaration order.
+[Private instance fields](private-fields.md) use separate traced storage. Private
+methods/accessors and static private elements remain rejected before class effects.
+Eligible function-body declarations enter the VM
 through the shared class evaluator with their lexical TDZ and mutable outer
 binding. Complete syntax analysis permits loop-header reuse only when fields,
 keys, defaults and nested functions/classes cannot observe any cloned header

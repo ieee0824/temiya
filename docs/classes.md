@@ -83,7 +83,9 @@ does not implement general legacy caller introspection.
 Super-property get/set/call in object and class methods execute through Ast
 and Auto; see [super references](super-properties.md) for scope and ordering.
 [Public instance fields](instance-fields.md) initialize through Ast and Auto.
-Static initialization (#158) and private elements (#159/#160) remain separate work.
+Public static fields and blocks execute in declaration order (#158).
+[Private instance fields](private-fields.md) connect reads/writes and brand checks
+(#159); private methods/accessors and static private elements remain #160.
 Unsupported elements produce explicit Engine failures; they are never silently
 dropped. General parameter-environment behavior (#165), arrow new.target (#168)
 and eval (#169) also remain incomplete. No whole-class or whole-corpus conformance
@@ -118,8 +120,8 @@ consulting an array iterator. Arrows created before super retain the owning
 `this` binding and observe its later initialization. Captured environments are
 traced through stored closures and suspended evaluators. General derived bodies use
 the AST evaluator in both Ast and Auto; the bytecode leaf/activation-elision paths
-do not model uninitialized constructor `this`. Private elements and complete
-builtin subclassing remain separate work.
+do not model uninitialized constructor `this`. Private methods/accessors, static
+private elements and complete builtin subclassing remain separate work.
 
 Run `cargo test --locked --test derived_classes --test base_classes` for the
 public Engine tests. Fixed upstream coverage retains every recorded dependency

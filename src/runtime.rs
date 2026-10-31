@@ -37,6 +37,7 @@ mod object;
 pub(crate) mod object_literal;
 mod operators;
 mod pipeline;
+mod private_fields;
 mod promise;
 mod proxy;
 mod regexp;

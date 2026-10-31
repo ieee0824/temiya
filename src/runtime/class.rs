@@ -27,6 +27,7 @@ pub(super) fn evaluate(
             .key
             .as_ref()
             .is_some_and(|key| matches!(key.kind, ExprKind::PrivateIdentifier(_)))
+            && (element.is_static || !matches!(element.kind, ClassElementKind::Field(_)))
         {
             return Err(RuntimeError::internal_error(
                 "private class elements are not yet implemented",
@@ -42,7 +43,13 @@ pub(super) fn evaluate(
     // record adds no binding or this behavior; methods can capture the outer
     // environment directly. Named classes still need their own TDZ/immutable
     // binding, and the evaluator below remains strict in both cases.
-    let environment = if binding.is_none() {
+    let has_private = class.elements.iter().any(|element| {
+        element
+            .key
+            .as_ref()
+            .is_some_and(|key| matches!(key.kind, ExprKind::PrivateIdentifier(_)))
+    });
+    let environment = if binding.is_none() && !has_private {
         outer.environment.clone()
     } else {
         Environment::declarative(outer.environment.clone())
@@ -86,6 +93,15 @@ pub(super) fn evaluate(
             outer.realm.intrinsic(IntrinsicId::FunctionPrototype),
         )
     };
+    for element in &class.elements {
+        if let Some(crate::ast::Expr {
+            kind: ExprKind::PrivateIdentifier(name),
+            ..
+        }) = &element.key
+        {
+            environment.declare_private(JsString::from(name.as_str()));
+        }
+    }
     let prototype = Object::new_for(&constructor_parent);
     if let Some(parent) = prototype_parent {
         prototype.initialize_prototype(Some(parent));
@@ -168,6 +184,19 @@ pub(super) fn evaluate(
             .key
             .as_ref()
             .ok_or_else(|| RuntimeError::syntax_error("class method has no key"))?;
+        if let ExprKind::PrivateIdentifier(name) = &key.kind {
+            let ClassElementKind::Field(expression) = &element.kind else {
+                unreachable!()
+            };
+            super::class_fields::add_private(
+                &constructor,
+                &prototype,
+                &evaluator,
+                name,
+                expression.as_ref(),
+            )?;
+            continue;
+        }
         let key = if !element.computed {
             if let ExprKind::Identifier(name) = &key.kind {
                 PropertyKey::from(name.as_str())

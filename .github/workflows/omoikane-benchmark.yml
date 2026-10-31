@@ -31,6 +31,10 @@ on:
         description: Also record fixed static-element5 suite (baseline must support public static elements)
         default: false
         type: boolean
+      include_private:
+        description: Also record fixed private-field5 suite (baseline must support private instance fields)
+        default: false
+        type: boolean
       two_runners:
         description: Record two independent hosted machines without selecting a CPU
         default: false
@@ -72,6 +76,7 @@ jobs:
       INCLUDE_SUPER: ${{ inputs.include_super || false }}
       INCLUDE_FIELDS: ${{ inputs.include_fields || false }}
       INCLUDE_STATIC: ${{ inputs.include_static || false }}
+      INCLUDE_PRIVATE: ${{ inputs.include_private || false }}
       REQUIRED_CPU_MODEL: ${{ inputs.required_cpu_model || '' }}
     steps:
       - name: Check out measured revision
@@ -333,6 +338,35 @@ jobs:
             reports+=("$RUNNER_TEMP/comparison-output/static-baseline-boa.json" "$RUNNER_TEMP/comparison-output/static-same-binary.json")
           fi
           node scripts/audit-class-workload-records.mjs --static "${reports[@]}" > "$RUNNER_TEMP/comparison-output/static-independent-audit.json"
+      - name: Measure fixed private-field workloads before and after
+        if: inputs.include_private && steps.hardware.outputs.matches == 'true'
+        run: |
+          export TEMIYA_REVISION="$(cat "$RUNNER_TEMP/comparison-output/measured-revision.txt")"
+          export BENCH_NOTES='Authored fixed private-field5 suite; same compiler and binary builds as original11. 15 samples/3 alternating pairs, unchanged counts/oracles/limits. No builds during timing. Baseline must support private instance fields. Retain every outcome.'
+          node scripts/compare-class-workloads.mjs --private --temiya-baseline benchmarks/private-fields/workloads-v1 "$RUNNER_TEMP/temiya-current-target/release/examples/measure_workload" "$RUNNER_TEMP/comparison-output/baseline-build-info.json" 15 3 > "$RUNNER_TEMP/comparison-output/private-beforeafter.json" 2> "$RUNNER_TEMP/comparison-output/private-beforeafter.progress"
+      - name: Measure fixed private-field workloads against actual Boa
+        if: inputs.include_private && steps.hardware.outputs.matches == 'true'
+        run: |
+          export TEMIYA_REVISION="$(cat "$RUNNER_TEMP/comparison-output/measured-revision.txt")"
+          export BENCH_NOTES='Separate authored private-field suite, not a replacement for original11. Same compiler/host, 15 samples and 3 alternating pairs, all raw results retained. Job success is not a speed pass.'
+          node scripts/compare-class-workloads.mjs --private benchmarks/private-fields/workloads-v1 "$RUNNER_TEMP/temiya-current-target/release/examples/measure_workload" "$RUNNER_TEMP/comparison-output/boa-build-info.json" 15 3 > "$RUNNER_TEMP/comparison-output/private-boa.json" 2> "$RUNNER_TEMP/comparison-output/private-boa.progress"
+      - name: Measure private-field controls with the baseline and identical candidate
+        if: inputs.include_private && inputs.include_controls && steps.hardware.outputs.matches == 'true'
+        run: |
+          export TEMIYA_REVISION="$(cat "$RUNNER_TEMP/comparison-output/baseline-revision.txt")"
+          export BENCH_NOTES='Direct baseline/actual Boa private-field control on this same runner. Preserve slow and noisy outcomes.'
+          node scripts/compare-class-workloads.mjs --private benchmarks/private-fields/workloads-v1 "$RUNNER_TEMP/temiya-baseline-target/release/examples/measure_workload" "$RUNNER_TEMP/comparison-output/boa-build-info.json" 15 3 > "$RUNNER_TEMP/comparison-output/private-baseline-boa.json" 2> "$RUNNER_TEMP/comparison-output/private-baseline-boa.progress"
+          export TEMIYA_REVISION="$(cat "$RUNNER_TEMP/comparison-output/measured-revision.txt")"
+          export BENCH_NOTES='Same executable private-field control: labels do not indicate a source change. Preserve all outcomes.'
+          node scripts/compare-class-workloads.mjs --private --temiya-baseline benchmarks/private-fields/workloads-v1 "$RUNNER_TEMP/temiya-current-target/release/examples/measure_workload" "$RUNNER_TEMP/comparison-output/same-binary-build-info.json" 15 3 > "$RUNNER_TEMP/comparison-output/private-same-binary.json" 2> "$RUNNER_TEMP/comparison-output/private-same-binary.progress"
+      - name: Independently reconstruct private-field measurement records
+        if: inputs.include_private && steps.hardware.outputs.matches == 'true'
+        run: |
+          reports=("$RUNNER_TEMP/comparison-output/private-beforeafter.json" "$RUNNER_TEMP/comparison-output/private-boa.json")
+          if [ "$INCLUDE_CONTROLS" = true ]; then
+            reports+=("$RUNNER_TEMP/comparison-output/private-baseline-boa.json" "$RUNNER_TEMP/comparison-output/private-same-binary.json")
+          fi
+          node scripts/audit-class-workload-records.mjs --private "${reports[@]}" > "$RUNNER_TEMP/comparison-output/private-independent-audit.json"
       - name: Summarize validity and speed gates separately
         if: always()
         run: |
@@ -398,6 +432,15 @@ jobs:
               try {
                 const r = JSON.parse(fs.readFileSync(path.join(process.env.RUNNER_TEMP, 'comparison-output', name + '.json')));
                 lines.push('- ' + name + ': correct outputs = ' + r.all_workloads_valid + '; all-static speed gate = ' + r.all_class_workloads_faster_beyond_threshold);
+              } catch { lines.push('- ' + name + ': no complete measurement report.'); }
+            }
+          }
+          if (process.env.INCLUDE_PRIVATE === 'true') {
+            const classes = ['private-beforeafter', 'private-boa', ...(process.env.INCLUDE_CONTROLS === 'true' ? ['private-baseline-boa', 'private-same-binary'] : [])];
+            for (const name of classes) {
+              try {
+                const r = JSON.parse(fs.readFileSync(path.join(process.env.RUNNER_TEMP, 'comparison-output', name + '.json')));
+                lines.push('- ' + name + ': correct outputs = ' + r.all_workloads_valid + '; all-private speed gate = ' + r.all_class_workloads_faster_beyond_threshold);
               } catch { lines.push('- ' + name + ': no complete measurement report.'); }
             }
           }

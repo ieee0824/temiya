@@ -120,6 +120,7 @@ impl StoredOwner for Environment {
 }
 
 pub(super) struct EnvironmentData {
+    pub(super) private_names: RefCell<Option<Box<super::private_fields::Names>>>,
     pub(super) facade: RefCell<Weak<EnvironmentRoot>>,
     outer: Option<StoredEnvironment>,
     record: RefCell<EnvironmentRecord>,
@@ -551,6 +552,7 @@ impl Environment {
     ) -> Self {
         let runtime = runtime.expect("environment allocation context");
         let data = EnvironmentData {
+            private_names: RefCell::new(None),
             facade: RefCell::new(Weak::new()),
             outer: outer
                 .as_ref()
@@ -663,6 +665,22 @@ impl Environment {
 
     /// Initializes an existing binding, ending its temporal dead zone.
     pub fn initialize_binding(&self, name: &JsString, value: Value) -> RuntimeResult<()> {
+        // Declarative/function bindings cannot invoke JavaScript. Complete the
+        // operation under one record borrow instead of probing object/import
+        // records first; observable object/module paths remain below.
+        {
+            let mut record = self.0.record.borrow_mut();
+            match &mut *record {
+                EnvironmentRecord::Declarative(record) => {
+                    return record.initialize(self, name, value);
+                }
+                EnvironmentRecord::Function(record) => {
+                    return record.declarative_record.initialize(self, name, value);
+                }
+                _ => {}
+            }
+        }
+
         if let Some(record) = self.object_record_for_binding(name) {
             return record.initialize(self, name, value);
         }
@@ -699,6 +717,18 @@ impl Environment {
         value: Value,
         strict: bool,
     ) -> RuntimeResult<()> {
+        {
+            let mut record = self.0.record.borrow_mut();
+            match &mut *record {
+                EnvironmentRecord::Declarative(record) => {
+                    return record.set(self, name, value, strict);
+                }
+                EnvironmentRecord::Function(record) => {
+                    return record.declarative_record.set(self, name, value, strict);
+                }
+                _ => {}
+            }
+        }
         if let Some(record) = self.object_record_for_binding(name) {
             return record.set(self, name, value, strict);
         }
@@ -734,6 +764,17 @@ impl Environment {
 
     /// Reads a binding, raising ReferenceError for absent or uninitialized names.
     pub fn get_binding_value(&self, name: &JsString, strict: bool) -> RuntimeResult<Value> {
+        {
+            let record = self.0.record.borrow();
+            match &*record {
+                EnvironmentRecord::Declarative(record) => return record.get(self, name),
+                EnvironmentRecord::Function(record) => {
+                    return record.declarative_record.get(self, name);
+                }
+                _ => {}
+            }
+        }
+
         if let Some(record) = self.object_record_for_binding(name) {
             return record.get(self, name, strict);
         }
@@ -824,9 +865,37 @@ impl Environment {
 
     /// Reads a resolved identifier through the lexical environment chain.
     pub fn get_identifier_value(&self, name: &JsString, strict: bool) -> RuntimeResult<Value> {
-        self.resolve_binding(name)?
-            .ok_or_else(|| reference_error(name, "is not defined"))?
-            .get_binding_value(name, strict)
+        let mut environment = Some(self.clone());
+        while let Some(current) = environment {
+            // Value contexts need neither a Reference nor a second search of
+            // pure bindings. Drop the record borrow before observable lookup.
+            let pure = {
+                let record = current.0.record.borrow();
+                let bindings = match &*record {
+                    EnvironmentRecord::Declarative(record) => Some(record),
+                    EnvironmentRecord::Function(record) => Some(&record.declarative_record),
+                    _ => None,
+                };
+                bindings.map(|record| {
+                    record
+                        .bindings
+                        .iter()
+                        .find(|binding| binding.name == *name)
+                        .map(|binding| binding.read(&current))
+                })
+            };
+            match pure {
+                Some(Some(value)) => return value,
+                Some(None) => {}
+                None => {
+                    if current.has_binding(name)? {
+                        return current.get_binding_value(name, strict);
+                    }
+                }
+            }
+            environment = current.outer();
+        }
+        Err(reference_error(name, "is not defined"))
     }
 
     /// Creates a live immutable import binding in a module environment.
@@ -1667,6 +1736,7 @@ mod slot_hint_tests {
     fn managed_module_import_cycles_keep_live_bindings_without_internal_roots() {
         let runtime = Runtime::new();
         let parent = runtime.allocate_environment(EnvironmentData {
+            private_names: RefCell::new(None),
             facade: RefCell::new(Weak::new()),
             outer: None,
             record: RefCell::new(EnvironmentRecord::Declarative(DeclarativeRecord::default())),
@@ -1730,6 +1800,7 @@ mod slot_hint_tests {
     fn managed_bindings_trace_objects_and_release_replaced_cycles() {
         let runtime = Runtime::new();
         let environment = runtime.allocate_environment(EnvironmentData {
+            private_names: RefCell::new(None),
             facade: RefCell::new(Weak::new()),
             outer: None,
             record: RefCell::new(EnvironmentRecord::Declarative(DeclarativeRecord::default())),
@@ -1793,6 +1864,7 @@ mod slot_hint_tests {
     fn managed_outer_environment_is_traced_without_an_internal_root() {
         let runtime = Runtime::new();
         let outer = runtime.allocate_environment(EnvironmentData {
+            private_names: RefCell::new(None),
             facade: RefCell::new(Weak::new()),
             outer: None,
             record: RefCell::new(EnvironmentRecord::Declarative(DeclarativeRecord::default())),

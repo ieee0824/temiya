@@ -11,6 +11,7 @@ use crate::ast::{Expr, ExprKind};
 #[derive(Clone)]
 pub(super) struct Field {
     key: PropertyKey,
+    private: Option<super::private_fields::Name>,
     initializer: Option<StoredObject>,
 }
 
@@ -177,12 +178,65 @@ pub(super) fn add(
         .state
         .borrow_mut()
         .instance_fields
-        .push(Field { key, initializer });
+        .push(Field {
+            key,
+            private: None,
+            initializer,
+        });
+    Ok(())
+}
+
+pub(super) fn add_private(
+    constructor: &Object,
+    home: &Object,
+    evaluator: &ExpressionEvaluator,
+    name: &str,
+    expression: Option<&Expr>,
+) -> RuntimeResult<()> {
+    let key = PropertyKey::from(format!("#{name}").as_str());
+    let private = Some(evaluator.environment.resolve_private(name)?);
+    let initializer = expression
+        .map(|expression| {
+            let function = initializer(home, evaluator, &key, expression)?;
+            StoredObject::store(constructor, &function)
+        })
+        .transpose()?;
+    constructor
+        .0
+        .state
+        .borrow_mut()
+        .instance_fields
+        .push(Field {
+            key,
+            private,
+            initializer,
+        });
     Ok(())
 }
 
 impl Object {
     pub(super) fn initialize_instance_fields(&self, receiver: &Object) -> RuntimeResult<()> {
+        {
+            let state = self.0.state.borrow();
+            // Default private slots neither invoke JS nor allocate managed heap
+            // objects. Avoid cloning the definition list in this case. A
+            // stamped receiver can be the constructor itself, so keep that
+            // alias on the snapshot path before borrowing its state mutably.
+            if self != receiver
+                && state
+                    .instance_fields
+                    .iter()
+                    .all(|field| field.private.is_some() && field.initializer.is_none())
+            {
+                for field in &state.instance_fields {
+                    receiver.add_private(
+                        field.private.as_ref().expect("private field").clone(),
+                        Value::Undefined,
+                    )?;
+                }
+                return Ok(());
+            }
+        }
         // Release the state borrow before invoking an initializer or a Proxy
         // defineProperty trap. Snapshot stored edges while self roots the list.
         let fields = self.0.state.borrow().instance_fields.clone();
@@ -193,6 +247,10 @@ impl Object {
                     .call(Value::Object(receiver.clone()), &[])?,
                 None => Value::Undefined,
             };
+            if let Some(name) = field.private {
+                receiver.add_private(name, value)?;
+                continue;
+            }
             if !receiver
                 .define_own_property(field.key, PropertyDescriptor::data(value, true, true, true))?
             {

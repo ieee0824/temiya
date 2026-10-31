@@ -616,6 +616,7 @@ struct PropertyEntry {
 
 #[derive(Default)]
 pub(super) struct ObjectState {
+    pub(super) private_fields: Option<Box<super::private_fields::Fields>>,
     prototype: Option<StoredObject>,
     extensible: bool,
     properties: Vec<PropertyEntry>,
@@ -2503,6 +2504,11 @@ impl super::ObjectData {
     // non-owning, typed captures and active evaluator roots.
     pub(super) fn trace_object_edges(&self, tracer: &mut crate::gc::Tracer<'_>) {
         let state = self.state.borrow();
+        if let Some(fields) = &state.private_fields {
+            for (_, value) in fields.iter() {
+                value.trace(tracer);
+            }
+        }
         for field in &state.instance_fields {
             field.trace(tracer);
         }

@@ -151,6 +151,7 @@ mod function_reference_tests {
 // property references free of dynamic borrows. Cloning copies the Record state.
 #[derive(Clone, Debug)]
 enum ReferenceName {
+    Private(super::private_fields::Name),
     Plain(ReferencedName),
     Computed(Box<RefCell<ReferencedName>>),
 }
@@ -168,6 +169,11 @@ impl ReferenceName {
     }
 
     fn property_key(&self) -> RuntimeResult<PropertyKey> {
+        if matches!(self, Self::Private(_)) {
+            return Err(RuntimeError::internal_error(
+                "private name is not a property key",
+            ));
+        }
         let Self::Computed(cell) = self else {
             let Self::Plain(name) = self else {
                 unreachable!()
@@ -189,6 +195,9 @@ impl ReferenceName {
 
     fn binding_name(&self) -> RuntimeResult<JsString> {
         match self {
+            Self::Private(_) => Err(RuntimeError::internal_error(
+                "private name is not a binding",
+            )),
             Self::Plain(name) => name.binding_name(),
             Self::Computed(_) => match self.property_key()? {
                 PropertyKey::String(name) => Ok(name),
@@ -243,6 +252,15 @@ impl<'a> PropertyReferenceContext<'a> {
 }
 
 impl Reference {
+    pub(super) fn private(base: Value, name: super::private_fields::Name) -> Self {
+        Self {
+            base: ReferenceBase::Property(base),
+            name: ReferenceName::Private(name),
+            strict: true,
+            this_value: None,
+            primitive_prototype: None,
+        }
+    }
     // Only VM-verified function slots provide hints. Each read/write validates
     // the name again, so reentrant deletion or insertion cannot retarget it.
     pub(crate) fn function_binding(
@@ -383,6 +401,14 @@ impl Reference {
 
     /// Implements `GetValue`.
     pub fn get_value(&self) -> RuntimeResult<Value> {
+        if let ReferenceName::Private(name) = &self.name {
+            return match &self.base {
+                ReferenceBase::Property(Value::Object(object)) => object.get_private(name),
+                _ => Err(RuntimeError::type_error(
+                    "private field receiver is not an object",
+                )),
+            };
+        }
         match &self.base {
             ReferenceBase::Environment(environment) => {
                 environment.get_binding_value(&self.name.binding_name()?, self.strict)
@@ -410,6 +436,14 @@ impl Reference {
 
     /// Implements `PutValue`, including sloppy assignment to the global object.
     pub fn put_value(&self, value: Value) -> RuntimeResult<()> {
+        if let ReferenceName::Private(name) = &self.name {
+            return match &self.base {
+                ReferenceBase::Property(Value::Object(object)) => object.set_private(name, value),
+                _ => Err(RuntimeError::type_error(
+                    "private field receiver is not an object",
+                )),
+            };
+        }
         match &self.base {
             ReferenceBase::Environment(environment) => {
                 environment.set_mutable_binding(&self.name.binding_name()?, value, self.strict)
@@ -457,6 +491,9 @@ impl Reference {
 
     /// Implements deletion of the referenced binding or property.
     pub fn delete(&self) -> RuntimeResult<bool> {
+        if matches!(self.name, ReferenceName::Private(_)) {
+            return Err(RuntimeError::syntax_error("cannot delete a private field"));
+        }
         if self.is_property_reference() && self.this_value.is_some() {
             return Err(RuntimeError::reference_error(
                 "cannot delete a super property",
@@ -602,6 +639,11 @@ impl ExpressionEvaluator {
 
     /// Evaluates an expression and applies `GetValue` to its result.
     pub fn evaluate(&self, expression: &Expr) -> RuntimeResult<Value> {
+        if let ExprKind::Identifier(name) = &expression.kind {
+            return self
+                .environment
+                .get_identifier_value(&JsString::from(name.as_str()), self.strict);
+        }
         self.eval(expression)?.value()
     }
 
@@ -766,6 +808,10 @@ impl ExpressionEvaluator {
         if optional && matches!(base, Value::Undefined | Value::Null) {
             return Ok(Evaluation::ShortCircuit);
         }
+        if let ExprKind::PrivateIdentifier(name) = &property.kind {
+            let name = self.environment.resolve_private(name)?;
+            return Ok(Evaluation::Reference(Reference::private(base, name)));
+        }
         let name = if computed {
             ReferencedName::Value(self.evaluate(property)?)
         } else {
@@ -914,6 +960,18 @@ impl ExpressionEvaluator {
     }
 
     fn binary(&self, operator: &str, left: &Expr, right: &Expr) -> RuntimeResult<Value> {
+        if operator == "in" {
+            if let ExprKind::PrivateIdentifier(name) = &left.kind {
+                let value = self.evaluate(right)?;
+                let Value::Object(object) = value else {
+                    return Err(RuntimeError::type_error(
+                        "private in receiver is not an object",
+                    ));
+                };
+                let name = self.environment.resolve_private(name)?;
+                return Ok(Value::Boolean(object.has_private(&name)));
+            }
+        }
         let left = self.evaluate(left)?;
         match operator {
             "&&" if !left.to_boolean() => return Ok(left),
@@ -1585,6 +1643,7 @@ enum StoredReferenceBase {
     Unresolvable(super::stored::StoredObject),
 }
 enum StoredReferencedName {
+    Private(super::private_fields::Name),
     PropertyKey(PropertyKey),
     Value(super::stored::StoredValue),
     Computed(super::stored::StoredValue, super::Symbol),
@@ -1602,9 +1661,14 @@ impl StoredReference {
             environment::StoredEnvironment,
             stored::{StoredObject, StoredValue},
         };
+        let private_name = match &reference.name {
+            ReferenceName::Private(name) => Some(name.clone()),
+            _ => None,
+        };
         let name = match reference.name {
             ReferenceName::Plain(name) => name,
             ReferenceName::Computed(cell) => cell.into_inner(),
+            ReferenceName::Private(_) => ReferencedName::PropertyKey(PropertyKey::from("")),
         };
         Ok(Self {
             base: match reference.base {
@@ -1622,18 +1686,22 @@ impl StoredReference {
                     StoredReferenceBase::Unresolvable(StoredObject::store(owner, &global)?)
                 }
             },
-            name: match name {
-                ReferencedName::PropertyKey(key) => StoredReferencedName::PropertyKey(key),
-                ReferencedName::Value(value) => {
-                    StoredReferencedName::Value(StoredValue::store_owned(owner, value)?)
+            name: if let Some(name) = private_name {
+                StoredReferencedName::Private(name)
+            } else {
+                match name {
+                    ReferencedName::PropertyKey(key) => StoredReferencedName::PropertyKey(key),
+                    ReferencedName::Value(value) => {
+                        StoredReferencedName::Value(StoredValue::store_owned(owner, value)?)
+                    }
+                    ReferencedName::Computed {
+                        value,
+                        to_primitive,
+                    } => StoredReferencedName::Computed(
+                        StoredValue::store_owned(owner, value)?,
+                        to_primitive,
+                    ),
                 }
-                ReferencedName::Computed {
-                    value,
-                    to_primitive,
-                } => StoredReferencedName::Computed(
-                    StoredValue::store_owned(owner, value)?,
-                    to_primitive,
-                ),
             },
             strict: reference.strict,
             this_value: reference
@@ -1663,16 +1731,22 @@ impl StoredReference {
                     ReferenceBase::Unresolvable(global.load(owner)?)
                 }
             },
-            name: ReferenceName::new(match self.name {
-                StoredReferencedName::PropertyKey(key) => ReferencedName::PropertyKey(key),
-                StoredReferencedName::Value(value) => {
-                    ReferencedName::Value(value.into_value(owner)?)
-                }
-                StoredReferencedName::Computed(value, to_primitive) => ReferencedName::Computed {
-                    value: value.into_value(owner)?,
-                    to_primitive,
-                },
-            }),
+            name: match self.name {
+                StoredReferencedName::Private(name) => ReferenceName::Private(name),
+                name => ReferenceName::new(match name {
+                    StoredReferencedName::Private(_) => unreachable!(),
+                    StoredReferencedName::PropertyKey(key) => ReferencedName::PropertyKey(key),
+                    StoredReferencedName::Value(value) => {
+                        ReferencedName::Value(value.into_value(owner)?)
+                    }
+                    StoredReferencedName::Computed(value, to_primitive) => {
+                        ReferencedName::Computed {
+                            value: value.into_value(owner)?,
+                            to_primitive,
+                        }
+                    }
+                }),
+            },
             strict: self.strict,
             this_value: self
                 .this_value
@@ -1696,7 +1770,7 @@ impl StoredReference {
             StoredReferencedName::Value(value) | StoredReferencedName::Computed(value, _) => {
                 value.trace(tracer)
             }
-            StoredReferencedName::PropertyKey(_) => {}
+            StoredReferencedName::PropertyKey(_) | StoredReferencedName::Private(_) => {}
         }
         if let Some(value) = &self.this_value {
             value.trace(tracer);

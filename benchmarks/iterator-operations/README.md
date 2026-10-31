@@ -85,7 +85,7 @@ native logs and all6 output oracles. These are instruction diagnostics only.
 
 The fourth diagnostic point (0269ef9 environment-root cache) is rejected and reverted: getter instructions improve but invalid-result instructions increase. Raw profiles and the successful bounded-root test remain evidence, not qualification.
 
-`key-and-result-diagnostic-v1` retains 23 source-specific Callgrind points, including rejected experiments. `verify-key-profiles.mjs` checks raw counts, output oracles and the exact compiled-input inventory for each historical source (80, 81 or 82 inputs). Later points cover function frames, activation roots, short callbacks, owned function sites, weak environment hints and literal accessor initialization. These diagnostics do not satisfy the native Boa speed gate.
+`key-and-result-diagnostic-v1` retains 24 source-specific Callgrind points, including rejected experiments. `verify-key-profiles.mjs` checks raw counts, output oracles and the exact compiled-input inventory for each historical source (80, 81 or 82 inputs). Later points cover function frames, activation roots, short callbacks, owned function sites, weak environment hints and literal accessor initialization. These diagnostics do not satisfy the native Boa speed gate.
 
 `fixed-definition-cache-v1` retains historical09766bb fixed Ast/Auto captures:235pass1983fail1662timeout each. Every outcome agrees with c2bc478; no regressions or missing records. These captures do not qualify the later key/result/native-step changes.
 
@@ -223,3 +223,14 @@ expected outputs validate twice. The focused strict Miri6-test selection
 also passes (220.36seconds), covering reentrant GC, bounded retention, unwind
 and final Runtime release; its complete raw log and strict flags are retained. Current full correctness, security
 and two-host native qualification remain required.
+
+
+The `catch-records` node retains runtime71009f3. Fresh catch records contain
+their initialized parameter before publication, using checked stored values
+and incoming-record tracing at allocation. Catch without a parameter uses the
+existing block environment logic. All914 tests,Clippy,MSRV,i686,doctest and a
+focused strict Miri test pass; the latter checks allocation-time collection,
+foreign-heap rejection, mutable/nondeletable bindings and eventual graph release.
+Invalid-result instructions decline1.06%; other5 cases increase0.0006–0.0062%,
+all retained. Every unchanged expected value validates twice. These diagnostics
+do not qualify native speed or replace current full/fixed/security gates.

@@ -30,3 +30,16 @@ Six10000-iteration workloads were frozen before implementation; actual pinned
 Boa and the immutable baseline each validated every warmup/sample oracle. These
 checks establish outputs only; no new native speed pass is claimed. The
 1947-file/3880-variant baseline remains in progress.
+
+validation-v1 retains the dedicated-target sourcec2bc478 build:878 native
+passes,0 failures,26 ignored, Clippy/MSRV/i686 logs and36 successful output
+validations across six cases and three engines/builds. verify-validation.mjs
+checks source/input identities and preserves the rejected shared-target source
+probe as unqualified. Use a separate CARGO_TARGET_DIR per worktree, then freeze
+the verified executables before starting another build.
+
+The comparison/audit tools accept --iterators. The hosted workflow records the
+frozen suite when include_controls is true and its manifest exists. It retains
+before/after, actual Boa, baseline/Boa and identical-binary controls with the
+existing15sample/3pair policy; previous suites remain included. These wiring
+and output checks do not establish native speed qualification.

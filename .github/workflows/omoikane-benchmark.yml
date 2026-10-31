@@ -8,7 +8,7 @@ on:
         default: main
         type: string
       include_controls:
-        description: Also compare baseline with Boa and candidate with itself
+        description: Also compare baseline/Boa and identical candidate; include frozen iterator suite when present
         default: false
         type: boolean
       include_classes:
@@ -387,6 +387,35 @@ jobs:
             reports+=("$RUNNER_TEMP/comparison-output/elements-same-binary.json")
           fi
           node scripts/audit-class-workload-records.mjs --elements "${reports[@]}" > "$RUNNER_TEMP/comparison-output/elements-independent-audit.json"
+      - name: Measure fixed iterator workloads before and after
+        if: inputs.include_controls && steps.hardware.outputs.matches == 'true' && hashFiles('temiya/benchmarks/iterator-operations/workloads-v1/manifest.json') != ''
+        run: |
+          export TEMIYA_REVISION="$(cat "$RUNNER_TEMP/comparison-output/measured-revision.txt")"
+          export BENCH_NOTES='Authored fixed iterator6 suite; same compiler and binary builds as original11. 15 samples/3 alternating pairs, unchanged counts/oracles/limits. No builds during timing. Baseline output oracles must support the frozen synchronous iterator suite. Retain every outcome.'
+          node scripts/compare-class-workloads.mjs --iterators --temiya-baseline benchmarks/iterator-operations/workloads-v1 "$RUNNER_TEMP/temiya-current-target/release/examples/measure_workload" "$RUNNER_TEMP/comparison-output/baseline-build-info.json" 15 3 > "$RUNNER_TEMP/comparison-output/iterator-beforeafter.json" 2> "$RUNNER_TEMP/comparison-output/iterator-beforeafter.progress"
+      - name: Measure fixed iterator workloads against actual Boa
+        if: inputs.include_controls && steps.hardware.outputs.matches == 'true' && hashFiles('temiya/benchmarks/iterator-operations/workloads-v1/manifest.json') != ''
+        run: |
+          export TEMIYA_REVISION="$(cat "$RUNNER_TEMP/comparison-output/measured-revision.txt")"
+          export BENCH_NOTES='Separate authored iterator suite, not a replacement for original11. Same compiler/host, 15 samples and 3 alternating pairs, all raw results retained. Job success is not a speed pass.'
+          node scripts/compare-class-workloads.mjs --iterators benchmarks/iterator-operations/workloads-v1 "$RUNNER_TEMP/temiya-current-target/release/examples/measure_workload" "$RUNNER_TEMP/comparison-output/boa-build-info.json" 15 3 > "$RUNNER_TEMP/comparison-output/iterator-boa.json" 2> "$RUNNER_TEMP/comparison-output/iterator-boa.progress"
+      - name: Measure iterator controls with the baseline and identical candidate
+        if: inputs.include_controls && steps.hardware.outputs.matches == 'true' && hashFiles('temiya/benchmarks/iterator-operations/workloads-v1/manifest.json') != ''
+        run: |
+          export TEMIYA_REVISION="$(cat "$RUNNER_TEMP/comparison-output/baseline-revision.txt")"
+          export BENCH_NOTES='Direct baseline/actual Boa iterator control on this same runner. Preserve slow and noisy outcomes.'
+          node scripts/compare-class-workloads.mjs --iterators benchmarks/iterator-operations/workloads-v1 "$RUNNER_TEMP/temiya-baseline-target/release/examples/measure_workload" "$RUNNER_TEMP/comparison-output/boa-build-info.json" 15 3 > "$RUNNER_TEMP/comparison-output/iterator-baseline-boa.json" 2> "$RUNNER_TEMP/comparison-output/iterator-baseline-boa.progress"
+          export TEMIYA_REVISION="$(cat "$RUNNER_TEMP/comparison-output/measured-revision.txt")"
+          export BENCH_NOTES='Same executable iterator control: labels do not indicate a source change. Preserve all outcomes.'
+          node scripts/compare-class-workloads.mjs --iterators --temiya-baseline benchmarks/iterator-operations/workloads-v1 "$RUNNER_TEMP/temiya-current-target/release/examples/measure_workload" "$RUNNER_TEMP/comparison-output/same-binary-build-info.json" 15 3 > "$RUNNER_TEMP/comparison-output/iterator-same-binary.json" 2> "$RUNNER_TEMP/comparison-output/iterator-same-binary.progress"
+      - name: Independently reconstruct iterator measurement records
+        if: inputs.include_controls && steps.hardware.outputs.matches == 'true' && hashFiles('temiya/benchmarks/iterator-operations/workloads-v1/manifest.json') != ''
+        run: |
+          reports=("$RUNNER_TEMP/comparison-output/iterator-beforeafter.json" "$RUNNER_TEMP/comparison-output/iterator-boa.json")
+          if [ "$INCLUDE_CONTROLS" = true ]; then
+            reports+=("$RUNNER_TEMP/comparison-output/iterator-baseline-boa.json" "$RUNNER_TEMP/comparison-output/iterator-same-binary.json")
+          fi
+          node scripts/audit-class-workload-records.mjs --iterators "${reports[@]}" > "$RUNNER_TEMP/comparison-output/iterator-independent-audit.json"
       - name: Summarize validity and speed gates separately
         if: always()
         run: |
@@ -418,6 +447,14 @@ jobs:
               } catch { lines.push('- ' + name + ': no complete measurement report.'); }
             }
             lines.push('Private-element baseline before/after is not measured: the selected parent baseline predates this feature.');
+          }
+          if (process.env.INCLUDE_CONTROLS === 'true' && fs.existsSync('benchmarks/iterator-operations/workloads-v1/manifest.json')) {
+            for (const name of ['iterator-beforeafter','iterator-boa','iterator-baseline-boa','iterator-same-binary']) {
+              try {
+                const r = JSON.parse(fs.readFileSync(path.join(process.env.RUNNER_TEMP, 'comparison-output', name + '.json')));
+                lines.push('- ' + name + ': correct outputs = ' + r.all_workloads_valid + '; all-iterator speed gate = ' + r.all_class_workloads_faster_beyond_threshold);
+              } catch { lines.push('- ' + name + ': no complete measurement report.'); }
+            }
           }
           if (process.env.INCLUDE_CLASSES === 'true') {
             const classes = ['class-beforeafter', 'class-boa', ...(process.env.INCLUDE_CONTROLS === 'true' ? ['class-baseline-boa', 'class-same-binary'] : [])];

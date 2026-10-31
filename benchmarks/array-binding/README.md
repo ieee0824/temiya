@@ -2,8 +2,9 @@
 
 This branch builds on merged #161. Array binding now executes through
 declarations, ordinary parameters,
-catch and supported loop declarations. Boa speed qualification and current fixed-capture preservation
-remain pending; this branch is not eligible for merge yet.
+catch and supported loop declarations. Native Boa qualification and full recorded-outcome preservation pass for
+source7a154b1. Current fixed Ast/Auto preservation and final CI remain required
+before merge.
 
 selection.json freezes all destructuring-binding metadata tests and every /dstr/
 path from the complete pinned Test262 catalog before implementation. Object
@@ -110,3 +111,9 @@ stays within noise in at least two pairs. Array-case wins are 3/3/3/3/3/2
 and 3/3/3/2/3/3; all 72 reports and adverse/noisy observations are retained.
 Replay with `node benchmarks/array-binding/verify-hosted.mjs hosted-inline-thrown-v1`.
 Fixed Ast/Auto and current PR CI remain separate merge requirements.
+
+`full-inline-thrown-v1` retains the complete source7a154b1 capture and the
+preceding source9f84bc5 capture. Independent replay preserves all 33,565 prior
+passes across 100,211 variants, with no regressions or missing results. Outcomes
+remain 33,565 pass, 58,059 fail, 18 skip and 8,569 timeout. This aggregate is
+recorded-outcome preservation, not whole-feature conformance.

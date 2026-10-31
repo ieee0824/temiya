@@ -85,7 +85,7 @@ native logs and all6 output oracles. These are instruction diagnostics only.
 
 The fourth diagnostic point (0269ef9 environment-root cache) is rejected and reverted: getter instructions improve but invalid-result instructions increase. Raw profiles and the successful bounded-root test remain evidence, not qualification.
 
-`key-and-result-diagnostic-v1` retains 19 source-specific Callgrind points, including rejected experiments. `verify-key-profiles.mjs` checks raw counts, output oracles and the exact compiled-input inventory for each historical source (80, 81 or 82 inputs). Later points cover function frames, activation roots, short callbacks, owned function sites, weak environment hints and literal accessor initialization. These diagnostics do not satisfy the native Boa speed gate.
+`key-and-result-diagnostic-v1` retains 20 source-specific Callgrind points, including rejected experiments. `verify-key-profiles.mjs` checks raw counts, output oracles and the exact compiled-input inventory for each historical source (80, 81 or 82 inputs). Later points cover function frames, activation roots, short callbacks, owned function sites, weak environment hints and literal accessor initialization. These diagnostics do not satisfy the native Boa speed gate.
 
 `fixed-definition-cache-v1` retains historical09766bb fixed Ast/Auto captures:235pass1983fail1662timeout each. Every outcome agrees with c2bc478; no regressions or missing records. These captures do not qualify the later key/result/native-step changes.
 
@@ -164,3 +164,13 @@ was interrupted and the tenth did not start. Neither incomplete test counts
 as a pass. Commit d8c8dca increases the Miri job budget to 90 minutes without
 changing the 16 shards, test selection or strict interpreter flags. The timeout
 record and focused Miri diagnostics do not replace a completed full security run.
+
+
+The `weak-objects` diagnostic records rejected runtime c6e8fd8 and its
+revert 2b13f1f. Non-owning stored-object facade hints pass 912 all-target tests,
+Clippy, MSRV, i686, doctest and a focused strict Miri lifetime/context test.
+Four instruction profiles improve by about 0.3–3.1%, but done/value order
+increases by 0.13% and invalid next results by 0.37%. Both are the remaining
+unqualified iterator cases, so the change was reverted without a new native
+measurement. All six unchanged worker outputs validate twice; raw profiles,
+source hashes and validation logs remain replayable.

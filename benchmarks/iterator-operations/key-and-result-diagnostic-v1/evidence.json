@@ -493,6 +493,49 @@
           "instructions": 719815016
         }
       ]
+    },
+    {
+      "name": "weak-objects",
+      "source": "c6e8fd8bea5ac338a47f2278f15c6071a6eb45ad",
+      "decision": "rejected and reverted",
+      "profiles": [
+        {
+          "name": "array-spread",
+          "instructions": 209408185,
+          "previous": 214396303,
+          "change_percent": -2.3265876930723017
+        },
+        {
+          "name": "call-spread",
+          "instructions": 209639968,
+          "previous": 216360161,
+          "change_percent": -3.106021445417584
+        },
+        {
+          "name": "captured-next",
+          "instructions": 308831994,
+          "previous": 309836807,
+          "change_percent": -0.3243039488203814
+        },
+        {
+          "name": "string-codepoints",
+          "instructions": 198583186,
+          "previous": 203984690,
+          "change_percent": -2.647994807845633
+        },
+        {
+          "name": "done-value-order",
+          "instructions": 819446213,
+          "previous": 818377006,
+          "change_percent": 0.1306496873886953
+        },
+        {
+          "name": "invalid-next-result",
+          "instructions": 722474822,
+          "previous": 719815016,
+          "change_percent": 0.36951243595617633
+        }
+      ]
     }
   ],
   "files": {
@@ -801,7 +844,33 @@
     "literal-accessors/owned-sites-strict-miri.log": "ae17ab38d7fb068fc31b38564b40622c1e79e26db9efc08e8b63ed1f47fe323a",
     "literal-accessors/literal-gc-strict-miri.log": "0cf441e864500b5fc41d562eca94303f40130cea5b2b7c104d4bf0a28afe2443",
     "literal-accessors/weak-environment-strict-miri.log": "a45acf8cbfbd04b465cce2c9082ba06a558cbacf2a47fad9d581a552edc0f0a8",
-    "literal-accessors/focused-miri.json": "16a9fac6e44f75604290be1b4ca434ba5f443b29d19344fb81e5ce33a2ee60fc"
+    "literal-accessors/focused-miri.json": "16a9fac6e44f75604290be1b4ca434ba5f443b29d19344fb81e5ce33a2ee60fc",
+    "weak-objects/all-targets.log": "5ed86d0b5d49b3bf83df9e2e5632ecedbf09158b75aa5d45916b46581d898876",
+    "weak-objects/array-spread-valgrind.log": "16ac113ab847223916a4973807d68509aecb0c05b7c366b12f10b0c6fe60268a",
+    "weak-objects/array-spread-worker.json": "8326d49956c47fea4e61cfc29880e1c3d968a105376472ceb07dfa6d79bd4046",
+    "weak-objects/array-spread.callgrind.gz": "96f35691becf9b66b919af1b88ab9f0e1567c4a17b4044391c804ff5784d2b5a",
+    "weak-objects/call-spread-valgrind.log": "4e5a8b31b347fa1324460e8c1dbe51718714fffd28fd172723af91ec2597113a",
+    "weak-objects/call-spread-worker.json": "ed9bfc265a918fff91782df61d77cb9ac32e003ae659f9c4230230901fca5e31",
+    "weak-objects/call-spread.callgrind.gz": "9926f2a46f957dfe1be5bb951c3c6d4097538c840727c9cd6f641a15b4a112f0",
+    "weak-objects/captured-next-valgrind.log": "468ad8658b00a785bc6d7fa2e5551fdf242b1a792142fc4f4ec03bc0fd063358",
+    "weak-objects/captured-next-worker.json": "07201cc0b456614ec6fbf70defce464b3563b3d43ea159f74889ffbbaabd6c32",
+    "weak-objects/captured-next.callgrind.gz": "ce936f5683448f3f833ed8337d00602a275c03b3eb2d04328c0aa18fb627395b",
+    "weak-objects/clippy.log": "2d329d7da02a45580da09dc657a85aa72bd7c9cc9d627a430bb07a6dfc51b5d7",
+    "weak-objects/decision.json": "98db4eb5e4efb29560b999829ec0381f2db6794b6e4593021ac82479d75f1044",
+    "weak-objects/doc.log": "c0eef75541302cc77ea475228a9cefbd787f86f6b98f9b03ae9caef432387f61",
+    "weak-objects/done-value-order-valgrind.log": "a0a3629cbb49b135cf2933aa472056448b290e5740cd47796c281978f68fbf76",
+    "weak-objects/done-value-order-worker.json": "dfab50262fe2c435e761f32e9092b38015602e7b8f0e6bd0b5c89544dbd303b7",
+    "weak-objects/done-value-order.callgrind.gz": "cf34015cfb0ffed2ebfff07c2f25b67d1bf74368551d53dbc8276465f7f3d7de",
+    "weak-objects/i686.log": "5bb3450b0bc6fbe42b76c9bcc86f47ce01493162837464cffa372088ca71727c",
+    "weak-objects/invalid-next-result-valgrind.log": "d09e84c626c00e9b2bd68992737a63bfdad9e77aa5ee2c12697c7d1ecba861d7",
+    "weak-objects/invalid-next-result-worker.json": "0c6ed5e81d47b09736dbb901a3358a56e87883611679a64024d8b17d4ce0d737",
+    "weak-objects/invalid-next-result.callgrind.gz": "f2d837e13674f12e70c5d33e33f8d70079d83c3c147c40b31ff7bb2baa3555b2",
+    "weak-objects/miri.log": "fddf95e443a6537d96e3751203c1d3edfedfa4b0cbc35fcc63e818250451214d",
+    "weak-objects/msrv.log": "8ac156c28e6cb1245a8687661701c686f9ddaac27f6fa7114906da05478e1cfe",
+    "weak-objects/string-codepoints-valgrind.log": "072e86255d73810d1ccfe7d8184a916d2a9ab3a7ae29be5f695bb7f9e6259ec4",
+    "weak-objects/string-codepoints-worker.json": "97ead920724b8ad108d9db86385b78b2efd513804a141d3bdaaf3014135825f6",
+    "weak-objects/string-codepoints.callgrind.gz": "12fae694b048f49d8316a454b3784912e16f9fc69a08fa9b948643f853fdbb4f",
+    "weak-objects/worker-info.json": "f859cb61cd1c9808bb68bc809731915d2dd9e36aa9d70741daced0f83c077628"
   },
   "scope": "Instruction diagnostics on identical frozen inputs. All three profiled outputs validate twice per point. Raw self profiles and source-input identities retained. Neither instruction reductions nor embedded single-sample timings establish native Boa speed qualification. Full correctness and two independent hosted speed gates remain separate requirements. Fourth point is a rejected bounded environment-root cache; its adverse invalid-result profile remains recorded and the runtime change is reverted. Native-error and native-step points retain their original diagnostics. Native-step validates all six frozen inputs twice; these remain instruction counts, not hosted Boa speed qualification. Auxiliary-stack and short-function points retain all six unchanged inputs and do not establish native qualification. Stable-slot LRU reduces invalid-result instructions but slightly increases the other five; all six observations are retained without claiming native qualification. Outlined short-ASCII construction improves four instruction profiles and increases captured-next and done/value; all six unchanged observations remain recorded. Deferred AST array allocation retains all six fixed observations; this is a new runtime source and does not inherit prior native qualification. Owned-site function memoization retains all six diagnostic observations with pinned immutable syntax owners; this does not establish native speed qualification. Weak-environment hints are rootless per-stored-edge facade hints, distinct from the rejected strong activation environment cache. All six unchanged diagnostics validate twice; native qualification remains separate. Fresh literal-accessor initialization reduces done/value instructions but increases invalid-result instructions by0.18%; all six observations remain retained without native qualification."
 }

@@ -10731,12 +10731,14 @@
       "status": "partial",
       "reference": "ECMA-262 2026 language syntax and evaluation",
       "issues": [
-        159
+        159,
+        160
       ],
-      "rationale": "Public Engine Ast and Auto execute private instance field initialization, access, mutation and brand checks with distinct lexical identities and traced storage. Private methods/accessors and static private elements remain unsupported; complete conformance and performance qualification are pending.",
+      "rationale": "Public Engine Ast and Auto execute private fields, methods, getters/setters and static private elements with lexical identities, receiver checks and traced storage. Fixed official-suite and performance qualification for methods/accessors/static private elements remain pending; complete conformance is unqualified.",
       "tests": [
         "tests/spec_support.rs",
-        "tests/private_fields.rs"
+        "tests/private_fields.rs",
+        "tests/private_elements.rs"
       ],
       "test262": {
         "status": "not-run"
@@ -10744,6 +10746,15 @@
       "probes": [
         {
           "source": "class A { #x=42; read(){return this.#x;} } new A().read()===42;",
+          "expected": {
+            "parser": "accept",
+            "ast": "true",
+            "bytecode": "bytecode-unsupported",
+            "auto": "true"
+          }
+        },
+        {
+          "source": "class PrivateElementsProbe { static #x=40; static #m(){return this.#x+2;} static get #v(){return this.#m();} static read(){return this.#v;} } PrivateElementsProbe.read()===42;",
           "expected": {
             "parser": "accept",
             "ast": "true",

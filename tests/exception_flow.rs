@@ -179,11 +179,11 @@ fn generator_throw_values_survive_both_active_and_completed_boundaries() {
 
 #[test]
 fn internal_failures_cannot_be_swallowed_by_catch_or_finally() {
-    // Private methods remain unsupported; public/static and private instance fields execute.
+    // Async generators remain unsupported; private methods and accessors execute.
     let engine = Engine::default();
     let realm = engine.create_realm();
     let script = engine.compile(&realm,
-        "function f() { try { (class { #method() {} }); } catch (e) { return true; } finally { return true; } } f();"
+        "function f() { try { (class { async *method() {} }); } catch (e) { return true; } finally { return true; } } f();"
     ).unwrap();
     assert_eq!(
         engine.evaluate(&script).unwrap_err().kind(),

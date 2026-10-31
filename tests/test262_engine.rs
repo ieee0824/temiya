@@ -370,7 +370,16 @@ fn public_runner_executes_bodies_and_matches_error_phase_and_constructor() {
         } else {
             pass(&fields, 2);
         }
-        fail(&fixture.run("/*---\nflags: []\n---*/\nclass C { #method() {} }", backend));
+        let methods = fixture.run("/*---\nflags: []\n---*/\nclass C { #method() {} }", backend);
+        if backend == ScriptBackend::Bytecode {
+            fail(&methods);
+        } else {
+            pass(&methods, 2);
+        }
+        fail(&fixture.run(
+            "/*---\nflags: []\n---*/\nclass C { async *method() {} }",
+            backend,
+        ));
     }
 }
 
@@ -402,7 +411,7 @@ fn harness_failures_and_unavailable_hooks_never_satisfy_negative_tests() {
             ));
         }
         fail(&fixture.run(
-            "/*---\nnegative:\n  phase: runtime\n  type: EngineError\n---*/\nclass C { #method() {} }",
+            "/*---\nnegative:\n  phase: runtime\n  type: EngineError\n---*/\nclass C { async *method() {} }",
             backend,
         ));
         for source in ["$262.agent.start('');", "$262.AbstractModuleSource();"] {

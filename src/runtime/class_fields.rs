@@ -214,6 +214,25 @@ pub(super) fn add_private(
     Ok(())
 }
 
+pub(super) fn add_private_method(
+    constructor: &Object,
+    name: super::private_fields::Name,
+    value: &Object,
+) -> RuntimeResult<()> {
+    let value = StoredObject::store(constructor, value)?;
+    constructor
+        .0
+        .state
+        .borrow_mut()
+        .instance_fields
+        .push(Field {
+            key: PropertyKey::from(""),
+            private: Some(name),
+            initializer: Some(value),
+        });
+    Ok(())
+}
+
 impl Object {
     pub(super) fn initialize_instance_fields(&self, receiver: &Object) -> RuntimeResult<()> {
         {
@@ -223,10 +242,13 @@ impl Object {
             // stamped receiver can be the constructor itself, so keep that
             // alias on the snapshot path before borrowing its state mutably.
             if self != receiver
-                && state
-                    .instance_fields
-                    .iter()
-                    .all(|field| field.private.is_some() && field.initializer.is_none())
+                && state.instance_fields.iter().all(|field| {
+                    field
+                        .private
+                        .as_ref()
+                        .is_some_and(|name| name.kind() == super::private_fields::Kind::Field)
+                        && field.initializer.is_none()
+                })
             {
                 for field in &state.instance_fields {
                     receiver.add_private(
@@ -240,7 +262,30 @@ impl Object {
         // Release the state borrow before invoking an initializer or a Proxy
         // defineProperty trap. Snapshot stored edges while self roots the list.
         let fields = self.0.state.borrow().instance_fields.clone();
+        // Private methods/accessors are shared class values installed before
+        // any field initializer, regardless of their declaration position.
+        for field in &fields {
+            if let Some(name) = field
+                .private
+                .as_ref()
+                .filter(|name| name.kind() != super::private_fields::Kind::Field)
+            {
+                let value = field
+                    .initializer
+                    .as_ref()
+                    .expect("private method value")
+                    .load(self)?;
+                receiver.add_private(name.clone(), Value::Object(value))?;
+            }
+        }
         for field in fields {
+            if field
+                .private
+                .as_ref()
+                .is_some_and(|name| name.kind() != super::private_fields::Kind::Field)
+            {
+                continue;
+            }
             let value = match field.initializer {
                 Some(initializer) => initializer
                     .load(self)?

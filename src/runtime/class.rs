@@ -18,21 +18,9 @@ pub(super) fn evaluate(
 ) -> RuntimeResult<Object> {
     enum StaticInitializer<'a> {
         Field(PropertyKey, Option<Object>),
+        PrivateField(super::private_fields::Name, Option<Object>),
         DirectField(PropertyKey, &'a crate::ast::Expr),
         Block(Object),
-    }
-    // Never execute a partial class while silently discarding unsupported elements.
-    for element in &class.elements {
-        if element
-            .key
-            .as_ref()
-            .is_some_and(|key| matches!(key.kind, ExprKind::PrivateIdentifier(_)))
-            && (element.is_static || !matches!(element.kind, ClassElementKind::Field(_)))
-        {
-            return Err(RuntimeError::internal_error(
-                "private class elements are not yet implemented",
-            ));
-        }
     }
     let binding = match class.name.as_ref().map(|name| &name.kind) {
         Some(ExprKind::Identifier(name)) => Some(JsString::from(name.as_str())),
@@ -99,7 +87,15 @@ pub(super) fn evaluate(
             ..
         }) = &element.key
         {
-            environment.declare_private(JsString::from(name.as_str()));
+            let kind = match &element.kind {
+                ClassElementKind::Field(_) => super::private_fields::Kind::Field,
+                ClassElementKind::Method {
+                    kind: MethodKind::Get | MethodKind::Set,
+                    ..
+                } => super::private_fields::Kind::Accessor,
+                _ => super::private_fields::Kind::Method,
+            };
+            environment.declare_private(JsString::from(name.as_str()), kind);
         }
     }
     let prototype = Object::new_for(&constructor_parent);
@@ -157,6 +153,7 @@ pub(super) fn evaluate(
         PropertyDescriptor::data(Value::Object(constructor.clone()), true, false, true),
     )?;
     let mut static_initializers = Vec::new();
+    let mut private_methods: Vec<(super::private_fields::Name, bool, Object)> = vec![];
     for element in &class.elements {
         if let ClassElementKind::StaticBlock(block) = &element.kind {
             let code = Function {
@@ -184,20 +181,16 @@ pub(super) fn evaluate(
             .key
             .as_ref()
             .ok_or_else(|| RuntimeError::syntax_error("class method has no key"))?;
-        if let ExprKind::PrivateIdentifier(name) = &key.kind {
-            let ClassElementKind::Field(expression) = &element.kind else {
-                unreachable!()
-            };
-            super::class_fields::add_private(
-                &constructor,
-                &prototype,
-                &evaluator,
-                name,
-                expression.as_ref(),
-            )?;
-            continue;
-        }
-        let key = if !element.computed {
+        let private_text = match &key.kind {
+            ExprKind::PrivateIdentifier(name) => Some(name.as_str()),
+            _ => None,
+        };
+        let private = private_text
+            .map(|name| environment.resolve_private(name))
+            .transpose()?;
+        let key = if let Some(name) = private_text {
+            PropertyKey::from(format!("#{name}").as_str())
+        } else if !element.computed {
             if let ExprKind::Identifier(name) = &key.kind {
                 PropertyKey::from(name.as_str())
             } else {
@@ -207,6 +200,31 @@ pub(super) fn evaluate(
             super::object_literal::property_key(&outer.realm, evaluator.evaluate(key)?)?
         };
         if let ClassElementKind::Field(expression) = &element.kind {
+            if let Some(name) = private {
+                if element.is_static {
+                    let initializer = expression
+                        .as_ref()
+                        .map(|expression| {
+                            super::class_fields::initializer(
+                                &constructor,
+                                &evaluator,
+                                &key,
+                                expression,
+                            )
+                        })
+                        .transpose()?;
+                    static_initializers.push(StaticInitializer::PrivateField(name, initializer));
+                } else {
+                    super::class_fields::add_private(
+                        &constructor,
+                        &prototype,
+                        &evaluator,
+                        private_text.expect("private name"),
+                        expression.as_ref(),
+                    )?;
+                }
+                continue;
+            }
             if element.is_static {
                 if let Some(expression) = expression.as_ref().filter(|expression| {
                     super::class_fields::can_evaluate_without_function_environment(expression)
@@ -270,6 +288,34 @@ pub(super) fn evaluate(
             None,
             Some(JsString::from_code_units_slice(&name)),
         )?;
+        if let Some(name) = private {
+            if matches!(kind, MethodKind::Get | MethodKind::Set) {
+                // Shared hidden pair, never exposed as an ordinary JS value.
+                let pair = if let Some((_, _, pair)) = private_methods
+                    .iter()
+                    .find(|(key, is_static, _)| key.same(&name) && *is_static == element.is_static)
+                {
+                    pair.clone()
+                } else {
+                    let pair = Object::new_for(&constructor);
+                    private_methods.push((name.clone(), element.is_static, pair.clone()));
+                    pair
+                };
+                let key = if *kind == MethodKind::Get {
+                    "get"
+                } else {
+                    "set"
+                };
+                if !pair.create_data_property(key.into(), Value::Object(method))? {
+                    return Err(RuntimeError::internal_error(
+                        "cannot define private accessor",
+                    ));
+                }
+            } else {
+                private_methods.push((name, element.is_static, method));
+            }
+            continue;
+        }
         let descriptor = match kind {
             MethodKind::Get => PropertyDescriptor {
                 get: Some(Some(method)),
@@ -292,8 +338,22 @@ pub(super) fn evaluate(
     if let Some(name) = binding {
         environment.initialize_binding(&name, Value::Object(constructor.clone()))?;
     }
+    for (name, is_static, value) in private_methods {
+        if is_static {
+            constructor.add_private(name, Value::Object(value))?;
+        } else {
+            super::class_fields::add_private_method(&constructor, name, &value)?;
+        }
+    }
     for initializer in static_initializers {
         match initializer {
+            StaticInitializer::PrivateField(name, initializer) => {
+                let value = match initializer {
+                    Some(function) => function.call(Value::Object(constructor.clone()), &[])?,
+                    None => Value::Undefined,
+                };
+                constructor.add_private(name, value)?;
+            }
             StaticInitializer::Field(key, initializer) => {
                 let value = match initializer {
                     Some(function) => function.call(Value::Object(constructor.clone()), &[])?,

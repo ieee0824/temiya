@@ -102,3 +102,24 @@ fn parameter_bound_arguments_shadows_the_implicit_arguments_object_and_has_tdz()
         "function array([arguments]){return arguments;}function defaults(arguments=22){return arguments;}function rest(...arguments){return Array.isArray(arguments)&&arguments[0]===20&&arguments.length===2;}let caught=false;function later(value=arguments,arguments=42){return value;}try{later();}catch(e){caught=e instanceof ReferenceError;}function Constructor([arguments]){this.answer=arguments;}array([20])+defaults()===42&&rest(20,22)&&caught&&new Constructor([42]).answer===42;",
     );
 }
+
+#[test]
+fn nested_abrupt_binding_closes_inner_then_outer_and_keeps_original_throw() {
+    check(
+        "let marker={};let trace='';function fail(){throw marker;}let inner={[Symbol.iterator](){return {next(){return {done:false,value:undefined};},get return(){trace+='i';return function(){trace+='I';throw 20;};}};}};let outer={[Symbol.iterator](){return {next(){return {done:false,value:inner};},get return(){trace+='o';return function(){trace+='O';throw 22;};}};}};let caught=false;try{let [[value=fail()]]=outer;}catch(e){caught=e===marker;}caught&&trace==='iIoO';",
+    );
+}
+
+#[test]
+fn var_pattern_resolves_object_environment_before_stepping() {
+    check(
+        "let trace='';let object=new Proxy({x:0},{has(target,key){if(key==='x'){trace+='H';return true;}return false;},set(target,key,value,receiver){trace+='S';return Reflect.set(target,key,value,receiver);}});let input={[Symbol.iterator](){return {next(){trace+='N';return {done:false,get value(){trace+='V';return 42;}};},return(){trace+='R';return {};}};}};with(object){var [x]=input;}object.x===42&&trace[0]==='H'&&trace[1]==='N'&&trace[2]==='V'&&trace[trace.length-2]==='S'&&trace[trace.length-1]==='R';",
+    );
+}
+
+#[test]
+fn rest_uses_own_data_properties_and_nested_patterns_accept_strings() {
+    check(
+        "let writes=0;Object.defineProperty(Array.prototype,'0',{set(value){writes++;},configurable:true});let [first,...rest]=[20,22];let descriptor=Object.getOwnPropertyDescriptor(rest,'0');delete Array.prototype[0];let [character,missing='default',...empty]='😀';let [head,...[tail]]=[20,22];first+rest[0]===42&&writes===0&&Array.isArray(rest)&&descriptor.value===22&&descriptor.writable&&descriptor.enumerable&&descriptor.configurable&&character==='😀'&&missing==='default'&&empty.length===0&&head+tail===42;",
+    );
+}

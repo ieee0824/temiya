@@ -127,3 +127,10 @@ The combined inline-stack experiment increases instructions for five of six
 inputs (up to about 15.7%); its operand representation is being removed rather
 than treating allocation avoidance as a speed pass. These remain diagnostics,
 not native Boa qualification. Replay with `verify-key-profiles.mjs`.
+
+`fixed-empty-frame-v1` retains complete fixed Ast/Auto outcomes at f678ea7,
+a metadata-only build of runtime 4a4c103. Both backends record 235 pass, 1,983
+fail and 1,662 timeout across 3,880 variants, with every outcome matching the
+preceding 09766bba source. The original baseline collection failure and its
+missing-only recovery remain archived. `verify-fixed.mjs` checks the raw reports
+and runtime/build source equivalence. This does not qualify later runtime edits.

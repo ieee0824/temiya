@@ -699,6 +699,38 @@ impl ObjectState {
 }
 
 impl Object {
+    // Only freshly allocated ordinary iterator results use this constructor.
+    // The incoming value remains rooted across allocation and its stored edge
+    // is validated before the result becomes observable.
+    pub(super) fn iterator_result(
+        prototype: &Self,
+        value: Value,
+        done: bool,
+    ) -> RuntimeResult<Self> {
+        let object = Self::new_with_prototype(prototype.clone());
+        let value = StoredValue::store_owned(&object, value)?;
+        object.0.state.borrow_mut().properties = vec![
+            PropertyEntry {
+                key: "value".into(),
+                descriptor: StoredDescriptor::Data {
+                    value,
+                    writable: true,
+                    enumerable: true,
+                    configurable: true,
+                },
+            },
+            PropertyEntry {
+                key: "done".into(),
+                descriptor: StoredDescriptor::Data {
+                    value: StoredValue::Boolean(done),
+                    writable: true,
+                    enumerable: true,
+                    configurable: true,
+                },
+            },
+        ];
+        Ok(object)
+    }
     // A new, unpublished ordinary object with unique canonical indices. The
     // public values remain rooted while their stored edges are prepared.
     pub(super) fn indexed_values_object(context: &Object, values: &[Value]) -> RuntimeResult<Self> {
@@ -706,7 +738,7 @@ impl Object {
         let mut properties = Vec::with_capacity(values.len() + 1);
         for (index, value) in values.iter().enumerate() {
             properties.push(PropertyEntry {
-                key: PropertyKey::String(JsString::from(index.to_string())),
+                key: PropertyKey::integer_index(index as u64),
                 descriptor: StoredDescriptor::Data {
                     value: StoredValue::store_owned(&object, value.clone())?,
                     writable: true,

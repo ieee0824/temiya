@@ -91,3 +91,10 @@ fn live_iterator_and_result_edges_survive_reentrant_collection_then_release() {
         assert_eq!(engine.collect_garbage().unwrap().retained, 0);
     }
 }
+
+#[test]
+fn builtin_iterator_results_keep_plain_object_order_and_mutable_descriptors() {
+    check(
+        "let iterator=[42][Symbol.iterator]();let first=iterator.next();let last=iterator.next();let value=Object.getOwnPropertyDescriptor(first,'value');let done=Object.getOwnPropertyDescriptor(first,'done');let keys=Reflect.ownKeys(first);let valid=Object.getPrototypeOf(first)===Object.prototype&&keys[0]==='value'&&keys[1]==='done'&&value.writable&&value.enumerable&&value.configurable&&done.writable&&done.enumerable&&done.configurable&&first.value===42&&!first.done&&last.value===undefined&&last.done;first.value=20;delete first.done;valid&&first.value===20&&!('done' in first);",
+    );
+}

@@ -329,11 +329,7 @@ fn symbol_method(
 }
 
 fn result(prototype: &Object, value: Value, done: bool) -> RuntimeResult<Value> {
-    let result = Object::new_for(prototype);
-    result.set_prototype(Some(prototype.clone()));
-    result.create_data_property("value".into(), value)?;
-    result.create_data_property("done".into(), Value::Boolean(done))?;
-    Ok(Value::Object(result))
+    Object::iterator_result(prototype, value, done).map(Value::Object)
 }
 
 fn array_next(this: Value, to_primitive: &PropertyKey, prototype: &Object) -> RuntimeResult<Value> {

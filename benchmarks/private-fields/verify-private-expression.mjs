@@ -7,7 +7,7 @@ import {createHash} from 'node:crypto';
 import {execFileSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 const root=path.dirname(fileURLToPath(import.meta.url)),repo=path.resolve(root,'../..'),name=process.argv[2]??'private-expression-v1',dir=root+'/'+name;
-const variants=new Map([['private-expression-v1',{source:'e6722cb08955d588ef36bc9997a3679d89590125',baseline:'74823117133fd6713ced719f6976399f8d5b9507',baselineInputs:79,native:856,before:195821712,after:130138634}],['bound-private-diagnostic-v1',{source:'a65fa12bb7123b1af0e0a2b2254411ee7170c3e8',baseline:'eaeaf7118139839862b15dfabf05ee95ea7526ca',baselineInputs:80,native:861,before:536133532,after:512342212}]]);
+const variants=new Map([['bound-constructor-diagnostic-v1',{source:'9ed3bc7c535ae2d153b2974d5c75e4e566c82aa3',baseline:'a65fa12bb7123b1af0e0a2b2254411ee7170c3e8',baselineInputs:80,native:861,before:512342212,after:490862016}],['private-expression-v1',{source:'e6722cb08955d588ef36bc9997a3679d89590125',baseline:'74823117133fd6713ced719f6976399f8d5b9507',baselineInputs:79,native:856,before:195821712,after:130138634}],['bound-private-diagnostic-v1',{source:'a65fa12bb7123b1af0e0a2b2254411ee7170c3e8',baseline:'eaeaf7118139839862b15dfabf05ee95ea7526ca',baselineInputs:80,native:861,before:536133532,after:512342212}]]);
 assert(variants.has(name));const expected=variants.get(name);
 const read=name=>JSON.parse(fs.readFileSync(dir+'/'+name));
 const sha=bytes=>createHash('sha256').update(bytes).digest('hex');

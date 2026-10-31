@@ -64,3 +64,12 @@ rest and TDZ-close each record 0/3 on both jobs. All 76 reports and adverse
 observations remain. Complete source security passes all 19 jobs, with 163
 strict Miri tests and 947 ASan passes, in `security-inline-parent-v1`.
 Safety success does not qualify native speed.
+
+`allocation-diagnostics-v1` retains all six unchanged workloads at fe67,
+15a5671 and 3dad119, including raw compressed profiles, outputs and build
+input hashes. The direct-get change reduces instructions in every case
+(about 8.9% for declarations and 8.1% for parameters). Sharing empty optional
+object state increases instructions in all six cases relative to direct-get;
+that prototype is withdrawn. The lifecycle regression test remains. Replay
+with `node benchmarks/object-binding/allocation-diagnostics-v1/verify.mjs`.
+These instrumented measurements do not establish native Boa speed.

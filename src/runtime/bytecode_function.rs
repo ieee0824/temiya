@@ -3,7 +3,7 @@ use super::{
     environment::{FunctionThis, StoredEnvironment},
     execution::StoredRealm,
 };
-use std::rc::Rc;
+use std::{cell::OnceCell, fmt, rc::Rc};
 
 use crate::bytecode::{Constant, FunctionTemplate, Instruction, VirtualMachine};
 
@@ -15,6 +15,32 @@ struct Closure {
     template: Rc<FunctionTemplate>,
     realm: Realm,
     environment: Environment,
+}
+
+// Only immutable syntax/code is retained. Nested definition caches form the
+// finite syntax tree; FunctionCode's link to its parent cache remains weak.
+#[derive(Clone, Default)]
+pub(crate) struct DefinitionCodeCache(Rc<OnceCell<super::function::FunctionCache>>);
+
+impl fmt::Debug for DefinitionCodeCache {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("DefinitionCodeCache(..)")
+    }
+}
+
+impl PartialEq for DefinitionCodeCache {
+    fn eq(&self, _: &Self) -> bool {
+        // Cache population does not change verified code equality.
+        true
+    }
+}
+
+impl DefinitionCodeCache {
+    pub(crate) fn context(&self) -> DefinitionEvaluationContext {
+        DefinitionEvaluationContext {
+            cache: Some(self.0.get_or_init(Default::default).clone()),
+        }
+    }
 }
 
 #[derive(Default)]

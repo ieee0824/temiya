@@ -48,3 +48,28 @@ to129864291 instructions, and accessor input from507019863 to177651256. Run
 verify-private-plans.mjs to replay source/input identities and diagnostic totals.
 These profiled counts do not establish a Boa speed pass. The newer fixed
 Ast/Auto capture and final hosted/full-corpus/safety checks remain pending.
+
+initial-ast-v1 retains the complete initial runtime6e3cbf4 Ast comparison:
+2108 baseline passes preserved and1846 added (3954pass2506fail2028timeout).
+verify-initial-ast.mjs reconstructs both captures and checks every prior pass.
+Observed failure diagnostics are retained without waiving any result; this
+Ast-only historical capture cannot qualify Auto or the newer optimized source.
+
+full-private-plans-v1 retains source4d10d10 full Test262:29701pass61923fail
+18skip8569timeout across100211variants,0missing. All27855 parent-candidate
+passes remain with1846 additions and0regressions. verify-full.mjs replays all8
+gates from the raw captures.
+
+hosted-private-plans-v1 retains both hosts and all60 reports. All six new cases
+record3/3 significant Boa wins on each host, but overall speed is not qualified:
+private-invalid-receiver records0/3 on both, and copy2 derived-definition1/3.
+verify-hosted.mjs recomputes every report, control and per-case gate, preserving
+these failures. Parent159 changes and current-source requalification remain
+required before merge.
+
+auto-timeouts-v1 retains the complete optimized Auto capture:3886pass,2505fail,
+2097timeout across8488 variants. Compared with the initial implementation,68
+passes time out (26 also passed before private elements). All68 pass in a
+separate same-binary, same1000ms/512MiB diagnostic across37 files; none of the69
+Ast/Auto differences reproduces a timeout. This does not replace the original
+outcomes or establish a root cause. Integrated-source full validation is required.

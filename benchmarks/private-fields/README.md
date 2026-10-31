@@ -58,3 +58,42 @@ including752 preserved passes,655 new passes and all remaining failures/timeouts
 verify-private-expression.mjs checks both source/binary identities, native tests
 and the complete Callgrind instruction totals. These integrity checks do not
 establish a Boa speed pass. Both verifiers run in CI.
+
+Current qualification is incomplete. full-default-private-v1 preserves all27200
+preceding-main passes and adds655 across100211 variants. The sourcee3eb587
+two-host run41158818113 is retained in hosted-default-private-v1: both machines
+fail private-invalid-receiver (0/3 significant wins), and copy2 also fails
+static-abrupt (1/3). Successful capture integrity is not a speed pass.
+
+Sourcea65fa12 binds private-expression identities per closure and avoids unused
+closure roots in prepared base constructors. bound-private-diagnostic-v1 retains
+the unchanged private-invalid-receiver input: Callgrind instructions fall from
+536133532 to512342212. All861 native tests pass, including the added reentrant
+GC environment regression; Clippy, MSRV and stable i686 checks pass. Run
+verify-private-expression.mjs bound-private-diagnostic-v1 to replay this
+diagnostic. Its new hosted/full-corpus/safety qualification is pending.
+
+full-bound-private-v1 replays sourcea65fa12 across52133files100211variants:
+27855pass63525fail18skip8813timeout,0 missing. All27855 previous-candidate
+passes remain; all27200 previous-main passes remain with655 additions. This
+full-corpus gate does not replace the separate two-host speed and safety gates.
+
+full-bound-constructor-v1 retains source072f6315 full-corpus results after inline
+private storage and bound constructor bindings:27855pass,63525fail,18skip,
+8813timeout,0missing. All previous candidate passes remain, and all27200 main
+passes remain with655 additions. The eight gates independently replay; this
+correctness result does not establish the separate pending two-host speed gate.
+
+hosted-bound-constructor-v1 retains run41168380212, source072f6315. Copy1
+EPYC7763 qualifies all40 workloads. Copy2 EPYC9V74 qualifies38; static-abrupt
+and private-invalid-receiver both have0/3 significant wins. All56 reports
+independently replay. Neither a successful job nor one passing host qualifies
+this source for merge. The original inputs and noise policy remain unchanged.
+
+local-bindings-diagnostic-v1 and identifier-values-diagnostic-v1 retain the
+unchanged private-invalid input across9ed3bc7/31fa20e/03d3724:490862016 to
+481149396 to431811114 instructions. Pure local value reads fuse name resolution
+and GetValue; reference contexts keep their original paths. Source03d3724 has
+862 native tests including1doctest,0fail26ignored and Clippy passed. The
+interrupted permission run and its recovery are retained separately. These
+instruction diagnostics do not establish native Boa speed qualification.

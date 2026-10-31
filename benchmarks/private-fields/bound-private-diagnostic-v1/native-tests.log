@@ -1,0 +1,1514 @@
+   Compiling temiya v0.2.0 (/tmp/temiya-private-fields)
+    Finished `release` profile [optimized] target(s) in 33.49s
+     Running unittests src/lib.rs (/tmp/temiya-158-target/release/deps/temiya-c5f9ecd26cb4992d)
+
+running 145 tests
+test bytecode::leaf_function::tests::lexical_super_arrows_retain_the_shared_ast_delegation_path ... ok
+test bytecode::leaf_function::tests::eligibility_requires_the_entire_body_to_hide_its_activation ... ok
+test bytecode::leaf_function::tests::exposed_super_operands_keep_the_full_vm_path ... ok
+test bytecode::leaf_function::tests::super_leaf_eligibility_covers_complete_local_and_capture_operations ... ok
+test bytecode::leaf_function::tests::property_calls_allocate_no_managed_activation_and_code_holds_no_runtime_edges ... ok
+test bytecode::vm::loop_binding_identity_tests::references_retained_across_clone_keep_the_original_iteration_cell ... ok
+test bytecode::vm::loop_binding_identity_tests::reuse_excludes_closure_creation_and_eval_observers ... ok
+test bytecode::vm::loop_binding_identity_tests::callback_loops_without_captures_allocate_a_constant_number_of_managed_records ... ok
+test bytecode::vm::private_scope_tests::lexical_loop_proof_accepts_private_bindings_and_rejects_observers ... ok
+test embedding::injected_engine_host_tests::injected_clock_runs_without_a_wall_clock_and_keeps_date_handles_after_engine_drop ... ok
+test embedding::managed_allocation_tests::a_partial_array_literal_keeps_its_first_object_alive_during_host_reentry_and_collection ... ok
+test embedding::collection_panic_boundary_tests::collector_host_drop_panics_return_errors_and_leave_engine_reusable ... ok
+test bytecode::leaf_function::tests::reentrant_accessors_keep_receiver_arguments_and_outer_roots_during_collection ... ok
+test embedding::managed_allocation_tests::managed_function_captures_preserve_then_release_environment_cycles ... ok
+test embedding::managed_allocation_tests::managed_async_results_keep_values_and_rejections_in_promise_slots ... ok
+test embedding::managed_allocation_tests::every_allocation_collection_preserves_ast_and_vm_execution ... ok
+test embedding::managed_allocation_tests::managed_generator_delegation_traces_only_remaining_values ... ok
+test embedding::managed_allocation_tests::managed_generator_frames_survive_gc_and_reject_execution_reentry ... ok
+test embedding::managed_allocation_tests::managed_host_boundaries_reject_foreign_objects_without_repeating_effects ... ok
+test embedding::managed_allocation_tests::managed_generator_abrupt_completion_releases_frames_and_keeps_escaped_errors ... ok
+test embedding::managed_allocation_tests::managed_json_revivers_keep_partial_graphs_alive_during_gc_and_evaluation_reentry ... ok
+test embedding::managed_allocation_tests::managed_generator_references_keep_uncoerced_keys_and_aliases_across_suspension ... ok
+test embedding::managed_allocation_tests::managed_object_statics_survive_proxy_and_descriptor_collection_reentry ... ok
+test embedding::managed_allocation_tests::managed_module_handles_keep_dependency_cycles_after_engine_drop ... ok
+test embedding::managed_allocation_tests::managed_allocation_stress_passes_the_original_seven_teardown_fixtures ... ok
+test embedding::managed_allocation_tests::managed_with_boxes_primitives_in_the_current_realm ... ok
+test embedding::managed_allocation_tests::public_engine_evaluation_uses_the_owned_heap_in_the_migration_context ... ok
+test embedding::managed_allocation_tests::managed_promise_reactions_execute_ast_and_vm_callbacks_across_collection ... ok
+test embedding::managed_allocation_tests::retiring_a_native_capture_releases_the_heap_borrow_before_host_drop_reentry ... ok
+test embedding::managed_allocation_tests::public_handle_clones_preserve_a_js_cycle_then_allow_reclamation_at_a_test_safepoint ... ok
+test embedding::runtime_workload_profile::original_eleven_runtime_allocation_root_and_collection_profile ... ignored, requires the pinned original workload directory and an output path
+test gc::shared_record_tests::incoming_shared_records_protect_owned_edges_at_threshold_and_capacity ... ok
+test gc::shared_record_tests::diagnostic_root_activity_counts_registrations_and_balanced_removals ... ok
+test gc::shared_record_tests::shared_identity_typed_access_and_retirement_do_not_use_rc_liveness ... ok
+test gc::shared_record_tests::shared_records_participate_in_generational_barriers ... ok
+test lexer::tests::preserves_unicode_string_byte_spans ... ok
+test lexer::tests::comment_ends_at_unicode_line_separator ... ok
+test lexer::tests::tokenizes_declaration_with_source_ranges ... ok
+test lexer::tests::reports_incomplete_and_unsupported_input ... ok
+test lexer::tests::tracks_leading_trailing_and_comment_only_trivia ... ok
+test lexer::tests::tracks_all_line_terminators_in_whitespace_and_comments ... ok
+test lexer::tests::trivia_without_newlines_does_not_set_metadata ... ok
+test lexer::tests::uses_longest_punctuator ... ok
+test runtime::array_methods::key_tests::managed_coercion_captures_are_traced_and_boxed_values_keep_their_prototypes ... ok
+test runtime::array_methods::key_tests::integer_keys_preserve_decimal_boundaries_without_number_rounding ... ok
+test runtime::builtins::descriptor_list_tests::conversion_failure_does_not_publish_earlier_descriptors ... ok
+test runtime::builtins::primitive_query_tests::primitive_own_property_checks_allocate_no_wrapper_objects ... ok
+test runtime::bytecode_function::numeric_return_tests::parameter_only_numeric_calls_do_not_revive_unused_realm_or_environment_roots ... ok
+test runtime::bytecode_function::numeric_return_tests::property_only_ast_methods_do_not_revive_unused_outer_environments ... ok
+test runtime::bytecode_function::numeric_return_tests::pure_numeric_calls_allocate_no_managed_frames_and_code_keeps_no_runtime_edges ... ok
+test runtime::bytecode_function::numeric_return_tests::unobserved_field_class_loop_headers_do_not_allocate_per_iteration ... ok
+test runtime::collections::managed_tests::managed_collection_cycles_remain_live_through_public_iterators ... ok
+test runtime::bytecode_function::numeric_return_tests::unobserved_object_literal_loop_headers_do_not_allocate_per_iteration ... ok
+test runtime::collections::managed_tests::managed_collection_foreign_writes_are_atomic_and_keys_need_no_facades ... ok
+test runtime::collections::managed_tests::managed_weak_map_chains_reach_a_fixed_point_and_weak_sets_do_not_root_keys ... ok
+test runtime::collections::managed_tests::managed_weak_maps_require_both_owner_and_key_without_bootstrapping_cycles ... ok
+test runtime::elements::tests::representation_changes_and_storage_stays_bounded_after_clear ... ok
+test runtime::environment::slot_hint_tests::managed_function_records_trace_this_function_and_new_target ... ok
+test runtime::environment::slot_hint_tests::managed_bindings_trace_objects_and_release_replaced_cycles ... ok
+test runtime::environment::slot_hint_tests::managed_module_import_cycles_keep_live_bindings_without_internal_roots ... ok
+test runtime::environment::slot_hint_tests::managed_global_declarations_release_borrows_before_proxy_reentry_and_gc ... ok
+test runtime::environment::slot_hint_tests::managed_outer_environment_is_traced_without_an_internal_root ... ok
+test runtime::environment::slot_hint_tests::managed_object_and_global_records_do_not_root_their_stored_objects ... ok
+test runtime::environment::slot_hint_tests::number_update_respects_ignored_and_throwing_immutable_writes ... ok
+test runtime::environment::slot_hint_tests::prepared_function_edges_survive_collection_before_frame_publication ... ok
+test runtime::environment::slot_hint_tests::stale_function_slot_hints_preserve_binding_identity_and_checks ... ok
+test runtime::environment::slot_hint_tests::prepared_parameter_records_initialize_missing_and_duplicate_names ... ok
+test runtime::environment::slot_hint_tests::string_append_rechecks_shifted_slots_and_preserves_readonly_bindings ... ok
+test runtime::function::auto_body_tests::only_auto_fallback_enters_the_verified_function_runtime ... ok
+test runtime::function::derived_arguments_tests::complete_syntax_keeps_arguments_for_eval_and_nested_observers ... ok
+test runtime::function::derived_arguments_tests::anonymous_class_definitions_avoid_an_unused_environment ... ok
+test runtime::function::derived_arguments_tests::derived_arguments_and_delegation_each_avoid_one_managed_object_per_call ... ok
+test runtime::host_data::managed_tests::managed_date_factory_survives_clock_reentry_and_releases_its_cycle ... ok
+test runtime::indexed::managed_tests::managed_views_share_storage_after_buffer_collection_and_detachment ... ok
+test runtime::interpreter::function_reference_tests::function_hint_does_not_enlarge_reference_base ... ok
+test runtime::interpreter::function_reference_tests::retained_function_hint_survives_binding_vector_changes ... ok
+test runtime::iterator::managed_tests::managed_iterator_keeps_target_until_exhaustion_then_releases_it ... ok
+test runtime::iterator::managed_tests::managed_string_factory_capture_survives_conversion_reentry_and_iterator_escape ... ok
+test runtime::job_queue::tests::allocation_safepoints_trace_unpublished_queue_payloads ... ok
+test runtime::job_queue::tests::draining_and_hook_state_survive_reentry_errors_and_panics ... ok
+test runtime::job_queue::tests::public_queue_clones_share_one_root_and_outlive_their_realm ... ok
+test runtime::job_queue::tests::traced_jobs_retain_captures_after_dequeue_nested_runs_and_errors ... ok
+test runtime::job_queue::tests::unrooted_queues_release_pending_jobs_and_reject_foreign_edges ... ok
+test runtime::managed::stored_graph_tests::accessor_edges_are_traced_and_the_callback_is_callable_after_collection ... ok
+test runtime::managed::stored_graph_tests::bound_function_captures_are_traced_without_rooting_their_cycles ... ok
+test runtime::managed::stored_graph_tests::declared_factories_preserve_callability_and_reclaim_constructor_cycles ... ok
+test runtime::managed::stored_graph_tests::declared_native_object_captures_are_traced_without_hidden_roots ... ok
+test runtime::managed::stored_graph_tests::foreign_heap_edges_are_rejected_before_property_or_prototype_changes ... ok
+test runtime::managed::stored_graph_tests::lazy_native_captures_stay_traced_without_materializing_unused_facades ... ok
+test runtime::managed::stored_graph_tests::managed_enumerable_keys_keep_integer_order_and_skip_hidden_accessors ... ok
+test runtime::managed::stored_graph_tests::old_unrooted_owner_remembers_a_new_property_edge ... ok
+test runtime::managed::stored_graph_tests::prototype_and_data_edges_keep_an_entire_graph_until_the_last_root ... ok
+test runtime::managed::stored_graph_tests::proxy_cycles_are_traced_and_revocation_releases_target_and_handler ... ok
+test runtime::managed::stored_graph_tests::proxy_revocable_factory_traces_prototypes_and_releases_revoked_graphs ... ok
+test runtime::managed::stored_graph_tests::proxy_revoker_retains_its_cycle_until_called_or_unrooted ... ok
+test runtime::managed::stored_graph_tests::real_object_properties_are_unrooted_edges_and_cycles_are_swept ... ok
+test runtime::managed::tests::activation_facades_are_bounded_and_do_not_retain_dead_graphs_at_collection ... ok
+test runtime::managed::tests::activation_facades_clear_at_allocation_gc_and_unwind ... ok
+test runtime::managed::tests::allocation_collection_retires_host_payloads_before_reentrant_allocation ... ok
+test runtime::managed::tests::allocation_interval_collects_unrooted_cycles_without_number_roots ... ok
+test runtime::managed::tests::another_runtime_cannot_root_a_foreign_handle ... ok
+test runtime::managed::tests::container_and_polymorphic_receivers_reuse_warm_activation_roots ... ok
+test runtime::managed::tests::fresh_values_reuse_their_first_registration_until_the_next_collection ... ok
+test runtime::managed::tests::managed_facades_share_identity_and_registration_across_clones ... ok
+test runtime::managed::tests::managed_intrinsic_registry_snapshots_own_roots_but_the_realm_table_does_not ... ok
+test runtime::managed::tests::managed_object_factory_boxes_in_context_and_reclaims_prototype_cycles ... ok
+test runtime::managed::tests::managed_realm_clones_share_a_root_and_trace_the_global_records ... ok
+test runtime::managed::tests::managed_realm_rejects_foreign_global_this_before_initializing_intrinsics ... ok
+test runtime::managed::tests::managed_weak_edges_do_not_keep_the_runtime_alive ... ok
+test runtime::managed::tests::native_functions_retain_source_realms_and_materialize_errors_there ... ok
+test runtime::managed::tests::realm_global_proxy_callbacks_observe_complete_tables_and_can_collect ... ok
+test runtime::managed::tests::typed_non_object_owners_store_and_trace_object_edges_with_barriers ... ok
+test runtime::managed::tests::unpublished_prototype_edge_protects_the_last_root_at_allocation ... ok
+test runtime::object::own_data_hint_tests::accessor_operations_only_revive_the_invoked_method ... ok
+test runtime::object::own_data_hint_tests::array_named_data_hints_observe_length_and_skip_indexed_storage ... ok
+test runtime::object::own_data_hint_tests::descriptor_lookup_hint_rechecks_keys_and_reads_current_descriptors ... ok
+test runtime::object::own_data_hint_tests::direct_array_push_preserves_complete_element_descriptors_and_guard_fallback ... ok
+test runtime::object::own_data_hint_tests::own_data_hint_rechecks_keys_descriptors_and_exotic_objects ... ok
+test runtime::function::primitive_this_tests::ast_and_vm_use_the_realms_custom_global_this_value ... ok
+test runtime::pipeline::managed_tests::cached_module_errors_keep_payload_identity_without_owning_roots ... ok
+test runtime::pipeline::managed_tests::cached_evaluation_promises_preserve_identity_and_escape_module_lifetime ... ok
+test runtime::pipeline::managed_tests::cyclic_module_records_share_facade_roots_and_reclaim_without_the_graph ... ok
+test embedding::managed_allocation_tests::original_ownership_fixtures_release_after_last_handle_in_a_live_engine ... ok
+test embedding::managed_allocation_tests::migrated_function_allocations_execute_through_the_public_ast_and_vm_apis ... ok
+test runtime::promise::tests::adoption_jobs_keep_derived_promises_and_other_queues_alive ... ok
+test runtime::promise::tests::foreign_promise_inputs_do_not_change_state_or_allocate_reactions ... ok
+test runtime::promise::tests::managed_promise_slots_and_escaped_then_functions_have_no_registry_roots ... ok
+test runtime::promise::tests::managed_settlements_and_reactions_survive_gc_and_release_cycles_after_jobs ... ok
+test runtime::promise::tests::state_setter_collection_keeps_unpublished_reactions_alive ... ok
+test runtime::promise::tests::thenable_resolvers_retain_their_target_after_dequeue_and_can_escape ... ok
+test runtime::promise::tests::unhandled_error_payload_survives_source_drop_and_collection_in_the_hook ... ok
+test runtime::pipeline::managed_tests::empty_namespaces_retain_their_owner_without_getter_edges ... ok
+test runtime::regexp::ascii_hir::tests::unsupported_and_ambiguous_forms_keep_full_parser_validation ... ok
+test runtime::pipeline::managed_tests::escaped_namespace_keeps_cyclic_records_and_live_bindings ... ok
+test runtime::regexp::ascii_hir::tests::supported_grammar_matches_full_parser_captures_and_offsets ... ok
+test runtime::regexp::cache_tests::managed_regexp_instances_keep_cursors_separate_and_release_leaf_state ... ok
+test runtime::regexp::cache_tests::hash_collisions_check_full_keys_and_evict_both_chain_positions ... ok
+test runtime::regexp::matcher::tests::bounded_capacity_exhaustion_uses_linear_fallback_and_resets_captures ... ok
+test runtime::regexp::cache_tests::unique_patterns_evict_without_changing_live_objects ... ok
+test runtime::string::tests::lengths_and_shared_equality_do_not_flatten_rope_children ... ok
+test runtime::string::tests::owned_append_preserves_shared_rope_snapshots_and_utf16 ... ok
+test tests::engine_preserves_its_configuration ... ok
+test runtime::regexp::matcher::tests::small_compiler_budget_retries_full_limit_and_keeps_old_programs_valid ... ok
+test runtime::regexp::cache_tests::compiled_size_budget_evicts_before_the_entry_limit ... ok
+test runtime::regexp::ascii_hir::tests::generated_combinations_preserve_captures_and_all_scalar_start_offsets ... ok
+
+test result: ok. 144 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.14s
+
+     Running unittests src/main.rs (/tmp/temiya-158-target/release/deps/temiya-41574292934a5dfd)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/temiya-differential-worker.rs (/tmp/temiya-158-target/release/deps/temiya_differential_worker-db9752469b421cf2)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/temiya-test262.rs (/tmp/temiya-158-target/release/deps/temiya_test262-c13efdc9111a1d2e)
+
+running 2 tests
+test engine::host::tests::script_hook_detaches_existing_runtime_views ... ok
+test engine::host::tests::global_callbacks_do_not_keep_the_host_owner_alive ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/addition_coercion.rs (/tmp/temiya-158-target/release/deps/addition_coercion-815a97c12852b2f3)
+
+running 9 tests
+test embedding_hooks_still_receive_the_default_hint_once ... ok
+test conversion_getters_and_abrupt_completions_preserve_order_and_throw_identity ... ok
+test exotic_method_observes_default_hint_receiver_and_one_argument ... ok
+test compound_assignment_reads_once_and_writes_only_after_successful_conversion ... ok
+test bigint_and_symbol_results_keep_conversion_order_before_type_errors ... ok
+test operands_evaluate_before_left_then_right_conversion ... ok
+test pinned_test262_addition_coercion ... ignored, requires pinned Test262 corpus in TEST262_DIR
+test ordinary_methods_use_number_order_and_string_or_numeric_addition ... ok
+test invalid_exotic_methods_and_object_results_throw_type_error ... ok
+
+test result: ok. 8 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/array_buffer_views.rs (/tmp/temiya-158-target/release/deps/array_buffer_views-80e04976a144b58b)
+
+running 6 tests
+test detachment_invalidates_every_existing_view ... ok
+test array_length_tracks_indices_holes_and_shrinking ... ok
+test array_slice_preserves_holes_and_honors_species ... ok
+test invalid_lengths_are_rejected ... ok
+test typed_array_and_data_view_share_bytes_and_validate_bounds ... ok
+test realm_constructors_create_indexed_exotic_objects ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/array_elements.rs (/tmp/temiya-158-target/release/deps/array_elements-79e9f32c4921231e)
+
+running 7 tests
+test prototype_getter_and_setter_can_mutate_the_element_representation ... ok
+test proxy_traps_still_control_index_access_and_deletion ... ok
+test dense_holey_sparse_roundtrip_preserves_values_and_absence ... ok
+test removed_elements_release_owned_values ... ok
+test sparse_length_shrink_preserves_nonindex_keys_and_enumeration_order ... ok
+test mixed_index_operations_match_an_independent_ordered_model ... ok
+test descriptors_and_failed_length_shrink_survive_every_storage_kind ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/array_stack.rs (/tmp/temiya-158-target/release/deps/array_stack-651777dac4cb21b5)
+
+running 14 tests
+test embedding_conversion_hooks_remain_supported_for_length_values ... ok
+test holes_and_inherited_indices_follow_has_property ... ok
+test generic_receivers_normalize_lengths_and_ignore_extra_pop_shift_arguments ... ok
+test length_conversion_calls_javascript_methods_once_before_writing ... ok
+test literal_constructor_and_array_prototype_are_connected ... ok
+test method_descriptors_and_non_constructibility_match_the_builtin_contract ... ok
+test pinned_test262_array_elements ... ignored, requires pinned Test262 corpus; see docs/runtime.md
+test pinned_test262_array_stack ... ignored, requires pinned Test262 corpus; see docs/runtime.md
+test proxy_traps_observe_order_and_abrupt_completions ... ok
+test receiver_can_become_read_only_during_an_inherited_setter_or_getter ... ok
+test setter_and_getter_exceptions_preserve_values_and_stop_at_the_correct_index ... ok
+test read_only_length_and_failed_deletion_throw_after_required_partial_changes ... ok
+test safe_integer_limits_do_not_wrap_to_u32_or_write_before_overflow_check ... ok
+test primitive_receivers_are_boxed_but_nullish_receivers_are_rejected ... ok
+
+test result: ok. 12 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/async_embedding_jobs.rs (/tmp/temiya-158-target/release/deps/async_embedding_jobs-8072ec4a46c43c23)
+
+running 6 tests
+test javascript_rejection_recovery_reaches_the_next_reaction ... ok
+test shared_agent_checkpoint_allows_a_handler_attached_by_another_job ... ok
+test checkpoint_drains_reactions_enqueued_by_reactions_in_fifo_order ... ok
+test javascript_async_reactions_wait_for_the_public_microtask_checkpoint ... ok
+test shared_agent_realms_preserve_cross_realm_enqueue_order ... ok
+test shared_agent_jobs_keep_cross_realm_continuations_alive_during_collection ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/base_classes.rs (/tmp/temiya-158-target/release/deps/base_classes-9d711c2d8f1b5948)
+
+running 18 tests
+test class_call_and_restricted_accessor_errors_belong_to_the_class_realm ... ok
+test class_environments_and_instances_survive_engine_collection ... ok
+test class_restricted_properties_are_inherited_and_use_one_realm_thrower ... ok
+test base_constructors_and_default_constructors_construct_real_instances ... ok
+test class_bindings_have_tdz_scope_and_distinct_inner_immutability ... ok
+test compiled_and_fallback_class_bodies_never_replay_side_effects ... ok
+test computed_names_accessors_and_static_methods_use_actual_class_objects ... ok
+test direct_base_construction_preserves_immutable_prototypes_and_alternate_new_targets ... ok
+test direct_class_calls_throw_before_running_the_body ... ok
+test non_strict_ordinary_function_legacy_properties_do_not_inherit_class_restrictions ... ok
+test inferred_class_names_and_constructor_new_target_are_observable ... ok
+test noncapturing_callback_loops_keep_values_and_abrupt_control_flow ... ok
+test methods_are_strict_and_class_descriptors_are_non_enumerable ... ok
+test observable_loop_bindings_and_object_coercions_keep_their_effects ... ok
+test this_lookup_crosses_declarative_blocks_and_hoisted_function_bodies ... ok
+test shared_function_code_never_shares_class_environments ... ok
+test straight_line_methods_preserve_accessor_coercion_order_and_never_retry_errors ... ok
+test private_lexical_class_loops_preserve_shadowing_tdz_and_const ... ok
+
+test result: ok. 18 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/benchmark_policy.rs (/tmp/temiya-158-target/release/deps/benchmark_policy-2f71ba3026072cf9)
+
+running 4 tests
+test comparison_rejects_mismatched_inputs ... ok
+test conformance_counts_require_matching_revisions ... ok
+test summaries_use_median_and_mad ... ok
+test policy_distinguishes_noise_from_regression ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/bytecode_arrays.rs (/tmp/temiya-158-target/release/deps/bytecode_arrays-b83261212990ebde)
+
+running 7 tests
+test engine_bytecode_backend_executes_array_literals ... ok
+test array_instructions_check_scope_stack_state_and_length_overflow ... ok
+test array_like_objects_require_an_iterator ... ok
+test custom_iterator_captures_next_once_and_preserves_evaluation_order ... ok
+test holes_empty_spreads_and_trailing_commas_preserve_length_and_own_properties ... ok
+test pinned_test262_array_literals ... ignored, requires pinned Test262 corpus in TEST262_DIR
+test iterator_failures_propagate_and_do_not_close_or_evaluate_later_elements ... ok
+
+test result: ok. 6 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/bytecode_binary.rs (/tmp/temiya-158-target/release/deps/bytecode_binary-248fc26d0036b41f)
+
+running 11 tests
+test in_checks_rhs_before_key_coercion_and_uses_string_hint ... ok
+test compound_references_get_once_convert_key_once_and_keep_original_base ... ok
+test bound_constructor_releases_native_target_after_last_root ... ok
+test fresh_function_and_instance_prototype_links_do_not_walk_proxy_chains ... ok
+test instanceof_honors_custom_methods_bound_targets_and_primitive_order ... ok
+test logical_property_assignments_skip_rhs_and_setter_after_one_get ... ok
+test pinned_test262_binary_audit ... ignored, requires pinned Test262 corpus; records unfinished binary/compound operator integration gates
+test numeric_and_relational_coercion_have_distinct_abrupt_ordering ... ok
+test proxy_prototype_errors_propagate_through_instanceof ... ok
+test logical_binary_and_compound_assignments_preserve_values_and_skip_rhs ... ok
+test numeric_comparison_equality_shift_and_power_boundaries_match ... ok
+
+test result: ok. 10 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/bytecode_calls.rs (/tmp/temiya-158-target/release/deps/bytecode_calls-b4aba16e2f49f90b)
+
+running 10 tests
+test array_iterator_alias_brand_completion_and_dynamic_length_are_preserved ... ok
+test array_next_reentrant_length_and_abrupt_elements_preserve_index_order ... ok
+test inline_and_heap_argument_lists_preserve_nested_calls_receivers_and_constructors ... ok
+test iterator_getters_next_receiver_and_done_value_order_are_observable ... ok
+test direct_call_targets_snapshot_receivers_and_keep_key_getter_argument_order ... ok
+test overridden_iterators_and_captured_next_override_array_like_storage ... ok
+test spread_rejects_array_like_objects_and_invalid_protocol_records ... ok
+test iterator_abrupt_completions_are_preserved_without_spurious_return_calls ... ok
+test spread_arrays_strings_holes_and_constructor_arguments_use_actual_iterators ... ok
+test argument_limit_closes_iterator_and_releases_pending_frames ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+
+     Running tests/bytecode_classes.rs (/tmp/temiya-158-target/release/deps/bytecode_classes-d4f2d99a72b0abd0)
+
+running 10 tests
+test class_metadata_cannot_be_loaded_as_a_value_or_used_with_wrong_operands ... ok
+test class_loop_reuse_keeps_body_bindings_and_nested_default_captures_distinct ... ok
+test class_bridge_roots_live_bindings_during_reentrant_collection ... ok
+test class_declarations_inside_functions_keep_tdz_and_binding_identity ... ok
+test prepared_uninitialized_this_is_read_only_when_class_source_requires_it ... ok
+test function_class_expressions_emit_verified_class_instructions ... ok
+test runtime_class_loop_frames_keep_observable_arguments_and_body_bindings ... ok
+test vm_class_captures_keep_distinct_for_iteration_bindings ... ok
+test class_names_identity_heritage_and_outer_bindings_survive_the_bridge ... ok
+test field_class_loop_reuse_keeps_delayed_captures_and_body_cells_distinct ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/bytecode_closures.rs (/tmp/temiya-158-target/release/deps/bytecode_closures-c3b94044cd5d8936)
+
+running 13 tests
+test captured_tdz_const_throw_and_recursion_failure_preserve_values ... ok
+test arrows_capture_lexical_this_arguments_and_new_target ... ok
+test escaped_captures_share_mutations_and_outlive_code_and_realm_handles ... ok
+test function_and_arrow_bodies_execute_verified_bytecode_with_parameters ... ok
+test declarations_are_hoisted_and_last_duplicates_win_without_private_self_binding ... ok
+test global_function_preflight_is_atomic_before_lexical_var_or_function_creation ... ok
+test global_functions_precede_vars_in_selected_source_order_and_replace_accessors ... ok
+test arguments_remain_visible_to_escaped_arrows_and_independent_calls ... ok
+test named_recursion_and_per_iteration_block_captures_are_real_environments ... ok
+test pinned_test262_closure_audit ... ignored, requires pinned Test262 corpus; records unfinished closure integration gates
+test unfinished_function_forms_fail_compilation_instead_of_ast_fallback ... ok
+test sloppy_primitive_this_uses_actual_wrapper_slots_and_prototypes ... ok
+test prepared_parameter_frames_preserve_duplicates_missing_arguments_and_captures ... ok
+
+test result: ok. 12 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/bytecode_loop_slots.rs (/tmp/temiya-158-target/release/deps/bytecode_loop_slots-44bc9e8a813fa030)
+
+running 1 test
+test loop_binding_writes_remain_visible_to_captured_functions ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/bytecode_loops.rs (/tmp/temiya-158-target/release/deps/bytecode_loops-7f5046aab830601f)
+
+running 7 tests
+test invalid_jump_targets_are_rejected_even_in_unreachable_owned_ast ... ok
+test lexical_head_tdz_const_assignment_and_abrupt_errors_are_not_retried ... ok
+test let_iteration_bindings_capture_initial_body_and_update_environments ... ok
+test loops_labels_and_scope_unwind_follow_the_correct_targets ... ok
+test pinned_test262_bytecode_loops ... ignored, requires pinned Test262 corpus in TEST262_DIR
+test malformed_iteration_clone_cannot_copy_global_or_const_bindings ... ok
+test loop_completion_values_and_terminal_bodies_are_preserved ... ok
+
+test result: ok. 6 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/bytecode_numeric_returns.rs (/tmp/temiya-158-target/release/deps/bytecode_numeric_returns-136c559689dad2c5)
+
+running 3 tests
+test capture_tdz_remains_a_source_realm_reference_error ... ok
+test captured_number_guards_observe_updates_and_fall_back_without_coercion ... ok
+test numeric_returns_preserve_ieee_bits_comparisons_and_parameter_binding ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/bytecode_object_methods.rs (/tmp/temiya-158-target/release/deps/bytecode_object_methods-bb0fe719f1455495)
+
+running 8 tests
+test object_initializer_metadata_rejects_invalid_kinds_loads_indices_and_scopes ... ok
+test object_initializers_read_uninitialized_this_only_when_source_requires_it ... ok
+test function_object_initializers_emit_verified_metadata ... ok
+test super_reference_bytecode_checks_scope_stack_and_runtime_function_operands ... ok
+test vm_object_methods_retain_distinct_for_iteration_bindings ... ok
+test object_initializer_bindings_and_home_objects_survive_reentrant_collection ... ok
+test object_loop_reuse_keeps_body_bindings_and_nested_captures_distinct ... ok
+test object_methods_preserve_receiver_captures_order_and_descriptors ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/bytecode_objects.rs (/tmp/temiya-158-target/release/deps/bytecode_objects-9589b8b51e4f7662)
+
+running 8 tests
+test named_object_definition_rejects_nonstring_and_missing_constant_names ... ok
+test object_instructions_require_scope_and_operands ... ok
+test pinned_test262_object_prototypes ... ignored, requires pinned Test262 corpus in TEST262_DIR
+test computed_key_conversion_precedes_value_evaluation_once ... ok
+test named_keys_preserve_utf16_order_and_define_data_without_prototype_setters ... ok
+test spread_copies_enumerable_values_symbols_and_utf16_without_setters ... ok
+test data_keys_duplicates_shorthands_and_prototype_setters_are_distinct ... ok
+test spread_propagates_own_keys_descriptor_and_getter_errors ... ok
+
+test result: ok. 7 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/bytecode_operators.rs (/tmp/temiya-158-target/release/deps/bytecode_operators-a6624d39bb96ea80)
+
+running 18 tests
+test computed_key_conversion_can_reenter_the_same_public_reference ... ok
+test global_update_observes_proxy_has_trap ... ok
+test computed_update_converts_key_once_and_obeys_get_numeric_set_order ... ok
+test lexical_updates_capture_verified_binding_before_numeric_coercion ... ok
+test global_name_resolution_has_traps_precede_reads_and_initializer_values ... ok
+test pinned_test262_var_binding_resolution ... ignored, requires pinned Test262 corpus in TEST262_DIR
+test loop_compound_binding_retains_identity_across_coercion_and_capture ... ok
+test public_references_retain_coerced_object_keys_between_get_and_put ... ok
+test local_compound_assignments_snapshot_values_and_preserve_abrupt_ordering ... ok
+test resolved_global_reference_retains_source_strictness_after_deletion ... ok
+test resolved_reference_releases_the_original_object_key_before_getter ... ok
+test local_number_updates_preserve_signed_zero_nonfinite_and_fallback_types ... ok
+test primitive_prototype_facades_stay_realm_local_and_live_through_collection ... ok
+test typeof_unresolved_names_tdz_callables_and_other_values_match ... ok
+test unary_numeric_operations_use_number_hint_and_bigint_rules ... ok
+test var_initializer_uses_the_with_environment_reference_in_ast ... ok
+test update_errors_skip_writes_and_preserve_tdz_const_and_symbols ... ok
+test updates_return_numeric_prefix_postfix_values_and_preserve_bigint ... ok
+
+test result: ok. 17 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/bytecode_properties.rs (/tmp/temiya-158-target/release/deps/bytecode_properties-956dc8b21dc266d4)
+
+running 19 tests
+test javascript_exotic_key_conversion_receives_string_hint_and_preserves_symbols ... ok
+test deletion_does_not_get_the_property_and_obeys_strict_failures ... ok
+test computed_key_expression_rhs_and_coercion_have_correct_order ... ok
+test array_push_length_reads_keep_coercion_getters_and_setters_ordered ... ok
+test member_reads_writes_and_parentheses_match_ast ... ok
+test loop_named_reads_observe_reordering_accessors_and_prototype_changes ... ok
+test nested_references_and_reentrant_getters_keep_independent_stacks ... ok
+test numeric_string_reads_return_utf16_units_and_keep_prototype_fallback_receiver ... ok
+test numeric_array_reads_preserve_canonical_keys_holes_and_getters ... ok
+test optional_members_preserve_chain_boundaries_and_skip_key_evaluation ... ok
+test literal_string_compound_assignment_preserves_captures_results_and_coercion ... ok
+test pinned_test262_property_audit ... ignored, requires pinned Test262 corpus; records current frontend gaps without fallback
+test primitive_prototypes_and_property_assignment_failures_match ... ok
+test primitive_inherited_setters_keep_the_original_receiver ... ok
+test proxy_receiver_symbol_keys_and_abrupt_deletion_are_preserved ... ok
+test static_and_computed_method_names_retain_receiver_across_getter_reentry ... ok
+test supplied_global_this_and_function_receiver_match_ast ... ok
+test primitive_string_concat_preserves_snapshots_utf16_and_evaluation_order ... ok
+test ordinary_array_push_keeps_prototype_setters_readonly_lengths_and_proxy_order ... ok
+
+test result: ok. 18 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/bytecode_scopes.rs (/tmp/temiya-158-target/release/deps/bytecode_scopes-f6167ec249435d28)
+
+running 12 tests
+test block_iteration_clone_preserves_the_supplied_realms_context ... ok
+test caller_prepared_scalar_loop_frames_publish_their_binding_writes ... ok
+test errors_and_throw_discard_block_frames ... ok
+test dynamic_assignment_resolves_before_rhs_coercion_changes_environment ... ok
+test persistent_global_records_and_preflight ... ok
+test pinned_test262_bytecode_scope_tdz ... ignored, requires scripts/test262 pinned corpus
+test function_frame_var_block_and_outer_bindings_are_distinct ... ok
+test global_restrictions_are_checked_before_binding_creation ... ok
+test scoped_addition_calls_real_javascript_coercion ... ok
+test function_body_tdz_const_and_hoisting_match_real_ast_calls ... ok
+test tdz_and_const_errors_match_ast ... ok
+test shadowing_hoisting_and_loop_scope_match_ast ... ok
+
+test result: ok. 11 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/bytecode_verifier.rs (/tmp/temiya-158-target/release/deps/bytecode_verifier-d628544984445246)
+
+running 20 tests
+test accepts_a_stack_neutral_loop_with_an_exit ... ok
+test computes_stack_bound_across_branches_and_locals ... ok
+test call_target_pairs_require_references_and_two_operands ... ok
+test function_templates_require_function_bodies_and_scoped_creation ... ok
+test fused_binding_update_requires_a_valid_non_global_live_slot ... ok
+test generic_binary_and_retained_reference_reads_obey_stack_and_join_invariants ... ok
+test numeric_unary_opcode_requires_one_value ... ok
+test named_property_opcodes_validate_constant_kind_scope_and_operands ... ok
+test hoisted_function_metadata_validates_binding_targets_and_template_kind ... ok
+test pending_invocations_require_balanced_frames_and_argument_boundaries ... ok
+test property_instructions_validate_operands_scopes_and_references ... ok
+test rejects_bad_constant_local_and_jump_operands ... ok
+test rejects_underflow_and_invalid_return_depths ... ok
+test rejects_inconsistent_joins_fallthrough_and_dead_code ... ok
+test resolved_binding_reference_rejects_inactive_and_out_of_range_slots ... ok
+test spread_arguments_require_active_invocation_and_realm_scope ... ok
+test retained_name_references_are_checked ... ok
+test string_append_binding_verifies_slots_constants_and_instruction_size ... ok
+test scope_operands_and_control_flow_are_verified ... ok
+test update_and_typeof_instructions_require_their_values_or_references ... ok
+
+test result: ok. 20 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/bytecode_vm.rs (/tmp/temiya-158-target/release/deps/bytecode_vm-10176ae1f26a1791)
+
+running 12 tests
+test construct_frame_passes_arguments_and_original_new_target ... ok
+test call_frames_capture_method_before_nested_arguments_and_preserve_receiver ... ok
+test division_edges_retain_javascript_number_behavior ... ok
+test call_frame_argument_failure_and_reentry_leave_vm_reusable ... ok
+test local_side_effect_order_and_control_flow_match ... ok
+test pending_callee_roots_drop_after_argument_throw_and_normal_return ... ok
+test arithmetic_conditionals_and_strings_match_ast_interpreter ... ok
+test source_compile_reports_parse_and_unsupported_errors ... ok
+test recursive_javascript_call_overflow_restores_call_budget ... ok
+test throw_completion_preserves_its_value ... ok
+test vm_calls_existing_javascript_functions_through_real_object_call ... ok
+test optional_calls_propagate_short_circuits_and_preserve_grouped_receivers ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/c_abi.rs (/tmp/temiya-158-target/release/deps/c_abi-7015c1f135d3602b)
+
+running 6 tests
+test null_arguments_are_rejected_without_dereference ... ok
+test double_free_and_stale_handles_are_rejected ... ok
+test invalid_utf8_and_compile_errors_are_owned ... ok
+test version_compile_evaluate_and_cleanup ... ok
+test c_callback_can_reenter_compile_and_evaluate ... ok
+test returned_values_survive_allocation_collection_and_engine_teardown ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/ci_security_policy.rs (/tmp/temiya-158-target/release/deps/ci_security_policy-5034eab12fec1487)
+
+running 4 tests
+test security_jobs_are_scheduled_bounded_and_failing ... ok
+test audit_miri_and_sanitizer_commands_are_pinned ... ok
+test checkout_is_pinned_and_credentials_are_not_persisted ... ok
+test dependency_update_ecosystems_are_both_monitored ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/cli.rs (/tmp/temiya-158-target/release/deps/cli-99efd356833f5b4d)
+
+running 8 tests
+test module_symlink_aliases_share_one_evaluation ... ok
+test errors_stop_execution_and_use_stderr_and_nonzero_status ... ok
+test pinned_test262_through_actual_shell ... ignored, requires the pinned Test262 checkout; executed explicitly in CI
+test command_line_errors_help_and_dash_filenames ... ok
+test modules_resolve_nested_imports_aliases_and_distinct_relative_names ... ok
+test script_inputs_share_globals_in_argument_order_and_drain_each_checkpoint ... ok
+test module_parse_link_resolution_and_evaluation_failures_are_real_failures ... ok
+test unicode_stdin_output_conversion_and_separate_streams ... ok
+
+test result: ok. 7 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/collections.rs (/tmp/temiya-158-target/release/deps/collections-f855c849d1d25747)
+
+running 5 tests
+test map_and_set_use_same_value_zero_and_insertion_order ... ok
+test live_iterators_observe_deletion_and_later_addition ... ok
+test weak_collections_do_not_retain_keys ... ok
+test weak_collections_reject_primitive_keys ... ok
+test realm_collection_constructors_and_methods_use_internal_slots ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/comment_goals.rs (/tmp/temiya-158-target/release/deps/comment_goals-ac7efe0131fb8c1d)
+
+running 4 tests
+test hashbang_is_valid_only_at_absolute_start_in_both_source_goals ... ok
+test html_close_comments_require_a_line_prefix_of_trivia ... ok
+test html_open_comments_require_script_and_opt_in ... ok
+test html_delimiters_inside_literals_are_preserved ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/compact_strings.rs (/tmp/temiya-158-target/release/deps/compact_strings-9ecbf7012e515a55)
+
+running 7 tests
+test constructors_and_clones_preserve_exact_units_at_storage_boundaries ... ok
+test concatenation_checks_all_inline_boundaries_and_preserves_evaluation_order ... ok
+test concatenations_preserve_units_aliases_hashes_and_threaded_flattening ... ok
+test engine_observes_long_concatenations_through_string_apis_and_property_keys ... ok
+test equality_hash_and_order_use_utf16_contents ... ok
+test leaf_strings_remain_send_sync_and_symbols_keep_distinct_identity ... ok
+test public_engine_retains_aliases_slices_and_surrogate_keys ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/constructor_assignments.rs (/tmp/temiya-158-target/release/deps/constructor_assignments-656d40ac188c389d)
+
+running 4 tests
+test preserves_parameter_order_missing_values_and_field_initialization ... ok
+test preserves_strict_failure_and_default_parameter_fallback ... ok
+test alternate_new_target_and_derived_constructor_keep_their_semantics ... ok
+test setters_receive_instance_and_abrupt_completion_stops_assignments ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/date_json_intl.rs (/tmp/temiya-158-target/release/deps/date_json_intl-314b48047a62dc44)
+
+running 7 tests
+test intl_is_an_explicit_unconfigured_host_boundary ... ok
+test date_clips_boundaries_and_formats_iso_utc ... ok
+test json_arrays_map_unsupported_values_to_null_and_reject_cycles ... ok
+test json_context_tree_survives_reviver_collection_and_enters_the_engine ... ok
+test json_reviver_rejects_foreign_objects_at_child_and_root_boundaries ... ok
+test json_round_trip_reviver_and_replacer_observe_property_order ... ok
+test realm_date_uses_injected_host_clock ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/debug_hooks.rs (/tmp/temiya-158-target/release/deps/debug_hooks-4e26e57c79b3945d)
+
+running 3 tests
+test breakpoints_steps_and_exception_policy_are_deterministic ... ok
+test source_maps_resolve_utf16_offsets_and_reject_bad_order ... ok
+test stack_snapshots_represent_native_async_and_scopes ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/declarations.rs (/tmp/temiya-158-target/release/deps/declarations-1442fd805599bb47)
+
+running 9 tests
+test declaration_errors_and_ast_ranges_remain_checked ... ok
+test accessor_named_fields_use_asi_before_generator_methods ... ok
+test ast_preserves_function_and_class_categories ... ok
+test invalid_class_elements_and_super_uses_are_rejected ... ok
+test class_methods_fields_and_private_syntax ... ok
+test private_identifier_lexing_preserves_raw_spelling ... ok
+test module_await_reservations_apply_to_nested_syntax ... ok
+test invalid_parameters_and_context_leaks_are_rejected ... ok
+test declarations_patterns_and_function_forms_are_owned ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/derived_classes.rs (/tmp/temiya-158-target/release/deps/derived_classes-63d3292e81310578)
+
+running 28 tests
+test arrows_created_before_super_share_the_later_initialized_this ... ok
+test constructor_arguments_remain_available_to_arrows_defaults_and_strict_writes ... ok
+test default_derived_constructor_forwards_every_argument ... ok
+test allocation_errors_before_entering_a_foreign_constructor_use_the_caller_realm ... ok
+test default_intrinsic_factories_use_the_derived_prototype ... ok
+test anonymous_classes_preserve_outer_bindings_strict_this_and_inferred_names ... ok
+test derived_prototypes_and_new_target_follow_the_actual_constructor_chain ... ok
+test derived_errors_are_materialized_in_the_defining_realm ... ok
+test derived_data_views_keep_their_buffer_and_recheck_detachment_after_getters ... ok
+test derived_this_and_captured_arrows_survive_reentrant_collection ... ok
+test derived_returns_distinguish_objects_undefined_and_other_primitives ... ok
+test duplicate_super_constructs_before_rejecting_the_second_this_binding ... ok
+test implicit_forwarding_does_not_read_the_array_iterator ... ok
+test native_array_number_and_string_subclasses_keep_prototypes_and_payloads ... ok
+test fresh_class_function_metadata_preserves_descriptors_and_key_order ... ok
+test native_intrinsic_fallbacks_come_from_the_new_targets_realm ... ok
+test heritage_checks_preserve_tdz_and_reject_invalid_prototypes ... ok
+test native_conversion_and_prototype_getters_keep_their_required_order ... ok
+test native_collection_buffer_date_and_regexp_subclasses_keep_their_slots ... ok
+test null_heritage_has_a_null_instance_prototype_and_no_default_super ... ok
+test object_subclasses_allocate_with_new_target_and_ignore_conversion_arguments ... ok
+test non_object_prototype_uses_the_new_targets_realm_through_wrappers ... ok
+test prototype_getter_revocation_is_checked_only_when_realm_fallback_is_needed ... ok
+test super_arguments_run_before_the_constructability_check ... ok
+test super_results_and_parent_throws_keep_identity_and_run_once ... ok
+test super_uses_the_current_constructor_parent_and_preserves_new_target ... ok
+test this_is_uninitialized_until_super_returns ... ok
+test sole_super_preserves_explicit_argument_mapping_and_original_new_target ... ok
+
+test result: ok. 28 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/differential_testing.rs (/tmp/temiya-158-target/release/deps/differential_testing-1eb09976cdf130c4)
+
+running 5 tests
+test mismatch_is_minimized_and_saved ... ok
+test mismatches_and_known_differences_are_distinct ... ok
+test normalized_observations_match_across_engines ... ok
+test safe_generation_is_seed_reproducible ... ok
+test command_adapter_enforces_timeout_and_captures_output ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/differential_worker.rs (/tmp/temiya-158-target/release/deps/differential_worker-e4a01966793b6aa8)
+
+running 5 tests
+test actual_public_job_queue_preserves_nested_fifo_and_side_effect_order ... ok
+test actual_engine_preserves_number_utf16_and_primitive_types ... ok
+test data_snapshots_preserve_cycles_aliases_and_later_mutations ... ok
+test array_holes_descriptors_and_native_error_types_are_observed ... ok
+test throws_and_compile_errors_are_not_infrastructure_successes ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/embedding_api.rs (/tmp/temiya-158-target/release/deps/embedding_api-8745ef17522f7b35)
+
+running 11 tests
+test builder_owns_host_state_and_configuration ... ok
+test compile_and_evaluate_return_owned_value_handles ... ok
+test compile_and_runtime_failures_are_distinct ... ok
+test canonical_module_resolution_receives_referrers_and_caches_aliases ... ok
+test canonical_module_callbacks_isolate_panics_errors_and_foreign_realms ... ok
+test cross_engine_handles_are_rejected ... ok
+test host_jobs_are_fifo_and_panics_become_exceptions ... ok
+test explicit_allocation_context_preserves_identity_and_rejects_foreign_heaps ... ok
+test module_resolver_supports_graphs_and_isolates_panics ... ok
+test host_objects_reject_foreign_values_and_install_globals ... ok
+test native_functions_convert_values_and_isolate_panics ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/embedding_bytecode.rs (/tmp/temiya-158-target/release/deps/embedding_bytecode-0c4b1dece4c4f6e8)
+
+running 3 tests
+test engine_executes_verified_bytecode_in_the_realm ... ok
+test unsupported_bytecode_is_rejected_before_effects_and_auto_selects_ast ... ok
+test default_engines_select_whole_script_backends_before_observable_effects ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/empty_block_environments.rs (/tmp/temiya-158-target/release/deps/empty_block_environments-143b93cfded7e18a)
+
+running 4 tests
+test lexical_tdz_shadowing_and_block_function_capture_are_retained ... ok
+test closures_keep_var_and_block_lexical_bindings ... ok
+test var_only_blocks_preserve_completion_and_loop_control ... ok
+test empty_blocks_do_not_change_with_proxy_lookup_or_capture ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/environments.rs (/tmp/temiya-158-target/release/deps/environments-3d33aefed30c944d)
+
+running 12 tests
+test environment_chains_resolve_nearest_binding ... ok
+test declarative_bindings_enforce_tdz_mutability_and_deletion ... ok
+test existing_property_on_non_extensible_global_is_not_recorded_as_var ... ok
+test ancestor_resolution_survives_gc_during_unscopables_then_continues_outward ... ok
+test function_environment_tracks_this_function_and_new_target ... ok
+test global_environment_detects_lexical_and_var_conflicts ... ok
+test module_import_bindings_are_live_and_immutable ... ok
+test non_extensible_globals_reject_new_var_and_function_declarations ... ok
+test record_specific_operations_reject_wrong_environment_kinds ... ok
+test with_environment_honors_unscopables ... ok
+test object_environment_maps_bindings_to_properties ... ok
+test with_unscopables_getters_can_reenter_environment_lookup ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/exception_flow.rs (/tmp/temiya-158-target/release/deps/exception_flow-db4768831a0cfac5)
+
+running 9 tests
+test embedding_and_module_boundaries_retain_owned_values ... ok
+test accessor_and_constructor_throws_keep_identity_without_coercion ... ok
+test called_function_materializes_native_errors_in_its_own_realm ... ok
+test internal_failures_cannot_be_swallowed_by_catch_or_finally ... ok
+test finally_runs_after_errors_from_try_and_catch_and_can_replace_them ... ok
+test generator_throw_values_survive_both_active_and_completed_boundaries ... ok
+test native_errors_are_catchable_with_intrinsic_prototypes ... ok
+test pinned_test262_exception_regressions ... ignored, requires the pinned Test262 corpus; see docs/runtime.md
+test function_calls_preserve_every_throw_value_through_catch_and_finally ... ok
+
+test result: ok. 8 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/execution_contexts.rs (/tmp/temiya-158-target/release/deps/execution_contexts-ee642353ef632636)
+
+running 9 tests
+test enter_and_leave_suspend_and_resume_callers ... ok
+test function_context_records_function_and_realm_identity ... ok
+test execution_context_environments_can_change_at_block_boundaries ... ok
+test run_in_context_restores_stack_after_abrupt_completion ... ok
+test realm_owns_global_object_and_environment ... ok
+test scoped_execution_protects_and_restores_a_suspended_caller ... ok
+test run_in_context_returns_values_and_cleans_top_level_context ... ok
+test suspend_and_resume_validate_state_transitions ... ok
+test script_records_and_contexts_preserve_ownership ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/expression_evaluation.rs (/tmp/temiya-158-target/release/deps/expression_evaluation-37283e2d0e99bf42)
+
+running 10 tests
+test argument_abrupt_completion_precedes_invalid_callee_error ... ok
+test accessor_getvalue_putvalue_and_strict_failures_are_observable ... ok
+test delays_computed_key_coercion_until_after_assignment_rhs ... ok
+test builds_array_object_template_and_constructor_results ... ok
+test evaluates_literals_operators_and_assignment_references ... ok
+test optional_chain_short_circuits_a_contiguous_chain_only ... ok
+test logical_operators_do_not_evaluate_an_unselected_operand ... ok
+test preserves_receiver_and_left_to_right_call_order ... ok
+test string_addition_preserves_host_conversion_order_and_abrupt_completion ... ok
+test invalid_call_and_construct_evaluate_arguments_before_type_errors ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/expression_parser.rs (/tmp/temiya-158-target/release/deps/expression_parser-3e194fc2b25761b1)
+
+running 5 tests
+test grammar_errors_have_spans ... ok
+test all_operator_families_parse_with_owned_spelling ... ok
+test pratt_precedence_and_associativity_snapshots ... ok
+test primary_member_call_array_object_template_and_new_forms ... ok
+test strict_module_and_recursion_options_are_applied ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/function_allocation.rs (/tmp/temiya-158-target/release/deps/function_allocation-528dac44504265c0)
+
+running 8 tests
+test pinned_test262_function_prototypes ... ignored, requires pinned Test262 corpus; see docs/runtime-ownership.md
+test default_prototype_is_stable_ordinary_data_with_constructor_backlink ... ok
+test bytecode_function_metadata_has_standard_descriptors_before_publication ... ok
+test active_anonymous_functions_survive_removal_of_their_last_global_reference ... ok
+test prototype_redefinition_preserves_descriptor_invariants ... ok
+test reflection_before_value_read_keeps_property_order_and_nonextensibility ... ok
+test proxy_invariants_and_getters_observe_the_real_prototype_value ... ok
+test unobserved_function_prototypes_and_hidden_self_slots_do_not_pin_host_values ... ok
+
+test result: ok. 7 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/functions_runtime.rs (/tmp/temiya-158-target/release/deps/functions_runtime-1b5302b6e1166c69)
+
+running 8 tests
+test arrows_are_not_constructors ... ok
+test constructor_object_return_replaces_the_allocated_instance ... ok
+test closures_capture_lexical_environments_and_declarations_are_hoisted ... ok
+test default_rest_and_arguments_bind_in_call_order ... ok
+test getters_and_setters_are_executable_methods ... ok
+test methods_receive_dynamic_this_and_arrows_capture_it ... ok
+test named_function_expressions_can_recur_through_their_inner_name ... ok
+test ordinary_functions_construct_instances_with_their_prototype ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/fuzz_regressions.rs (/tmp/temiya-158-target/release/deps/fuzz_regressions-5feb2d4c70d5c21f)
+
+running 3 tests
+test parser_errors_stay_on_utf8_boundaries ... ok
+test lexer_parser_regression_corpus_never_panics_or_corrupts_ranges ... ok
+test gc_interpreter_regression_seed_preserves_invariants ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/gc_collector.rs (/tmp/temiya-158-target/release/deps/gc_collector-bbe14dcc9f2b7196)
+
+running 4 tests
+test allocation_limit_reports_oom_only_after_collection ... ok
+test allocation_threshold_collects_before_reusing_a_slot ... ok
+test collector_reclaims_unrooted_cycles ... ok
+test collector_retains_the_transitive_root_graph ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/gc_diagnostics.rs (/tmp/temiya-158-target/release/deps/gc_diagnostics-54e30a2afd85d8d3)
+
+running 4 tests
+test diagnostics_track_roots_slots_and_reclamation ... ok
+test empty_heap_verifies_and_reports_zeroes ... ok
+test stress_mode_collects_before_every_allocation ... ok
+test verification_detects_a_stale_traced_edge ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/gc_generational.rs (/tmp/temiya-158-target/release/deps/gc_generational-9fd38c1dee87a33e)
+
+running 4 tests
+test verifier_detects_a_missing_old_to_young_barrier ... ok
+test barrier_rejects_dead_targets ... ok
+test write_barrier_keeps_young_values_reachable_from_old_values ... ok
+test minor_collection_matches_full_collection_under_stress ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/gc_handles.rs (/tmp/temiya-158-target/release/deps/gc_handles-00f9dc8e55a49edc)
+
+running 5 tests
+test handles_cannot_be_used_with_another_heap ... ok
+test handles_use_scoped_typed_access ... ok
+test root_lifetimes_stay_independent_across_slot_reuse_and_unrelated_drops ... ok
+test tracing_reports_roots_and_outgoing_edges ... ok
+test roots_are_counted_by_raii ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/gc_weak.rs (/tmp/temiya-158-target/release/deps/gc_weak-13b2009dbd4c5b74)
+
+running 9 tests
+test automatic_collection_preserves_edges_in_the_incoming_allocation ... ok
+test live_targets_do_not_schedule_cleanup ... ok
+test ephemerons_reach_a_fixpoint_without_retaining_keys ... ok
+test cleanup_runs_after_sweep_in_registration_order ... ok
+test minor_owned_ephemerons_distinguish_live_young_keys_and_unreachable_owners ... ok
+test owned_ephemeron_barriers_cover_young_values_and_minor_collection ... ok
+test owned_ephemerons_require_a_live_owner_and_do_not_bootstrap_key_cycles ... ok
+test owned_ephemerons_discover_nested_owners_at_a_fixed_point ... ok
+test weak_handles_never_keep_targets_alive ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/generator_async_runtime.rs (/tmp/temiya-158-target/release/deps/generator_async_runtime-218cb1d4d35867a1)
+
+running 8 tests
+test async_abrupt_completion_rejects_instead_of_escaping_call ... ok
+test async_functions_return_promises_and_await_fulfilled_values ... ok
+test generator_suspends_resumes_and_receives_next_values ... ok
+test generator_loops_resume_without_replaying_prior_iterations ... ok
+test public_promise_api_exposes_pending_and_settled_states ... ok
+test return_resume_completes_and_subsequent_next_stays_done ... ok
+test throw_resume_abruptly_completes_the_generator ... ok
+test yield_star_delegates_in_order_and_then_continues ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/global_declarations.rs (/tmp/temiya-158-target/release/deps/global_declarations-837828f37ca43012)
+
+running 10 tests
+test failed_preflight_does_not_create_other_bindings ... ok
+test existing_accessor_var_does_not_read_or_redefine_property ... ok
+test function_and_block_bindings_do_not_become_globals ... ok
+test existing_configurable_property_reuse_allows_later_lexical_shadowing ... ok
+test pinned_test262_global_declarations ... ignored, requires pinned Test262 corpus in TEST262_DIR
+test global_records_descriptors_and_cross_script_conflicts ... ok
+test module_and_single_statement_entrypoints_keep_correct_records ... ok
+test public_engine_exposes_global_var_and_function_on_this ... ok
+test global_state_and_errors_match_scoped_bytecode_api ... ok
+test restricted_existing_properties_and_strict_initializers ... ok
+
+test result: ok. 9 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/identifiers.rs (/tmp/temiya-158-target/release/deps/identifiers-797a46df1ec75792)
+
+running 4 tests
+test escaped_reserved_words_are_not_keyword_tokens ... ok
+test identifier_escapes_decode_without_normalization ... ok
+test invalid_escapes_and_identifier_positions_are_rejected ... ok
+test unicode_identifier_properties_and_raw_spans ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/instance_fields.rs (/tmp/temiya-158-target/release/deps/instance_fields-e5d773002a2a10a6)
+
+running 15 tests
+test anonymous_initializer_names_do_not_introduce_name_bindings ... ok
+test arrow_property_reads_preserve_primitive_this_and_async_results ... ok
+test base_fields_precede_parameters_and_constructor_body ... ok
+test arrow_reads_before_and_after_super_resolve_the_current_this_binding ... ok
+test computed_keys_run_once_and_initializers_run_per_instance_in_order ... ok
+test derived_explicit_default_and_delegating_paths_initialize_own_fields ... ok
+test field_arrow_reads_keep_lexical_receivers_and_observable_property_access ... ok
+test get_and_set_fields_before_generators_remain_own_data_properties ... ok
+test field_arrows_capture_distinct_this_and_super_home ... ok
+test initializer_closures_and_home_objects_survive_reentrant_gc_and_collect ... ok
+test fields_define_own_data_and_propagate_definition_errors ... ok
+test symbol_initializer_names_use_the_actual_key_description ... ok
+test simple_initializers_keep_strictness_receiver_and_undefined_new_target ... ok
+test initializer_functions_keep_distinct_class_and_instance_environments ... ok
+test proxy_receiver_and_repeated_super_preserve_definition_order ... ok
+
+test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/intrinsic_realm.rs (/tmp/temiya-158-target/release/deps/intrinsic_realm-286d97b537b7629b)
+
+running 4 tests
+test realm_installs_intrinsics_with_standard_descriptors ... ok
+test host_global_that_rejects_properties_returns_an_error ... ok
+test initialization_wires_circular_constructor_and_prototype_links ... ok
+test registry_is_complete_deterministic_and_realm_local ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/jit.rs (/tmp/temiya-158-target/release/deps/jit-408038b4f4763592)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/jit_feature_policy.rs (/tmp/temiya-158-target/release/deps/jit_feature_policy-c0360c41d1ac4256)
+
+running 1 test
+test jit_is_optional_and_absent_from_the_default_feature_graph ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+     Running tests/lexical_goals.rs (/tmp/temiya-158-target/release/deps/lexical_goals-09b66cb5d5658e54)
+
+running 8 tests
+test caller_switches_goals_for_each_token ... ok
+test comments_take_precedence_in_both_goals ... ok
+test errors_do_not_advance_and_eof_consumes_trailing_trivia_once ... ok
+test flags_follow_identifier_part_characters_without_semantic_validation ... ok
+test line_terminators_are_rejected_even_when_escaped_or_in_classes ... ok
+test preserves_regexp_spelling_and_utf8_spans ... ok
+test same_source_can_be_division_or_regexp ... ok
+test unterminated_bodies_classes_and_escapes_have_spans ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/module_syntax.rs (/tmp/temiya-158-target/release/deps/module_syntax-2fe6f209d455d12a)
+
+running 6 tests
+test import_and_export_ast_records_preserve_decoded_names ... ok
+test invalid_module_positions_names_and_attributes_have_spans ... ok
+test dynamic_import_and_import_meta_are_distinct_from_static_requests ... ok
+test module_forms_and_top_level_await_have_owned_ranges ... ok
+test module_nodes_validate_auxiliary_spans ... ok
+test requests_are_unique_and_attribute_order_is_not_identity ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/native_function_prototypes.rs (/tmp/temiya-158-target/release/deps/native_function_prototypes-a333c61c6b33ef5f)
+
+running 9 tests
+test fresh_native_allocation_does_not_traverse_a_mutated_function_prototype_chain ... ok
+test builtin_metadata_and_method_constructability_are_preserved ... ok
+test installed_intrinsic_callables_have_their_own_realms_function_prototype ... ok
+test call_apply_bind_preserve_getter_order_and_original_exception ... ok
+test own_property_key_queries_preserve_order_brands_and_proxy_errors ... ok
+test own_descriptor_queries_convert_keys_before_receiver_and_keep_proxy_exceptions ... ok
+test public_engine_calls_native_js_and_bound_functions_through_function_prototype ... ok
+test registered_host_function_and_low_level_native_allocation_have_distinct_contracts ... ok
+test realm_native_callbacks_and_bound_constructors_release_captured_host_state ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/number_bigint_math.rs (/tmp/temiya-158-target/release/deps/number_bigint_math-5e6ff164e579ab84)
+
+running 5 tests
+test math_handles_nan_signed_zero_infinity_and_rounding ... ok
+test parsing_accepts_prefixes_and_radix_boundaries ... ok
+test math_intrinsic_converts_arguments_and_rejects_bigint ... ok
+test number_constructor_predicates_and_wrapper_preserve_edges ... ok
+test bigint_width_operations_and_mixed_numeric_errors ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/number_binary.rs (/tmp/temiya-158-target/release/deps/number_binary-df4e0ecc61c01400)
+
+running 1 test
+test number_pairs_match_independent_javascript_oracle_in_ast_and_vm ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+     Running tests/numeric_binding_writes.rs (/tmp/temiya-158-target/release/deps/numeric_binding_writes-74a869cb81e44277)
+
+running 1 test
+test numeric_updates_preserve_bits_and_general_write_validation ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/numeric_builtin_integration.rs (/tmp/temiya-158-target/release/deps/numeric_builtin_integration-5e00f23fcc8f2aee)
+
+running 6 tests
+test bigint_valueof_accepts_an_actual_foreign_realm_wrapper ... ok
+test numeric_constants_and_new_method_descriptors_match_the_public_contract ... ok
+test pinned_numeric_builtin_audit ... ignored, requires pinned Test262 corpus; retains original numeric builtin outcomes including harness gaps
+test bigint_radix_brand_checks_and_abrupt_order_are_observable ... ok
+test explicit_numeric_constructors_preserve_exact_integers_and_conversion_errors ... ok
+test engine_exposes_bigint_wrappers_radices_and_safe_integer_boundaries ... ok
+
+test result: ok. 5 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/numeric_literals.rs (/tmp/temiya-158-target/release/deps/numeric_literals-f3a283df4febbbd4)
+
+running 4 tests
+test invalid_literals_and_adjacent_identifiers ... ok
+test decimal_radices_separators_and_bigints ... ok
+test punctuation_whitespace_and_comments_end_literals ... ok
+test engine_evaluates_spelling_variants_and_numeric_boundaries ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/object_function_reflect.rs (/tmp/temiya-158-target/release/deps/object_function_reflect-422eb2c20640a7ec)
+
+running 5 tests
+test reflect_construct_and_bound_construction_forward_arguments ... ok
+test object_methods_convert_and_apply_property_descriptors ... ok
+test call_apply_and_bind_preserve_receiver_and_argument_order ... ok
+test reflect_operations_return_booleans_and_include_symbol_keys ... ok
+test reflection_rejects_invalid_targets_and_argument_lists ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/object_model.rs (/tmp/temiya-158-target/release/deps/object_model-c37e6fc4c3d5fb53)
+
+running 13 tests
+test descriptor_conversion_observes_inherited_fields_and_getters ... ok
+test descriptor_conversion_round_trips_present_fields ... ok
+test create_data_property_rejects_foreign_edges_atomically_even_when_nonextensible ... ok
+test create_data_property_replaces_configurable_accessors_without_calling_them ... ok
+test descriptor_invariants_and_partial_attribute_updates_are_enforced ... ok
+test descriptor_kind_changes_require_configurability ... ok
+test existing_data_writes_preserve_flags_heap_ownership_and_traced_edges ... ok
+test existing_data_writes_to_another_receiver_leave_the_base_unchanged ... ok
+test ordinary_get_and_set_preserve_the_receiver_across_prototypes ... ok
+test ordinary_objects_reject_forbidden_writes_and_deletes ... ok
+test own_property_keys_follow_ecmascript_order ... ok
+test property_keys_distinguish_strings_symbols_and_array_indices ... ok
+test prototype_changes_reject_cycles_and_non_extensible_objects ... ok
+
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/owned_ast.rs (/tmp/temiya-158-target/release/deps/owned_ast-cbf98fd4f31cb0fa)
+
+running 5 tests
+test ast_is_owned_and_can_outlive_the_source ... ok
+test validates_object_property_boundaries ... ok
+test invalid_and_noncontained_byte_ranges_are_rejected ... ok
+test visits_nested_operands_in_order_and_preserves_ranges ... ok
+test validates_template_count_and_preserves_lone_surrogates ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/packed_number_elements.rs (/tmp/temiya-158-target/release/deps/packed_number_elements-d785c7a855ea7bd7)
+
+running 3 tests
+test numeric_bits_and_object_edges_survive_storage_transitions_and_collection ... ok
+test script_index_reads_preserve_special_numbers_objects_and_accessor_receivers ... ok
+test complete_descriptors_match_an_independent_model_with_gc_between_operations ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests/primitive_number_bitwise.rs (/tmp/temiya-158-target/release/deps/primitive_number_bitwise-f399f76e83e658ac)
+
+running 1 test
+test primitive_number_bitwise_operations_match_exact_bits_in_ast_and_vm ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/private_fields.rs (/tmp/temiya-158-target/release/deps/private_fields-0c5eeddc4724bb4a)
+
+running 12 tests
+test initialization_order_and_partial_brands_follow_field_definition ... ok
+test default_private_slots_allow_constructor_aliases_and_proxy_stamping ... ok
+test brands_do_not_follow_prototypes_or_proxy_targets ... ok
+test assignment_checks_brand_after_rhs_and_optional_access_short_circuits ... ok
+test private_arrow_plans_preserve_lexical_this_and_pre_super_tdz ... ok
+test private_fields_read_write_update_and_call_with_receiver ... ok
+test private_constructor_assignments_keep_mixed_order_and_abrupt_completion ... ok
+test private_parameter_receivers_keep_positions_missing_values_and_defaults ... ok
+test private_method_expressions_keep_numeric_coercion_errors_and_class_identity ... ok
+test stamping_nonextensible_receiver_and_duplicate_initialization ... ok
+test private_values_and_lexical_names_survive_gc_then_release_cycles ... ok
+test repeated_class_evaluation_and_nested_shadowing_have_distinct_names ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/promise_job_queue.rs (/tmp/temiya-158-target/release/deps/promise_job_queue-034374854c19f545)
+
+running 6 tests
+test reactions_are_fifo_jobs_and_chaining_adopts_callback_results ... ok
+test settlement_is_one_shot_and_self_resolution_rejects ... ok
+test checkpoint_rejection_tracking_survives_gc_after_promise_facades_drop ... ok
+test thenables_are_assimilated_once_by_a_queued_job ... ok
+test throwing_then_getter_rejects_the_promise ... ok
+test unhandled_hook_runs_at_checkpoint_and_is_suppressed_by_then ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/promise_rejection_values.rs (/tmp/temiya-158-target/release/deps/promise_rejection_values-d738ca114acf331b)
+
+running 4 tests
+test pinned_test262_async_rejection_values ... ignored, requires the pinned Test262 corpus; see docs/runtime.md
+test native_javascript_errors_remain_error_objects_in_reactions ... ok
+test thenable_reject_callback_and_throwing_getter_keep_the_original_object ... ok
+test javascript_reactions_and_unhandled_hook_preserve_every_value_kind ... ok
+
+test result: ok. 3 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/proxy.rs (/tmp/temiya-158-target/release/deps/proxy-f39ea197cb0b3279)
+
+running 6 tests
+test revocation_invalidates_objects_calls_and_construction ... ok
+test get_set_has_and_delete_traps_receive_target_and_keys ... ok
+test own_keys_enforces_duplicates_and_non_configurable_keys ... ok
+test target_invariants_reject_lying_traps ... ok
+test traps_can_reenter_the_same_proxy ... ok
+test proxy_constructor_and_revocable_are_installed ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/regexp_benchmark_workloads.rs (/tmp/temiya-158-target/release/deps/regexp_benchmark_workloads-61e23d20d858724e)
+
+running 1 test
+test authored_regexp_inputs_work_through_public_engine_on_repeated_passes ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+
+     Running tests/regexp_compilation_cache.rs (/tmp/temiya-158-target/release/deps/regexp_compilation_cache-e94739f2597f27c7)
+
+running 7 tests
+test non_ascii_cache_keys_preserve_scalar_patterns_and_independent_state ... ok
+test pinned_test262_regexp_compilation ... ignored, requires pinned Test262 corpus; set TEST262_DIR
+test cached_matcher_preserves_utf16_boundaries_and_current_surrogate_errors ... ok
+test reused_capture_storage_clears_unmatched_groups_and_old_inputs ... ok
+test short_ascii_input_and_unicode_fallback_keep_owned_captures_at_buffer_boundary ... ok
+test cached_construction_keeps_coercion_order_identity_and_abrupt_values ... ok
+test builtin_exec_owns_each_capture_array_and_clears_optional_groups ... ok
+
+test result: ok. 6 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/release_policy.rs (/tmp/temiya-158-target/release/deps/release_policy-42e26a29fde4b35c)
+
+running 4 tests
+test artifacts_are_locked_normalized_and_checksummed ... ok
+test release_actions_reject_moving_missing_and_malformed_revisions ... ok
+test version_msrv_and_tag_contract_are_explicit ... ok
+test workflow_has_least_privilege_pinned_actions_and_attestation ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/runtime_ownership.rs (/tmp/temiya-158-target/release/deps/runtime_ownership-6a26ddbdff3b7f5f)
+
+running 1 test
+test public_handles_keep_objects_closures_and_escaped_prototypes_usable ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/runtime_values.rs (/tmp/temiya-158-target/release/deps/runtime_values-b556550711b7550f)
+
+running 9 tests
+test same_value_handles_nan_and_signed_zero ... ok
+test bigint_conversion_accepts_only_integer_string_grammar ... ok
+test number_and_numeric_conversions_cover_boundaries ... ok
+test native_allocator_borrows_its_context_without_a_retained_runtime_capture ... ok
+test string_conversion_uses_javascript_number_formatting ... ok
+test to_boolean_follows_ecmascript_falsiness ... ok
+test to_primitive_observes_exotic_and_ordinary_order ... ok
+test values_preserve_utf16_and_identity ... ok
+test to_primitive_propagates_errors_and_rejects_object_results ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/script_module_pipeline.rs (/tmp/temiya-158-target/release/deps/script_module_pipeline-ca0855a18d303dfe)
+
+running 9 tests
+test evaluation_failure_is_cached_and_not_reexecuted ... ok
+test anonymous_default_class_has_its_name_before_static_initialization ... ok
+test imports_are_live_bindings_after_dependency_evaluation ... ok
+test cyclic_dependencies_resolve_and_load_each_module_once ... ok
+test named_and_star_reexports_resolve_to_original_bindings ... ok
+test scripts_parse_and_evaluate_in_their_realm ... ok
+test namespace_imports_and_reexports_expose_live_getters ... ok
+test top_level_await_produces_a_cached_evaluation_promise ... ok
+test namespace_membership_does_not_read_uninitialized_exports ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/source_positions.rs (/tmp/temiya-158-target/release/deps/source_positions-d96aa694d8e11b00)
+
+running 5 tests
+test empty_source_and_zero_length_ranges_are_valid ... ok
+test all_line_separators_have_consistent_positions ... ok
+test crlf_interior_is_on_the_preceding_line ... ok
+test utf16_positions_include_non_bmp_characters ... ok
+test invalid_positions_return_explicit_errors ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/spec_support.rs (/tmp/temiya-158-target/release/deps/spec_support-501fd2e6f770c437)
+
+running 5 tests
+test annex_b_proposals_and_host_hooks_are_all_tracked ... ok
+test selected_editions_and_snapshots_are_immutable_identifiers ... ok
+test support_matrix_has_valid_statuses_unique_ids_and_evidence ... ok
+test invalid_or_inflated_evidence_is_rejected ... ok
+test individual_probes_run_through_parser_and_public_engine_backends ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s
+
+     Running tests/statement_evaluation.rs (/tmp/temiya-158-target/release/deps/statement_evaluation-15fcfe031bbe2e71)
+
+running 7 tests
+test abrupt_finally_replaces_return_and_throw_completions ... ok
+test catch_handles_throw_and_normal_finally_preserves_prior_completion ... ok
+test labelled_continue_and_break_target_the_matching_loop ... ok
+test declarations_loops_and_control_flow_update_completion_values ... ok
+test uncaught_throw_is_a_completion_not_an_engine_error ... ok
+test switch_falls_through_and_consumes_unlabelled_break ... ok
+test lexical_initializers_observe_tdz_and_const_rejects_assignment ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/statement_parser.rs (/tmp/temiya-158-target/release/deps/statement_parser-c6fa3914ed684bf1)
+
+running 7 tests
+test dangling_else_binds_to_nearest_if ... ok
+test async_iteration_and_await_are_contextual ... ok
+test directive_prologues_activate_strict_mode_only_in_bodies ... ok
+test for_ast_distinguishes_headers ... ok
+test control_statements_and_for_variants_have_valid_ranges ... ok
+test invalid_controls_and_headers_produce_errors ... ok
+test restricted_newlines_and_automatic_semicolons ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/static_class_elements.rs (/tmp/temiya-158-target/release/deps/static_class_elements-80988bf2b764ae92)
+
+running 11 tests
+test anonymous_static_initializer_names_and_duplicate_fields_follow_source_order ... ok
+test fields_define_own_data_properties_and_default_undefined ... ok
+test abrupt_completion_stops_later_initializers_and_preserves_thrown_identity ... ok
+test failed_static_definition_evaluates_value_then_stops ... ok
+test key_exceptions_prevent_all_static_initialization ... ok
+test static_blocks_have_separate_var_scopes_and_closures ... ok
+test keys_precede_initializers_and_static_methods_are_already_installed ... ok
+test simple_static_initializers_keep_strict_class_this_and_undefined_new_target ... ok
+test static_initialization_can_construct_complete_instance_fields ... ok
+test static_initializers_use_class_binding_this_super_and_undefined_new_target ... ok
+test static_closures_and_pending_initializers_survive_gc_then_collect ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/static_semantics.rs (/tmp/temiya-158-target/release/deps/static_semantics-4da53628c1178bea)
+
+running 9 tests
+test contains_queries_search_nested_syntax_explicitly ... ok
+test module_export_and_import_conflicts_are_checked ... ok
+test duplicate_and_conflicting_declarations_report_source_ranges ... ok
+test cover_initialized_names_and_rest_commas_are_context_sensitive ... ok
+test public_validator_checks_context_of_manually_built_nodes ... ok
+test name_queries_observe_patterns_and_scope_boundaries ... ok
+test validator_rejects_invalid_continue_and_yield_fragments ... ok
+test undeclared_private_names_and_strict_targets_are_rejected ... ok
+test shadowing_and_var_redeclarations_remain_valid ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/string_literals.rs (/tmp/temiya-158-target/release/deps/string_literals-10c1ce280efd69d6)
+
+running 4 tests
+test escapes_decode_to_utf16_without_changing_raw_text ... ok
+test invalid_escapes_and_unclosed_literals_report_source_ranges ... ok
+test legacy_escapes_remain_distinguishable_for_strict_parsing ... ok
+test line_continuations_are_removed_from_cooked_value ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/string_methods.rs (/tmp/temiya-158-target/release/deps/string_methods-7717eb743aa436be)
+
+running 9 tests
+test pinned_test262_string_methods ... ignored, requires pinned Test262 corpus; see docs/runtime.md
+test ordinary_string_properties_recheck_descriptors_and_preserve_virtual_keys ... ok
+test positions_handle_missing_fractional_nan_infinite_negative_and_out_of_range ... ok
+test prototype_lookup_uses_original_primitive_receiver_and_canonical_indices ... ok
+test utf16_indexing_preserves_surrogates_and_combines_only_valid_pairs ... ok
+test slice_and_substring_have_distinct_clamp_swap_and_default_rules ... ok
+test method_descriptors_brand_checks_and_nonconstructability ... ok
+test wrappers_and_borrowed_methods_observe_real_javascript_conversions ... ok
+test abrupt_coercions_preserve_identity_and_order ... ok
+
+test result: ok. 8 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/string_regexp.rs (/tmp/temiya-158-target/release/deps/string_regexp-ca87e180bd35eefc)
+
+running 6 tests
+test named_captures_and_replace_callback_are_observable ... ok
+test sticky_and_invalid_flags_cover_boundaries ... ok
+test repeated_construction_keeps_objects_state_flags_and_errors_independent ... ok
+test string_exotic_exposes_utf16_indices_and_fixed_length ... ok
+test unicode_global_match_tracks_utf16_last_index ... ok
+test realm_constructors_and_literals_create_runtime_regexp_objects ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/super_properties.rs (/tmp/temiya-158-target/release/deps/super_properties-32a5f0a833bf0ba6)
+
+running 19 tests
+test absent_accessor_methods_shadow_prototype_accessors ... ok
+test arrows_retain_super_and_their_lexical_receiver ... ok
+test arguments_remain_observable_in_ast_methods_defaults_and_nested_classes ... ok
+test captured_home_objects_and_receivers_survive_reentrant_collection ... ok
+test detached_strict_methods_preserve_primitive_and_undefined_this ... ok
+test delete_super_references_throws_before_key_conversion_even_with_null_base ... ok
+test compiled_class_definitions_keep_enclosing_method_super_bindings ... ok
+test computed_key_conversion_is_deferred_and_cached_for_updates ... ok
+test home_object_stays_with_the_method_and_its_parent_is_read_on_each_access ... ok
+test inherited_accessors_and_data_writes_use_the_receiver ... ok
+test proxy_get_and_set_traps_receive_the_original_this ... ok
+test object_and_class_super_calls_preserve_the_actual_receiver ... ok
+test non_strict_leaf_calls_normalize_this_and_keep_silent_assignment_failures ... ok
+test rejected_super_writes_obey_method_strictness_without_freeze ... ok
+test sole_super_calls_keep_getter_target_and_propagate_one_throw ... ok
+test uninitialized_this_and_null_bases_preserve_error_order ... ok
+test super_assignment_checks_receiver_descriptors_and_propagates_proxy_errors ... ok
+test sole_super_calls_preserve_parameter_mapping_and_fallback_effects ... ok
+test super_leaf_locals_keep_captures_parameter_writes_and_lexical_errors ... ok
+
+test result: ok. 19 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/template_literals.rs (/tmp/temiya-158-target/release/deps/template_literals-fe6dd28d67a94882)
+
+running 5 tests
+test caller_controls_nested_expression_and_template_boundaries ... ok
+test complete_templates_preserve_raw_and_cooked_values ... ok
+test invalid_escapes_preserve_raw_values_for_tagged_templates ... ok
+test template_tail_goals_preserve_slash_choices_and_comments ... ok
+test unclosed_components_have_byte_spans_and_do_not_advance ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/test262_async.rs (/tmp/temiya-158-target/release/deps/test262_async-a391a87644bf185a)
+
+running 10 tests
+test async_parse_negative_needs_no_completion_and_policy_skip_precedes_worker ... ok
+test cli_async_runs_both_required_variants_and_rejects_unbounded_configuration ... ok
+test original_done_harness_precedes_includes_and_setup_cannot_complete_test ... ok
+test async_failures_and_duplicate_notifications_never_pass ... ok
+test pinned_async_cases_use_original_done_harness ... ignored, requires immutable Test262 corpus; original async cases and harness identity
+test actual_async_completion_drains_jobs_and_preserves_child_fifo ... ok
+test raw_async_uses_print_without_loading_or_rewriting_harness ... ok
+test oversized_worker_reports_fail_without_blocking_the_parent_pipe ... ok
+test protocol_errors_and_getters_cannot_satisfy_negative_cases ... ok
+test incomplete_and_nonreturning_jobs_obey_real_deadline ... ok
+
+test result: ok. 9 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.61s
+
+     Running tests/test262_engine.rs (/tmp/temiya-158-target/release/deps/test262_engine-424b7002d1867a2e)
+
+running 23 tests
+test corpus_and_include_paths_cannot_escape_their_roots ... ok
+test engine::host::tests::global_callbacks_do_not_keep_the_host_owner_alive ... ok
+test engine::host::tests::script_hook_detaches_existing_runtime_views ... ok
+test harness_failures_and_unavailable_hooks_never_satisfy_negative_tests ... ok
+test harness_order_raw_strict_variants_and_fresh_realms_are_observable ... ok
+test host_detachment_updates_byte_length_and_rejects_invalid_buffers_and_keys ... ok
+test cli_resolves_canonical_fixture_identity_and_circular_dependencies ... ok
+test host_realms_evaluate_scripts_with_separate_globals_and_original_throws ... ok
+test name_spoofing_and_error_getter_failures_do_not_replace_original_throws ... ok
+test module_parse_link_and_runtime_failures_are_separate ... ok
+test pinned_harness_dependency_followup ... ignored, requires fixed Test262 corpus; rechecks all prior #146 dependency cases
+test pinned_host_hooks_execute_original_cases ... ignored, requires fixed Test262 corpus; original host-hook regressions
+test pinned_module_fixtures_cycles_missing_exports_and_top_level_await ... ignored, requires immutable Test262 corpus; original module fixtures, cycles, negatives and TLA
+test pinned_original_cases_run_through_actual_cli_and_immutable_sources ... ignored, requires fixed Test262 corpus; TEST262_DIR selects the Git object store
+test public_engine_links_without_running_bodies_and_rejects_foreign_handles ... ok
+test public_engine_rejects_missing_and_circular_reexports_before_evaluation ... ok
+test quoted_flow_lists_preserve_flags_and_include_filenames ... ok
+test string_host_module_loader_never_receives_lossy_specifier_aliases ... ok
+test supervised_worker_selects_the_requested_strict_variant ... ok
+test unknown_protocols_and_conflicting_flags_do_not_become_passes ... ok
+test public_runner_executes_bodies_and_matches_error_phase_and_constructor ... ok
+test cli_runs_real_cases_and_keeps_setup_failures_and_skips_out_of_pass_counts ... ok
+test cli_module_specifiers_preserve_unicode_and_reject_lossy_aliases ... ok
+
+test result: ok. 19 passed; 0 failed; 4 ignored; 0 measured; 0 filtered out; finished in 0.04s
+
+     Running tests/test262_harness.rs (/tmp/temiya-158-target/release/deps/test262_harness-cd0ea14196a4dfec)
+
+running 5 tests
+test malformed_metadata_and_manifest_are_rejected ... ok
+test frontmatter_expands_default_and_constrained_variants ... ok
+test manifest_revision_and_skip_reasons_are_reproducible ... ok
+test negative_phase_and_error_type_must_both_match ... ok
+test skips_do_not_invoke_the_executor ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/test262_isolation.rs (/tmp/temiya-158-target/release/deps/test262_isolation-e2e2f1d3ae4b6f3b)
+
+running 6 tests
+test pending_job_after_abrupt_script_does_not_run_in_the_next_test ... ok
+test each_synchronous_test_gets_a_fresh_global ... ok
+test javascript_range_errors_keep_their_language_negative_semantics ... ok
+test externally_signalled_worker_crashes_do_not_kill_the_suite_or_imply_oom ... ok
+test stack_and_allocation_exhaustion_are_distinct_and_never_satisfy_negatives ... ok
+test synchronous_loop_times_out_and_the_next_test_still_runs ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.53s
+
+     Running tests/test262_metadata_only.rs (/tmp/temiya-158-target/release/deps/test262_metadata_only-5c68e21a33c43a14)
+
+running 5 tests
+test metadata_mode_cannot_be_used_as_a_worker ... ok
+test indexes_original_features_variants_and_negatives_without_engine_execution ... ok
+test missing_metadata_and_files_are_recorded_without_inventing_variants ... ok
+test block_comments_indentation_and_multiline_flow_preserve_real_execution ... ok
+test baseline_uses_actual_outcomes_and_separates_skip_timeout_and_unexecuted ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.36s
+
+     Running tests/tiering_design.rs (/tmp/temiya-158-target/release/deps/tiering_design-70bf6b3a2449e762)
+
+running 3 tests
+test cross_table_and_boundary_errors_are_rejected ... ok
+test coherent_safepoint_deopt_and_osr_metadata_validates ... ok
+test hotness_promotes_and_observable_events_deopt ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/typed_number_dispatch.rs (/tmp/temiya-158-target/release/deps/typed_number_dispatch-7a288e7ea016a4fc)
+
+running 6 tests
+test coercion_throw_keeps_identity_and_skips_the_right_callback ... ok
+test non_number_operands_keep_ordered_coercion_and_string_concatenation ... ok
+test numeric_results_preserve_array_object_and_pending_call_roots ... ok
+test pinned_test262_typed_number_dispatch ... ignored, requires the pinned Test262 corpus; see docs/typed-number-dispatch.md
+test numeric_binding_reads_preserve_bits_and_observe_captured_updates ... ok
+test scalar_loops_keep_parameter_aliases_and_observable_bindings ... ok
+
+test result: ok. 5 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests temiya
+
+running 1 test
+test src/lexer.rs - lexer::Lexer (line 620) ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+all doctests ran in 0.24s; merged doctests compilation took 0.24s

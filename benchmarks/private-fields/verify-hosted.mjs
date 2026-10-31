@@ -8,7 +8,7 @@ import {execFileSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 const root=path.dirname(fileURLToPath(import.meta.url)),repo=path.resolve(root,'../..');
 const read=p=>JSON.parse(fs.readFileSync(p)),sha=b=>createHash('sha256').update(b).digest('hex');
-const captures=new Map([['hosted-default-private-v1',{source:'e3eb58767719aef346140d49771891807048ec37',run:41158818113,baseline:'9780432aa34cdb6b81debdb396f0af54873f73d5'}],['hosted-private-expression-v1',{source:'1566ca21bb49c7b822bf147cfbc89f7aa586b41e',run:41154811344,baseline:'74823117133fd6713ced719f6976399f8d5b9507'}]]);
+const captures=new Map([['hosted-bound-constructor-v1',{source:'072f6315ab26b4c11b3a023fd6de68c48d7632cc',run:41168380212,baseline:'a65fa12bb7123b1af0e0a2b2254411ee7170c3e8'}],['hosted-bound-private-v1',{source:'a65fa12bb7123b1af0e0a2b2254411ee7170c3e8',run:41162604370,baseline:'e3eb58767719aef346140d49771891807048ec37'}],['hosted-default-private-v1',{source:'e3eb58767719aef346140d49771891807048ec37',run:41158818113,baseline:'9780432aa34cdb6b81debdb396f0af54873f73d5'}],['hosted-private-expression-v1',{source:'1566ca21bb49c7b822bf147cfbc89f7aa586b41e',run:41154811344,baseline:'74823117133fd6713ced719f6976399f8d5b9507'}]]);
 const groups=[
  ['original','audit-original-workload-records.mjs',[],['beforeafter','boa','baseline-boa','same-binary-control']],
  ['class','audit-class-workload-records.mjs',[],['class-beforeafter','class-boa','class-baseline-boa','class-same-binary']],

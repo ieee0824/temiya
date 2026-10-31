@@ -43,3 +43,40 @@ frozen suite when include_controls is true and its manifest exists. It retains
 before/after, actual Boa, baseline/Boa and identical-binary controls with the
 existing15sample/3pair policy; previous suites remain included. These wiring
 and output checks do not establish native speed qualification.
+
+full-initial-v1 retains the full source7eba69e capture from run41169970673:
+29701pass61923fail18skip8569timeout,0missing across100211 variants and52133
+files. All29701 parent passes remain, with0newpasses and0regressions. The8
+known-pass gates independently replay via verify-full.mjs in CI. These results
+do not imply complete conformance or a passing two-host speed qualification.
+
+fixed-initial-v1 retains all four fixed before/after Ast/Auto captures and an
+independent replay in verify-fixed.mjs. Each candidate backend records235pass,
+1983fail,1662timeout across3880 variants; their outcomes agree exactly. Baseline
+Ast passes235 and Auto passes194; no prior pass regresses. The baseline Auto
+producer left8 variants wholly unreported after one failed CLI batch. Recovery
+used the identical binary/host/limits only for those8, preserving all3872
+reported outcomes, failed raw attempt and initial history. All130 baseline
+Auto timeout differences remain visible (41 now pass,89 now fail); they are
+not claimed as new semantic coverage. No timeout, failure or skip is a pass.
+
+hosted-initial-v1 retains all68 independently replayed reports from
+run41169970601, source7eba69e. All46 preceding workload gates pass on both
+hosts. Iterator wins in frozen order are0/0/2/3/0/0 on EPYC9V45 and
+0/0/0/1/0/0 on Xeon8573C. Call spread is roughly11x/21x Boa time,
+done/value getters roughly4x, and invalid-next-result roughly2x. These
+adverse results do not qualify the source for merge. No input, limit, CPU
+selection or significance threshold has been changed.
+
+indexed-arguments-diagnostic-v1 retains source74ff04d: call-spread instructions
+5286694951 to343139030,882 tests including1doctest passed. Fresh indexed
+argument storage and fully checked lookup hints avoid quadratic property scans.
+definition-cache-diagnostic-v1 retains source09766bb: getter-order2990744792
+to1272405193 and invalid-next1624065902 to1148010885 instructions,884 tests
+including1doctest passed. Verified bodies retain syntax/code-only caches across
+calls; Realm, environments, function objects and private identities bind anew.
+Cross-Realm code reuse, escaping captures, code equality and heap release have
+public integration coverage. verify-profiles.mjs checks identities, raw profiles,
+native logs and all6 output oracles. These are instruction diagnostics only.
+
+`full-definition-cache-v1` retains run 41176606769 at source 09766bb. All eight full-corpus gates replay independently; all 29,701 preceding passes remain, with no new passes or regressions. Existing failures and timeouts remain recorded. This capture does not establish speed qualification.

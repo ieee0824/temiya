@@ -79,8 +79,7 @@ impl VirtualMachine {
     ) -> RuntimeResult<Completion> {
         let _object_roots = realm.and_then(Realm::enter_object_root_region);
         let mut property_context = realm.map(PropertyReferenceContext::new);
-        let mut definition_context =
-            crate::runtime::bytecode_function::DefinitionEvaluationContext::default();
+        let mut definition_context = bytecode.definition_context();
         let body = bytecode.bytecode();
         let mut scalar_scopes: Vec<Option<ScalarScope<'_>>> = Vec::new();
         if SCALAR_LOCALS {

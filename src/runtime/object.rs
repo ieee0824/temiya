@@ -656,7 +656,65 @@ pub(super) fn ordinary_state() -> ObjectState {
     }
 }
 
+impl ObjectState {
+    fn checked_property_position(&self, key: &PropertyKey) -> Option<usize> {
+        let hint = self.last_property.get();
+        if self
+            .properties
+            .get(hint)
+            .is_some_and(|entry| entry.key == *key)
+        {
+            return Some(hint);
+        }
+        if self.properties.len() > 8 {
+            if let Some(index) = key.array_index().map(|index| index as usize) {
+                if self
+                    .properties
+                    .get(index)
+                    .is_some_and(|entry| entry.key == *key)
+                {
+                    return Some(index);
+                }
+            }
+            let last = self.properties.len() - 1;
+            if self.properties[last].key == *key {
+                return Some(last);
+            }
+        }
+        self.properties.iter().position(|entry| entry.key == *key)
+    }
+}
+
 impl Object {
+    // A new, unpublished ordinary object with unique canonical indices. The
+    // public values remain rooted while their stored edges are prepared.
+    pub(super) fn indexed_values_object(context: &Object, values: &[Value]) -> RuntimeResult<Self> {
+        let object = Self::new_for(context);
+        let mut properties = Vec::with_capacity(values.len() + 1);
+        for (index, value) in values.iter().enumerate() {
+            properties.push(PropertyEntry {
+                key: PropertyKey::String(JsString::from(index.to_string())),
+                descriptor: StoredDescriptor::Data {
+                    value: StoredValue::store_owned(&object, value.clone())?,
+                    writable: true,
+                    enumerable: true,
+                    configurable: true,
+                },
+            });
+        }
+        properties.push(PropertyEntry {
+            key: "length".into(),
+            descriptor: StoredDescriptor::Data {
+                value: StoredValue::Number(values.len() as f64),
+                writable: true,
+                enumerable: true,
+                configurable: true,
+            },
+        });
+        object.0.state.borrow_mut().properties = properties;
+        Ok(object)
+    }
+
     pub(super) fn new_with_prototype(prototype: Self) -> Self {
         let runtime = prototype.allocation_context().clone();
         let mut data = super::ObjectData::ordinary();
@@ -2031,17 +2089,8 @@ impl Object {
             return Ok(None);
         }
         let entry = state
-            .properties
-            .get(state.last_property.get())
-            .filter(|entry| entry.key == *key)
-            .map(|entry| (state.last_property.get(), entry))
-            .or_else(|| {
-                state
-                    .properties
-                    .iter()
-                    .enumerate()
-                    .find(|(_, entry)| entry.key == *key)
-            });
+            .checked_property_position(key)
+            .map(|index| (index, &state.properties[index]));
         let Some((index, entry)) = entry else {
             return Ok(None);
         };
@@ -2505,7 +2554,7 @@ impl super::ObjectData {
     pub(super) fn trace_object_edges(&self, tracer: &mut crate::gc::Tracer<'_>) {
         let state = self.state.borrow();
         if let Some(fields) = &state.private_fields {
-            for (_, value) in fields.0.iter() {
+            for (_, value) in fields.iter() {
                 value.trace(tracer);
             }
         }

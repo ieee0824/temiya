@@ -1,36 +1,69 @@
 {
   "schema": 1,
-  "scope": "Frozen before any assignment workload timing. Six cases cover array/object member targets, computed/default order, rest symbols, partial writes and exception/IteratorClose priority. Oracle and native qualification are pending; no speed claim.",
+  "fixture_kind": "authored-destructuring-assignment",
+  "fixture_version": 1,
+  "reference_engine_revision": "007556adccb8fb4329236932ca8175f8e8d119d2",
   "workloads": [
     {
       "name": "assignment-array-members",
       "file": "assignment-array-members.json",
-      "sha256": "e0e0ab74a051db548f433e12d436bc5d8081e758630ba1472a4a2f04dd4ed5d3"
+      "sha256": "e0e0ab74a051db548f433e12d436bc5d8081e758630ba1472a4a2f04dd4ed5d3",
+      "iterations": 10000,
+      "expected": 50005000,
+      "oracle": "sum-one-to-n-and-per-case-invariants",
+      "setup_sha256": "21c1c61e40eeedbd5443cfe69693995e44af5e2de05e9e1c4f9ed1e849225821",
+      "invocation_sha256": "d0e3efdf9851dbde2f1f5c032f78b8ac15e066d907d82e7745927914215538b7"
     },
     {
       "name": "assignment-object-members",
       "file": "assignment-object-members.json",
-      "sha256": "2393c00fc6852a40f0c6bd1571ac1f80fc171200674a83841ac41c9a108d41e9"
+      "sha256": "2393c00fc6852a40f0c6bd1571ac1f80fc171200674a83841ac41c9a108d41e9",
+      "iterations": 10000,
+      "expected": 50005000,
+      "oracle": "sum-one-to-n-and-per-case-invariants",
+      "setup_sha256": "4512ef94c7b41edb36c68e12df841210d6bf22da9a356ae7ffc8a797001ca379",
+      "invocation_sha256": "d0e3efdf9851dbde2f1f5c032f78b8ac15e066d907d82e7745927914215538b7"
     },
     {
       "name": "assignment-computed-default",
       "file": "assignment-computed-default.json",
-      "sha256": "d7da7a40c04c7b9d4fac251b733a157582cab478b81615d5519bd4f4b2fffd6a"
+      "sha256": "d7da7a40c04c7b9d4fac251b733a157582cab478b81615d5519bd4f4b2fffd6a",
+      "iterations": 10000,
+      "expected": 50005000,
+      "oracle": "sum-one-to-n-and-per-case-invariants",
+      "setup_sha256": "19405770c06902a5a0642e5dcd296aaf74bf8a9b93c421e2cc24108522f9b69f",
+      "invocation_sha256": "d0e3efdf9851dbde2f1f5c032f78b8ac15e066d907d82e7745927914215538b7"
     },
     {
       "name": "assignment-rest-symbol",
       "file": "assignment-rest-symbol.json",
-      "sha256": "179100ac5dc9d0e7460b46271e27ac5ee9b1ab5ccc86c9d97f39e0c93e4d7baa"
+      "sha256": "179100ac5dc9d0e7460b46271e27ac5ee9b1ab5ccc86c9d97f39e0c93e4d7baa",
+      "iterations": 10000,
+      "expected": 50005000,
+      "oracle": "sum-one-to-n-and-per-case-invariants",
+      "setup_sha256": "71c58400080c4d184066c3c41a93c2a7acaf1c248070300495c5a8e948999af5",
+      "invocation_sha256": "d0e3efdf9851dbde2f1f5c032f78b8ac15e066d907d82e7745927914215538b7"
     },
     {
       "name": "assignment-close-priority",
       "file": "assignment-close-priority.json",
-      "sha256": "70597181617cb1e4be5a24ac2317da8ce333827c35b818844c70581559a11723"
+      "sha256": "70597181617cb1e4be5a24ac2317da8ce333827c35b818844c70581559a11723",
+      "iterations": 10000,
+      "expected": 50005000,
+      "oracle": "sum-one-to-n-and-per-case-invariants",
+      "setup_sha256": "34a3e9c5997f342dae3f0ec3207e2d51234e62617caf1428f5d1f7ef306a1794",
+      "invocation_sha256": "d0e3efdf9851dbde2f1f5c032f78b8ac15e066d907d82e7745927914215538b7"
     },
     {
       "name": "assignment-const-failure",
       "file": "assignment-const-failure.json",
-      "sha256": "498be1db686ec57dc1b693e74e1aa513b0426638347b5b88652c6598a0774b48"
+      "sha256": "498be1db686ec57dc1b693e74e1aa513b0426638347b5b88652c6598a0774b48",
+      "iterations": 10000,
+      "expected": 50005000,
+      "oracle": "sum-one-to-n-and-per-case-invariants",
+      "setup_sha256": "ffec0814f22074d51e60992e931a9aa5d1654a8235c1a440529bcfc2be592c7c",
+      "invocation_sha256": "d0e3efdf9851dbde2f1f5c032f78b8ac15e066d907d82e7745927914215538b7"
     }
-  ]
+  ],
+  "scope": "Frozen before any assignment workload timing. Six cases cover array/object member targets, computed/default order, rest symbols, partial writes and exception/IteratorClose priority. Oracle and native qualification are pending; no speed claim."
 }

@@ -1,5 +1,6 @@
 // Integrity replay deliberately accepts retained adverse speed observations.
 import fs from 'node:fs';
+import {gunzipSync} from 'node:zlib';
 import path from 'node:path';
 import os from 'node:os';
 import assert from 'node:assert/strict';
@@ -8,7 +9,7 @@ import {execFileSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 const root=path.dirname(fileURLToPath(import.meta.url)),repo=path.resolve(root,'../..');
 const read=p=>JSON.parse(fs.readFileSync(p)),sha=b=>createHash('sha256').update(b).digest('hex');
-const captures=new Map([['hosted-weak-environments-v1',{source:'fd4ad7b521537dc0266424c40bd59e7dc6bb3c59',run:41200250693,baseline:'7eba69e8d8e5927b5f5c73dbdd57b30749e16442'}],['hosted-owned-sites-v1',{source:'767add1afe9c03059cba1ebff05f7397d9a3f67e',run:41198352870,baseline:'7eba69e8d8e5927b5f5c73dbdd57b30749e16442'}],['hosted-outlined-strings-v1',{source:'375ad2dce49b04ce37d7f8c8015d2230dc248d82',run:41196855251,baseline:'7eba69e8d8e5927b5f5c73dbdd57b30749e16442'}],['hosted-inline-auxiliary-v1',{source:'d9906db3c26e0b6b3663206fe0617fa5dbd7bbfc',run:41192021887,baseline:'7eba69e8d8e5927b5f5c73dbdd57b30749e16442'}],['hosted-empty-frame-v1',{source:'4a4c103ade6b0acae5f5a16cfa68220f24c2300e',run:41186655959,baseline:'7eba69e8d8e5927b5f5c73dbdd57b30749e16442'}],['hosted-native-step-v1',{source:'1979ac3cb1454a8903d32d4886f71b86324f972c',run:41181490909,baseline:'7eba69e8d8e5927b5f5c73dbdd57b30749e16442'}],['hosted-definition-cache-v1',{source:'09766bba7308eaede7b76059b88b73dd2bbb4efe',run:41176605076,baseline:'7eba69e8d8e5927b5f5c73dbdd57b30749e16442'}],['hosted-initial-v1',{source:'7eba69e8d8e5927b5f5c73dbdd57b30749e16442',run:41169970601,baseline:'622bc975af697c49298d2fb5b71b575aeed6cdb5'}]]);
+const captures=new Map([['hosted-catch-records-partial-v1',{source:'ff67c89dc586cdf0d982e49aa1c72205ca5c4e66',run:41211990414,baseline:'bb0d3268d7bfbb9b6910b3b86db3a5cf1abf49c7',copies:[2]}],['hosted-hot-sites-v1',{source:'bb0d3268d7bfbb9b6910b3b86db3a5cf1abf49c7',run:41208962674,baseline:'702ee76165c04990ac517a993c3e194c279cf4a0'}],['hosted-literal-accessors-v1',{source:'702ee76165c04990ac517a993c3e194c279cf4a0',run:41204129150,baseline:'7eba69e8d8e5927b5f5c73dbdd57b30749e16442'}],['hosted-weak-environments-v1',{source:'fd4ad7b521537dc0266424c40bd59e7dc6bb3c59',run:41200250693,baseline:'7eba69e8d8e5927b5f5c73dbdd57b30749e16442'}],['hosted-owned-sites-v1',{source:'767add1afe9c03059cba1ebff05f7397d9a3f67e',run:41198352870,baseline:'7eba69e8d8e5927b5f5c73dbdd57b30749e16442'}],['hosted-outlined-strings-v1',{source:'375ad2dce49b04ce37d7f8c8015d2230dc248d82',run:41196855251,baseline:'7eba69e8d8e5927b5f5c73dbdd57b30749e16442'}],['hosted-inline-auxiliary-v1',{source:'d9906db3c26e0b6b3663206fe0617fa5dbd7bbfc',run:41192021887,baseline:'7eba69e8d8e5927b5f5c73dbdd57b30749e16442'}],['hosted-empty-frame-v1',{source:'4a4c103ade6b0acae5f5a16cfa68220f24c2300e',run:41186655959,baseline:'7eba69e8d8e5927b5f5c73dbdd57b30749e16442'}],['hosted-native-step-v1',{source:'1979ac3cb1454a8903d32d4886f71b86324f972c',run:41181490909,baseline:'7eba69e8d8e5927b5f5c73dbdd57b30749e16442'}],['hosted-definition-cache-v1',{source:'09766bba7308eaede7b76059b88b73dd2bbb4efe',run:41176605076,baseline:'7eba69e8d8e5927b5f5c73dbdd57b30749e16442'}],['hosted-initial-v1',{source:'7eba69e8d8e5927b5f5c73dbdd57b30749e16442',run:41169970601,baseline:'622bc975af697c49298d2fb5b71b575aeed6cdb5'}]]);
 const groups=[
  ['original','audit-original-workload-records.mjs',[],['beforeafter','boa','baseline-boa','same-binary-control']],
  ['class','audit-class-workload-records.mjs',[],['class-beforeafter','class-boa','class-baseline-boa','class-same-binary']],
@@ -35,7 +36,7 @@ for(const name of selected){
   assert(execFileSync('tar',['-tvzf',archive],{encoding:'utf8'}).trim().split('\n').every(n=>n[0]==='d'||n[0]==='-'));
   execFileSync('tar',['-xzf',archive,'--no-same-owner','--no-same-permissions','-C',temp]);
   const summaries=[];
-  for(const copy of [1,2]){
+  for(const copy of (expected.copies ?? [1,2])){
    const capture=temp+'/copy-'+copy,summary={copy,groups:[]};
    assert.equal(fs.readFileSync(capture+'/measured-revision.txt','utf8').trim(),e.source_revision);
    assert.equal(fs.readFileSync(capture+'/baseline-revision.txt','utf8').trim(),e.baseline_revision);
@@ -63,6 +64,32 @@ for(const name of selected){
    }
    summaries.push(summary);
   }
-  console.log(JSON.stringify({integrity:'pass',capture:name,source:e.source_revision,reports:68,summaries,scope:e.scope}));
+  console.log(JSON.stringify({integrity:'pass',capture:name,source:e.source_revision,reports:34*(expected.copies ?? [1,2]).length,summaries,scope:e.scope}));
  } finally {fs.rmSync(temp,{recursive:true,force:true});}
+}
+
+// Infrastructure failure precedes fixture measurement; never count it as speed evidence.
+{
+ const dir=root+'/hosted-catch-records-build-failure-v1',e=read(dir+'/evidence.json');
+ assert.equal(e.run,41211990414);assert.equal(e.job,124573094646);assert.equal(e.copy,1);
+ assert.equal(e.source,'ff67c89dc586cdf0d982e49aa1c72205ca5c4e66');
+ assert.equal(e.compiled_runtime,'71009f3ea4f70a5ca471d35ca6c2857f8226dec4');
+ assert.equal(e.baseline,'bb0d3268d7bfbb9b6910b3b86db3a5cf1abf49c7');assert.equal(e.workload_reports,0);
+ assert.equal(e.free_gib,10.9);assert.equal(e.required_gib,14);
+ for(const [file,hash]of Object.entries(e.files)){assert(!file.includes('/'));assert.equal(sha(fs.readFileSync(dir+'/'+file)),hash);}
+ assert.equal(Object.keys(e.files).length,8);
+ assert.equal(e.cleanup_validation.workflow_revision,'839a17a237e7e5cedf84b246168f20e2d3065bad');
+ const cleanup=read(dir+'/'+e.cleanup_validation.file);
+ assert.equal(cleanup.workflow_sha256,sha(execFileSync('git',['-c','safe.directory='+repo,'show',e.cleanup_validation.workflow_revision+':.github/workflows/omoikane-benchmark.yml'],{cwd:repo})));
+ assert.equal(cleanup.cache_removal,true);assert.equal(cleanup.worker_sha_preserved,true);
+ assert.equal(cleanup.hosted_sdk_cleanup_exercised,false);assert.equal(cleanup.worker_probes.length,2);
+ for(const worker of cleanup.worker_probes){assert.equal(worker.probe.expected,42);assert.equal(worker.probe.validated_passes,2);}
+ const log=gunzipSync(fs.readFileSync(dir+'/job.log.gz')).toString();
+ assert(log.includes('cargo-space-guard: insufficient space before build: free=10.9 GiB, required=14.0 GiB'));
+ assert.equal(fs.readFileSync(dir+'/measured-revision.txt','utf8').trim(),e.source);
+ assert.equal(fs.readFileSync(dir+'/baseline-revision.txt','utf8').trim(),e.baseline);
+ const current=read(dir+'/same-binary-build-info.json'),baseline=read(dir+'/baseline-build-info.json');
+ assert.equal(current.revision,e.source);assert.equal(baseline.revision,e.baseline);
+ for(const info of [current,baseline]){assert.match(info.executable_sha256,/^[a-f0-9]{64}$/);assert.equal(info.mode_probe.expected,42);assert.equal(info.mode_probe.validated_passes,2);}
+ console.log(JSON.stringify({integrity:'pass',unavailable_attempt:e.run,copy:1,workload_reports:0,scope:e.scope}));
 }

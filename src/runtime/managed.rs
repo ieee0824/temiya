@@ -23,7 +23,7 @@ pub(super) struct RuntimeData {
     collecting: Cell<bool>,
     allocation_interval: Cell<usize>,
     allocation_remaining: Cell<usize>,
-    active_objects: RefCell<Weak<RefCell<ActiveObjects>>>,
+    active_objects: RefCell<Option<ActiveObjects>>,
     #[cfg(all(test, not(miri)))]
     collection_ns: Cell<u128>,
 }
@@ -63,6 +63,7 @@ struct ActiveObjects {
     // Stable slots avoid shifting facades on every hit. Bucket bits only
     // narrow candidates; full identity is checked even for colliding keys.
     buckets: [u16; OBJECT_FINGERPRINTS],
+    handle_buckets: [u16; OBJECT_FINGERPRINTS],
     oldest: usize,
     newest: usize,
 }
@@ -71,6 +72,7 @@ impl ActiveObjects {
         Self {
             objects: Vec::with_capacity(ACTIVE_OBJECTS),
             buckets: [0; OBJECT_FINGERPRINTS],
+            handle_buckets: [0; OBJECT_FINGERPRINTS],
             oldest: NO_OBJECT,
             newest: NO_OBJECT,
         }
@@ -78,6 +80,7 @@ impl ActiveObjects {
     fn clear(&mut self) {
         self.objects.clear();
         self.buckets.fill(0);
+        self.handle_buckets.fill(0);
         self.oldest = NO_OBJECT;
         self.newest = NO_OBJECT;
     }
@@ -100,6 +103,20 @@ impl ActiveObjects {
         self.objects[index].next = NO_OBJECT;
         self.newest = index;
     }
+    fn get(&mut self, handle: Handle<ManagedObject>) -> Option<Object> {
+        let mut candidates = self.handle_buckets[handle.slot_index() & (OBJECT_FINGERPRINTS - 1)];
+        while candidates != 0 {
+            let index = candidates.trailing_zeros() as usize;
+            let object = &self.objects[index].object;
+            if object.0.0.root.handle() == handle {
+                let object = object.clone();
+                self.touch(index);
+                return Some(object);
+            }
+            candidates &= candidates - 1;
+        }
+        None
+    }
     fn remember(&mut self, object: &Object) {
         if self.newest != NO_OBJECT && self.objects[self.newest].object == *object {
             return;
@@ -119,6 +136,9 @@ impl ActiveObjects {
             let previous =
                 self.objects[index].object.identity() as usize & (OBJECT_FINGERPRINTS - 1);
             self.buckets[previous] &= !(1u16 << index);
+            let previous_handle = self.objects[index].object.0.0.root.handle();
+            self.handle_buckets[previous_handle.slot_index() & (OBJECT_FINGERPRINTS - 1)] &=
+                !(1u16 << index);
             self.objects[index].object = object.clone();
             self.touch(index);
             index
@@ -138,6 +158,8 @@ impl ActiveObjects {
             index
         };
         self.buckets[fingerprint] |= 1u16 << index;
+        self.handle_buckets[object.0.0.root.handle().slot_index() & (OBJECT_FINGERPRINTS - 1)] |=
+            1u16 << index;
     }
 }
 
@@ -146,13 +168,15 @@ impl ActiveObjects {
 // before every collection, so cached facades cannot keep a dead JS graph live.
 pub(crate) struct ObjectRootRegion {
     runtime: Runtime,
-    objects: Rc<RefCell<ActiveObjects>>,
 }
 impl Drop for ObjectRootRegion {
     fn drop(&mut self) {
-        let mut active = self.runtime.0.active_objects.borrow_mut();
-        debug_assert_eq!(active.as_ptr(), Rc::as_ptr(&self.objects));
-        *active = Weak::new();
+        // Remove the region before releasing facades, and release them outside
+        // the borrow. This also breaks the temporary Runtime/facade ownership
+        // cycle when the outer evaluation unwinds.
+        let objects = self.runtime.0.active_objects.borrow_mut().take();
+        debug_assert!(objects.is_some());
+        drop(objects);
     }
 }
 
@@ -227,25 +251,22 @@ impl WeakObjectRoot {
 impl Runtime {
     pub(crate) fn enter_object_root_region(&self) -> Option<ObjectRootRegion> {
         let mut active = self.0.active_objects.borrow_mut();
-        if active.upgrade().is_some() {
+        if active.is_some() {
             return None;
         }
-        let objects = Rc::new(RefCell::new(ActiveObjects::new()));
-        *active = Rc::downgrade(&objects);
+        *active = Some(ActiveObjects::new());
         Some(ObjectRootRegion {
             runtime: self.clone(),
-            objects,
         })
     }
     fn remember_active_object(&self, object: &Object) {
-        let Some(active) = self.0.active_objects.borrow().upgrade() else {
-            return;
-        };
-        active.borrow_mut().remember(object);
+        if let Some(active) = self.0.active_objects.borrow_mut().as_mut() {
+            active.remember(object);
+        }
     }
     fn clear_active_objects(&self) {
-        if let Some(active) = self.0.active_objects.borrow().upgrade() {
-            active.borrow_mut().clear();
+        if let Some(active) = self.0.active_objects.borrow_mut().as_mut() {
+            active.clear();
         }
     }
     fn allocation_safepoint(&self, incoming: &impl Trace) {
@@ -452,7 +473,7 @@ impl Runtime {
             collecting: Cell::new(false),
             allocation_interval: Cell::new(4096),
             allocation_remaining: Cell::new(4096),
-            active_objects: RefCell::new(Weak::new()),
+            active_objects: RefCell::new(None),
             #[cfg(all(test, not(miri)))]
             collection_ns: Cell::new(0),
         }))
@@ -475,6 +496,17 @@ impl Runtime {
         object
     }
     pub(super) fn root_object(&self, handle: Handle<ManagedObject>) -> Option<Object> {
+        // Region entries own live roots and are cleared before collection. A
+        // full handle comparison includes heap and generation, even on collisions.
+        if let Some(object) = self
+            .0
+            .active_objects
+            .borrow_mut()
+            .as_mut()
+            .and_then(|active| active.get(handle))
+        {
+            return Some(object);
+        }
         let heap = self.0.heap.borrow();
         let data = heap.shared(handle)?;
         if let Some(facade) = data.facade.borrow().upgrade() {
@@ -667,6 +699,13 @@ mod tests {
                     1u16 << index;
             }
             assert_eq!(cache.buckets, buckets);
+            let mut handle_buckets = [0u16; OBJECT_FINGERPRINTS];
+            for (index, entry) in cache.objects.iter().enumerate() {
+                handle_buckets
+                    [entry.object.0.0.root.handle().slot_index() & (OBJECT_FINGERPRINTS - 1)] |=
+                    1u16 << index;
+            }
+            assert_eq!(cache.handle_buckets, handle_buckets);
             if step % 97 == 0 {
                 cache.clear();
                 expected.clear();
@@ -728,6 +767,21 @@ mod tests {
         drop((owner, region));
         assert_eq!(runtime.collect_garbage().unwrap().retained, 0);
     }
+    #[test]
+    fn activation_region_releases_runtime_after_last_external_owner() {
+        let runtime = Runtime::new();
+        let weak = Rc::downgrade(&runtime.0);
+        let region = runtime.enter_object_root_region().unwrap();
+        let object = Object::new_in(&runtime);
+        drop((object, runtime));
+        assert!(weak.upgrade().is_some());
+        drop(region);
+        assert!(
+            weak.upgrade().is_none(),
+            "region teardown must break facade ownership cycles"
+        );
+    }
+
     #[test]
     fn activation_facades_are_bounded_and_do_not_retain_dead_graphs_at_collection() {
         let runtime = Runtime::new();
@@ -1175,12 +1229,56 @@ mod tests {
         assert!(weak.upgrade().is_none());
     }
     #[test]
+    fn active_handle_lookup_checks_collisions_and_collection() {
+        let runtime = Runtime::new();
+        runtime.set_allocation_collection_interval(usize::MAX);
+        let region = runtime.enter_object_root_region().unwrap();
+        let objects: Vec<_> = (0..=OBJECT_FINGERPRINTS)
+            .map(|_| Object::new_in(&runtime))
+            .collect();
+        let first = &objects[0];
+        let last = &objects[OBJECT_FINGERPRINTS];
+        let first_handle = first.0.handle().unwrap();
+        let last_handle = last.0.handle().unwrap();
+        assert_eq!(
+            first_handle.slot_index() & (OBJECT_FINGERPRINTS - 1),
+            last_handle.slot_index() & (OBJECT_FINGERPRINTS - 1)
+        );
+        // Revive the evicted first facade, then check both colliding cache entries.
+        assert_eq!(runtime.root_object(first_handle).unwrap(), *first);
+        assert_eq!(runtime.root_object(last_handle).unwrap(), *last);
+        assert_eq!(runtime.root_object(first_handle).unwrap(), *first);
+        drop(objects);
+        runtime.collect_garbage().unwrap();
+        assert!(runtime.root_object(first_handle).is_none());
+        let replacement = Object::new_in(&runtime);
+        assert!(runtime.root_object(first_handle).is_none());
+        assert_eq!(
+            runtime
+                .root_object(replacement.0.handle().unwrap())
+                .unwrap(),
+            replacement
+        );
+        drop(region);
+    }
+    #[test]
     fn another_runtime_cannot_root_a_foreign_handle() {
         let first = Runtime::new();
         let second = Runtime::new();
         let object = Object::new_in(&first);
+        let region = second.enter_object_root_region().unwrap();
+        let local = Object::new_in(&second);
+        assert_eq!(
+            object.0.handle().unwrap().slot_index(),
+            local.0.handle().unwrap().slot_index()
+        );
         assert!(!first.same_heap(&second));
         assert!(second.root_object(object.0.handle().unwrap()).is_none());
+        assert_eq!(
+            second.root_object(local.0.handle().unwrap()).unwrap(),
+            local
+        );
+        drop(region);
     }
 }
 

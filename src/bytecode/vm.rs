@@ -465,8 +465,10 @@ impl VirtualMachine {
                         unreachable!()
                     };
                     let environment = &scopes.last().expect("verified active scope").environment;
-                    let reference = if let Some(binding) = environment.resolve_binding(name)? {
-                        Reference::environment(binding, name.clone(), strict)
+                    let reference = if let Some((binding, hint)) =
+                        environment.resolve_binding_with_hint(name)?
+                    {
+                        Reference::function_binding(binding, name.clone(), strict, hint)
                     } else {
                         Reference::unresolvable(
                             realm.expect("scope requires Realm").global_object(),

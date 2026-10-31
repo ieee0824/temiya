@@ -35,6 +35,11 @@ impl<T: Trace> Handle<T> {
         self.raw
     }
 
+    // A cache bucket hint only; callers must compare the complete handle.
+    pub(crate) fn slot_index(self) -> usize {
+        self.raw.slot
+    }
+
     /// Creates a weak handle that does not contribute to reachability.
     #[must_use]
     pub fn downgrade(self) -> WeakHandle<T> {
@@ -299,8 +304,49 @@ impl<T: Trace> Drop for Root<T> {
     }
 }
 
+// Most traced handles belong to this heap and need no hash lookup. Keep a
+// complete-identity overflow set for foreign, out-of-range and alternate-
+// generation identities: collection may encounter arbitrary Trace edges.
+struct MarkedHandles {
+    heap: u64,
+    generations: Vec<Option<u64>>,
+    overflow: HashSet<RawHandle>,
+}
+impl MarkedHandles {
+    fn new(heap: u64, slots: usize) -> Self {
+        Self {
+            heap,
+            generations: vec![None; slots],
+            overflow: HashSet::new(),
+        }
+    }
+    fn insert(&mut self, handle: RawHandle) -> bool {
+        if handle.heap == self.heap {
+            if let Some(generation) = self.generations.get_mut(handle.slot) {
+                match generation {
+                    Some(value) if *value == handle.generation => return false,
+                    None => {
+                        *generation = Some(handle.generation);
+                        return true;
+                    }
+                    _ => {}
+                }
+            }
+        }
+        self.overflow.insert(handle)
+    }
+    fn contains(&self, handle: &RawHandle) -> bool {
+        (handle.heap == self.heap
+            && self
+                .generations
+                .get(handle.slot)
+                .is_some_and(|generation| *generation == Some(handle.generation)))
+            || self.overflow.contains(handle)
+    }
+}
+
 trait RegistrySweep {
-    fn discover_dead(&self, live: &HashSet<RawHandle>);
+    fn discover_dead(&self, live: &MarkedHandles);
     fn run_cleanup(&self);
 }
 
@@ -311,7 +357,7 @@ struct RegistryInner<T> {
 }
 
 impl<T: 'static> RegistrySweep for RegistryInner<T> {
-    fn discover_dead(&self, live: &HashSet<RawHandle>) {
+    fn discover_dead(&self, live: &MarkedHandles) {
         let mut entries = self.entries.borrow_mut();
         let mut pending = self.pending.borrow_mut();
         let mut index = 0;
@@ -781,7 +827,7 @@ impl Heap {
         mut retire: impl FnMut(AllocationPayload),
         incoming: Option<&dyn Trace>,
     ) -> CollectionStats {
-        let mut marked = HashSet::new();
+        let mut marked = MarkedHandles::new(self.id, self.slots.len());
         let mut traced_ephemerons = Vec::new();
         let mut queue = VecDeque::from(self.roots.borrow().active.clone());
         if let Some(incoming) = incoming {
@@ -864,7 +910,7 @@ impl Heap {
 
     /// Collects unreachable young allocations while leaving the old generation intact.
     pub fn collect_minor(&mut self) -> CollectionStats {
-        let mut marked = HashSet::new();
+        let mut marked = MarkedHandles::new(self.id, self.slots.len());
         let mut traced_ephemerons = Vec::new();
         let mut queue = VecDeque::new();
         let roots = self.roots.borrow().active.clone();
@@ -1215,5 +1261,46 @@ mod shared_record_tests {
         drop(parent);
         assert_eq!(heap.collect().reclaimed, 1);
         assert_eq!(drops.get(), 2);
+    }
+}
+
+#[cfg(test)]
+mod marked_handle_tests {
+    use super::*;
+    #[test]
+    fn dense_marks_preserve_complete_set_identity_for_arbitrary_edges() {
+        let mut dense = MarkedHandles::new(7, 16);
+        let mut reference = HashSet::new();
+        let mut state = 42u64;
+        for step in 0..2_000 {
+            state = state.wrapping_mul(6364136223846793005).wrapping_add(1);
+            let handle = RawHandle {
+                heap: if step % 3 == 0 { 8 } else { 7 },
+                slot: if step % 17 == 0 {
+                    usize::MAX
+                } else {
+                    (state >> 32) as usize % 24
+                },
+                generation: (state >> 8) % 4,
+            };
+            assert_eq!(dense.contains(&handle), reference.contains(&handle));
+            assert_eq!(dense.insert(handle), reference.insert(handle));
+            assert!(!dense.insert(handle));
+            for identity in &reference {
+                assert!(dense.contains(identity));
+            }
+        }
+        for heap in [6, 7, 8] {
+            for slot in 0..25 {
+                for generation in 0..5 {
+                    let handle = RawHandle {
+                        heap,
+                        slot,
+                        generation,
+                    };
+                    assert_eq!(dense.contains(&handle), reference.contains(&handle));
+                }
+            }
+        }
     }
 }

@@ -45,6 +45,7 @@ pub(super) enum ConstructorKind {
 }
 
 type FunctionCacheKey = (usize, usize, u8);
+type PreparedFunctionSite = ((usize, u8), Rc<FunctionCode>);
 #[derive(Debug, Default)]
 pub(super) struct CodeCache {
     entries: HashMap<FunctionCacheKey, Vec<Rc<FunctionCode>>>,
@@ -52,10 +53,22 @@ pub(super) struct CodeCache {
     // table. Keeping the owners alive prevents address reuse for cached sites.
     definitions: HashMap<usize, Rc<Expr>>,
     sites: HashMap<(usize, u8), Option<Rc<FunctionCode>>>,
+    // Only pinned sites enter this two-entry lookup cache; no borrowed syntax
+    // address or JS activation is retained here.
+    recent_sites: [Option<PreparedFunctionSite>; 2],
+    recent_cursor: usize,
+    last_definition: Option<usize>,
 }
 pub(super) type FunctionCache = Rc<RefCell<CodeCache>>;
 
 impl CodeCache {
+    fn remember_prepared_site(&mut self, site: (usize, u8), prepared: &Rc<FunctionCode>) {
+        if let Some(slot) = self.sites.get_mut(&site) {
+            *slot = Some(prepared.clone());
+            self.recent_sites[self.recent_cursor] = Some((site, prepared.clone()));
+            self.recent_cursor ^= 1;
+        }
+    }
     fn retain_site(&mut self, expression: &Expr) {
         let (function, kind) = match &expression.kind {
             ExprKind::Function(function) => (function.as_ref(), FunctionKind::Normal),
@@ -83,6 +96,10 @@ fn kind_tag(kind: FunctionKind) -> u8 {
 pub(super) fn retain_definition(cache: &FunctionCache, definition: &Rc<Expr>) {
     let mut cache = cache.borrow_mut();
     let identity = Rc::as_ptr(definition) as usize;
+    if cache.last_definition == Some(identity) {
+        return;
+    }
+    cache.last_definition = Some(identity);
     if cache.definitions.contains_key(&identity) {
         return;
     }
@@ -129,23 +146,28 @@ fn prepare_code(
     if let Some(cache) = cache {
         let found = {
             let cache = cache.borrow();
-            if let Some(Some(found)) = cache.sites.get(&site) {
+            if let Some((_, found)) = cache
+                .recent_sites
+                .iter()
+                .flatten()
+                .find(|(key, _)| *key == site)
+            {
                 return found.clone();
             }
-            cache
-                .entries
-                .get(&key)
-                .and_then(|entries| {
-                    entries
-                        .iter()
-                        .find(|entry| entry.kind == kind && entry.ast == *code)
-                })
-                .cloned()
+            cache.sites.get(&site).and_then(Clone::clone).or_else(|| {
+                cache
+                    .entries
+                    .get(&key)
+                    .and_then(|entries| {
+                        entries
+                            .iter()
+                            .find(|entry| entry.kind == kind && entry.ast == *code)
+                    })
+                    .cloned()
+            })
         };
         if let Some(found) = found {
-            if let Some(slot) = cache.borrow_mut().sites.get_mut(&site) {
-                *slot = Some(found.clone());
-            }
+            cache.borrow_mut().remember_prepared_site(site, &found);
             return found;
         }
     }
@@ -196,9 +218,7 @@ fn prepare_code(
         prepared
             .ast
             .visit_expressions(&mut |expression| cache.retain_site(expression));
-        if let Some(slot) = cache.sites.get_mut(&site) {
-            *slot = Some(prepared.clone());
-        }
+        cache.remember_prepared_site(site, &prepared);
     }
     prepared
 }
@@ -1038,6 +1058,45 @@ mod owned_definition_tests {
         assert!(
             weak.upgrade().is_none(),
             "syntax owners must release with cache"
+        );
+    }
+
+    #[test]
+    fn hot_sites_evict_without_memoizing_borrowed_syntax_or_owning_cache() {
+        let cache: FunctionCache = Default::default();
+        let kind = FunctionKind::Method(MethodKind::Get);
+        let roots = [definition(1), definition(2), definition(3)];
+        let prepared: Vec<_> = roots
+            .iter()
+            .map(|root| {
+                retain_definition(&cache, root);
+                retain_definition(&cache, root);
+                prepare_code(getter(root), kind, &Some(cache.clone()))
+            })
+            .collect();
+        for _ in 0..3 {
+            for (root, expected) in roots.iter().zip(&prepared) {
+                assert!(Rc::ptr_eq(
+                    expected,
+                    &prepare_code(getter(root), kind, &Some(cache.clone()))
+                ));
+            }
+        }
+        let borrowed = getter(&roots[0]).clone();
+        prepare_code(&borrowed, kind, &Some(cache.clone()));
+        assert!(
+            cache
+                .borrow()
+                .recent_sites
+                .iter()
+                .flatten()
+                .all(|(site, _)| site.0 != std::ptr::from_ref(&borrowed) as usize)
+        );
+        let weak = Rc::downgrade(&cache);
+        drop(cache);
+        assert!(
+            weak.upgrade().is_none(),
+            "hot code entries must not retain their cache"
         );
     }
 

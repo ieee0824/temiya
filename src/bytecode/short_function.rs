@@ -140,11 +140,13 @@ pub(super) fn execute(
                 strict,
             } => {
                 let name = name(index);
-                reference = Some(if let Some(binding) = outer.resolve_binding(name)? {
-                    Reference::environment(binding, name.clone(), strict)
-                } else {
-                    Reference::unresolvable(realm.global_object(), name.clone(), strict)
-                });
+                reference = Some(
+                    if let Some((binding, hint)) = outer.resolve_binding_with_hint(name)? {
+                        Reference::function_binding(binding, name.clone(), strict, hint)
+                    } else {
+                        Reference::unresolvable(realm.global_object(), name.clone(), strict)
+                    },
+                );
             }
             Instruction::LoadReference => values.push(
                 reference

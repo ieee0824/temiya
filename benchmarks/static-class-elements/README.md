@@ -38,3 +38,19 @@ integrated-correctness-v1 retains every before/after variant for the merged
 instance/static optimizations. Both547-variant backend lists match exactly,
 including84failures; all463preceding passes are preserved. Run
 verify-integrated-correctness.mjs to reconstruct the results and844native tests.
+
+hosted-integrated-v1 retains all48 reports from c4b65d6. Both hosts pass the
+static workloads but record only one significant class-construct win out of
+three, so this source is not merge-qualified. verify-hosted.mjs independently
+reconstructs both this result and the initial unqualified capture.
+
+constructor-assignments-v1 records source612d759, which skips the unobservable
+activation for strict base constructors containing only simple parameter-to-
+property assignments. Ordinary setter dispatch and strict assignment failures
+are preserved. All848 native tests pass, with26 ignored; Clippy passes. Both
+fixed547-variant backend selections retain exactly463 passes and84 failures.
+The complete fixed capture, binary/source identities and native base-suite raw
+samples are retained. The shared-host native base suite records12/12 significant
+Boa wins, but hosted qualification and full-corpus/safety checks remain pending.
+Callgrind instruction counts decrease from323336903 to289996124; these profiler
+counts are diagnostic and are not wall-clock performance qualification.

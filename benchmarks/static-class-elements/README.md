@@ -33,3 +33,8 @@ native-integrated-v1 retains current runtimec4b65d6:844native passes and all
 are15noise; preceding-source comparisons are11improvements4noise. Run
 verify-native-integrated.mjs to check all raw values and77compiled source
 hashes. Hosted, complete-corpus and safety qualification remain separate.
+
+integrated-correctness-v1 retains every before/after variant for the merged
+instance/static optimizations. Both547-variant backend lists match exactly,
+including84failures; all463preceding passes are preserved. Run
+verify-integrated-correctness.mjs to reconstruct the results and844native tests.

@@ -50,6 +50,24 @@ impl VirtualMachine {
         Self::run::<false>(bytecode, Some(realm), Some(frame), false)
     }
 
+    // This entry never treats the captured outer environment as a private
+    // activation: scalar-local clearing and loop-cell reuse remain disabled.
+    pub(crate) fn execute_without_own_frame(
+        bytecode: &VerifiedBytecode,
+        realm: &Realm,
+        outer: &Environment,
+    ) -> RuntimeResult<Completion> {
+        if !bytecode.can_elide_empty_function_frame() {
+            return Err(RuntimeError::internal_error(
+                "function frame elision was not verified",
+            ));
+        }
+        if bytecode.has_short_function_path() {
+            return super::short_function::execute(bytecode, realm, outer);
+        }
+        Self::run::<false>(bytecode, Some(realm), Some(outer), false)
+    }
+
     // Internal calls own their freshly instantiated frame. Scalar binding
     // elision additionally requires unobservable bindings; safe loop-cell reuse
     // is proven independently. Public prepared frames retain their old path.
@@ -79,16 +97,15 @@ impl VirtualMachine {
     ) -> RuntimeResult<Completion> {
         let _object_roots = realm.and_then(Realm::enter_object_root_region);
         let mut property_context = realm.map(PropertyReferenceContext::new);
-        let mut definition_context =
-            crate::runtime::bytecode_function::DefinitionEvaluationContext::default();
+        let mut definition_context = bytecode.definition_context();
         let body = bytecode.bytecode();
         let mut scalar_scopes: Vec<Option<ScalarScope<'_>>> = Vec::new();
         if SCALAR_LOCALS {
             scalar_scopes.resize_with(body.instructions.len(), || None);
         }
-        let mut scopes: Vec<ScopeFrame<'_>> = vec![];
-        let mut references: Vec<Reference> = vec![];
-        let mut calls: Vec<Invocation> = vec![];
+        let mut scopes: SingleStack<ScopeFrame<'_>> = SingleStack::new();
+        let mut references: SingleStack<Reference> = SingleStack::new();
+        let mut calls: SingleStack<Invocation> = SingleStack::new();
         let mut stack = Vec::with_capacity(bytecode.max_stack());
         let mut locals = vec![Value::Undefined; body.local_count as usize];
         let mut property_hints = bytecode
@@ -448,8 +465,10 @@ impl VirtualMachine {
                         unreachable!()
                     };
                     let environment = &scopes.last().expect("verified active scope").environment;
-                    let reference = if let Some(binding) = environment.resolve_binding(name)? {
-                        Reference::environment(binding, name.clone(), strict)
+                    let reference = if let Some((binding, hint)) =
+                        environment.resolve_binding_with_hint(name)?
+                    {
+                        Reference::function_binding(binding, name.clone(), strict, hint)
                     } else {
                         Reference::unresolvable(
                             realm.expect("scope requires Realm").global_object(),
@@ -894,6 +913,84 @@ fn binary(
         binary_values(operator.spelling(), left, right)?
     });
     Ok(())
+}
+
+// The common single-frame case owns its value directly. Nested scopes,
+// references and pending calls spill without cloning or hiding their roots.
+enum SingleStack<T> {
+    Empty,
+    One(T),
+    Heap(Vec<T>),
+}
+impl<T> SingleStack<T> {
+    fn new() -> Self {
+        Self::Empty
+    }
+    fn push(&mut self, value: T) {
+        match self {
+            Self::Empty => *self = Self::One(value),
+            Self::Heap(values) => values.push(value),
+            Self::One(_) => {
+                let Self::One(previous) = std::mem::replace(self, Self::Empty) else {
+                    unreachable!()
+                };
+                *self = Self::Heap(vec![previous, value]);
+            }
+        }
+    }
+    fn pop(&mut self) -> Option<T> {
+        match self {
+            Self::Empty => None,
+            Self::Heap(values) => values.pop(),
+            Self::One(_) => {
+                let Self::One(value) = std::mem::replace(self, Self::Empty) else {
+                    unreachable!()
+                };
+                Some(value)
+            }
+        }
+    }
+}
+impl<T> std::ops::Deref for SingleStack<T> {
+    type Target = [T];
+    fn deref(&self) -> &[T] {
+        match self {
+            Self::Empty => &[],
+            Self::One(value) => std::slice::from_ref(value),
+            Self::Heap(values) => values,
+        }
+    }
+}
+impl<T> std::ops::DerefMut for SingleStack<T> {
+    fn deref_mut(&mut self) -> &mut [T] {
+        match self {
+            Self::Empty => &mut [],
+            Self::One(value) => std::slice::from_mut(value),
+            Self::Heap(values) => values,
+        }
+    }
+}
+
+#[cfg(test)]
+mod auxiliary_storage_tests {
+    use super::*;
+
+    #[test]
+    fn single_and_nested_auxiliary_stacks_own_and_release_their_roots() {
+        for count in [1, 3] {
+            let runtime = crate::runtime::Runtime::new();
+            runtime.set_allocation_collection_interval(usize::MAX);
+            let mut stack = SingleStack::new();
+            for _ in 0..count {
+                stack.push(Object::new_in(&runtime));
+            }
+            assert_eq!(runtime.collect_garbage().unwrap().retained, count);
+            drop(stack.pop());
+            assert_eq!(runtime.collect_garbage().unwrap().retained, count - 1);
+            drop(stack);
+            assert_eq!(runtime.collect_garbage().unwrap().retained, 0);
+        }
+    }
 }
 
 // Each invocation owns its roots independently of operand-stack growth and of

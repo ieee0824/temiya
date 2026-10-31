@@ -75,13 +75,19 @@ pub(super) struct EnvironmentRoot {
 pub(super) type ManagedEnvironment = EnvironmentData;
 
 #[derive(Clone)]
-pub(super) struct StoredEnvironment(pub(super) Handle<ManagedEnvironment>);
+pub(super) struct StoredEnvironment(
+    pub(super) Handle<ManagedEnvironment>,
+    // A facade hint, never a root or a substitute for the traced handle. The
+    // owning runtime must still match before an upgraded facade is returned.
+    Weak<EnvironmentRoot>,
+);
 impl StoredEnvironment {
     pub(super) fn initial(runtime: Option<&Runtime>, value: &Environment) -> RuntimeResult<Self> {
         match (runtime, value.runtime()) {
-            (Some(left), Some(right)) if left.same_heap(right) => {
-                Ok(Self(value.handle().expect("managed environment")))
-            }
+            (Some(left), Some(right)) if left.same_heap(right) => Ok(Self(
+                value.handle().expect("managed environment"),
+                Rc::downgrade(&value.0.0),
+            )),
             _ => Err(RuntimeError::type_error(
                 "Environment allocation context mismatch",
             )),
@@ -99,9 +105,15 @@ impl StoredEnvironment {
         Ok(stored)
     }
     pub(super) fn load(&self, owner: &impl StoredOwner) -> RuntimeResult<Environment> {
-        owner
-            .runtime()
-            .ok_or_else(|| RuntimeError::internal_error("Environment allocation context mismatch"))?
+        let runtime = owner.runtime().ok_or_else(|| {
+            RuntimeError::internal_error("Environment allocation context mismatch")
+        })?;
+        if let Some(facade) = self.1.upgrade() {
+            if runtime.same_heap(&facade.runtime) {
+                return Ok(Environment(EnvironmentReference(facade)));
+            }
+        }
+        runtime
             .root_environment(self.0)
             .ok_or_else(|| RuntimeError::internal_error("stale environment edge"))
     }
@@ -343,13 +355,13 @@ impl Environment {
     ) -> RuntimeResult<Value> {
         {
             let record = self.0.record.borrow();
-            if let (EnvironmentRecord::Function(record), Some(index)) = (&*record, index) {
-                if let Some(binding) = record
-                    .declarative_record
-                    .bindings
-                    .get(index)
-                    .filter(|binding| binding.name == *name)
-                {
+            let bindings = match &*record {
+                EnvironmentRecord::Function(record) => Some(&record.declarative_record.bindings),
+                EnvironmentRecord::Declarative(record) => Some(&record.bindings),
+                _ => None,
+            };
+            if let (Some(bindings), Some(index)) = (bindings, index) {
+                if let Some(binding) = bindings.get(index).filter(|binding| binding.name == *name) {
                     return binding.read(self);
                 }
             }
@@ -366,10 +378,15 @@ impl Environment {
     ) -> RuntimeResult<()> {
         {
             let mut record = self.0.record.borrow_mut();
-            if let (EnvironmentRecord::Function(record), Some(index)) = (&mut *record, index) {
-                if let Some(binding) = record
-                    .declarative_record
-                    .bindings
+            let bindings = match &mut *record {
+                EnvironmentRecord::Function(record) => {
+                    Some(&mut record.declarative_record.bindings)
+                }
+                EnvironmentRecord::Declarative(record) => Some(&mut record.bindings),
+                _ => None,
+            };
+            if let (Some(bindings), Some(index)) = (bindings, index) {
+                if let Some(binding) = bindings
                     .get_mut(index)
                     .filter(|binding| binding.name == *name)
                 {
@@ -386,6 +403,29 @@ impl Environment {
             Some(outer),
             EnvironmentRecord::Declarative(DeclarativeRecord::default()),
         )
+    }
+
+    // A catch parameter is the only binding in an unpublished fresh record.
+    // Validate its context before allocation; the incoming record traces both
+    // this value and the outer environment at the allocation safepoint.
+    pub(crate) fn declarative_initialized(
+        outer: Self,
+        name: JsString,
+        value: Value,
+    ) -> RuntimeResult<Self> {
+        let value = StoredValue::initial(outer.runtime(), &value)?;
+        Ok(Self::new(
+            Some(outer),
+            EnvironmentRecord::Declarative(DeclarativeRecord {
+                bindings: vec![Binding {
+                    name,
+                    value: Some(value),
+                    mutable: true,
+                    strict: false,
+                    deletable: false,
+                }],
+            }),
+        ))
     }
 
     /// Creates a parentless declarative record in an explicit context.
@@ -849,6 +889,40 @@ impl Environment {
                 }
             }
         }
+    }
+
+    // Retain the position already found while resolving pure records. Object,
+    // global and module records keep their observable/indirect lookup paths.
+    // Consumers validate the name again before using a position after callbacks.
+    pub(crate) fn resolve_binding_with_hint(
+        &self,
+        name: &JsString,
+    ) -> RuntimeResult<Option<(Self, Option<usize>)>> {
+        let mut environment = Some(self.clone());
+        while let Some(current) = environment {
+            let pure = {
+                let record = current.0.record.borrow();
+                let bindings = match &*record {
+                    EnvironmentRecord::Function(record) => {
+                        Some(&record.declarative_record.bindings)
+                    }
+                    EnvironmentRecord::Declarative(record) => Some(&record.bindings),
+                    _ => None,
+                };
+                bindings.map(|bindings| bindings.iter().position(|binding| binding.name == *name))
+            };
+            match pure {
+                Some(Some(index)) => return Ok(Some((current, Some(index)))),
+                Some(None) => {}
+                None => {
+                    if current.has_binding(name)? {
+                        return Ok(Some((current, None)));
+                    }
+                }
+            }
+            environment = current.outer();
+        }
+        Ok(None)
     }
 
     /// Resolves a name through the lexical environment chain.
@@ -1522,6 +1596,90 @@ fn reference_error(name: &JsString, detail: &str) -> RuntimeError {
 #[cfg(test)]
 mod slot_hint_tests {
     use super::*;
+    #[test]
+    fn initialized_catch_record_traces_incoming_values_and_rejects_foreign_heaps() {
+        let runtime = Runtime::new();
+        runtime.set_allocation_collection_interval(1);
+        let outer = Environment::declarative_in(&runtime);
+        let marker = Object::new_in(&runtime);
+        let identity = marker.identity();
+        let weak = marker.downgrade();
+        let name: JsString = "caught".into();
+        let catch = Environment::declarative_initialized(
+            outer.clone(),
+            name.clone(),
+            Value::Object(marker),
+        )
+        .unwrap();
+        runtime.collect_garbage().unwrap();
+        let Value::Object(loaded) = catch.get_binding_value(&name, true).unwrap() else {
+            panic!("object")
+        };
+        assert_eq!(loaded.identity(), identity);
+        drop(loaded);
+        assert!(!catch.delete_binding(&name).unwrap());
+        catch
+            .set_mutable_binding(&name, Value::Number(42.0), true)
+            .unwrap();
+        runtime.collect_garbage().unwrap();
+        assert!(weak.upgrade().is_none());
+        assert!(
+            catch
+                .get_binding_value(&name, true)
+                .unwrap()
+                .same_value(&Value::Number(42.0))
+        );
+        let foreign = Object::new_in(&Runtime::new());
+        assert!(
+            Environment::declarative_initialized(
+                outer.clone(),
+                "foreign".into(),
+                Value::Object(foreign)
+            )
+            .is_err()
+        );
+        drop((catch, outer));
+        assert_eq!(runtime.collect_garbage().unwrap().retained, 0);
+    }
+
+    #[test]
+    fn stored_environment_weak_hints_preserve_collection_revival_and_context_checks() {
+        let runtime = Runtime::new();
+        let parent = Environment::declarative_in(&runtime);
+        parent
+            .create_mutable_binding("answer".into(), false)
+            .unwrap();
+        parent
+            .initialize_binding(&"answer".into(), Value::Number(42.0))
+            .unwrap();
+        let child = Environment::declarative(parent.clone());
+        let edge = StoredEnvironment::initial(Some(&runtime), &parent).unwrap();
+        assert!(Rc::ptr_eq(&edge.load(&child).unwrap().0.0, &parent.0.0));
+        let foreign = Environment::declarative_in(&Runtime::new());
+        assert!(
+            edge.load(&foreign).is_err(),
+            "live hints must not cross heaps"
+        );
+        drop(parent);
+        assert!(
+            edge.1.upgrade().is_none(),
+            "stored hints must not keep facades alive"
+        );
+        runtime.collect_garbage().unwrap();
+        let revived = edge.load(&child).unwrap();
+        assert!(matches!(
+            revived.get_binding_value(&"answer".into(), true).unwrap(),
+            Value::Number(42.0)
+        ));
+        assert!(
+            edge.load(&foreign).is_err(),
+            "stale hints must not cross heaps"
+        );
+        drop(revived);
+        drop(child);
+        assert_eq!(runtime.collect_garbage().unwrap().retained, 0);
+        assert!(edge.load(&foreign).is_err());
+    }
     #[test]
     fn managed_object_and_global_records_do_not_root_their_stored_objects() {
         for global in [false, true] {

@@ -1,0 +1,7 @@
+{
+  "name": "iterator-array-spread",
+  "setup": "let iteratorInput=[];for(let i=0;i<10000;i++)iteratorInput[i]=i+1;function bench(n){let values=[...iteratorInput];let total=0;for(let i=0;i<n;i++)total+=values[i];return total;}",
+  "invocation": "bench(10000);",
+  "iterations": 10000,
+  "expected": 50005000
+}

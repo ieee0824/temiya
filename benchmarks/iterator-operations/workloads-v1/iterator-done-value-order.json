@@ -1,0 +1,7 @@
+{
+  "name": "iterator-done-value-order",
+  "setup": "function bench(n){let index=0;let doneReads=0;let valueReads=0;let state=0;let iterable={[Symbol.iterator](){return {next(){let current=++index;return {get done(){if(state!==0)throw 42;state=1;doneReads++;return current>n;},get value(){if(state!==1)throw 42;state=0;valueReads++;return current;}};}};}};let values=[...iterable];if(doneReads!==n+1||valueReads!==n||state!==1)throw 42;let total=0;for(let i=0;i<n;i++)total+=values[i];return total;}",
+  "invocation": "bench(10000);",
+  "iterations": 10000,
+  "expected": 50005000
+}

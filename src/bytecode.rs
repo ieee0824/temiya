@@ -5,8 +5,10 @@ use std::{collections::VecDeque, fmt, rc::Rc};
 use crate::runtime::JsString;
 
 mod compiler;
+mod empty_frame;
 mod leaf_function;
 mod numeric_return;
+mod short_function;
 mod vm;
 pub use compiler::{BytecodeCompiler, CompileError};
 pub use vm::VirtualMachine;
@@ -547,9 +549,27 @@ pub struct VerifiedBytecode {
     reuse_loop_bindings: bool,
     numeric_return: Option<numeric_return::NumericReturnPlan>,
     leaf_function: Option<leaf_function::LeafFunctionPlan>,
+    definition_cache: Option<crate::runtime::bytecode_function::DefinitionCodeCache>,
+    empty_function_frame: bool,
+    short_function: bool,
 }
 
 impl VerifiedBytecode {
+    pub(crate) fn has_short_function_path(&self) -> bool {
+        self.short_function
+    }
+    pub(crate) fn can_elide_empty_function_frame(&self) -> bool {
+        self.empty_function_frame
+    }
+
+    pub(crate) fn definition_context(
+        &self,
+    ) -> crate::runtime::bytecode_function::DefinitionEvaluationContext {
+        self.definition_cache.as_ref().map_or_else(
+            Default::default,
+            crate::runtime::bytecode_function::DefinitionCodeCache::context,
+        )
+    }
     pub(crate) fn has_leaf_function(&self) -> bool {
         self.leaf_function.is_some()
     }
@@ -1288,7 +1308,23 @@ fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
     let numeric_return = numeric_return::NumericReturnPlan::compile(&bytecode, max_stack);
     let reuse_loop_bindings = loop_bindings_are_unobserved(&bytecode, &states);
     let leaf_function = leaf_function::LeafFunctionPlan::compile(&bytecode, max_stack);
+    let definition_cache = bytecode
+        .instructions
+        .iter()
+        .any(|op| {
+            matches!(
+                op,
+                Instruction::CreateObjectLiteral(_) | Instruction::CreateClass(_)
+            )
+        })
+        .then(Default::default);
+    let empty_function_frame = empty_frame::proven(&bytecode);
+    let short_function =
+        empty_function_frame && short_function::proven(&bytecode, max_stack, has_backedge);
     Ok(VerifiedBytecode {
+        short_function,
+        empty_function_frame,
+        definition_cache,
         reuse_loop_bindings,
         leaf_function,
         bytecode,

@@ -1,0 +1,7 @@
+{
+  "name": "iterator-captured-next",
+  "setup": "function bench(n){let index=0;let reads=0;let record={get next(){reads++;return function(){index++;if(index===1)Object.defineProperty(record,'next',{value:function(){throw 42;}});return {done:index>n,value:index};};}};let iterable={[Symbol.iterator](){return record;}};let values=[...iterable];if(reads!==1)throw 42;let total=0;for(let i=0;i<n;i++)total+=values[i];return total;}",
+  "invocation": "bench(10000);",
+  "iterations": 10000,
+  "expected": 50005000
+}

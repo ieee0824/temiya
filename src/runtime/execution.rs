@@ -14,6 +14,65 @@ use std::{
     ops::Deref,
 };
 
+const ERROR_MESSAGE_CACHE_ENTRIES: usize = 8;
+const ERROR_MESSAGE_CACHE_BYTES: usize = 256;
+thread_local! {
+    // Only immutable Rust string storage: no Realm, Object or GC root can be
+    // retained here. Arbitrary host-generated messages cannot grow the cache.
+    static ERROR_MESSAGES: RefCell<Vec<(String, super::JsString)>> = const { RefCell::new(Vec::new()) };
+}
+
+fn native_error_message(message: &str) -> super::JsString {
+    if message.len() <= 32 || message.len() > ERROR_MESSAGE_CACHE_BYTES {
+        return message.into();
+    }
+    ERROR_MESSAGES.with(|messages| {
+        let mut messages = messages.borrow_mut();
+        if let Some((_, value)) = messages.iter().rev().find(|(key, _)| key == message) {
+            return value.clone();
+        }
+        let value = super::JsString::from(message);
+        if messages.len() == ERROR_MESSAGE_CACHE_ENTRIES {
+            messages.remove(0);
+        }
+        messages.push((message.to_owned(), value.clone()));
+        value
+    })
+}
+
+#[cfg(test)]
+mod error_message_tests {
+    use super::*;
+
+    #[test]
+    fn cached_native_messages_preserve_utf16_and_bound_retained_storage() {
+        for index in 0..100 {
+            let message = format!("native exception message with unicode 😀 and identity {index}");
+            let first = native_error_message(&message);
+            let second = native_error_message(&message);
+            assert_eq!(first, second);
+            assert_eq!(
+                first.code_units(),
+                message.encode_utf16().collect::<Vec<_>>()
+            );
+        }
+        let oversized = "😀".repeat(ERROR_MESSAGE_CACHE_BYTES);
+        assert_eq!(
+            native_error_message(&oversized).code_units(),
+            oversized.encode_utf16().collect::<Vec<_>>()
+        );
+        ERROR_MESSAGES.with(|messages| {
+            let messages = messages.borrow();
+            assert!(messages.len() <= ERROR_MESSAGE_CACHE_ENTRIES);
+            assert!(
+                messages
+                    .iter()
+                    .all(|(key, _)| key.len() <= ERROR_MESSAGE_CACHE_BYTES)
+            );
+        });
+    }
+}
+
 use crate::ast::Program;
 
 use super::{
@@ -120,7 +179,7 @@ impl Realm {
     /// Materializes a catchable exception without invoking a potentially
     /// replaced global constructor. Internal failures remain Rust errors.
     pub(crate) fn exception_value(&self, error: &RuntimeError) -> RuntimeResult<Value> {
-        use super::{PropertyDescriptor, RuntimeErrorKind};
+        use super::RuntimeErrorKind;
         if let Some(value) = error.thrown_value() {
             return Ok(value.clone());
         }
@@ -132,13 +191,10 @@ impl Realm {
             RuntimeErrorKind::RangeError => IntrinsicId::RangeErrorPrototype,
             RuntimeErrorKind::InternalError => return Err(error.clone()),
         };
-        let object = Object::new_for(&self.global_object());
-        object.set_prototype(Some(self.intrinsic(prototype)));
-        object.define_own_property(
-            "message".into(),
-            PropertyDescriptor::data(Value::String(error.message().into()), true, false, true),
-        )?;
-        Ok(Value::Object(object))
+        Ok(Value::Object(Object::native_error(
+            self.intrinsic(prototype),
+            native_error_message(error.message()),
+        )))
     }
 
     /// Retains the originating Realm before a function crosses a caller boundary.

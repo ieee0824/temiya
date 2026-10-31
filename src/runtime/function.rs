@@ -45,8 +45,67 @@ pub(super) enum ConstructorKind {
 }
 
 type FunctionCacheKey = (usize, usize, u8);
-type CodeCache = HashMap<FunctionCacheKey, Vec<Rc<FunctionCode>>>;
+type PreparedFunctionSite = ((usize, u8), Rc<FunctionCode>);
+#[derive(Debug, Default)]
+pub(super) struct CodeCache {
+    entries: HashMap<FunctionCacheKey, Vec<Rc<FunctionCode>>>,
+    // Only nodes in these owned, immutable syntax trees enter the identity
+    // table. Keeping the owners alive prevents address reuse for cached sites.
+    definitions: HashMap<usize, Rc<Expr>>,
+    sites: HashMap<(usize, u8), Option<Rc<FunctionCode>>>,
+    // Only pinned sites enter this two-entry lookup cache; no borrowed syntax
+    // address or JS activation is retained here.
+    recent_sites: [Option<PreparedFunctionSite>; 2],
+    recent_cursor: usize,
+    last_definition: Option<usize>,
+}
 pub(super) type FunctionCache = Rc<RefCell<CodeCache>>;
+
+impl CodeCache {
+    fn remember_prepared_site(&mut self, site: (usize, u8), prepared: &Rc<FunctionCode>) {
+        if let Some(slot) = self.sites.get_mut(&site) {
+            *slot = Some(prepared.clone());
+            self.recent_sites[self.recent_cursor] = Some((site, prepared.clone()));
+            self.recent_cursor ^= 1;
+        }
+    }
+    fn retain_site(&mut self, expression: &Expr) {
+        let (function, kind) = match &expression.kind {
+            ExprKind::Function(function) => (function.as_ref(), FunctionKind::Normal),
+            ExprKind::Arrow(function) => (function.as_ref(), FunctionKind::Arrow),
+            ExprKind::Method { function, kind } => (function.as_ref(), FunctionKind::Method(*kind)),
+            _ => return,
+        };
+        self.sites
+            .entry((std::ptr::from_ref(function) as usize, kind_tag(kind)))
+            .or_default();
+    }
+}
+
+fn kind_tag(kind: FunctionKind) -> u8 {
+    match kind {
+        FunctionKind::Normal => 0,
+        FunctionKind::Arrow => 1,
+        FunctionKind::Method(MethodKind::Method) => 2,
+        FunctionKind::Method(MethodKind::Get) => 3,
+        FunctionKind::Method(MethodKind::Set) => 4,
+        FunctionKind::Method(MethodKind::Constructor) => 5,
+    }
+}
+
+pub(super) fn retain_definition(cache: &FunctionCache, definition: &Rc<Expr>) {
+    let mut cache = cache.borrow_mut();
+    let identity = Rc::as_ptr(definition) as usize;
+    if cache.last_definition == Some(identity) {
+        return;
+    }
+    cache.last_definition = Some(identity);
+    if cache.definitions.contains_key(&identity) {
+        return;
+    }
+    definition.visit(&mut |expression| cache.retain_site(expression));
+    cache.definitions.insert(identity, definition.clone());
+}
 
 #[derive(Debug)]
 pub(super) struct FunctionCode {
@@ -80,22 +139,35 @@ fn prepare_code(
     kind: FunctionKind,
     cache: &Option<FunctionCache>,
 ) -> Rc<FunctionCode> {
-    let tag = match kind {
-        FunctionKind::Normal => 0,
-        FunctionKind::Arrow => 1,
-        FunctionKind::Method(MethodKind::Method) => 2,
-        FunctionKind::Method(MethodKind::Get) => 3,
-        FunctionKind::Method(MethodKind::Set) => 4,
-        FunctionKind::Method(MethodKind::Constructor) => 5,
-    };
+    let tag = kind_tag(kind);
     let key = (code.span.start, code.span.end, tag);
+    let site = (std::ptr::from_ref(code) as usize, tag);
     if let Some(cache) = cache {
-        if let Some(found) = cache.borrow().get(&key).and_then(|entries| {
-            entries
+        let found = {
+            let cache = cache.borrow();
+            if let Some((_, found)) = cache
+                .recent_sites
                 .iter()
-                .find(|entry| entry.kind == kind && entry.ast == *code)
-        }) {
-            return found.clone();
+                .flatten()
+                .find(|(key, _)| *key == site)
+            {
+                return found.clone();
+            }
+            cache.sites.get(&site).and_then(Clone::clone).or_else(|| {
+                cache
+                    .entries
+                    .get(&key)
+                    .and_then(|entries| {
+                        entries
+                            .iter()
+                            .find(|entry| entry.kind == kind && entry.ast == *code)
+                    })
+                    .cloned()
+            })
+        };
+        if let Some(found) = found {
+            cache.borrow_mut().remember_prepared_site(site, &found);
+            return found;
         }
     }
     let compiled = if cache.is_some() && kind != FunctionKind::Arrow {
@@ -133,11 +205,14 @@ fn prepare_code(
         cache: cache.as_ref().map_or_else(Weak::new, Rc::downgrade),
     });
     if let Some(cache) = cache {
-        cache
-            .borrow_mut()
-            .entry(key)
-            .or_default()
-            .push(prepared.clone());
+        let mut cache = cache.borrow_mut();
+        cache.entries.entry(key).or_default().push(prepared.clone());
+        // entries owns this FunctionCode and its cloned AST. Nested syntax
+        // evaluated by the AST interpreter is therefore stable as well.
+        prepared
+            .ast
+            .visit_expressions(&mut |expression| cache.retain_site(expression));
+        cache.remember_prepared_site(site, &prepared);
     }
     prepared
 }
@@ -301,14 +376,12 @@ impl StoredFunctionClosure {
                 .transpose()?,
             realm: self.realm.load(owner)?,
             environment: self.environment.load(owner)?,
-            // Verified ordinary/method bodies use their prepared this binding;
-            // direct super operations remain AST. Nested class evaluation resolves
-            // super through the function environment and stored HomeObject.
-            // Retain stored GC edges without reviving unused call-local roots.
-            lexical_this: if self.code.compiled.is_some() {
-                Value::Undefined
-            } else {
+            // Only arrows observe the definition's this. Ordinary functions and
+            // methods receive their own this binding, including AST fallbacks.
+            lexical_this: if self.kind == FunctionKind::Arrow {
                 self.lexical_this.load(owner)?
+            } else {
+                Value::Undefined
             },
         })
     }
@@ -510,7 +583,11 @@ pub(super) fn create_function_with_constructor(
             &function,
             name_environment.as_ref().unwrap_or(&evaluator.environment),
         )?,
-        lexical_this: StoredValue::store(&function, &evaluator.this_value)?,
+        lexical_this: if kind == FunctionKind::Arrow {
+            StoredValue::store(&function, &evaluator.this_value)?
+        } else {
+            StoredValue::Undefined
+        },
         lexical_this_environment: if kind == FunctionKind::Arrow {
             evaluator
                 .this_environment
@@ -559,10 +636,7 @@ pub(super) fn create_function_with_constructor(
         // reviving property descriptors. No user code runs before publication.
         function.initialize_function_properties(length, name, None)?;
     } else {
-        function.define_own_property(
-            "length".into(),
-            super::PropertyDescriptor::data(Value::Number(length as f64), false, false, true),
-        )?;
+        function.initialize_function_length(length, constructable);
         if let Some(ExprKind::Identifier(name)) = code.name.as_ref().map(|name| &name.kind) {
             function.create_data_property(
                 "name".into(),
@@ -832,14 +906,7 @@ pub(super) fn bind_arguments(
     environment: &Environment,
     arguments: &[Value],
 ) -> RuntimeResult<()> {
-    let object = Object::new_for(&realm.global_object());
-    for (index, value) in arguments.iter().enumerate() {
-        object.create_data_property(
-            PropertyKey::String(JsString::from(index.to_string())),
-            value.clone(),
-        )?;
-    }
-    object.create_data_property("length".into(), Value::Number(arguments.len() as f64))?;
+    let object = Object::indexed_values_object(&realm.global_object(), arguments)?;
     let name = JsString::from("arguments");
     environment.create_mutable_binding(name.clone(), false)?;
     environment.initialize_binding(&name, Value::Object(object))
@@ -904,6 +971,118 @@ fn bind_parameter(environment: &Environment, binding: &Expr, value: Value) -> Ru
     } else {
         environment.create_mutable_binding(name.clone(), false)?;
         environment.initialize_binding(&name, value)
+    }
+}
+
+#[cfg(test)]
+mod owned_definition_tests {
+    use super::*;
+
+    fn definition(value: u8) -> Rc<Expr> {
+        Rc::new(
+            crate::parser::parse_expression(&format!("{{get value(){{return {value};}}}}"))
+                .unwrap(),
+        )
+    }
+    fn getter(expression: &Expr) -> &Function {
+        let ExprKind::Object(properties) = &expression.kind else {
+            panic!("object")
+        };
+        let ExprKind::Method { function, .. } = &properties[0].value.as_ref().unwrap().kind else {
+            panic!("getter")
+        };
+        function
+    }
+
+    #[test]
+    fn owned_sites_pin_syntax_and_keep_colliding_spans_distinct() {
+        let cache: FunctionCache = Default::default();
+        let first = definition(1);
+        let second = definition(2);
+        assert_eq!(getter(&first).span, getter(&second).span);
+        retain_definition(&cache, &first);
+        retain_definition(&cache, &second);
+        let kind = FunctionKind::Method(MethodKind::Get);
+        let a = prepare_code(getter(&first), kind, &Some(cache.clone()));
+        let b = prepare_code(getter(&second), kind, &Some(cache.clone()));
+        assert!(!Rc::ptr_eq(&a, &b));
+        assert!(Rc::ptr_eq(
+            &a,
+            &prepare_code(getter(&first), kind, &Some(cache.clone()))
+        ));
+        let weak = Rc::downgrade(&first);
+        drop(first);
+        assert!(weak.upgrade().is_some());
+        assert_eq!(cache.borrow().definitions.len(), 2);
+        assert_eq!(cache.borrow().sites.len(), 2);
+        drop(cache);
+        assert!(
+            weak.upgrade().is_none(),
+            "syntax owners must release with cache"
+        );
+    }
+
+    #[test]
+    fn hot_sites_evict_without_memoizing_borrowed_syntax_or_owning_cache() {
+        let cache: FunctionCache = Default::default();
+        let kind = FunctionKind::Method(MethodKind::Get);
+        let roots = [definition(1), definition(2), definition(3)];
+        let prepared: Vec<_> = roots
+            .iter()
+            .map(|root| {
+                retain_definition(&cache, root);
+                retain_definition(&cache, root);
+                prepare_code(getter(root), kind, &Some(cache.clone()))
+            })
+            .collect();
+        for _ in 0..3 {
+            for (root, expected) in roots.iter().zip(&prepared) {
+                assert!(Rc::ptr_eq(
+                    expected,
+                    &prepare_code(getter(root), kind, &Some(cache.clone()))
+                ));
+            }
+        }
+        let borrowed = getter(&roots[0]).clone();
+        prepare_code(&borrowed, kind, &Some(cache.clone()));
+        assert!(
+            cache
+                .borrow()
+                .recent_sites
+                .iter()
+                .flatten()
+                .all(|(site, _)| site.0 != std::ptr::from_ref(&borrowed) as usize)
+        );
+        let weak = Rc::downgrade(&cache);
+        drop(cache);
+        assert!(
+            weak.upgrade().is_none(),
+            "hot code entries must not retain their cache"
+        );
+    }
+
+    #[test]
+    fn borrowed_clones_and_different_kinds_keep_structural_fallback() {
+        let cache: FunctionCache = Default::default();
+        let root = definition(1);
+        retain_definition(&cache, &root);
+        let kind = FunctionKind::Method(MethodKind::Get);
+        let a = prepare_code(getter(&root), kind, &Some(cache.clone()));
+        let mut borrowed = getter(&root).clone();
+        assert!(Rc::ptr_eq(
+            &a,
+            &prepare_code(&borrowed, kind, &Some(cache.clone()))
+        ));
+        borrowed.body = getter(&definition(2)).body.clone();
+        let b = prepare_code(&borrowed, kind, &Some(cache.clone()));
+        assert!(!Rc::ptr_eq(&a, &b));
+        let normal = prepare_code(getter(&root), FunctionKind::Normal, &Some(cache.clone()));
+        assert!(!Rc::ptr_eq(&normal, &a));
+        assert_eq!(
+            cache.borrow().sites.len(),
+            1,
+            "unowned addresses must never be memoized"
+        );
     }
 }
 

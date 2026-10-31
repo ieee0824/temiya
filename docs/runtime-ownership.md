@@ -487,7 +487,12 @@ Object and WeakObject have only the traced representation. Standalone
 explicit context. Native allocation callbacks can borrow their owner's context
 per invocation without capturing Runtime ownership. All facade families now
 hold rooted registrations in the shared heap, and all stored Object,
-Environment, Realm, JobQueue and Module edges hold only typed handles.
+Environment, Realm, JobQueue and Module strong edges trace typed handles.
+Stored Environment edges may additionally keep an immutable weak facade hint.
+An upgraded hint is used only in its original Runtime; it adds no root and
+never replaces the traced handle. Dead hints use the ordinary checked heap
+revival path. Tests cover live hints, stale-hint revival after collection,
+foreign-context rejection and complete reclamation after roots are dropped.
 
 The coordinated tracing migration changes `Realm::intrinsics()` from a borrowed
 registry to an owning `IntrinsicRegistry` snapshot. The snapshot and its clones
@@ -714,6 +719,14 @@ independent roots/traced edges. A bounded cache also avoids retaining a growing
 history of allocated objects between collection points. Tests cover cache bounds,
 slot retirement under allocation collection, explicit collection while a clone
 remains live, nested region sharing and unwind cleanup.
+
+The 16-entry activation cache uses stable facade slots and an index-linked LRU
+order. A 64-bucket bitset narrows identity checks without treating a fingerprint
+collision as a hit. Hits relink indices rather than moving facade arrays;
+eviction still retires exactly the least recently used object. Clearing drops
+every facade and resets both the index links and bucket bits. A deterministic
+reference-model test checks collision membership, eviction order and reuse after
+clearing, alongside the collection and warm-root tests above.
 
 Primitive property References in one VM invocation may also retain the five
 primitive-prototype facades from that invocation's fixed, borrowed Realm.

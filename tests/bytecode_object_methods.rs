@@ -33,6 +33,16 @@ fn function_body(source: &str) -> temiya::bytecode::VerifiedBytecode {
 }
 
 #[test]
+fn literal_accessor_redefinitions_merge_halves_and_preserve_key_order() {
+    check(
+        "let saved=0;let object={first:1,get x(){return 1;},set x(value){saved=value;},get x(){return 42;},last:2};object.x=20;let d=Object.getOwnPropertyDescriptor(object,'x');let keys=Reflect.ownKeys(object);object.x===42&&saved===20&&typeof d.get==='function'&&typeof d.set==='function'&&d.enumerable&&d.configurable&&keys[0]==='first'&&keys[1]==='x'&&keys[2]==='last';",
+    );
+    check(
+        "let saved=0;let key=Symbol.iterator;let object={set [key](value){saved=value;},get [key](){return 22;},data:1,get data(){return 42;},get replaced(){throw 99;},replaced:20};object[key]=42;let d=Object.getOwnPropertyDescriptor(object,'data');let replaced=Object.getOwnPropertyDescriptor(object,'replaced');object[key]===22&&saved===42&&object.data===42&&d.set===undefined&&!('value' in d)&&replaced.value===20&&replaced.writable&&!('get' in replaced)&&Reflect.ownKeys(object)[2]===key;",
+    );
+}
+
+#[test]
 fn function_object_initializers_emit_verified_metadata() {
     let code = BytecodeCompiler::compile("function make(value){return {read(){return value;},get value(){return value;}};}let object=make(42);object.read()===42 && object.value===42;").unwrap();
     assert!(code.bytecode().constants.iter().any(|constant| matches!(constant, Constant::Scope(scope) if scope.functions.iter().any(|f| f.template.body.bytecode().instructions.iter().any(|op|matches!(op,Instruction::CreateObjectLiteral(_)))))));

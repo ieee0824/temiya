@@ -206,7 +206,33 @@ impl Default for JsString {
     }
 }
 impl From<&str> for JsString {
+    // Keep the ubiquitous short-name constructor small enough to fold literal
+    // property keys at call sites. UTF-16 decoding and allocation stay outlined.
+    #[inline(always)]
     fn from(value: &str) -> Self {
+        if value.len() <= INLINE_CAPACITY && value.is_ascii() {
+            let mut units = [0; INLINE_CAPACITY];
+            for (slot, byte) in units.iter_mut().zip(value.bytes()) {
+                *slot = u16::from(byte);
+            }
+            Self(Storage::Inline {
+                len: value.len() as u8,
+                units,
+            })
+        } else {
+            Self::from_long_or_unicode(value)
+        }
+    }
+}
+impl JsString {
+    #[inline(never)]
+    fn from_long_or_unicode(value: &str) -> Self {
+        if value.len() > INLINE_CAPACITY && value.is_ascii() {
+            // ASCII has exactly one UTF-16 unit per byte.
+            return Self(Storage::Shared(Arc::new(
+                value.bytes().map(u16::from).collect(),
+            )));
+        }
         let mut units = [0; INLINE_CAPACITY];
         let mut encoded = value.encode_utf16();
         for (index, slot) in units.iter_mut().enumerate() {
@@ -298,6 +324,27 @@ impl fmt::Debug for JsString {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn ascii_and_unicode_construction_preserves_inline_boundaries_and_shared_snapshots() {
+        use super::*;
+        for length in [
+            INLINE_CAPACITY - 1,
+            INLINE_CAPACITY,
+            INLINE_CAPACITY + 1,
+            1024,
+        ] {
+            for text in ["a".repeat(length), format!("{}😀", "a".repeat(length))] {
+                let mut value = JsString::from(text.as_str());
+                let saved = value.clone();
+                value.append_owned(&JsString::from("z"));
+                assert_eq!(saved.code_units(), text.encode_utf16().collect::<Vec<_>>());
+                assert_eq!(
+                    value.code_units(),
+                    (text + "z").encode_utf16().collect::<Vec<_>>()
+                );
+            }
+        }
+    }
     use super::*;
 
     #[test]

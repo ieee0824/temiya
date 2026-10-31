@@ -46,6 +46,19 @@ pub enum PropertyKey {
 }
 
 impl PropertyKey {
+    pub(crate) fn integer_index(mut index: u64) -> Self {
+        let mut units = [0u16; 20];
+        let mut start = units.len();
+        loop {
+            start -= 1;
+            units[start] = u16::from(b'0') + (index % 10) as u16;
+            index /= 10;
+            if index == 0 {
+                break;
+            }
+        }
+        JsString::from_code_units_slice(&units[start..]).into()
+    }
     /// Returns the array index represented by this key, when it is a canonical index.
     #[must_use]
     pub fn array_index(&self) -> Option<u32> {
@@ -656,7 +669,215 @@ pub(super) fn ordinary_state() -> ObjectState {
     }
 }
 
+impl ObjectState {
+    fn checked_property_position(&self, key: &PropertyKey) -> Option<usize> {
+        let hint = self.last_property.get();
+        if self
+            .properties
+            .get(hint)
+            .is_some_and(|entry| entry.key == *key)
+        {
+            return Some(hint);
+        }
+        if self.properties.len() > 8 {
+            if let Some(index) = key.array_index().map(|index| index as usize) {
+                if self
+                    .properties
+                    .get(index)
+                    .is_some_and(|entry| entry.key == *key)
+                {
+                    return Some(index);
+                }
+            }
+            let last = self.properties.len() - 1;
+            if self.properties[last].key == *key {
+                return Some(last);
+            }
+        }
+        self.properties.iter().position(|entry| entry.key == *key)
+    }
+}
+
 impl Object {
+    // Captured native next functions produce fresh, otherwise unobservable
+    // result objects. Internal consumers can take their value directly, while
+    // custom, bound, proxy and replaced next methods use ordinary calls.
+    pub(super) fn try_builtin_iterator_step(
+        &self,
+        iterator: &Self,
+    ) -> Option<RuntimeResult<Option<Value>>> {
+        let payload = {
+            let state = self.0.state.borrow();
+            if state.proxy.is_some() {
+                return None;
+            }
+            state.managed_callable.clone()?
+        };
+        let ManagedCallable::CapturedObject(capture) = &payload.body else {
+            return None;
+        };
+        let CapturedObjectHandler::Eager(callback) = capture.callback else {
+            return None;
+        };
+        let array = std::ptr::fn_addr_eq(
+            callback,
+            super::iterator::array_next_call as CapturedObjectCallback,
+        );
+        let string = std::ptr::fn_addr_eq(
+            callback,
+            super::iterator::string_next_call as CapturedObjectCallback,
+        );
+        if !array && !string {
+            return None;
+        }
+        Some((|| {
+            StoredObject::check_context(self, iterator)?;
+            let _depth = CallDepthGuard::enter()?;
+            let _prototype = capture.object.load(self)?;
+            let result = if array {
+                super::iterator::array_step_value(
+                    Value::Object(iterator.clone()),
+                    capture.key.as_ref().expect("iterator primitive key"),
+                )
+            } else {
+                super::iterator::string_step_value(Value::Object(iterator.clone()))
+            };
+            result.map_err(|error| self.bind_native_exception(payload.source.as_ref(), error))
+        })())
+    }
+    // Only the unpublished ordinary object created for an AST literal uses
+    // these initializers. No property/proxy hooks or descriptor observers can
+    // see it before construction finishes.
+    pub(super) fn reserve_literal_properties(&self, count: usize) {
+        let mut state = self.0.state.borrow_mut();
+        debug_assert!(state.properties.is_empty() && state.proxy.is_none() && !state.array);
+        state.properties.reserve_exact(count.min(4));
+    }
+
+    pub(super) fn initialize_literal_accessor(
+        &self,
+        key: PropertyKey,
+        function: Object,
+        getter: bool,
+    ) -> RuntimeResult<()> {
+        debug_assert!(function.is_callable());
+        // A key/coercion callback can collect and promote the destination.
+        // Keep the checked store and old-to-young barrier even before publish.
+        let function = StoredObject::store(self, &function)?;
+        let mut state = self.0.state.borrow_mut();
+        debug_assert!(state.proxy.is_none() && !state.array && state.extensible);
+        let position = state.properties.iter().position(|entry| entry.key == key);
+        let (mut get, mut set) = match position.map(|i| &state.properties[i].descriptor) {
+            Some(StoredDescriptor::Accessor {
+                get,
+                set,
+                configurable,
+                ..
+            }) => {
+                debug_assert!(*configurable);
+                (get.clone(), set.clone())
+            }
+            Some(StoredDescriptor::Data { configurable, .. }) => {
+                debug_assert!(*configurable);
+                (None, None)
+            }
+            None => (None, None),
+        };
+        if getter {
+            get = Some(function);
+        } else {
+            set = Some(function);
+        }
+        let descriptor = StoredDescriptor::Accessor {
+            get,
+            set,
+            enumerable: true,
+            configurable: true,
+        };
+        if let Some(position) = position {
+            state.properties[position].descriptor = descriptor;
+        } else {
+            state.properties.push(PropertyEntry { key, descriptor });
+        }
+        Ok(())
+    }
+
+    // Native exceptions are unpublished ordinary objects with one own data
+    // property. Prototype and message are initialized before user code can run.
+    pub(super) fn native_error(prototype: Self, message: JsString) -> Self {
+        let object = Self::new_with_prototype(prototype);
+        object.0.state.borrow_mut().properties = vec![PropertyEntry {
+            key: "message".into(),
+            descriptor: StoredDescriptor::Data {
+                value: StoredValue::String(message),
+                writable: true,
+                enumerable: false,
+                configurable: true,
+            },
+        }];
+        object
+    }
+    // Only freshly allocated ordinary iterator results use this constructor.
+    // The incoming value remains rooted across allocation and its stored edge
+    // is validated before the result becomes observable.
+    pub(super) fn iterator_result(
+        prototype: &Self,
+        value: Value,
+        done: bool,
+    ) -> RuntimeResult<Self> {
+        let object = Self::new_with_prototype(prototype.clone());
+        let value = StoredValue::store_owned(&object, value)?;
+        object.0.state.borrow_mut().properties = vec![
+            PropertyEntry {
+                key: "value".into(),
+                descriptor: StoredDescriptor::Data {
+                    value,
+                    writable: true,
+                    enumerable: true,
+                    configurable: true,
+                },
+            },
+            PropertyEntry {
+                key: "done".into(),
+                descriptor: StoredDescriptor::Data {
+                    value: StoredValue::Boolean(done),
+                    writable: true,
+                    enumerable: true,
+                    configurable: true,
+                },
+            },
+        ];
+        Ok(object)
+    }
+    // A new, unpublished ordinary object with unique canonical indices. The
+    // public values remain rooted while their stored edges are prepared.
+    pub(super) fn indexed_values_object(context: &Object, values: &[Value]) -> RuntimeResult<Self> {
+        let object = Self::new_for(context);
+        let mut properties = Vec::with_capacity(values.len() + 1);
+        for (index, value) in values.iter().enumerate() {
+            properties.push(PropertyEntry {
+                key: PropertyKey::integer_index(index as u64),
+                descriptor: StoredDescriptor::Data {
+                    value: StoredValue::store_owned(&object, value.clone())?,
+                    writable: true,
+                    enumerable: true,
+                    configurable: true,
+                },
+            });
+        }
+        properties.push(PropertyEntry {
+            key: "length".into(),
+            descriptor: StoredDescriptor::Data {
+                value: StoredValue::Number(values.len() as f64),
+                writable: true,
+                enumerable: true,
+                configurable: true,
+            },
+        });
+        object.0.state.borrow_mut().properties = properties;
+        Ok(object)
+    }
+
     pub(super) fn new_with_prototype(prototype: Self) -> Self {
         let runtime = prototype.allocation_context().clone();
         let mut data = super::ObjectData::ordinary();
@@ -964,8 +1185,27 @@ impl Object {
         Some((value, index))
     }
 
-    // Only for a newly allocated ordinary function, before it is
-    // published. Both values are leaves and the standard descriptors are known.
+    // Only for a freshly allocated function before publication. Length is a
+    // leaf value and its standard descriptor is known.
+    pub(super) fn initialize_function_length(&self, length: usize, constructable: bool) {
+        let mut state = self.0.state.borrow_mut();
+        debug_assert!(state.properties.is_empty());
+        debug_assert!(state.proxy.is_none() && !state.array);
+        // Named/inferred functions may add name and prototype. Non-constructable
+        // functions need at most their inferred name after this length entry.
+        state.properties.reserve(if constructable { 3 } else { 2 });
+        state.properties.push(PropertyEntry {
+            key: "length".into(),
+            descriptor: StoredDescriptor::Data {
+                value: StoredValue::Number(length as f64),
+                writable: false,
+                enumerable: false,
+                configurable: true,
+            },
+        });
+    }
+
+    // Class functions initialize both standard leaves before publication.
     pub(super) fn initialize_function_properties(
         &self,
         length: usize,
@@ -2031,17 +2271,8 @@ impl Object {
             return Ok(None);
         }
         let entry = state
-            .properties
-            .get(state.last_property.get())
-            .filter(|entry| entry.key == *key)
-            .map(|entry| (state.last_property.get(), entry))
-            .or_else(|| {
-                state
-                    .properties
-                    .iter()
-                    .enumerate()
-                    .find(|(_, entry)| entry.key == *key)
-            });
+            .checked_property_position(key)
+            .map(|index| (index, &state.properties[index]));
         let Some((index, entry)) = entry else {
             return Ok(None);
         };
@@ -2384,6 +2615,11 @@ impl Object {
 impl Value {
     /// Implements ECMAScript `ToPropertyKey`.
     pub fn to_property_key(&self) -> RuntimeResult<PropertyKey> {
+        if let Self::Number(number) = self {
+            if *number >= 0.0 && *number <= f64::from(u32::MAX) && number.fract() == 0.0 {
+                return Ok(PropertyKey::integer_index(*number as u64));
+            }
+        }
         let key = self.to_primitive(super::PrimitiveHint::String)?;
         if let Self::Symbol(symbol) = key {
             Ok(PropertyKey::Symbol(symbol))

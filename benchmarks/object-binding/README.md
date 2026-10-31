@@ -36,3 +36,17 @@ Prior46 workloads qualify both hosts, but all6 array-binding cases are0/3
 both. Object-binding cases are0/3 except getter-order1/3 on copy2. Iterator
 wins are3/3/3/3/0/0 both. Qualification fails; adverse timings, CPU identities,
 noise and controls are preserved without filtering or unchanged-source repeats.
+
+
+`full-current-integrated-v1` retains all8 shards of run41207723463 at010ac60:
+37919pass53705fail18skip8569timeout across100211 variants,0missing.
+`node benchmarks/object-binding/verify-full.mjs` replays candidate and previous
+qualified array91fb9f4 archives, including original known-pass gates, and
+compares every outcome:33565 preceding passes preserved,0regressions,4354new.
+The archived comparison uses the previous fully audited array implementation;
+it is explicitly not the immediate parent6c65967, whose full capture and
+separate comparison remain pending. All failures and timeouts are retained.
+The original Symbol constructor cases pass both variants within this full
+capture. Correctness evidence does not qualify native speed; both hosted
+object-binding captures still fail the performance gate. CI keeps all prior
+72 evidence commands and adds this full replay as command73.

@@ -87,6 +87,7 @@ case "${1:-}" in
     node benchmarks/object-binding/verify-profiles.mjs
     node benchmarks/object-binding/verify-hosted.mjs
     node benchmarks/object-binding/verify-symbol-regression.mjs
+    node benchmarks/object-binding/verify-full.mjs
     ;;
   *)
     echo "usage: $0 {classes|fields|private|iterators|bindings|objects}" >&2

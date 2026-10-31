@@ -85,7 +85,7 @@ native logs and all6 output oracles. These are instruction diagnostics only.
 
 The fourth diagnostic point (0269ef9 environment-root cache) is rejected and reverted: getter instructions improve but invalid-result instructions increase. Raw profiles and the successful bounded-root test remain evidence, not qualification.
 
-`key-and-result-diagnostic-v1` retains 20 source-specific Callgrind points, including rejected experiments. `verify-key-profiles.mjs` checks raw counts, output oracles and the exact compiled-input inventory for each historical source (80, 81 or 82 inputs). Later points cover function frames, activation roots, short callbacks, owned function sites, weak environment hints and literal accessor initialization. These diagnostics do not satisfy the native Boa speed gate.
+`key-and-result-diagnostic-v1` retains 21 source-specific Callgrind points, including rejected experiments. `verify-key-profiles.mjs` checks raw counts, output oracles and the exact compiled-input inventory for each historical source (80, 81 or 82 inputs). Later points cover function frames, activation roots, short callbacks, owned function sites, weak environment hints and literal accessor initialization. These diagnostics do not satisfy the native Boa speed gate.
 
 `fixed-definition-cache-v1` retains historical09766bb fixed Ast/Auto captures:235pass1983fail1662timeout each. Every outcome agrees with c2bc478; no regressions or missing records. These captures do not qualify the later key/result/native-step changes.
 
@@ -174,3 +174,13 @@ increases by 0.13% and invalid next results by 0.37%. Both are the remaining
 unqualified iterator cases, so the change was reverted without a new native
 measurement. All six unchanged worker outputs validate twice; raw profiles,
 source hashes and validation logs remain replayable.
+
+
+The `hot-sites` node retains runtime fdecf72. Two recent owned function sites
+avoid repeated hash lookups; borrowed syntax keeps structural comparison and
+no JS activation is retained. Done/value instructions decline 1.16% and invalid
+result instructions 1.30%; the other four cases are nearly unchanged, including
+a 0.0052% captured-next increase. All six oracles validate twice. All-target
+tests912, Clippy, MSRV, i686, doctest and three focused strict Miri tests pass.
+These are instruction diagnostics; current-source native and full correctness
+qualification remain required before merge.

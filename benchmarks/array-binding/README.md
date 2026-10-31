@@ -73,3 +73,13 @@ All prior46 workloads qualify on both hosts. All6 array-binding cases record
 fails. Every adverse observation, CPU identity, noise and control remains.
 The explicit beforeafter baseline is fd4ad7b; it is not the immediate parent.
 No CPU filtering, workload/statistical/resource changes or timing repeats.
+
+
+`full-current-integrated-v1` retains integrated source6c65967 run41207659226:
+33565pass58059fail18skip8569timeout across all100211 variants,0missing.
+The verifier now replays both retained capture pairs. For this integrated
+capture it compares all outcomes against prior91fb9f4:33565passes preserved,
+0regressions,0newpasses. Commit e53046e is the merge's first parent and has
+identical compiled inputs to91fb9f4; the verifier checks this equivalence.
+Both complete archives,policies,raw gate audits and outcome comparisons are
+retained. These correctness results do not establish native Boa speed.

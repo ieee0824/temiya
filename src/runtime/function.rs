@@ -301,14 +301,12 @@ impl StoredFunctionClosure {
                 .transpose()?,
             realm: self.realm.load(owner)?,
             environment: self.environment.load(owner)?,
-            // Verified ordinary/method bodies use their prepared this binding;
-            // direct super operations remain AST. Nested class evaluation resolves
-            // super through the function environment and stored HomeObject.
-            // Retain stored GC edges without reviving unused call-local roots.
-            lexical_this: if self.code.compiled.is_some() {
-                Value::Undefined
-            } else {
+            // Only arrows observe the definition's this. Ordinary functions and
+            // methods receive their own this binding, including AST fallbacks.
+            lexical_this: if self.kind == FunctionKind::Arrow {
                 self.lexical_this.load(owner)?
+            } else {
+                Value::Undefined
             },
         })
     }
@@ -510,7 +508,11 @@ pub(super) fn create_function_with_constructor(
             &function,
             name_environment.as_ref().unwrap_or(&evaluator.environment),
         )?,
-        lexical_this: StoredValue::store(&function, &evaluator.this_value)?,
+        lexical_this: if kind == FunctionKind::Arrow {
+            StoredValue::store(&function, &evaluator.this_value)?
+        } else {
+            StoredValue::Undefined
+        },
         lexical_this_environment: if kind == FunctionKind::Arrow {
             evaluator
                 .this_environment

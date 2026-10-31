@@ -56,6 +56,15 @@ pub(crate) fn spread(
     super::iterator::consume_iterable(realm, value, |value| append(object, next, value))
 }
 pub(crate) fn finish(object: &Object, next: u64) -> RuntimeResult<()> {
+    // Appending array indices already maintains length. Defining the same
+    // numeric value has no observable effect on an ordinary array, including
+    // a non-writable length. Holes, overflow and exotic objects use Define.
+    if object
+        .ordinary_array_length_info()
+        .is_some_and(|(length, _)| u64::from(length) == next)
+    {
+        return Ok(());
+    }
     if !object.define_own_property(
         "length".into(),
         PropertyDescriptor {
@@ -68,4 +77,42 @@ pub(crate) fn finish(object: &Object, next: u64) -> RuntimeResult<()> {
         ));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::runtime::{AllocationContext, RuntimeErrorKind};
+
+    #[test]
+    fn finishing_preserves_readonly_lengths_holes_and_overflow_errors() {
+        let context = AllocationContext::new();
+        let array = ArrayObject::new(&context, 2).unwrap().object();
+        array
+            .define_own_property(
+                "length".into(),
+                PropertyDescriptor {
+                    writable: Some(false),
+                    ..PropertyDescriptor::default()
+                },
+            )
+            .unwrap();
+        finish(&array, 2).unwrap();
+        assert_eq!(
+            array.get_own_property(&"length".into()).unwrap().writable,
+            Some(false)
+        );
+        assert_eq!(
+            finish(&array, 3).unwrap_err().kind(),
+            RuntimeErrorKind::TypeError
+        );
+        let holes = ArrayObject::new(&context, 0).unwrap().object();
+        finish(&holes, 3).unwrap();
+        assert_eq!(holes.array_length(), 3);
+        assert!(holes.get_own_property(&"0".into()).is_none());
+        assert_eq!(
+            finish(&holes, u64::from(u32::MAX) + 1).unwrap_err().kind(),
+            RuntimeErrorKind::RangeError
+        );
+    }
 }

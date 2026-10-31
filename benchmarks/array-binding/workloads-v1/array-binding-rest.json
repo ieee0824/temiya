@@ -1,0 +1,7 @@
+{
+  "name": "array-binding-rest",
+  "setup": "function bench(n){let total=0;for(let i=1;i<=n;i++){let [first,...rest]=[i,i+1,i+2];if(!Array.isArray(rest)||rest.length!==2||rest[0]!==i+1||rest[1]!==i+2)throw 42;total+=first;}return total;}",
+  "invocation": "bench(10000);",
+  "iterations": 10000,
+  "expected": 50005000
+}

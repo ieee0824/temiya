@@ -445,15 +445,16 @@ impl StatementEvaluator {
                     let declaration = declarations
                         .first()
                         .ok_or_else(|| RuntimeError::syntax_error("missing for-each binding"))?;
-                    let name = binding_name(&declaration.binding)?;
                     let environment = Environment::declarative(self.expression.environment.clone());
-                    if *kind == VariableKind::Const {
-                        environment.create_immutable_binding(name.clone(), true)?;
-                    } else {
-                        environment.create_mutable_binding(name.clone(), false)?;
-                    }
-                    environment.initialize_binding(&name, value)?;
-                    self.nested(environment).statement(body, &[])?
+                    let nested = self.nested(environment);
+                    nested.instantiate_declarations(*kind, declarations)?;
+                    super::binding::initialize(
+                        &nested.expression,
+                        &declaration.binding,
+                        value,
+                        true,
+                    )?;
+                    nested.statement(body, &[])?
                 }
                 _ => {
                     self.assign_for_init(left, value)?;
@@ -550,11 +551,21 @@ impl StatementEvaluator {
         let Some(parameter) = &handler.param else {
             return self.statement(&handler.body, &[]);
         };
-        let environment = Environment::declarative_initialized(
-            self.expression.environment.clone(),
-            binding_name(parameter)?,
-            thrown,
-        )?;
+        let environment = if matches!(parameter.kind, ExprKind::Identifier(_)) {
+            Environment::declarative_initialized(
+                self.expression.environment.clone(),
+                binding_name(parameter)?,
+                thrown,
+            )?
+        } else {
+            let environment = Environment::declarative(self.expression.environment.clone());
+            super::binding::for_each_name(parameter, |name| {
+                environment.create_mutable_binding(name, false)
+            })?;
+            let nested = self.nested(environment.clone());
+            super::binding::initialize(&nested.expression, parameter, thrown, true)?;
+            environment
+        };
         self.nested(environment).statement(&handler.body, &[])
     }
 
@@ -583,13 +594,16 @@ impl StatementEvaluator {
             if let StmtKind::Variable { kind, declarations } = &statement.kind {
                 if *kind != VariableKind::Var {
                     for declaration in declarations {
-                        let name = binding_name(&declaration.binding)?;
-                        if lexical.iter().any(|(other, _)| *other == name) {
-                            return Err(RuntimeError::syntax_error(
-                                "duplicate lexical declaration",
-                            ));
-                        }
-                        lexical.push((name, *kind == VariableKind::Const));
+                        super::binding::for_each_name(&declaration.binding, |name| {
+                            if lexical.iter().any(|(other, _)| *other == name) {
+                                return Err(RuntimeError::syntax_error(
+                                    "duplicate lexical declaration",
+                                ));
+                            }
+                            lexical.push((name, *kind == VariableKind::Const));
+
+                            Ok(())
+                        })?;
                     }
                 }
             }
@@ -671,12 +685,15 @@ impl StatementEvaluator {
             if let StmtKind::Variable { kind, declarations } = &statement.kind {
                 if *kind != VariableKind::Var {
                     for declaration in declarations {
-                        let name = binding_name(&declaration.binding)?;
-                        if *kind == VariableKind::Const {
-                            environment.create_immutable_binding(name, true)?;
-                        } else {
-                            environment.create_mutable_binding(name, false)?;
-                        }
+                        super::binding::for_each_name(&declaration.binding, |name| {
+                            if *kind == VariableKind::Const {
+                                environment.create_immutable_binding(name, true)?;
+                            } else {
+                                environment.create_mutable_binding(name, false)?;
+                            }
+
+                            Ok(())
+                        })?;
                     }
                 }
             }
@@ -744,6 +761,19 @@ impl StatementEvaluator {
         declarations: &[VariableDeclarator],
     ) -> RuntimeResult<Completion> {
         for declaration in declarations {
+            if !matches!(declaration.binding.kind, ExprKind::Identifier(_)) {
+                let value = declaration
+                    .init
+                    .as_ref()
+                    .map_or(Ok(Value::Undefined), |init| self.expression.evaluate(init))?;
+                super::binding::initialize(
+                    &self.expression,
+                    &declaration.binding,
+                    value,
+                    kind != VariableKind::Var,
+                )?;
+                continue;
+            }
             let name = binding_name(&declaration.binding)?;
             match kind {
                 VariableKind::Var => {
@@ -814,16 +844,19 @@ impl StatementEvaluator {
         declarations: &[VariableDeclarator],
     ) -> RuntimeResult<()> {
         for declaration in declarations {
-            let name = binding_name(&declaration.binding)?;
-            if kind == VariableKind::Const {
-                self.expression
-                    .environment
-                    .create_immutable_binding(name, true)?;
-            } else {
-                self.expression
-                    .environment
-                    .create_mutable_binding(name, false)?;
-            }
+            super::binding::for_each_name(&declaration.binding, |name| {
+                if kind == VariableKind::Const {
+                    self.expression
+                        .environment
+                        .create_immutable_binding(name, true)?;
+                } else {
+                    self.expression
+                        .environment
+                        .create_mutable_binding(name, false)?;
+                }
+
+                Ok(())
+            })?;
         }
         Ok(())
     }
@@ -838,6 +871,17 @@ impl StatementEvaluator {
                 let Some(declaration) = declarations.first() else {
                     return Err(RuntimeError::syntax_error("missing for-each binding"));
                 };
+                if !matches!(declaration.binding.kind, ExprKind::Identifier(_)) {
+                    if *kind != VariableKind::Var {
+                        self.instantiate_declarations(*kind, declarations)?;
+                    }
+                    return super::binding::initialize(
+                        &self.expression,
+                        &declaration.binding,
+                        value,
+                        *kind != VariableKind::Var,
+                    );
+                }
                 let name = binding_name(&declaration.binding)?;
                 if *kind == VariableKind::Var {
                     return self
@@ -883,10 +927,13 @@ fn collect_var_names(statements: &[Stmt], names: &mut Vec<JsString>) -> RuntimeR
                 declarations,
             } => {
                 for declaration in declarations {
-                    let name = binding_name(&declaration.binding)?;
-                    if !names.contains(&name) {
-                        names.push(name);
-                    }
+                    super::binding::for_each_name(&declaration.binding, |name| {
+                        if !names.contains(&name) {
+                            names.push(name);
+                        }
+
+                        Ok(())
+                    })?;
                 }
             }
             StmtKind::Block(body) => collect_var_names(body, names)?,
@@ -947,10 +994,13 @@ fn collect_for_init_var(init: Option<&ForInit>, names: &mut Vec<JsString>) -> Ru
         return Ok(());
     };
     for declaration in declarations {
-        let name = binding_name(&declaration.binding)?;
-        if !names.contains(&name) {
-            names.push(name);
-        }
+        super::binding::for_each_name(&declaration.binding, |name| {
+            if !names.contains(&name) {
+                names.push(name);
+            }
+
+            Ok(())
+        })?;
     }
     Ok(())
 }

@@ -1,0 +1,10 @@
+{
+  "before": "379ea2c079686a98d90288fdef883b0e17ec984e",
+  "after": "14ed517876972cce6e334519b795617bf72ab6cd",
+  "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)",
+  "architecture": "aarch64",
+  "beforeCommand": "RUSTC_BOOTSTRAP=1 cargo rustc --locked --lib -- -Zprint-type-sizes",
+  "afterCommand": "RUSTC_BOOTSTRAP=1 cargo rustc --locked --lib -- -Zprint-type-sizes --cfg temiya_layout_after",
+  "note": "Initial after invocation reused Cargo output and emitted no type sizes; retained without treating it as an observation. An otherwise unused cfg forces the diagnostic rebuild. Normal native workers use standard release flags.",
+  "scope": "Private type sizes only, not RSS or competitive native timing"
+}

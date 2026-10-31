@@ -1,0 +1,7 @@
+{
+  "name": "array-binding-elision-default",
+  "setup": "function bench(n){let total=0;for(let i=1;i<=n;i++){let index=0;let input={[Symbol.iterator](){return {next(){index++;if(index===1)return {done:false,get value(){throw 42;}};return {done:index>2,value:undefined};}};}};let [,value=i]=input;total+=value;}return total;}",
+  "invocation": "bench(10000);",
+  "iterations": 10000,
+  "expected": 50005000
+}

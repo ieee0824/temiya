@@ -1589,13 +1589,105 @@ fn define_or_error(
     }
 }
 
+const REFERENCE_MESSAGE_ENTRIES: usize = 8;
+thread_local! {
+    static REFERENCE_MESSAGES: RefCell<Vec<(JsString, String, Rc<String>)>> = const { RefCell::new(Vec::new()) };
+}
 fn reference_error(name: &JsString, detail: &str) -> RuntimeError {
-    RuntimeError::reference_error(format!("{} {detail}", name.to_string_lossy()))
+    let eligible = name.len() <= 64 && detail.len() <= 48;
+    if eligible {
+        if let Some(message) = REFERENCE_MESSAGES.with(|cache| {
+            cache
+                .borrow()
+                .iter()
+                .rev()
+                .find(|(key, text, _)| key == name && text == detail)
+                .map(|(_, _, message)| message.clone())
+        }) {
+            return RuntimeError::reference_error_shared(message);
+        }
+    }
+    // A UTF-16 unit needs at most three UTF-8 bytes (a surrogate pair
+    // needs four for two units). Build the complete diagnostic once,
+    // preserving from_utf16_lossy's replacement of unpaired surrogates.
+    let mut message = String::with_capacity(
+        name.len()
+            .saturating_mul(3)
+            .saturating_add(1)
+            .saturating_add(detail.len()),
+    );
+    for ch in char::decode_utf16(name.code_units().iter().copied()) {
+        message.push(ch.unwrap_or(char::REPLACEMENT_CHARACTER));
+    }
+    message.push(' ');
+    message.push_str(detail);
+    if eligible {
+        let message = Rc::new(message);
+        REFERENCE_MESSAGES.with(|cache| {
+            let mut cache = cache.borrow_mut();
+            if cache.len() == REFERENCE_MESSAGE_ENTRIES {
+                cache.remove(0);
+            }
+            // Copy a compact key rather than retaining an oversized host buffer.
+            cache.push((
+                JsString::from_code_units_slice(name.code_units()),
+                detail.to_owned(),
+                message.clone(),
+            ));
+        });
+        RuntimeError::reference_error_shared(message)
+    } else {
+        RuntimeError::reference_error(message)
+    }
 }
 
 #[cfg(test)]
 mod slot_hint_tests {
     use super::*;
+    #[test]
+    fn reference_message_cache_bounds_compact_keys_and_preserves_names() {
+        for i in 0..80 {
+            let name: JsString = format!("binding_{i}").into();
+            assert_eq!(
+                reference_error(&name, "is not defined").message(),
+                format!("binding_{i} is not defined")
+            );
+        }
+        let name = JsString::from_code_units(vec![120; 80]);
+        assert_eq!(
+            reference_error(&name, "is not defined").message(),
+            format!("{} is not defined", "x".repeat(80))
+        );
+        REFERENCE_MESSAGES.with(|cache| {
+            let cache = cache.borrow();
+            assert!(cache.len() <= REFERENCE_MESSAGE_ENTRIES);
+            assert!(cache.iter().all(|(name, detail, message)| name.len() <= 64
+                && detail.len() <= 48
+                && message.capacity() <= 256));
+        });
+    }
+
+    #[test]
+    fn reference_error_messages_preserve_lossy_utf16_names() {
+        for units in [
+            vec![],
+            vec![118, 97, 108, 117, 101],
+            vec![0xd83d, 0xde00],
+            vec![0xd800, 120, 0xdc00],
+            vec![0, 0xffff, 0x301],
+        ] {
+            let name = JsString::from_code_units(units);
+            for detail in ["is not defined", "is in the temporal dead zone", "😀"] {
+                let error = reference_error(&name, detail);
+                assert_eq!(
+                    error.message(),
+                    format!("{} {detail}", name.to_string_lossy())
+                );
+                assert_eq!(error.kind(), super::super::RuntimeErrorKind::ReferenceError);
+            }
+        }
+    }
+
     #[test]
     fn initialized_catch_record_traces_incoming_values_and_rejects_foreign_heaps() {
         let runtime = Runtime::new();

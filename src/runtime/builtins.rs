@@ -460,7 +460,7 @@ fn numeric_receiver(value: &Value, bigint: bool) -> RuntimeResult<Value> {
     match value {
         Value::Number(_) if !bigint => Ok(value.clone()),
         Value::BigInt(_) if bigint => Ok(value.clone()),
-        Value::Object(object) => match object.0.state.borrow().primitive_data.as_ref() {
+        Value::Object(object) => match object.0.state.borrow().primitive_data.as_deref() {
             Some(value @ Value::Number(_)) if !bigint => Ok(value.clone()),
             Some(value @ Value::BigInt(_)) if bigint => Ok(value.clone()),
             _ => Err(RuntimeError::type_error("incompatible numeric receiver")),

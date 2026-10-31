@@ -116,6 +116,8 @@ pub(super) struct FunctionCode {
     private_expression: Option<private_expression::Plan>,
     constructor_assignments: Option<constructor_assignments::Plan>,
     may_observe_arguments: bool,
+    parameter_binds_arguments: bool,
+    parameter_names: Option<Box<[JsString]>>,
     delegated_parameters: Option<Box<[usize]>>,
     super_call: Option<super_call::Plan>,
     auto_functions: bool,
@@ -195,6 +197,27 @@ fn prepare_code(
             None
         },
         may_observe_arguments: may_observe_arguments(code),
+        parameter_binds_arguments: code.parameters.iter().any(|parameter| {
+            crate::semantics::bound_names(parameter)
+                .iter()
+                .any(|binding| binding.name == "arguments")
+        }),
+        // Syntax-only preparation: collect all names before any call can run
+        // user code. Unsupported patterns retain the call-time error path.
+        parameter_names: if code
+            .parameters
+            .iter()
+            .any(|p| !matches!(p.kind, ExprKind::Identifier(_)))
+        {
+            let mut names = Vec::new();
+            code.parameters
+                .iter()
+                .try_for_each(|p| super::binding::names(p, &mut names))
+                .ok()
+                .map(|()| names.into_boxed_slice())
+        } else {
+            None
+        },
         delegated_parameters: if kind == FunctionKind::Method(MethodKind::Constructor) {
             delegated_parameters(code)
         } else {
@@ -696,7 +719,7 @@ fn call_function(
     // The complete syntax scan includes defaults, nested classes/functions,
     // arrows and direct eval. Retain the actual object whenever any of those
     // can observe arguments; otherwise this implicit binding is unreachable.
-    if !lexical && closure.code.may_observe_arguments {
+    if !lexical && closure.code.may_observe_arguments && !closure.code.parameter_binds_arguments {
         bind_arguments(&closure.realm, &environment, arguments)?;
     }
     let evaluator = ExpressionEvaluator::with_environment(
@@ -712,6 +735,7 @@ fn call_function(
         &evaluator,
         &environment,
         &closure.code.parameters,
+        closure.code.parameter_names.as_deref(),
         arguments,
     )?;
 
@@ -820,7 +844,7 @@ fn construct_derived(
         Some(new_target.clone()),
         ThisBindingStatus::Uninitialized,
     );
-    if closure.code.may_observe_arguments {
+    if closure.code.may_observe_arguments && !closure.code.parameter_binds_arguments {
         bind_arguments(&closure.realm, &environment, arguments)?;
     }
     let evaluator = ExpressionEvaluator::with_environment(
@@ -836,6 +860,7 @@ fn construct_derived(
         &evaluator,
         &environment,
         &closure.code.parameters,
+        closure.code.parameter_names.as_deref(),
         arguments,
     )?;
     let FunctionBody::Block(body) = &closure.code.body else {
@@ -916,8 +941,47 @@ pub(super) fn bind_parameters(
     evaluator: &ExpressionEvaluator,
     environment: &Environment,
     parameters: &[Expr],
+    prepared_names: Option<&[JsString]>,
     arguments: &[Value],
 ) -> RuntimeResult<()> {
+    if parameters
+        .iter()
+        .any(|parameter| !matches!(parameter.kind, ExprKind::Identifier(_)))
+    {
+        let names = if let Some(names) = prepared_names {
+            Cow::Borrowed(names)
+        } else {
+            let mut names = Vec::new();
+            for parameter in parameters {
+                super::binding::names(parameter, &mut names)?;
+            }
+            Cow::Owned(names)
+        };
+        for name in names.iter() {
+            if !environment.has_binding(name)? {
+                environment.create_mutable_binding(name.clone(), false)?;
+            }
+        }
+        for (index, parameter) in parameters.iter().enumerate() {
+            if let ExprKind::Spread(binding) = &parameter.kind {
+                let array = super::array_literal::create(&evaluator.realm)?;
+                let mut next = 0;
+                for value in arguments.get(index..).unwrap_or_default() {
+                    super::array_literal::append(&array, &mut next, value.clone())?;
+                }
+                super::array_literal::finish(&array, next)?;
+                super::binding::initialize(evaluator, binding, Value::Object(array), true)?;
+                break;
+            }
+            super::binding::initialize(
+                evaluator,
+                parameter,
+                arguments.get(index).cloned().unwrap_or(Value::Undefined),
+                true,
+            )?;
+        }
+        return Ok(());
+    }
     let mut index = 0;
     for parameter in parameters {
         match &parameter.kind {

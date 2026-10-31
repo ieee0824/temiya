@@ -13,6 +13,7 @@ use num_bigint::BigInt;
 
 pub(crate) mod array_literal;
 mod array_methods;
+mod binding;
 mod builtins;
 pub(crate) mod bytecode_function;
 mod class;
@@ -128,99 +129,162 @@ pub enum PrimitiveHint {
     String,
 }
 
-/// Runtime failures raised by abstract operations.
-#[derive(Clone, Debug)]
-pub struct RuntimeError {
+#[derive(Clone)]
+enum ErrorMessage {
+    Owned(String),
+    Shared(Rc<String>),
+}
+impl std::ops::Deref for ErrorMessage {
+    type Target = str;
+    fn deref(&self) -> &str {
+        match self {
+            Self::Owned(text) => text.as_str(),
+            Self::Shared(text) => text.as_str(),
+        }
+    }
+}
+impl fmt::Debug for ErrorMessage {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Debug::fmt(&**self, f)
+    }
+}
+impl fmt::Display for ErrorMessage {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self)
+    }
+}
+impl PartialEq for ErrorMessage {
+    fn eq(&self, other: &Self) -> bool {
+        **self == **other
+    }
+}
+impl Eq for ErrorMessage {}
+
+#[derive(Clone)]
+struct NativeRuntimeError {
     kind: RuntimeErrorKind,
-    message: String,
+    message: ErrorMessage,
     thrown: Option<Box<Value>>,
 }
+#[derive(Clone)]
+enum RuntimeErrorData {
+    Native(NativeRuntimeError),
+    Thrown(Value),
+}
+
+/// Runtime failures raised by abstract operations.
+#[derive(Clone)]
+pub struct RuntimeError(RuntimeErrorData);
 
 impl RuntimeError {
+    fn native(kind: RuntimeErrorKind, message: ErrorMessage, thrown: Option<Box<Value>>) -> Self {
+        Self(RuntimeErrorData::Native(NativeRuntimeError {
+            kind,
+            message,
+            thrown,
+        }))
+    }
+    fn reference_error_shared(message: Rc<String>) -> Self {
+        Self::native(
+            RuntimeErrorKind::ReferenceError,
+            ErrorMessage::Shared(message),
+            None,
+        )
+    }
+    fn attach_thrown(&mut self, value: Value) {
+        match &mut self.0 {
+            RuntimeErrorData::Native(error) => error.thrown = Some(Box::new(value)),
+            RuntimeErrorData::Thrown(current) => *current = value,
+        }
+    }
     /// Creates a TypeError completion.
     #[must_use]
     pub fn type_error(message: impl Into<String>) -> Self {
-        Self {
-            kind: RuntimeErrorKind::TypeError,
-            message: message.into(),
-            thrown: None,
-        }
+        Self::native(
+            RuntimeErrorKind::TypeError,
+            ErrorMessage::Owned(message.into()),
+            None,
+        )
     }
-
     /// Creates a SyntaxError completion.
     #[must_use]
     pub fn syntax_error(message: impl Into<String>) -> Self {
-        Self {
-            kind: RuntimeErrorKind::SyntaxError,
-            message: message.into(),
-            thrown: None,
-        }
+        Self::native(
+            RuntimeErrorKind::SyntaxError,
+            ErrorMessage::Owned(message.into()),
+            None,
+        )
     }
-
     /// Creates a ReferenceError completion.
     #[must_use]
     pub fn reference_error(message: impl Into<String>) -> Self {
-        Self {
-            kind: RuntimeErrorKind::ReferenceError,
-            message: message.into(),
-            thrown: None,
-        }
+        Self::native(
+            RuntimeErrorKind::ReferenceError,
+            ErrorMessage::Owned(message.into()),
+            None,
+        )
     }
-
     /// Creates a RangeError completion.
     #[must_use]
     pub fn range_error(message: impl Into<String>) -> Self {
-        Self {
-            kind: RuntimeErrorKind::RangeError,
-            message: message.into(),
-            thrown: None,
-        }
+        Self::native(
+            RuntimeErrorKind::RangeError,
+            ErrorMessage::Owned(message.into()),
+            None,
+        )
     }
-
     /// Creates an engine-internal invariant error.
     #[must_use]
     pub fn internal_error(message: impl Into<String>) -> Self {
-        Self {
-            kind: RuntimeErrorKind::InternalError,
-            message: message.into(),
-            thrown: None,
-        }
+        Self::native(
+            RuntimeErrorKind::InternalError,
+            ErrorMessage::Owned(message.into()),
+            None,
+        )
     }
-
-    /// Carries an arbitrary JavaScript throw value through an operation boundary.
-    /// No string conversion or user code is invoked; object identity is preserved.
+    /// Carries an arbitrary JavaScript throw value without coercion or boxing.
     #[must_use]
     pub fn thrown(value: Value) -> Self {
-        Self {
-            kind: RuntimeErrorKind::ThrownValue,
-            message: "JavaScript throw completion".into(),
-            thrown: Some(Box::new(value)),
-        }
+        Self(RuntimeErrorData::Thrown(value))
     }
-
-    /// Returns the original JavaScript value (including `undefined` and `null`),
-    /// or a native error object already materialized in its originating Realm.
+    /// Returns the original throw or the native exception in its originating Realm.
     #[must_use]
     pub fn thrown_value(&self) -> Option<&Value> {
-        self.thrown.as_deref()
+        match &self.0 {
+            RuntimeErrorData::Native(error) => error.thrown.as_deref(),
+            RuntimeErrorData::Thrown(value) => Some(value),
+        }
     }
-
     /// Returns the error category.
     #[must_use]
     pub fn kind(&self) -> RuntimeErrorKind {
-        self.kind
+        match &self.0 {
+            RuntimeErrorData::Native(error) => error.kind,
+            RuntimeErrorData::Thrown(_) => RuntimeErrorKind::ThrownValue,
+        }
     }
-
     /// Returns the human-readable diagnostic.
     #[must_use]
     pub fn message(&self) -> &str {
-        &self.message
+        match &self.0 {
+            RuntimeErrorData::Native(error) => &error.message,
+            RuntimeErrorData::Thrown(_) => "JavaScript throw completion",
+        }
+    }
+}
+impl fmt::Debug for RuntimeError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("RuntimeError")
+            .field("kind", &self.kind())
+            .field("message", &self.message())
+            .field("thrown", &self.thrown_value())
+            .finish()
     }
 }
 
 impl fmt::Display for RuntimeError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(formatter, "{}: {}", self.kind, self.message)
+        write!(formatter, "{}: {}", self.kind(), self.message())
     }
 }
 
@@ -228,9 +292,9 @@ impl std::error::Error for RuntimeError {}
 
 impl PartialEq for RuntimeError {
     fn eq(&self, other: &Self) -> bool {
-        self.kind == other.kind
-            && self.message == other.message
-            && match (&self.thrown, &other.thrown) {
+        self.kind() == other.kind()
+            && self.message() == other.message()
+            && match (self.thrown_value(), other.thrown_value()) {
                 (None, None) => true,
                 (Some(left), Some(right)) => left.same_value(right),
                 _ => false,
@@ -734,4 +798,33 @@ fn number_to_js_string(value: f64) -> JsString {
         return "-Infinity".into();
     }
     JsString::from(ryu_js::Buffer::new().format(value))
+}
+
+#[cfg(test)]
+mod shared_runtime_message_tests {
+    use super::*;
+    #[test]
+    fn shared_messages_preserve_error_kinds_values_and_bound_storage() {
+        for i in 0..80 {
+            let text = format!("diagnostic {i} 日本語😀");
+            let a = RuntimeError::type_error(text.clone());
+            let b = RuntimeError::syntax_error(text.clone());
+            assert_eq!(a.message(), text);
+            assert_eq!(b.message(), text);
+            assert_ne!(a, b);
+            assert_eq!(a, a.clone());
+            let owned = RuntimeError::reference_error(text.clone());
+            let shared = RuntimeError::reference_error_shared(Rc::new(text));
+            assert_eq!(owned, shared);
+            assert_eq!(format!("{owned:?}"), format!("{shared:?}"));
+        }
+        let mut oversized = String::with_capacity(4096);
+        oversized.push_str("small");
+        assert_eq!(RuntimeError::reference_error(oversized).message(), "small");
+        for value in [Value::Undefined, Value::Null, Value::Number(-0.0)] {
+            let error = RuntimeError::thrown(value.clone());
+            assert!(error.thrown_value().unwrap().same_value(&value));
+            assert_eq!(error, error.clone());
+        }
+    }
 }

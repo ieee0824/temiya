@@ -58,6 +58,10 @@ pub(crate) struct IteratorRecord {
 }
 
 impl IteratorRecord {
+    pub(super) fn is_done(&self) -> bool {
+        self.done
+    }
+
     pub(crate) fn get(realm: &Realm, value: Value) -> RuntimeResult<Self> {
         let method = Reference::property_in_realm(
             realm,
@@ -377,8 +381,15 @@ pub(super) fn array_step_value(
         return Ok(None);
     };
     let target = target.load(&iterator)?;
-    let length = primitive(&target.get(&"length".into())?, to_primitive, false)?.to_number()?;
-    let length = (length as u64).min(9_007_199_254_740_991);
+    // Ordinary array length is a non-configurable numeric own property.
+    // Read it afresh on every step; proxies and array-like objects retain Get
+    // and ToLength, including their observable coercion/reentrancy.
+    let length = if let Some((length, _)) = target.ordinary_array_length_info() {
+        u64::from(length)
+    } else {
+        let length = primitive(&target.get(&"length".into())?, to_primitive, false)?.to_number()?;
+        (length as u64).min(9_007_199_254_740_991)
+    };
     if index >= length {
         if let Some(IteratorSlot::Array { target, .. }) =
             iterator.0.state.borrow_mut().iterator.as_deref_mut()
@@ -394,8 +405,15 @@ pub(super) fn array_step_value(
     {
         *next = index + 1;
     }
-    let value = target.get(&PropertyKey::integer_index(index))?;
-    Ok(Some(value))
+    // Only present data elements can bypass Get. Holes, accessors and
+    // inherited properties keep their ordinary receiver and prototype lookup.
+    let value = u32::try_from(index)
+        .ok()
+        .and_then(|index| target.own_element_value(index));
+    Ok(Some(match value {
+        Some(value) => value,
+        None => target.get(&PropertyKey::integer_index(index))?,
+    }))
 }
 
 pub(super) fn string_next_call(

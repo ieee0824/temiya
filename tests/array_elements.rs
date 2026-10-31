@@ -219,3 +219,93 @@ fn mixed_index_operations_match_an_independent_ordered_model() {
         }
     }
 }
+
+#[test]
+fn create_data_property_preserves_array_length_and_descriptor_rules() {
+    let context = temiya::runtime::AllocationContext::new();
+    let array = ArrayObject::new(&context, 3).unwrap().object();
+    assert!(
+        array
+            .define_own_property(
+                "0".into(),
+                PropertyDescriptor::data(Value::Number(1.0), false, false, true)
+            )
+            .unwrap()
+    );
+    assert!(
+        array
+            .define_own_property(
+                "length".into(),
+                PropertyDescriptor {
+                    writable: Some(false),
+                    ..PropertyDescriptor::default()
+                }
+            )
+            .unwrap()
+    );
+    assert!(
+        array
+            .create_data_property("0".into(), Value::Number(2.0))
+            .unwrap()
+    );
+    let descriptor = array.get_own_property(&"0".into()).unwrap();
+    assert_eq!(
+        (
+            descriptor.writable,
+            descriptor.enumerable,
+            descriptor.configurable
+        ),
+        (Some(true), Some(true), Some(true))
+    );
+    assert!(
+        array
+            .create_data_property("2".into(), Value::Number(3.0))
+            .unwrap()
+    );
+    assert!(
+        !array
+            .create_data_property("3".into(), Value::Number(99.0))
+            .unwrap()
+    );
+    array.prevent_extensions();
+    assert!(
+        !array
+            .create_data_property("1".into(), Value::Number(99.0))
+            .unwrap()
+    );
+    assert!(
+        array
+            .create_data_property("0".into(), Value::Number(4.0))
+            .unwrap()
+    );
+    assert!(
+        array
+            .define_own_property(
+                "2".into(),
+                PropertyDescriptor {
+                    configurable: Some(false),
+                    ..PropertyDescriptor::default()
+                }
+            )
+            .unwrap()
+    );
+    assert!(
+        !array
+            .create_data_property("2".into(), Value::Number(99.0))
+            .unwrap()
+    );
+    let foreign = Object::new_in(&temiya::runtime::AllocationContext::new());
+    assert!(
+        array
+            .create_data_property("2".into(), Value::Object(foreign))
+            .is_err()
+    );
+    assert!(matches!(
+        array.get(&"length".into()).unwrap(),
+        Value::Number(3.0)
+    ));
+    assert!(matches!(
+        array.get(&"2".into()).unwrap(),
+        Value::Number(3.0)
+    ));
+}

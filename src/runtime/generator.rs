@@ -364,6 +364,7 @@ pub(super) fn create_generator_object(
         &evaluator,
         &environment,
         &closure.code.parameters,
+        None,
         arguments,
     )?;
     let FunctionBody::Block(body) = &closure.code.body else {

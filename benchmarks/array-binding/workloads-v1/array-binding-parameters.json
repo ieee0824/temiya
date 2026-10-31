@@ -1,0 +1,7 @@
+{
+  "name": "array-binding-parameters",
+  "setup": "function read([first,second=first]){if(second!==first)throw 42;return first;}function bench(n){let total=0;for(let i=1;i<=n;i++)total+=read([i]);return total;}",
+  "invocation": "bench(10000);",
+  "iterations": 10000,
+  "expected": 50005000
+}

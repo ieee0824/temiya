@@ -581,6 +581,32 @@ impl ExpressionEvaluator {
         name: &JsString,
     ) -> RuntimeResult<Value> {
         match &expression.kind {
+            ExprKind::Function(function) if function.name.is_none() => {
+                let function = create_function(function, FunctionKind::Normal, self, None)?;
+                function.define_own_property(
+                    "name".into(),
+                    super::PropertyDescriptor::data(
+                        Value::String(name.clone()),
+                        false,
+                        false,
+                        true,
+                    ),
+                )?;
+                Ok(Value::Object(function))
+            }
+            ExprKind::Arrow(function) => {
+                let function = create_function(function, FunctionKind::Arrow, self, None)?;
+                function.define_own_property(
+                    "name".into(),
+                    super::PropertyDescriptor::data(
+                        Value::String(name.clone()),
+                        false,
+                        false,
+                        true,
+                    ),
+                )?;
+                Ok(Value::Object(function))
+            }
             ExprKind::Class(class) if class.name.is_none() => {
                 super::class::evaluate(class, self, Some(name.clone())).map(Value::Object)
             }

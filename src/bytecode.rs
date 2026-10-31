@@ -1321,6 +1321,14 @@ fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
     let empty_function_frame = empty_frame::proven(&bytecode);
     let short_function =
         empty_function_frame && short_function::proven(&bytecode, max_stack, has_backedge);
+    // Only the bounded executor accepts a separate receiver. Larger bodies
+    // that read this retain their ordinary function environment.
+    let empty_function_frame = empty_function_frame
+        && (short_function
+            || !bytecode
+                .instructions
+                .iter()
+                .any(|op| matches!(op, Instruction::LoadThis)));
     Ok(VerifiedBytecode {
         short_function,
         empty_function_frame,

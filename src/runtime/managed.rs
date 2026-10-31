@@ -46,11 +46,11 @@ impl Drop for CollectionTimer<'_> {
 
 // Leave room for the container as well as a small polymorphic receiver set.
 // The whole bounded region is still cleared before any collection.
-const ACTIVE_OBJECTS: usize = 16;
+const ACTIVE_OBJECTS: usize = 32;
 const OBJECT_FINGERPRINTS: usize = 64;
 
 const NO_OBJECT: usize = usize::MAX;
-const _: () = assert!(ACTIVE_OBJECTS > 1 && ACTIVE_OBJECTS <= u16::BITS as usize);
+const _: () = assert!(ACTIVE_OBJECTS > 1 && ACTIVE_OBJECTS <= u32::BITS as usize);
 
 struct ActiveObject {
     object: Object,
@@ -62,8 +62,8 @@ struct ActiveObjects {
     objects: Vec<ActiveObject>,
     // Stable slots avoid shifting facades on every hit. Bucket bits only
     // narrow candidates; full identity is checked even for colliding keys.
-    buckets: [u16; OBJECT_FINGERPRINTS],
-    handle_buckets: [u16; OBJECT_FINGERPRINTS],
+    buckets: [u32; OBJECT_FINGERPRINTS],
+    handle_buckets: [u32; OBJECT_FINGERPRINTS],
     oldest: usize,
     newest: usize,
 }
@@ -135,10 +135,10 @@ impl ActiveObjects {
             let index = self.oldest;
             let previous =
                 self.objects[index].object.identity() as usize & (OBJECT_FINGERPRINTS - 1);
-            self.buckets[previous] &= !(1u16 << index);
+            self.buckets[previous] &= !(1u32 << index);
             let previous_handle = self.objects[index].object.0.0.root.handle();
             self.handle_buckets[previous_handle.slot_index() & (OBJECT_FINGERPRINTS - 1)] &=
-                !(1u16 << index);
+                !(1u32 << index);
             self.objects[index].object = object.clone();
             self.touch(index);
             index
@@ -157,9 +157,9 @@ impl ActiveObjects {
             self.newest = index;
             index
         };
-        self.buckets[fingerprint] |= 1u16 << index;
+        self.buckets[fingerprint] |= 1u32 << index;
         self.handle_buckets[object.0.0.root.handle().slot_index() & (OBJECT_FINGERPRINTS - 1)] |=
-            1u16 << index;
+            1u32 << index;
     }
 }
 
@@ -693,17 +693,17 @@ mod tests {
             }
             assert_eq!(order, expected);
             assert_eq!(previous, cache.newest);
-            let mut buckets = [0u16; OBJECT_FINGERPRINTS];
+            let mut buckets = [0u32; OBJECT_FINGERPRINTS];
             for (index, entry) in cache.objects.iter().enumerate() {
                 buckets[entry.object.identity() as usize & (OBJECT_FINGERPRINTS - 1)] |=
-                    1u16 << index;
+                    1u32 << index;
             }
             assert_eq!(cache.buckets, buckets);
-            let mut handle_buckets = [0u16; OBJECT_FINGERPRINTS];
+            let mut handle_buckets = [0u32; OBJECT_FINGERPRINTS];
             for (index, entry) in cache.objects.iter().enumerate() {
                 handle_buckets
                     [entry.object.0.0.root.handle().slot_index() & (OBJECT_FINGERPRINTS - 1)] |=
-                    1u16 << index;
+                    1u32 << index;
             }
             assert_eq!(cache.handle_buckets, handle_buckets);
             if step % 97 == 0 {
@@ -789,7 +789,7 @@ mod tests {
         let region = runtime.enter_object_root_region().unwrap();
         assert!(runtime.enter_object_root_region().is_none());
         let mut weak = Vec::new();
-        for _ in 0..32 {
+        for _ in 0..(ACTIVE_OBJECTS * 2) {
             let object = Object::new_in(&runtime);
             weak.push(object.downgrade());
             let revived = runtime.root_object(object.0.handle().unwrap()).unwrap();

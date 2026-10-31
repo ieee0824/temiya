@@ -54,3 +54,15 @@ initial-ast-v1 retains the complete initial runtime6e3cbf4 Ast comparison:
 verify-initial-ast.mjs reconstructs both captures and checks every prior pass.
 Observed failure diagnostics are retained without waiving any result; this
 Ast-only historical capture cannot qualify Auto or the newer optimized source.
+
+full-private-plans-v1 retains source4d10d10 full Test262:29701pass61923fail
+18skip8569timeout across100211variants,0missing. All27855 parent-candidate
+passes remain with1846 additions and0regressions. verify-full.mjs replays all8
+gates from the raw captures.
+
+hosted-private-plans-v1 retains both hosts and all60 reports. All six new cases
+record3/3 significant Boa wins on each host, but overall speed is not qualified:
+private-invalid-receiver records0/3 on both, and copy2 derived-definition1/3.
+verify-hosted.mjs recomputes every report, control and per-case gate, preserving
+these failures. Parent159 changes and current-source requalification remain
+required before merge.

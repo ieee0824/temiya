@@ -56,6 +56,7 @@ impl VirtualMachine {
         bytecode: &VerifiedBytecode,
         realm: &Realm,
         outer: &Environment,
+        this_value: &Value,
     ) -> RuntimeResult<Completion> {
         if !bytecode.can_elide_empty_function_frame() {
             return Err(RuntimeError::internal_error(
@@ -63,7 +64,7 @@ impl VirtualMachine {
             ));
         }
         if bytecode.has_short_function_path() {
-            return super::short_function::execute(bytecode, realm, outer);
+            return super::short_function::execute(bytecode, realm, outer, this_value);
         }
         Self::run::<false>(bytecode, Some(realm), Some(outer), false)
     }
@@ -465,8 +466,10 @@ impl VirtualMachine {
                         unreachable!()
                     };
                     let environment = &scopes.last().expect("verified active scope").environment;
-                    let reference = if let Some(binding) = environment.resolve_binding(name)? {
-                        Reference::environment(binding, name.clone(), strict)
+                    let reference = if let Some((binding, hint)) =
+                        environment.resolve_binding_with_hint(name)?
+                    {
+                        Reference::function_binding(binding, name.clone(), strict, hint)
                     } else {
                         Reference::unresolvable(
                             realm.expect("scope requires Realm").global_object(),

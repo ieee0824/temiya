@@ -48,7 +48,8 @@ pub(super) fn proven(code: &Bytecode, max_stack: usize, has_backedge: bool) -> b
                     return false;
                 }
             }
-            Instruction::EnterScope(_)
+            Instruction::LoadThis
+            | Instruction::EnterScope(_)
             | Instruction::ExitScope
             | Instruction::LoadName(_)
             | Instruction::GetName { .. }
@@ -101,6 +102,7 @@ pub(super) fn execute(
     code: &VerifiedBytecode,
     realm: &Realm,
     outer: &Environment,
+    this_value: &Value,
 ) -> RuntimeResult<Completion> {
     #[cfg(test)]
     SHORT_CALLS.with(|calls| calls.set(calls.get() + 1));
@@ -125,6 +127,7 @@ pub(super) fn execute(
         match instruction {
             // Every scope is proven empty; no activation/loop cells are reused.
             Instruction::EnterScope(_) | Instruction::ExitScope => {}
+            Instruction::LoadThis => values.push(this_value.clone())?,
             Instruction::LoadConstant(index) => {
                 values.push(super::vm::constant(&body.constants[index as usize]))?
             }
@@ -140,11 +143,13 @@ pub(super) fn execute(
                 strict,
             } => {
                 let name = name(index);
-                reference = Some(if let Some(binding) = outer.resolve_binding(name)? {
-                    Reference::environment(binding, name.clone(), strict)
-                } else {
-                    Reference::unresolvable(realm.global_object(), name.clone(), strict)
-                });
+                reference = Some(
+                    if let Some((binding, hint)) = outer.resolve_binding_with_hint(name)? {
+                        Reference::function_binding(binding, name.clone(), strict, hint)
+                    } else {
+                        Reference::unresolvable(realm.global_object(), name.clone(), strict)
+                    },
+                );
             }
             Instruction::LoadReference => values.push(
                 reference
@@ -270,6 +275,9 @@ mod tests {
     #[test]
     fn bounded_captured_reads_writes_and_metadata_are_eligible() {
         assert!(eligible(
+            "function f(){if(this!==value)throw 42;return this;}"
+        ));
+        assert!(eligible(
             "function f(){if(state!==0)throw 42;state=1;reads++;return current>n;}"
         ));
         assert!(eligible(
@@ -280,7 +288,6 @@ mod tests {
     #[test]
     fn observers_loops_locals_and_nested_pending_references_use_general_vm() {
         for source in [
-            "function f(){return this;}",
             "function f(){return arguments;}",
             "function f(){return new.target;}",
             "function f(){let x=1;return x;}",

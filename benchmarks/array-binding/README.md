@@ -1,7 +1,7 @@
 # Array binding implementation inputs (#162)
 
-This branch depends on #161; it is not eligible to merge before #159, #160
-and #161. Array binding now executes through declarations, ordinary parameters,
+This branch builds on merged #161. Array binding now executes through
+declarations, ordinary parameters,
 catch and supported loop declarations. Full corpus and Boa speed qualification
 remain pending; this branch is not eligible for merge yet.
 
@@ -44,7 +44,7 @@ The normative target is ECMAScript2026
 [IteratorBindingInitialization](https://tc39.es/ecma262/2026/#sec-runtime-semantics-iteratorbindinginitialization)
 and [BindingInitialization](https://tc39.es/ecma262/2026/#sec-runtime-semantics-bindinginitialization).
 The frozen selection contains8806 files and17414 variants. Baseline and initial
-candidate captures are running; focused integration tests are not Test262 passes.
+candidate captures are retained below; focused integration tests are not Test262 passes.
 
 The workload manifest and array-binding-benchmark-reference.mjs are materialized from the preimplementation frozen hashes; none of the six input bytes changed. The hosted workflow auto-includes this suite when include_controls is true and the manifest exists, preserving all earlier suites and the two-job policy. It retains actual Boa and identical-binary reports. The preimplementation baseline lacks array binding, so it is not labeled a successful before/after comparison. No hosted qualification is claimed yet.
 
@@ -63,3 +63,27 @@ and for the two remaining Iterator inputs. All prior 46 workloads qualify on
 both jobs. The candidate does not qualify for merging; all 72 raw reports and
 adverse outcomes are retained. Replay with
 `node benchmarks/array-binding/verify-hosted.mjs`.
+
+
+`hosted-current-integrated-v1` retains run41207657318 at integrated source
+6c65967. All72 reports independently replay with
+`node benchmarks/array-binding/verify-hosted.mjs hosted-current-integrated-v1`.
+All prior46 workloads qualify on both hosts. All6 array-binding cases record
+0/3 significant wins on both; iterator wins3/3/3/3/0/0 both. Qualification
+fails. Every adverse observation, CPU identity, noise and control remains.
+The explicit beforeafter baseline is fd4ad7b; it is not the immediate parent.
+No CPU filtering, workload/statistical/resource changes or timing repeats.
+
+
+`full-current-integrated-v1` retains integrated source6c65967 run41207659226:
+33565pass58059fail18skip8569timeout across all100211 variants,0missing.
+The verifier now replays both retained capture pairs. For this integrated
+capture it compares all outcomes against prior91fb9f4:33565passes preserved,
+0regressions,0newpasses. Commit e53046e is the merge's first parent and has
+identical compiled inputs to91fb9f4; the verifier checks this equivalence.
+Both complete archives,policies,raw gate audits and outcome comparisons are
+retained. These correctness results do not establish native Boa speed.
+
+`fixed-array-data-properties-v1` retains historical runtime86679b1 fixed Ast/Auto captures, each5292pass7691fail4431timeout over17414variants, with zero missing results or collection errors. All1500 baseline Ast passes and1504 baseline Auto passes remain, adding3792/3788 passes. All5291 initial Ast passes and5292 initial Auto passes remain. The two new captures have identical outcomes. The original initial Auto collection failure (8unreported variants) and the separate missing-only recovery are preserved and independently reconstructed; the failed capture is never relabeled successful. Replay with `node benchmarks/array-binding/fixed-array-data-properties-v1/verify.mjs`. This historical result does not qualify the changed runtime9f84bc5.
+
+Runtime9f84bc5 has separate two-job native, full Test262, complete security and fixed Ast/Auto qualification in progress. The fixed engine records its actual frozen sourcee9854f8; all83 recorded compiler input hashes match9f84bc5. No active capture is restarted or replaced by a newer observation.

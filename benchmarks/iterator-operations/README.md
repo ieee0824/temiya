@@ -85,7 +85,7 @@ native logs and all6 output oracles. These are instruction diagnostics only.
 
 The fourth diagnostic point (0269ef9 environment-root cache) is rejected and reverted: getter instructions improve but invalid-result instructions increase. Raw profiles and the successful bounded-root test remain evidence, not qualification.
 
-`key-and-result-diagnostic-v1` retains 19 source-specific Callgrind points, including rejected experiments. `verify-key-profiles.mjs` checks raw counts, output oracles and the exact compiled-input inventory for each historical source (80, 81 or 82 inputs). Later points cover function frames, activation roots, short callbacks, owned function sites, weak environment hints and literal accessor initialization. These diagnostics do not satisfy the native Boa speed gate.
+`key-and-result-diagnostic-v1` retains 24 source-specific Callgrind points, including rejected experiments. `verify-key-profiles.mjs` checks raw counts, output oracles and the exact compiled-input inventory for each historical source (80, 81 or 82 inputs). Later points cover function frames, activation roots, short callbacks, owned function sites, weak environment hints and literal accessor initialization. These diagnostics do not satisfy the native Boa speed gate.
 
 `fixed-definition-cache-v1` retains historical09766bb fixed Ast/Auto captures:235pass1983fail1662timeout each. Every outcome agrees with c2bc478; no regressions or missing records. These captures do not qualify the later key/result/native-step changes.
 
@@ -164,3 +164,130 @@ was interrupted and the tenth did not start. Neither incomplete test counts
 as a pass. Commit d8c8dca increases the Miri job budget to 90 minutes without
 changing the 16 shards, test selection or strict interpreter flags. The timeout
 record and focused Miri diagnostics do not replace a completed full security run.
+
+
+The `weak-objects` diagnostic records rejected runtime c6e8fd8 and its
+revert 2b13f1f. Non-owning stored-object facade hints pass 912 all-target tests,
+Clippy, MSRV, i686, doctest and a focused strict Miri lifetime/context test.
+Four instruction profiles improve by about 0.3–3.1%, but done/value order
+increases by 0.13% and invalid next results by 0.37%. Both are the remaining
+unqualified iterator cases, so the change was reverted without a new native
+measurement. All six unchanged worker outputs validate twice; raw profiles,
+source hashes and validation logs remain replayable.
+
+
+The `hot-sites` node retains runtime fdecf72. Two recent owned function sites
+avoid repeated hash lookups; borrowed syntax keeps structural comparison and
+no JS activation is retained. Done/value instructions decline 1.16% and invalid
+result instructions 1.30%; the other four cases are nearly unchanged, including
+a 0.0052% captured-next increase. All six oracles validate twice. All-target
+tests912, Clippy, MSRV, i686, doctest and three focused strict Miri tests pass.
+These are instruction diagnostics; current-source native and full correctness
+qualification remain required before merge.
+
+
+`fixed-literal-accessors-v1` retains completed runtime0e9c642 fixed captures:
+Ast and Auto each235 pass,1983 fail,1662 timeout across3880 variants, with
+zero missing outcomes or collection errors. Every outcome matches the prior
+d9906db capture and the other backend. The original baseline collection
+failure and missing-only recovery remain archived. Replay all retained
+fixed capture pairs with `node benchmarks/iterator-operations/verify-fixed.mjs`.
+These results do not qualify the later fdecf72 runtime.
+
+
+`hosted-literal-accessors-v1` retains both jobs of run41204129150. All68
+reports independently replay. Iterator wins3/3/2/3/0/0 and3/3/3/3/1/1 fail
+the unchanged two-host gate; copy2 derived-definition also qualifies only1/3
+pairs. CPU models, noise, controls and adverse observations remain recorded.
+
+The `reference-updates` diagnostic retains runtime77e9c10, which reuses
+the VM checked numeric-binding write for resolved reference updates. BigInt,
+coercion, property and unresolvable references retain the complete operation.
+Relative to fdecf72, instructions decline4.73% for done/value,1.76% for invalid
+results and4.04% for captured-next; other cases are nearly unchanged, including
+a0.0020% array increase. All6 expected outputs validate twice. All-target
+tests912, Clippy, MSRV, i686 and doctest pass. The focused strict Miri
+Ast/VM numeric-update integration test also passes (one test,194.48seconds);
+its raw log, flags and test-source hash are retained. This diagnostic
+does not qualify native speed or replace current-source full/fixed/security gates.
+
+
+The `direct-region` diagnostic retains runtime9835c41. The activation guard
+owns the bounded root region through Runtime state, avoiding weak promotion
+and a second borrow at every object load. Teardown removes the region before
+dropping facades, breaking temporary ownership cycles; cache capacity, eviction
+and pre-collection clearing are unchanged. A new last-external-owner test
+checks Runtime release. All913 tests,Clippy,MSRV,i686 and doctest pass.
+All6 instruction counts improve by0.74–2.08% relative to77e9c10; unchanged
+expected outputs validate twice. The focused strict Miri6-test selection
+also passes (220.36seconds), covering reentrant GC, bounded retention, unwind
+and final Runtime release; its complete raw log and strict flags are retained. Current full correctness, security
+and two-host native qualification remain required.
+
+
+The `catch-records` node retains runtime71009f3. Fresh catch records contain
+their initialized parameter before publication, using checked stored values
+and incoming-record tracing at allocation. Catch without a parameter uses the
+existing block environment logic. All914 tests,Clippy,MSRV,i686,doctest and a
+focused strict Miri test pass; the latter checks allocation-time collection,
+foreign-heap rejection, mutable/nondeletable bindings and eventual graph release.
+Invalid-result instructions decline1.06%; other5 cases increase0.0006–0.0062%,
+all retained. Every unchanged expected value validates twice. These diagnostics
+do not qualify native speed or replace current full/fixed/security gates.
+
+
+`hosted-catch-records-build-failure-v1` retains copy1 of run41211990414,
+which stopped before Boa compilation because the space guard found10.9GiB
+free against its unchanged14GiB requirement. No frozen workload was measured;
+40+2 mode probes are not qualification evidence. The original log and all6
+artifact files remain hash-checked by verify-hosted.mjs. The workflow now
+removes unused Temiya intermediates and unused hosted-runner SDKs before the
+reference build, preserving worker hashes and checking worker execution again.
+The guard,compiler flags,fixtures,oracles,sample counts,statistical thresholds
+and runtime watchdog/RSS limits are unchanged. Copy2 observations remain intact.
+
+
+`fixed-hot-sites-v1` and `fixed-direct-region-v1` retain completed fdecf72
+and9835c41 Ast/Auto captures. Each backend records235pass1983fail1662timeout
+across3880 variants,with0missing/collection errors and every outcome matching
+preceding0e9c642. The original baseline collection failure and missing-only
+recovery remain included. verify-fixed.mjs now replays all7 historical pairs;
+these observations do not qualify the later71009f3 runtime or native speed.
+
+`hosted-hot-sites-v1` retains both jobs of41208962674 atbb0d326,compiled
+runtimefdecf72. All68 reports independently replay. Prior46 workloads qualify
+both hosts;iterator wins3/3/3/3/0/0 both,so qualification fails. Every adverse
+observation,CPU identity,noise estimate and control remains without filtering
+or repeated timing.
+
+`full-hot-sites-v1` retains all8 shards of41208965193 atbb0d326. All100211
+variants independently replay:29701pass61923fail18skip8569timeout. Comparison
+with full-literal-accessors-v1 preserves all29701 preceding passes,with0
+regressions/newpasses. Replay with verify-full.mjs full-hot-sites-v1. Full and
+fixed correctness records do not substitute for current-source native/security
+qualification.
+
+
+`fixed-catch-records-v1` retains current71009f3 Ast/Auto captures:each235
+pass,1983fail,1662timeout across3880 variants,0collection errors/missing.
+Every outcome matches preceding9835c41 and the other backend. verify-fixed.mjs
+replays all8 retained pairs including the original baseline failure/recovery.
+This establishes fixed-capture integrity and pass preservation,not full
+conformance or native speed.
+
+
+`full-catch-records-v1` retains current71009f3 atmetadataff67c89,run41211992339.
+All8 original gates and100211 outcomes independently replay:29701pass61923fail
+18skip8569timeout,0missing. All29701 preceding passes remain,with0regressions
+or newpasses. Replay with verify-full.mjs full-catch-records-v1. All failures
+and timeouts remain recorded; this is full-capture/pass-preservation proof,not
+complete conformance or native speed/security qualification.
+
+
+`hosted-catch-records-partial-v1` retains completed copy2 of current
+run41211990414:all34 reports independently replay. Prior46 workloads qualify;
+iterator wins3/3/3/3/1/0,so this job fails the native gate. This is explicitly
+a one-job capture. Original copy1 had no fixture observations because its
+reference build lacked space;that failure remains separate. Recovery41215109985
+measures only the missing job with separate provenance. No observed sample
+is replaced or repeated. Both independent jobs must qualify before merge.

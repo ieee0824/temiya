@@ -548,14 +548,24 @@ impl StatementEvaluator {
     }
 
     fn catch(&self, handler: &CatchClause, thrown: Value) -> RuntimeResult<Completion> {
-        let environment = Environment::declarative(self.expression.environment.clone());
-        if let Some(parameter) = &handler.param {
+        let Some(parameter) = &handler.param else {
+            return self.statement(&handler.body, &[]);
+        };
+        let environment = if matches!(parameter.kind, ExprKind::Identifier(_)) {
+            Environment::declarative_initialized(
+                self.expression.environment.clone(),
+                binding_name(parameter)?,
+                thrown,
+            )?
+        } else {
+            let environment = Environment::declarative(self.expression.environment.clone());
             super::binding::for_each_name(parameter, |name| {
                 environment.create_mutable_binding(name, false)
             })?;
             let nested = self.nested(environment.clone());
             super::binding::initialize(&nested.expression, parameter, thrown, true)?;
-        }
+            environment
+        };
         self.nested(environment).statement(&handler.body, &[])
     }
 

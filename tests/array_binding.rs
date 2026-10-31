@@ -46,6 +46,9 @@ fn catch_and_loop_declarations_initialize_patterns_in_their_scope() {
         "let answer=0;try{throw [20,[22]];}catch([a,[b]]){answer=a+b;}let total=0;for(let [a,b] of [[1,2],[3,4]]){total+=a+b;}let v=0;for(var [x,y] of [[20,22]]){v=x+y;}answer===42&&total===10&&v===42&&x===20;",
     );
     check("let total=0;for(let [i]=[0];i<3;i++){total+=i;}total===3;");
+    check(
+        "let outer=7;let plain=0;let pattern=0;let noParameter=0;let escaped;try{throw 42;}catch(outer){plain=outer;outer=20;escaped=()=>outer;}try{throw [];}catch([first=outer,second=first+1]){pattern=first+second;}try{throw 99;}catch{let outer=22;noParameter=outer;}outer===7&&plain===42&&escaped()===20&&pattern===15&&noParameter===22&&typeof first==='undefined'&&typeof second==='undefined';",
+    );
 }
 
 #[test]
@@ -121,5 +124,15 @@ fn var_pattern_resolves_object_environment_before_stepping() {
 fn rest_uses_own_data_properties_and_nested_patterns_accept_strings() {
     check(
         "let writes=0;Object.defineProperty(Array.prototype,'0',{set(value){writes++;},configurable:true});let [first,...rest]=[20,22];let descriptor=Object.getOwnPropertyDescriptor(rest,'0');delete Array.prototype[0];let [character,missing='default',...empty]='😀';let [head,...[tail]]=[20,22];first+rest[0]===42&&writes===0&&Array.isArray(rest)&&descriptor.value===22&&descriptor.writable&&descriptor.enumerable&&descriptor.configurable&&character==='😀'&&missing==='default'&&empty.length===0&&head+tail===42;",
+    );
+}
+
+#[test]
+fn prepared_parameter_names_keep_fresh_tdz_cells_across_reentrant_calls() {
+    check(
+        "let saved=[];function f([a=()=>b],b=42){saved.push(a);return b;}f([],20);f([],22);let calls=0;function g([x=(calls++===0?g([7]):9)]){return x;}saved[0]()===20&&saved[1]()===22&&g([])===7&&g([])===9;",
+    );
+    check(
+        "let calls=0;function f([a=b],b=42){return a;}for(let i=0;i<2;i++){try{f([]);}catch(e){if(e instanceof ReferenceError)calls++;}}calls===2;",
     );
 }

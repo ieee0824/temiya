@@ -646,10 +646,10 @@ pub(super) struct ObjectState {
     pub(super) array: bool,
     pub(super) elements: Option<Box<super::elements::Elements<StoredDescriptor>>>,
     pub(super) buffer: Option<super::indexed::BufferSlot>,
-    pub(super) view: Option<super::indexed::ViewSlot>,
-    pub(super) string_data: Option<JsString>,
+    pub(super) view: Option<Box<super::indexed::ViewSlot>>,
+    pub(super) string_data: Option<Box<JsString>>,
     pub(super) regexp: Option<super::regexp::RegExpSlot>,
-    pub(super) primitive_data: Option<Value>,
+    pub(super) primitive_data: Option<Box<Value>>,
     pub(super) map_data: Option<super::collections::MapSlot>,
     pub(super) set_data: Option<super::collections::SetSlot>,
     pub(super) weak_map_data: Option<super::collections::WeakMapSlot>,
@@ -2084,7 +2084,7 @@ impl Object {
         Some(end)
     }
 
-    fn ordinary_array_length_info(&self) -> Option<(u32, bool)> {
+    pub(super) fn ordinary_array_length_info(&self) -> Option<(u32, bool)> {
         let state = self.0.state.borrow();
         if !state.array
             || state.proxy.is_some()
@@ -2197,6 +2197,64 @@ impl Object {
         }
         {
             let mut state = self.0.state.borrow_mut();
+            if state.array
+                && state.proxy.is_none()
+                && state.string_data.is_none()
+                && state.view.is_none()
+                && state.buffer.is_none()
+                && state.elements.is_some()
+            {
+                if let Some(index) = key.array_index() {
+                    let length = state
+                        .properties
+                        .iter()
+                        .enumerate()
+                        .find_map(|(slot, entry)| {
+                            if entry.key != PropertyKey::from("length") {
+                                return None;
+                            }
+                            let Some(StoredValue::Number(length)) = entry.descriptor.value() else {
+                                return None;
+                            };
+                            Some((
+                                slot,
+                                *length as u32,
+                                entry.descriptor.writable() == Some(true),
+                            ))
+                        });
+                    if let Some((length_slot, length, writable)) = length {
+                        if index >= length && !writable {
+                            return Ok(false);
+                        }
+                        let current = state.elements.as_ref().unwrap().get(index);
+                        let exists = current.is_some();
+                        if current.is_some_and(|entry| entry.configurable() != Some(true))
+                            || (!exists && !state.extensible)
+                        {
+                            return Ok(false);
+                        }
+                        // CreateDataProperty supplies every data attribute. No
+                        // descriptor load or prototype operation is needed, but
+                        // the incoming managed edge must precede publication.
+                        let value = StoredValue::store_owned(self, value)?;
+                        state.elements.as_mut().unwrap().insert(
+                            index,
+                            StoredDescriptor::Data {
+                                value,
+                                writable: true,
+                                enumerable: true,
+                                configurable: true,
+                            },
+                        );
+                        if index >= length {
+                            state.properties[length_slot]
+                                .descriptor
+                                .set_value(StoredValue::Number(f64::from(index + 1)));
+                        }
+                        return Ok(true);
+                    }
+                }
+            }
             if state.proxy.is_none()
                 && !state.array
                 && state.string_data.is_none()

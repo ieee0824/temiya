@@ -90,59 +90,61 @@ mod function_reference_tests {
     #[test]
     fn retained_function_hint_survives_binding_vector_changes() {
         let context = crate::runtime::AllocationContext::new();
-        let environment = Environment::function(
+        let function = Environment::function(
             None,
             Object::new_in(&context),
             None,
             ThisBindingStatus::Uninitialized,
         );
-        let prefix: JsString = "prefix".into();
-        let value: JsString = "value".into();
-        environment
-            .create_mutable_binding(prefix.clone(), true)
-            .unwrap();
-        environment
-            .initialize_binding(&prefix, Value::Null)
-            .unwrap();
-        environment
-            .create_mutable_binding(value.clone(), false)
-            .unwrap();
-        environment
-            .initialize_binding(&value, Value::Number(41.0))
-            .unwrap();
-        let reference = Reference::function_binding(
-            environment.clone(),
-            value.clone(),
-            false,
-            environment.function_binding_index(&value),
-        );
-        assert!(environment.delete_binding(&prefix).unwrap());
-        let other: JsString = "other".into();
-        environment
-            .create_mutable_binding(other.clone(), false)
-            .unwrap();
-        environment
-            .initialize_binding(&other, Value::Number(99.0))
-            .unwrap();
-        assert!(
-            reference
-                .get_value()
-                .unwrap()
-                .same_value(&Value::Number(41.0))
-        );
-        reference.put_value(Value::Number(42.0)).unwrap();
-        assert!(
+        for environment in [function, Environment::declarative_in(&context)] {
+            let prefix: JsString = "prefix".into();
+            let value: JsString = "value".into();
             environment
-                .get_binding_value(&value, false)
-                .unwrap()
-                .same_value(&Value::Number(42.0))
-        );
-        assert!(
+                .create_mutable_binding(prefix.clone(), true)
+                .unwrap();
             environment
-                .get_binding_value(&other, false)
+                .initialize_binding(&prefix, Value::Null)
+                .unwrap();
+            environment
+                .create_mutable_binding(value.clone(), false)
+                .unwrap();
+            environment
+                .initialize_binding(&value, Value::Number(41.0))
+                .unwrap();
+            let (resolved, hint) = environment
+                .resolve_binding_with_hint(&value)
                 .unwrap()
-                .same_value(&Value::Number(99.0))
-        );
+                .unwrap();
+            assert_eq!(hint, Some(1));
+            let reference = Reference::function_binding(resolved, value.clone(), false, hint);
+            assert!(environment.delete_binding(&prefix).unwrap());
+            let other: JsString = "other".into();
+            environment
+                .create_mutable_binding(other.clone(), false)
+                .unwrap();
+            environment
+                .initialize_binding(&other, Value::Number(99.0))
+                .unwrap();
+            assert!(
+                reference
+                    .get_value()
+                    .unwrap()
+                    .same_value(&Value::Number(41.0))
+            );
+            reference.put_value(Value::Number(42.0)).unwrap();
+            assert!(
+                environment
+                    .get_binding_value(&value, false)
+                    .unwrap()
+                    .same_value(&Value::Number(42.0))
+            );
+            assert!(
+                environment
+                    .get_binding_value(&other, false)
+                    .unwrap()
+                    .same_value(&Value::Number(99.0))
+            );
+        }
     }
 }
 
@@ -811,8 +813,10 @@ impl ExpressionEvaluator {
 
     fn identifier(&self, name: &str) -> RuntimeResult<Reference> {
         let name = JsString::from(name);
-        Ok(match self.environment.resolve_binding(&name)? {
-            Some(environment) => Reference::environment(environment, name, self.strict),
+        Ok(match self.environment.resolve_binding_with_hint(&name)? {
+            Some((environment, hint)) => {
+                Reference::function_binding(environment, name, self.strict, hint)
+            }
             None => Reference::unresolvable(self.realm.global_object(), name, self.strict),
         })
     }
@@ -1532,6 +1536,24 @@ pub(crate) fn update_reference_in_realm(
     increment: bool,
     prefix: bool,
 ) -> RuntimeResult<Value> {
+    // A resolved pure numeric binding needs no observable coercion. Reuse the
+    // VM's checked write so reads and writes share one binding-table search;
+    // all other reference and value kinds retain the complete operation below.
+    let binding = match &reference.base {
+        ReferenceBase::Environment(environment) => Some((environment, None)),
+        ReferenceBase::FunctionBinding(environment, index) => Some((environment, Some(*index))),
+        _ => None,
+    };
+    if let Some((environment, hint)) = binding {
+        if let Some((old, new)) = environment.update_number_binding(
+            &reference.name.binding_name()?,
+            hint,
+            increment,
+            reference.strict,
+        )? {
+            return Ok(Value::Number(if prefix { new } else { old }));
+        }
+    }
     let old = reference.get_value()?;
     let old = if matches!(old, Value::Object(_)) {
         super::coercion::primitive(

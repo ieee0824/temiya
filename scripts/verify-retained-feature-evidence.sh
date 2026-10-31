@@ -75,12 +75,25 @@ case "${1:-}" in
     node benchmarks/iterator-operations/verify-hosted.mjs
     node benchmarks/iterator-operations/verify-profiles.mjs
     node benchmarks/iterator-operations/verify-key-profiles.mjs
+    node benchmarks/iterator-operations/security-dense-marks-v1/verify.mjs benchmarks/iterator-operations/security-dense-marks-v1 18d3885b09a5b9c491b57ba5e35c36b094afd441
     ;;
   bindings)
     node benchmarks/array-binding/verify-workloads.mjs
     node benchmarks/array-binding/verify-fixed.mjs
+    node benchmarks/array-binding/fixed-array-data-properties-v1/verify.mjs
     node benchmarks/array-binding/verify-hosted.mjs
     node benchmarks/array-binding/verify-full.mjs
+    node benchmarks/array-binding/parent-integration-diagnostic-v1/verify.mjs
+    node benchmarks/array-binding/array-data-properties-diagnostic-v1/verify.mjs
+    node benchmarks/array-binding/security-current-integrated-v1/verify.mjs benchmarks/array-binding/security-current-integrated-v1 6c65967973ad4de72986db751d7c7e30547251c2
+    node benchmarks/array-binding/receiver-frame-diagnostics-v1/verify.mjs
+    node benchmarks/array-binding/prepared-parameters-diagnostic-v1/verify.mjs
+    node benchmarks/array-binding/ordinary-array-step-diagnostic-v1/verify.mjs
+    node benchmarks/array-binding/array-finish-diagnostic-v1/verify.mjs
+    node benchmarks/array-binding/reference-message-diagnostic-v1/verify.mjs
+    node benchmarks/array-binding/outlined-slots-diagnostic-v1/verify.mjs
+    node benchmarks/array-binding/cache32-diagnostic-v1/verify.mjs
+    node benchmarks/array-binding/security-array-data-properties-v1/verify.mjs benchmarks/array-binding/security-array-data-properties-v1 cd6c0294bba1a2f4ac2059dfb56cb6cd289aba8a
     ;;
   objects)
     node benchmarks/object-binding/verify-workloads.mjs

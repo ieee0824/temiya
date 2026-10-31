@@ -8,21 +8,84 @@ import {execFileSync} from 'node:child_process';
 const root=path.dirname(fileURLToPath(import.meta.url)),repo=path.resolve(root,'../..');
 const dir=root+'/key-and-result-diagnostic-v1',read=p=>JSON.parse(fs.readFileSync(p)),sha=b=>createHash('sha256').update(b).digest('hex');
 const e=read(dir+'/evidence.json');
-assert.equal(e.nodes.length,19);
+assert.equal(e.nodes.length,27);
 for(const [file,hash]of Object.entries(e.files)){
  assert(!path.isAbsolute(file)&&!file.split('/').includes('..'));
  assert.equal(sha(fs.readFileSync(dir+'/'+file)),hash,file);
 }
 for(const node of e.nodes){
- const info=read(dir+'/'+node.name+'/worker-info.json');assert.equal(info.revision,node.source);assert.equal(info.profile,'release');assert.deepEqual(info.features,[]);assert.equal(info.provenance.source_clean,true);assert.equal(info.provenance.source_inputs.length,['short-functions','metadata-observers','stable-roots','outlined-strings','deferred-arrays','owned-sites','weak-environments','literal-accessors'].includes(node.name)?82:['empty-frame','error-strings','activation-fingerprints','inline-stacks','inline-auxiliary'].includes(node.name)?81:80);
+ const info=read(dir+'/'+node.name+'/worker-info.json');assert.equal(info.revision,node.source);assert.equal(info.profile,'release');assert.deepEqual(info.features,[]);assert.equal(info.provenance.source_clean,true);assert.equal(info.provenance.source_inputs.length,['short-functions','metadata-observers','stable-roots','outlined-strings','deferred-arrays','owned-sites','weak-environments','literal-accessors','weak-objects','hot-sites','reference-updates','direct-region','catch-records','resolved-hints','active-handles','dense-marks'].includes(node.name)?82:['empty-frame','error-strings','activation-fingerprints','inline-stacks','inline-auxiliary'].includes(node.name)?81:80);
  for(const input of info.provenance.source_inputs)assert.equal(sha(execFileSync('git',['-c','safe.directory='+repo,'show',node.source+':'+input.file],{cwd:repo})),input.sha256,input.file);
+ if(['resolved-hints','active-handles','dense-marks'].includes(node.name)){
+  const previousName={'resolved-hints':'catch-records','active-handles':'resolved-hints','dense-marks':'active-handles'}[node.name];
+  const previous=e.nodes.find(n=>n.name===previousName);assert(previous);
+  const summary=read(dir+'/'+node.name+'/diagnostic-summary.json');
+  assert.equal(summary.revision,node.source);assert.equal(summary.baseline,previous.source);
+  assert.equal(summary.results.length,6);
+  for(const p of summary.results){
+   assert.equal(p.before,previous.profiles.find(q=>q.name===p.name)?.instructions);
+   assert.equal(p.after,node.profiles.find(q=>q.name===p.name)?.instructions);
+   assert.equal(p.changePercent,100*(p.after/p.before-1));
+   assert.equal(p.inputSha256,sha(execFileSync('git',['-c','safe.directory='+repo,'show',node.source+':benchmarks/iterator-operations/workloads-v1/iterator-'+p.name+'.json'],{cwd:repo})));
+  }
+  const log=fs.readFileSync(dir+'/'+node.name+'/all-targets.log','utf8');
+  const results=[...log.matchAll(/test result: ok\. (\d+) passed; 0 failed; (\d+) ignored;/g)];
+  assert.equal(results.reduce((n,m)=>n+Number(m[1]),0),{'resolved-hints':914,'active-handles':915,'dense-marks':916}[node.name]);
+  assert.equal(results.reduce((n,m)=>n+Number(m[2]),0),26);assert(!log.includes('test result: FAILED'));
+  for(const name of node.name==='resolved-hints'?['miri']:node.name==='active-handles'?['miri','foreign-miri']:[]){
+   const text=fs.readFileSync(dir+'/'+node.name+'/'+name+'.log','utf8');
+   assert(text.includes('test result: ok. 1 passed; 0 failed; 0 ignored;'));
+  }
+  if(node.name==='dense-marks'){
+   const v=read(dir+'/'+node.name+'/validation.json');assert.equal(v.source,node.source);
+   assert.equal(v.miri.toolchain,'nightly-2026-10-20');assert.deepEqual(v.miri.flags,['-Zmiri-strict-provenance','-Zmiri-symbolic-alignment-check']);
+   const plan=read(dir+'/'+node.name+'/measurement-plan.json');assert.equal(plan.superseded_run,41218484435);assert.equal(plan.new_run,41219770645);assert.equal(plan.new_source,node.source);
+   assert.equal(plan.before_cancel.status,'pending');assert.deepEqual(plan.before_cancel.jobs,[]);assert.equal(plan.before_cancel.headSha,'e1477737dd889d71945338ff0c823faafe9316b9');
+   assert.equal(plan.after_cancel.status,'completed');assert.equal(plan.after_cancel.conclusion,'cancelled');assert.deepEqual(plan.after_cancel.jobs,[]);
+   assert.notEqual(execFileSync('git',['-c','safe.directory='+repo,'diff',plan.before_cancel.headSha,node.source,'--','src'],{cwd:repo,encoding:'utf8'}),'');
+   assert.equal(v.miri.property_model,'pass: 2000-step complete-identity set-equivalence test');
+   assert(fs.readFileSync(dir+'/'+node.name+'/miri.log','utf8').includes('test result: ok. 1 passed; 0 failed; 0 ignored;'));
+   const text=fs.readFileSync(dir+'/'+node.name+'/collector-miri.log','utf8');
+   assert.deepEqual([...text.matchAll(/test result: ok\. (\d+) passed; 0 failed; 0 ignored;/g)].map(m=>Number(m[1])),[4,4,9]);
+  }
+ }
+ if(node.name==='catch-records'){
+  const v=read(dir+'/'+node.name+'/validation.json');assert.equal(v.source,node.source);assert.equal(v.miri.status,'pass');
+  assert.equal(v.miri.toolchain,'nightly-2026-10-20');assert.deepEqual(v.miri.flags,['-Zmiri-strict-provenance','-Zmiri-symbolic-alignment-check']);
+  assert(fs.readFileSync(dir+'/'+node.name+'/miri.log','utf8').includes('test result: ok. 1 passed; 0 failed; 0 ignored;'));
+ }
+ if(node.name==='direct-region'){
+  const v=read(dir+'/'+node.name+'/validation.json');assert.equal(v.source,node.source);assert.equal(v.miri.status,'pass');
+  assert.equal(v.miri.toolchain,'nightly-2026-10-20');assert.deepEqual(v.miri.flags,['-Zmiri-strict-provenance','-Zmiri-symbolic-alignment-check']);
+  assert(fs.readFileSync(dir+'/'+node.name+'/miri.log','utf8').includes('test result: ok. 6 passed; 0 failed; 0 ignored;'));
+ }
+ if(node.name==='reference-updates'){
+  const v=read(dir+'/'+node.name+'/validation.json');assert.equal(v.source,node.source);assert.equal(v.miri.status,'pass');
+  assert.equal(v.miri.toolchain,'nightly-2026-10-20');assert.deepEqual(v.miri.flags,['-Zmiri-strict-provenance','-Zmiri-symbolic-alignment-check']);
+  assert.equal(sha(execFileSync('git',['-c','safe.directory='+repo,'show',node.source+':'+v.miri.integration_source.file],{cwd:repo})),v.miri.integration_source.sha256);
+  assert(fs.readFileSync(dir+'/'+node.name+'/miri.log','utf8').includes('test result: ok. 1 passed; 0 failed; 0 ignored;'));
+ }
+ if(node.name==='hot-sites'){
+  const validation=read(dir+'/'+node.name+'/validation.json');assert.equal(validation.source,node.source);
+  assert.equal(validation.miri.toolchain,'nightly-2026-10-20');
+  assert.deepEqual(validation.miri.flags,['-Zmiri-strict-provenance','-Zmiri-symbolic-alignment-check']);
+  assert(fs.readFileSync(dir+'/'+node.name+'/miri.log','utf8').includes('test result: ok. 3 passed; 0 failed; 0 ignored;'));
+ }
+ if(node.name==='weak-objects'){
+  const decision=read(dir+'/'+node.name+'/decision.json');
+  assert.equal(decision.source,node.source);assert.equal(decision.decision,'rejected and reverted');
+  assert.equal(decision.miri.toolchain,'nightly-2026-10-20');
+  assert.deepEqual(decision.miri.flags,['-Zmiri-strict-provenance','-Zmiri-symbolic-alignment-check']);
+  assert(fs.readFileSync(dir+'/'+node.name+'/miri.log','utf8').includes('test result: ok. 1 passed; 0 failed; 0 ignored;'));
+  for(const name of ['done-value-order','invalid-next-result'])assert(decision.profiles.find(p=>p.name===name).change_percent>0);
+ }
  if(node.name==='literal-accessors'){
   const m=read(dir+'/'+node.name+'/focused-miri.json');assert.equal(m.source,node.source);assert.equal(m.toolchain,'nightly-2026-10-20');
   assert.deepEqual(m.flags,['-Zmiri-strict-provenance','-Zmiri-symbolic-alignment-check']);assert.deepEqual(m.checks.map(c=>c.passed),[2,1,1]);
   assert.equal(sha(execFileSync('git',['-c','safe.directory='+repo,'show',node.source+':'+m.integration_source.file],{cwd:repo})),m.integration_source.sha256);
   for(const c of m.checks)assert(fs.readFileSync(dir+'/'+node.name+'/'+c.file,'utf8').includes(`test result: ok. ${c.passed} passed; 0 failed; 0 ignored;`));
  }
- assert.equal(node.profiles.length,({'definition-cache':3,'property-keys':3,'iterator-results':3,'environment-roots':3,'native-errors':1,'native-step':6,'empty-frame':6,'error-strings':3,'activation-fingerprints':6,'inline-stacks':6,'inline-auxiliary':6,'short-functions':6,'metadata-observers':6,'stable-roots':6,'outlined-strings':6,'deferred-arrays':6,'owned-sites':6,'weak-environments':6,'literal-accessors':6})[node.name]);
+ assert.equal(node.profiles.length,({'definition-cache':3,'property-keys':3,'iterator-results':3,'environment-roots':3,'native-errors':1,'native-step':6,'empty-frame':6,'error-strings':3,'activation-fingerprints':6,'inline-stacks':6,'inline-auxiliary':6,'short-functions':6,'metadata-observers':6,'stable-roots':6,'outlined-strings':6,'deferred-arrays':6,'owned-sites':6,'weak-environments':6,'literal-accessors':6,'weak-objects':6,'hot-sites':6,'reference-updates':6,'direct-region':6,'catch-records':6,'resolved-hints':6,'active-handles':6,'dense-marks':6})[node.name]);
  for(const p of node.profiles){
   const base=dir+'/'+node.name+'/'+p.name,raw=gunzipSync(fs.readFileSync(base+'.callgrind.gz')).toString();
   assert.equal(Number(raw.match(/^summary: (\d+)$/m)?.[1]),p.instructions);

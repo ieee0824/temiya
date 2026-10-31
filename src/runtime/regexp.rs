@@ -549,13 +549,13 @@ impl StringObject {
     #[must_use]
     pub fn new(context: &super::AllocationContext, value: JsString) -> Self {
         let object = Object::new_in(context);
-        object.0.state.borrow_mut().string_data = Some(value);
+        object.0.state.borrow_mut().string_data = Some(Box::new(value));
         Self(object)
     }
 
     pub(crate) fn new_for(context: &Object, value: JsString) -> Self {
         let object = Object::new_for(context);
-        object.0.state.borrow_mut().string_data = Some(value);
+        object.0.state.borrow_mut().string_data = Some(Box::new(value));
         Self(object)
     }
 
@@ -573,7 +573,8 @@ impl StringObject {
             .state
             .borrow()
             .string_data
-            .clone()
+            .as_deref()
+            .cloned()
             .expect("String data")
     }
 }

@@ -123,3 +123,13 @@ fn reentrant_collection_preserves_source_and_rest_and_releases_everything() {
         assert_eq!(engine.collect_garbage().unwrap().retained, 0);
     }
 }
+
+#[test]
+fn prepared_object_parameters_keep_computed_keys_and_fresh_tdz_cells() {
+    check(
+        "let saved=[],calls=0;let key={[Symbol.toPrimitive](){calls++;return 'a';}};function f({[key]:a=()=>b,...rest},b=42){saved.push(a);return rest.k;}let x=f({k:1},20),y=f({k:2},22);let ran=0;function g({a=(ran++===0?g({a:7}):9)}){return a;}x===1&&y===2&&calls===2&&saved[0]()===20&&saved[1]()===22&&g({})===7&&g({})===9;",
+    );
+    check(
+        "let calls=0;function f({a=b},b=42){return a;}for(let i=0;i<2;i++){try{f({});}catch(e){if(e instanceof ReferenceError)calls++;}}calls===2;",
+    );
+}

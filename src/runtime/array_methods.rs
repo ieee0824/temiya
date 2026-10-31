@@ -75,7 +75,7 @@ impl StoredCoercion {
                 }
                 .load(owner)?;
                 let object = Object::new_for(&prototype);
-                object.0.state.borrow_mut().primitive_data = Some(value);
+                object.0.state.borrow_mut().primitive_data = Some(Box::new(value));
                 (object, prototype)
             }
         };
@@ -379,7 +379,7 @@ fn object_tag(object: &Object) -> RuntimeResult<&'static str> {
     } else if state.regexp.is_some() {
         "RegExp"
     } else {
-        match state.primitive_data {
+        match state.primitive_data.as_deref() {
             Some(Value::Number(_)) => "Number",
             Some(Value::Boolean(_)) => "Boolean",
             _ => "Object",
@@ -429,7 +429,7 @@ mod key_tests {
         };
         assert_eq!(boxed.prototype(), weak[1].upgrade());
         assert!(matches!(
-            boxed.0.state.borrow().primitive_data,
+            boxed.0.state.borrow().primitive_data.as_deref(),
             Some(Value::Number(42.0))
         ));
         drop(method);

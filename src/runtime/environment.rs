@@ -355,13 +355,13 @@ impl Environment {
     ) -> RuntimeResult<Value> {
         {
             let record = self.0.record.borrow();
-            if let (EnvironmentRecord::Function(record), Some(index)) = (&*record, index) {
-                if let Some(binding) = record
-                    .declarative_record
-                    .bindings
-                    .get(index)
-                    .filter(|binding| binding.name == *name)
-                {
+            let bindings = match &*record {
+                EnvironmentRecord::Function(record) => Some(&record.declarative_record.bindings),
+                EnvironmentRecord::Declarative(record) => Some(&record.bindings),
+                _ => None,
+            };
+            if let (Some(bindings), Some(index)) = (bindings, index) {
+                if let Some(binding) = bindings.get(index).filter(|binding| binding.name == *name) {
                     return binding.read(self);
                 }
             }
@@ -378,10 +378,15 @@ impl Environment {
     ) -> RuntimeResult<()> {
         {
             let mut record = self.0.record.borrow_mut();
-            if let (EnvironmentRecord::Function(record), Some(index)) = (&mut *record, index) {
-                if let Some(binding) = record
-                    .declarative_record
-                    .bindings
+            let bindings = match &mut *record {
+                EnvironmentRecord::Function(record) => {
+                    Some(&mut record.declarative_record.bindings)
+                }
+                EnvironmentRecord::Declarative(record) => Some(&mut record.bindings),
+                _ => None,
+            };
+            if let (Some(bindings), Some(index)) = (bindings, index) {
+                if let Some(binding) = bindings
                     .get_mut(index)
                     .filter(|binding| binding.name == *name)
                 {
@@ -398,6 +403,29 @@ impl Environment {
             Some(outer),
             EnvironmentRecord::Declarative(DeclarativeRecord::default()),
         )
+    }
+
+    // A catch parameter is the only binding in an unpublished fresh record.
+    // Validate its context before allocation; the incoming record traces both
+    // this value and the outer environment at the allocation safepoint.
+    pub(crate) fn declarative_initialized(
+        outer: Self,
+        name: JsString,
+        value: Value,
+    ) -> RuntimeResult<Self> {
+        let value = StoredValue::initial(outer.runtime(), &value)?;
+        Ok(Self::new(
+            Some(outer),
+            EnvironmentRecord::Declarative(DeclarativeRecord {
+                bindings: vec![Binding {
+                    name,
+                    value: Some(value),
+                    mutable: true,
+                    strict: false,
+                    deletable: false,
+                }],
+            }),
+        ))
     }
 
     /// Creates a parentless declarative record in an explicit context.
@@ -861,6 +889,40 @@ impl Environment {
                 }
             }
         }
+    }
+
+    // Retain the position already found while resolving pure records. Object,
+    // global and module records keep their observable/indirect lookup paths.
+    // Consumers validate the name again before using a position after callbacks.
+    pub(crate) fn resolve_binding_with_hint(
+        &self,
+        name: &JsString,
+    ) -> RuntimeResult<Option<(Self, Option<usize>)>> {
+        let mut environment = Some(self.clone());
+        while let Some(current) = environment {
+            let pure = {
+                let record = current.0.record.borrow();
+                let bindings = match &*record {
+                    EnvironmentRecord::Function(record) => {
+                        Some(&record.declarative_record.bindings)
+                    }
+                    EnvironmentRecord::Declarative(record) => Some(&record.bindings),
+                    _ => None,
+                };
+                bindings.map(|bindings| bindings.iter().position(|binding| binding.name == *name))
+            };
+            match pure {
+                Some(Some(index)) => return Ok(Some((current, Some(index)))),
+                Some(None) => {}
+                None => {
+                    if current.has_binding(name)? {
+                        return Ok(Some((current, None)));
+                    }
+                }
+            }
+            environment = current.outer();
+        }
+        Ok(None)
     }
 
     /// Resolves a name through the lexical environment chain.
@@ -1528,12 +1590,93 @@ fn define_or_error(
 }
 
 fn reference_error(name: &JsString, detail: &str) -> RuntimeError {
-    RuntimeError::reference_error(format!("{} {detail}", name.to_string_lossy()))
+    // A UTF-16 unit needs at most three UTF-8 bytes (a surrogate pair
+    // needs four for two units). Build the complete diagnostic once,
+    // preserving from_utf16_lossy's replacement of unpaired surrogates.
+    let mut message = String::with_capacity(
+        name.len()
+            .saturating_mul(3)
+            .saturating_add(1)
+            .saturating_add(detail.len()),
+    );
+    for ch in char::decode_utf16(name.code_units().iter().copied()) {
+        message.push(ch.unwrap_or(char::REPLACEMENT_CHARACTER));
+    }
+    message.push(' ');
+    message.push_str(detail);
+    RuntimeError::reference_error(message)
 }
 
 #[cfg(test)]
 mod slot_hint_tests {
     use super::*;
+    #[test]
+    fn reference_error_messages_preserve_lossy_utf16_names() {
+        for units in [
+            vec![],
+            vec![118, 97, 108, 117, 101],
+            vec![0xd83d, 0xde00],
+            vec![0xd800, 120, 0xdc00],
+            vec![0, 0xffff, 0x301],
+        ] {
+            let name = JsString::from_code_units(units);
+            for detail in ["is not defined", "is in the temporal dead zone", "😀"] {
+                let error = reference_error(&name, detail);
+                assert_eq!(
+                    error.message(),
+                    format!("{} {detail}", name.to_string_lossy())
+                );
+                assert_eq!(error.kind(), super::super::RuntimeErrorKind::ReferenceError);
+            }
+        }
+    }
+
+    #[test]
+    fn initialized_catch_record_traces_incoming_values_and_rejects_foreign_heaps() {
+        let runtime = Runtime::new();
+        runtime.set_allocation_collection_interval(1);
+        let outer = Environment::declarative_in(&runtime);
+        let marker = Object::new_in(&runtime);
+        let identity = marker.identity();
+        let weak = marker.downgrade();
+        let name: JsString = "caught".into();
+        let catch = Environment::declarative_initialized(
+            outer.clone(),
+            name.clone(),
+            Value::Object(marker),
+        )
+        .unwrap();
+        runtime.collect_garbage().unwrap();
+        let Value::Object(loaded) = catch.get_binding_value(&name, true).unwrap() else {
+            panic!("object")
+        };
+        assert_eq!(loaded.identity(), identity);
+        drop(loaded);
+        assert!(!catch.delete_binding(&name).unwrap());
+        catch
+            .set_mutable_binding(&name, Value::Number(42.0), true)
+            .unwrap();
+        runtime.collect_garbage().unwrap();
+        assert!(weak.upgrade().is_none());
+        assert!(
+            catch
+                .get_binding_value(&name, true)
+                .unwrap()
+                .same_value(&Value::Number(42.0))
+        );
+        let foreign = Object::new_in(&Runtime::new());
+        assert!(
+            Environment::declarative_initialized(
+                outer.clone(),
+                "foreign".into(),
+                Value::Object(foreign)
+            )
+            .is_err()
+        );
+        drop((catch, outer));
+        assert_eq!(runtime.collect_garbage().unwrap().retained, 0);
+    }
+
     #[test]
     fn stored_environment_weak_hints_preserve_collection_revival_and_context_checks() {
         let runtime = Runtime::new();

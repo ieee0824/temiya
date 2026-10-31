@@ -1,0 +1,53 @@
+{
+  "source": "c6e8fd8bea5ac338a47f2278f15c6071a6eb45ad",
+  "decision": "rejected and reverted",
+  "reason": "Four instruction profiles improve, but both remaining unqualified cases get worse: done/value +0.13065%, invalid result +0.36951%. No native speed claim or source-specific native dispatch.",
+  "validation": "912 all-target tests pass,0fail26ignored; Clippy/MSRV/i686/doc1 pass; focused strict Miri1pass",
+  "miri": {
+    "toolchain": "nightly-2026-10-20",
+    "flags": [
+      "-Zmiri-strict-provenance",
+      "-Zmiri-symbolic-alignment-check"
+    ],
+    "test": "runtime::managed::tests::stored_object_hints_are_non_owning_and_preserve_heap_checks_and_revival",
+    "passed": 1
+  },
+  "profiles": [
+    {
+      "name": "array-spread",
+      "instructions": 209408185,
+      "previous": 214396303,
+      "change_percent": -2.3265876930723017
+    },
+    {
+      "name": "call-spread",
+      "instructions": 209639968,
+      "previous": 216360161,
+      "change_percent": -3.106021445417584
+    },
+    {
+      "name": "captured-next",
+      "instructions": 308831994,
+      "previous": 309836807,
+      "change_percent": -0.3243039488203814
+    },
+    {
+      "name": "string-codepoints",
+      "instructions": 198583186,
+      "previous": 203984690,
+      "change_percent": -2.647994807845633
+    },
+    {
+      "name": "done-value-order",
+      "instructions": 819446213,
+      "previous": 818377006,
+      "change_percent": 0.1306496873886953
+    },
+    {
+      "name": "invalid-next-result",
+      "instructions": 722474822,
+      "previous": 719815016,
+      "change_percent": 0.36951243595617633
+    }
+  ]
+}

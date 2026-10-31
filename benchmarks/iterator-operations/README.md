@@ -88,3 +88,21 @@ The fourth diagnostic point (0269ef9 environment-root cache) is rejected and rev
 `key-and-result-diagnostic-v1` retains three source-specific Callgrind points for short key conversion and fresh iterator results. `verify-key-profiles.mjs` checks all raw counts, output oracles and 80 compiled inputs per point. Array instructions decline from 329,647,241 to 290,521,403; getter and invalid-result gains are smaller. These diagnostics do not satisfy the native Boa speed gate.
 
 `fixed-definition-cache-v1` retains historical09766bb fixed Ast/Auto captures:235pass1983fail1662timeout each. Every outcome agrees with c2bc478; no regressions or missing records. These captures do not qualify the later key/result/native-step changes.
+
+Native-error (c247cf3) and native-step (83dc7b0) diagnostics are also retained. Native-step validates all six frozen outputs twice; array spread records219,270,403 instructions and call spread221,612,852. Custom getter/invalid-result cases remain recorded, and hosted speed qualification is pending.
+
+`hosted-native-step-v1` retains run 41181490909 at 1979ac3. All previous
+46 workloads qualify on both independent jobs. Four iterator workloads qualify;
+`done-value-order` and `invalid-next-result` each record 0/3 significant wins
+on both jobs. This capture does not meet the speed requirement. Replay its
+68 reports with `node benchmarks/iterator-operations/verify-hosted.mjs hosted-native-step-v1`.
+
+`full-native-step-v1` retains all eight shards of run 41181492659 at
+1979ac3: 29,701 pass, 61,923 fail, 18 skip and 8,569 timeout. All 29,701
+preceding candidate passes remain passes, with no new passes or regressions.
+Replay with `node benchmarks/iterator-operations/verify-full.mjs full-native-step-v1`.
+
+The `empty-frame` node in `key-and-result-diagnostic-v1` retains all six
+4a4c103 Callgrind profiles and source hashes, including the new 81st Rust
+input. Every worker output validates the unchanged expected value twice.
+These instrumented instruction counts do not establish native speed versus Boa.

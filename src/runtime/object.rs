@@ -1128,8 +1128,27 @@ impl Object {
         Some((value, index))
     }
 
-    // Only for a newly allocated ordinary function, before it is
-    // published. Both values are leaves and the standard descriptors are known.
+    // Only for a freshly allocated function before publication. Length is a
+    // leaf value and its standard descriptor is known.
+    pub(super) fn initialize_function_length(&self, length: usize, constructable: bool) {
+        let mut state = self.0.state.borrow_mut();
+        debug_assert!(state.properties.is_empty());
+        debug_assert!(state.proxy.is_none() && !state.array);
+        // Named/inferred functions may add name and prototype. Non-constructable
+        // functions need at most their inferred name after this length entry.
+        state.properties.reserve(if constructable { 3 } else { 2 });
+        state.properties.push(PropertyEntry {
+            key: "length".into(),
+            descriptor: StoredDescriptor::Data {
+                value: StoredValue::Number(length as f64),
+                writable: false,
+                enumerable: false,
+                configurable: true,
+            },
+        });
+    }
+
+    // Class functions initialize both standard leaves before publication.
     pub(super) fn initialize_function_properties(
         &self,
         length: usize,

@@ -50,6 +50,21 @@ impl VirtualMachine {
         Self::run::<false>(bytecode, Some(realm), Some(frame), false)
     }
 
+    // This entry never treats the captured outer environment as a private
+    // activation: scalar-local clearing and loop-cell reuse remain disabled.
+    pub(crate) fn execute_without_own_frame(
+        bytecode: &VerifiedBytecode,
+        realm: &Realm,
+        outer: &Environment,
+    ) -> RuntimeResult<Completion> {
+        if !bytecode.can_elide_empty_function_frame() {
+            return Err(RuntimeError::internal_error(
+                "function frame elision was not verified",
+            ));
+        }
+        Self::run::<false>(bytecode, Some(realm), Some(outer), false)
+    }
+
     // Internal calls own their freshly instantiated frame. Scalar binding
     // elision additionally requires unobservable bindings; safe loop-cell reuse
     // is proven independently. Public prepared frames retain their old path.

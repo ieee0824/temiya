@@ -5,6 +5,7 @@ use std::{collections::VecDeque, fmt, rc::Rc};
 use crate::runtime::JsString;
 
 mod compiler;
+mod empty_frame;
 mod leaf_function;
 mod numeric_return;
 mod vm;
@@ -548,9 +549,14 @@ pub struct VerifiedBytecode {
     numeric_return: Option<numeric_return::NumericReturnPlan>,
     leaf_function: Option<leaf_function::LeafFunctionPlan>,
     definition_cache: Option<crate::runtime::bytecode_function::DefinitionCodeCache>,
+    empty_function_frame: bool,
 }
 
 impl VerifiedBytecode {
+    pub(crate) fn can_elide_empty_function_frame(&self) -> bool {
+        self.empty_function_frame
+    }
+
     pub(crate) fn definition_context(
         &self,
     ) -> crate::runtime::bytecode_function::DefinitionEvaluationContext {
@@ -1307,7 +1313,9 @@ fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
             )
         })
         .then(Default::default);
+    let empty_function_frame = empty_frame::proven(&bytecode);
     Ok(VerifiedBytecode {
+        empty_function_frame,
         definition_cache,
         reuse_loop_bindings,
         leaf_function,

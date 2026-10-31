@@ -83,3 +83,17 @@ private storage and bound constructor bindings:27855pass,63525fail,18skip,
 8813timeout,0missing. All previous candidate passes remain, and all27200 main
 passes remain with655 additions. The eight gates independently replay; this
 correctness result does not establish the separate pending two-host speed gate.
+
+hosted-bound-constructor-v1 retains run41168380212, source072f6315. Copy1
+EPYC7763 qualifies all40 workloads. Copy2 EPYC9V74 qualifies38; static-abrupt
+and private-invalid-receiver both have0/3 significant wins. All56 reports
+independently replay. Neither a successful job nor one passing host qualifies
+this source for merge. The original inputs and noise policy remain unchanged.
+
+local-bindings-diagnostic-v1 and identifier-values-diagnostic-v1 retain the
+unchanged private-invalid input across9ed3bc7/31fa20e/03d3724:490862016 to
+481149396 to431811114 instructions. Pure local value reads fuse name resolution
+and GetValue; reference contexts keep their original paths. Source03d3724 has
+862 native tests including1doctest,0fail26ignored and Clippy passed. The
+interrupted permission run and its recovery are retained separately. These
+instruction diagnostics do not establish native Boa speed qualification.

@@ -496,3 +496,24 @@ fn ancestor_resolution_survives_gc_during_unscopables_then_continues_outward() {
     );
     assert_eq!(calls.get(), 1);
 }
+
+#[test]
+fn identifier_value_reads_preserve_tdz_with_receivers_and_closure_scope() {
+    use temiya::{Engine, embedding::ScriptBackend};
+    for backend in [ScriptBackend::Ast, ScriptBackend::Auto] {
+        let engine = Engine::builder().script_backend(backend).build();
+        let realm = engine.create_realm();
+        let source = "let events='';let x=41;let value=0;let scope={get x(){events+='g';return 42;},method(){return this===scope;}};with(scope){value=x;if(!method())throw 1;}let blocked={};with(blocked){value+=x-41;}let tdz=false;try{let a=b;let b=1;}catch(e){tdz=e instanceof ReferenceError;}let missing=false;try{value+=noSuchBinding;}catch(e){missing=e instanceof ReferenceError;}function direct(){let local=42;return (()=>local)();}value===42 && events==='g' && tdz && missing && direct()===42;";
+        let script = engine.compile(&realm, source).unwrap();
+        let result = engine.evaluate(&script).unwrap();
+        if !matches!(result.value(), Value::Boolean(true)) {
+            let details = engine
+                .compile(&realm, "value+':'+events+':'+tdz+':'+missing+':'+direct();")
+                .unwrap();
+            panic!(
+                "{backend:?}: {:?}",
+                engine.evaluate(&details).unwrap().value()
+            );
+        }
+    }
+}

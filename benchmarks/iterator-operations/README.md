@@ -113,3 +113,9 @@ variants. The preceding native-step candidate's 29,701 passes remain passes,
 with no new passes or regressions. The verifier reconstructs this comparison
 from both archives. This is correctness evidence, not native speed qualification.
 Replay with `node benchmarks/iterator-operations/verify-full.mjs full-empty-frame-v1`.
+
+`hosted-empty-frame-v1` retains run 41186655959 at 4a4c103. Both jobs record
+0/3 significant wins for done/value order and invalid next results. Copy 2 also
+records 1/3 for captured-next and for the preceding derived-definition control.
+All 68 reports independently replay; the source does not meet the speed gate.
+Replay with `node benchmarks/iterator-operations/verify-hosted.mjs hosted-empty-frame-v1`.

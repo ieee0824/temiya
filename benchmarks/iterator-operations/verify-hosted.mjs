@@ -8,7 +8,7 @@ import {execFileSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 const root=path.dirname(fileURLToPath(import.meta.url)),repo=path.resolve(root,'../..');
 const read=p=>JSON.parse(fs.readFileSync(p)),sha=b=>createHash('sha256').update(b).digest('hex');
-const captures=new Map([['hosted-native-step-v1',{source:'1979ac3cb1454a8903d32d4886f71b86324f972c',run:41181490909,baseline:'7eba69e8d8e5927b5f5c73dbdd57b30749e16442'}],['hosted-definition-cache-v1',{source:'09766bba7308eaede7b76059b88b73dd2bbb4efe',run:41176605076,baseline:'7eba69e8d8e5927b5f5c73dbdd57b30749e16442'}],['hosted-initial-v1',{source:'7eba69e8d8e5927b5f5c73dbdd57b30749e16442',run:41169970601,baseline:'622bc975af697c49298d2fb5b71b575aeed6cdb5'}]]);
+const captures=new Map([['hosted-empty-frame-v1',{source:'4a4c103ade6b0acae5f5a16cfa68220f24c2300e',run:41186655959,baseline:'7eba69e8d8e5927b5f5c73dbdd57b30749e16442'}],['hosted-native-step-v1',{source:'1979ac3cb1454a8903d32d4886f71b86324f972c',run:41181490909,baseline:'7eba69e8d8e5927b5f5c73dbdd57b30749e16442'}],['hosted-definition-cache-v1',{source:'09766bba7308eaede7b76059b88b73dd2bbb4efe',run:41176605076,baseline:'7eba69e8d8e5927b5f5c73dbdd57b30749e16442'}],['hosted-initial-v1',{source:'7eba69e8d8e5927b5f5c73dbdd57b30749e16442',run:41169970601,baseline:'622bc975af697c49298d2fb5b71b575aeed6cdb5'}]]);
 const groups=[
  ['original','audit-original-workload-records.mjs',[],['beforeafter','boa','baseline-boa','same-binary-control']],
  ['class','audit-class-workload-records.mjs',[],['class-beforeafter','class-boa','class-baseline-boa','class-same-binary']],

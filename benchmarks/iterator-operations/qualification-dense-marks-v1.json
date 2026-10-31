@@ -1,0 +1,116 @@
+{
+  "issue": 161,
+  "feature_pr": 547,
+  "runtime_source": "0546eea90296733f8cc90f7a8ee010415529d83a",
+  "measured_source": "18d3885b09a5b9c491b57ba5e35c36b094afd441",
+  "pr_head": "38fcaf00e4a39c8e97f31f6cda82b0ae8adc7600",
+  "native": {
+    "run": 41219770645,
+    "reports": 68,
+    "workloads": 52,
+    "independent_jobs": 2,
+    "all_workloads_minimum_significant_wins": 2,
+    "pairs": 3,
+    "samples": 15,
+    "iterator_wins_each_host": [
+      3,
+      3,
+      3,
+      3,
+      3,
+      3
+    ],
+    "cpu_models": [
+      "Intel Xeon Platinum8370C",
+      "AMD EPYC7763"
+    ],
+    "records": "hosted-dense-marks-v1"
+  },
+  "full": {
+    "run": 41219772686,
+    "files": 52133,
+    "variants": 100211,
+    "pass": 29701,
+    "fail": 61923,
+    "skip": 18,
+    "timeout": 8569,
+    "missing": 0,
+    "preserved_immediate_parent_passes": 29701,
+    "regressions": 0,
+    "newpasses": 0,
+    "parent_run": 41218486890,
+    "records": "full-dense-marks-v1"
+  },
+  "fixed": {
+    "source": "0546eea90296733f8cc90f7a8ee010415529d83a",
+    "files": 1947,
+    "variants": 3880,
+    "each_backend": {
+      "pass": 235,
+      "fail": 1983,
+      "skip": 0,
+      "timeout": 1662,
+      "missing": 0,
+      "collection_errors": 0
+    },
+    "records": "fixed-dense-marks-v1"
+  },
+  "security": {
+    "run": 41219774839,
+    "jobs": 19,
+    "miri_exact_tests": 157,
+    "miri_shards": 16,
+    "asan_pass": 916,
+    "dependency_audit": "pass",
+    "records": "security-dense-marks-v1"
+  },
+  "ci": {
+    "run": 41222123259,
+    "head": "38fcaf00e4a39c8e97f31f6cda82b0ae8adc7600",
+    "conclusion": "success"
+  },
+  "acceptance": [
+    {
+      "requirement": "Symbol.iterator,next,done/value order",
+      "evidence": [
+        "tests/iterator_operations.rs:public_array_and_argument_consumers_keep_protocol_order_and_cached_next"
+      ],
+      "status": "pass"
+    },
+    {
+      "requirement": "non-object result and return-throw priority",
+      "evidence": [
+        "tests/iterator_operations.rs:iterator_failures_preserve_identity_and_do_not_call_return",
+        "tests/iterator_operations.rs:consumer_failure_closes_once_and_preserves_original_throw",
+        "src/runtime/iterator.rs direct next/close unit tests"
+      ],
+      "status": "pass"
+    },
+    {
+      "requirement": "real JS/Engine/host integration",
+      "evidence": [
+        "tests/iterator_operations.rs Ast+Auto consumers and reentrant host GC",
+        "tests/bytecode_calls.rs VM spread controls"
+      ],
+      "status": "pass"
+    },
+    {
+      "requirement": "normal,boundary,exception regressions and fixed official suite without counting skips or missing cases as pass",
+      "evidence": [
+        "fixed-dense-marks-v1",
+        "full-dense-marks-v1"
+      ],
+      "status": "pass"
+    },
+    {
+      "requirement": "API docs,fmt,Clippy,stable,MSRV,build,target checks",
+      "evidence": [
+        "docs/iterator-operations.md",
+        "CI41222123259",
+        "MSRV1.85 and i686 local check logs in key-and-result-diagnostic-v1/dense-marks"
+      ],
+      "status": "pass"
+    }
+  ],
+  "scope": "Qualification of issue161 and recorded native workloads only. All historical adverse observations and original failures remain retained. For-of171,array binding162,object binding163,global Iterator APIs,async iteration and complete language conformance are not claimed complete."
+}

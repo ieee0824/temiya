@@ -80,6 +80,7 @@ case "${1:-}" in
   bindings)
     node benchmarks/array-binding/verify-workloads.mjs
     node benchmarks/array-binding/verify-fixed.mjs
+    node benchmarks/array-binding/fixed-array-data-properties-v1/verify.mjs
     node benchmarks/array-binding/verify-hosted.mjs
     node benchmarks/array-binding/verify-full.mjs
     node benchmarks/array-binding/parent-integration-diagnostic-v1/verify.mjs

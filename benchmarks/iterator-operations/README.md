@@ -43,3 +43,9 @@ frozen suite when include_controls is true and its manifest exists. It retains
 before/after, actual Boa, baseline/Boa and identical-binary controls with the
 existing15sample/3pair policy; previous suites remain included. These wiring
 and output checks do not establish native speed qualification.
+
+full-initial-v1 retains the full source7eba69e capture from run41169970673:
+29701pass61923fail18skip8569timeout,0missing across100211 variants and52133
+files. All29701 parent passes remain, with0newpasses and0regressions. The8
+known-pass gates independently replay via verify-full.mjs in CI. These results
+do not imply complete conformance or a passing two-host speed qualification.

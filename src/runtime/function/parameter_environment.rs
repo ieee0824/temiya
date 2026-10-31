@@ -1,6 +1,7 @@
 //! Prepared FunctionDeclarationInstantiation data for parameter expressions.
 use super::*;
 use crate::semantics::{DeclarationScope, bound_names, var_declared_names};
+use std::collections::HashSet;
 
 #[derive(Debug)]
 pub(super) struct Plan {
@@ -17,8 +18,13 @@ impl Plan {
         let StmtKind::Block(statements) = &body.kind else {
             return Some(Self { vars: Box::new([]) });
         };
-        let parameters: Vec<_> = function.parameters.iter().flat_map(bound_names).collect();
-        let functions: Vec<_> = statements
+        let parameters: HashSet<_> = function
+            .parameters
+            .iter()
+            .flat_map(bound_names)
+            .map(|name| name.name)
+            .collect();
+        let functions: HashSet<_> = statements
             .iter()
             .filter_map(|stmt| {
                 if let StmtKind::FunctionDeclaration(function) = &stmt.kind {
@@ -34,14 +40,16 @@ impl Plan {
                 }
             })
             .collect();
+        let declared = var_declared_names(statements, DeclarationScope::Function);
+        let mut seen = HashSet::new();
         let mut vars = Vec::new();
-        for name in var_declared_names(statements, DeclarationScope::Function) {
-            let key = JsString::from(name.name.as_str());
-            if vars.iter().any(|(existing, _)| existing == &key) {
+        for name in &declared {
+            if !seen.insert(name.name.as_str()) {
                 continue;
             }
-            let copy = !functions.contains(&name.name.as_str())
-                && (name.name == "arguments" || parameters.iter().any(|p| p.name == name.name));
+            let key = JsString::from(name.name.as_str());
+            let copy = !functions.contains(name.name.as_str())
+                && (name.name == "arguments" || parameters.contains(name.name.as_str()));
             vars.push((key, copy));
         }
         Some(Self {

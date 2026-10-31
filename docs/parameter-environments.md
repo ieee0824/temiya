@@ -31,3 +31,9 @@ eight inputs; pinned actual Boa validates three and throws in five (four
 uninitialized-binding errors and one invariant failure). No input was dropped
 or changed. These failures prevent this reference capture from qualifying
 native speed; replay integrity success is not a performance pass.
+
+Preparation preserves var declaration order while using hash membership for
+parameter names, function names and duplicate vars. This avoids repeated scans
+as parameter/var lists grow. A 192-parameter Unicode-name regression checks
+initial values and repeated var declarations. No native speed claim follows
+from this preparation change; earlier retained captures keep their source IDs.

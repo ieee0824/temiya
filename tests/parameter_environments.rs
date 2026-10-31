@@ -79,3 +79,18 @@ fn escaping_defaults_and_suspended_generator_keep_cells_across_gc() {
         assert_eq!(engine.collect_garbage().unwrap().retained, 0);
     }
 }
+
+#[test]
+fn large_parameter_and_var_sets_preserve_initial_values_and_duplicates() {
+    let parameters = (0..192)
+        .map(|i| format!("值{i}={}", i + 1))
+        .collect::<Vec<_>>()
+        .join(",");
+    let vars = (0..192)
+        .map(|i| format!("值{i},值{i}"))
+        .collect::<Vec<_>>()
+        .join(",");
+    check(&format!(
+        "function f({parameters}){{var {vars};return 值0+值191;}}f()===193;"
+    ));
+}

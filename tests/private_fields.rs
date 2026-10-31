@@ -99,6 +99,8 @@ fn private_values_and_lexical_names_survive_gc_then_release_cycles() {
                 engine.evaluate(&constructor).unwrap().value(),
                 Value::Boolean(true)
             ));
+            let cached = engine.compile(&realm, "function makeCached(v){class C{#x;constructor(v){this.#x=v;}reader(){return ()=>this.#x;}has(){return o=>#x in o;}}let c=new C(v);return {read:c.reader(),owns:c.has(),value:c};}let cachedA=makeCached(41);let cachedB=makeCached(42);gcNow();cachedA.read()===41 && cachedB.read()===42 && cachedA.owns(cachedA.value) && !cachedA.owns(cachedB.value) && cachedB.owns(cachedB.value) && !cachedB.owns(cachedA.value);").unwrap();
+            assert!(matches!(engine.evaluate(&cached).unwrap().value(), Value::Boolean(true)));
         }
         assert_eq!(engine.collect_garbage().unwrap().retained, 0);
     }

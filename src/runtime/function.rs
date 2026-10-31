@@ -1,6 +1,7 @@
 //! ECMAScript function objects, calls, constructors, and parameter binding.
 
 mod constructor_assignments;
+mod parameter_environment;
 mod private_expression;
 mod super_call;
 
@@ -118,6 +119,7 @@ pub(super) struct FunctionCode {
     may_observe_arguments: bool,
     parameter_binds_arguments: bool,
     parameter_names: Option<Box<[JsString]>>,
+    parameter_environment: Option<parameter_environment::Plan>,
     delegated_parameters: Option<Box<[usize]>>,
     super_call: Option<super_call::Plan>,
     auto_functions: bool,
@@ -196,6 +198,7 @@ fn prepare_code(
         } else {
             None
         },
+        parameter_environment: parameter_environment::Plan::prepare(code),
         may_observe_arguments: may_observe_arguments(code),
         parameter_binds_arguments: code.parameters.iter().any(|parameter| {
             crate::semantics::bound_names(parameter)
@@ -739,6 +742,11 @@ fn call_function(
         arguments,
     )?;
 
+    let environment = match &closure.code.parameter_environment {
+        Some(plan) => plan.instantiate(&environment)?,
+        None => environment,
+    };
+
     match &closure.code.body {
         FunctionBody::Expression(expression) => evaluator.evaluate(expression),
         FunctionBody::Block(body) => {
@@ -863,6 +871,10 @@ fn construct_derived(
         closure.code.parameter_names.as_deref(),
         arguments,
     )?;
+    let body_environment = match &closure.code.parameter_environment {
+        Some(plan) => plan.instantiate(&environment)?,
+        None => environment.clone(),
+    };
     let FunctionBody::Block(body) = &closure.code.body else {
         return Err(RuntimeError::internal_error(
             "derived constructor requires a block body",
@@ -870,8 +882,8 @@ fn construct_derived(
     };
     let statements = StatementEvaluator::with_environments(
         closure.realm.clone(),
-        environment.clone(),
-        environment.clone(),
+        body_environment.clone(),
+        body_environment,
         Value::Undefined,
         true,
     )

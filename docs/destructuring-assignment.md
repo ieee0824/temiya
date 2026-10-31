@@ -22,7 +22,7 @@ Specification: [ECMA-262 destructuring assignment](https://tc39.es/ecma262/2026/
 Local correctness evidence is retained in
 `benchmarks/destructuring-assignment/correctness-v1`. Replay with
 `node benchmarks/destructuring-assignment/correctness-v1/verify.mjs`.
-It includes the initial 952-test all-target run and all nine final assignment
+It includes the initial 952-test all-target run and all ten final assignment
 tests under strict Miri. Earlier MSRV results cover eight tests. These records
 do not establish native speed or complete Test262 qualification.
 

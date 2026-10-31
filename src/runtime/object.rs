@@ -46,6 +46,19 @@ pub enum PropertyKey {
 }
 
 impl PropertyKey {
+    pub(crate) fn integer_index(mut index: u64) -> Self {
+        let mut units = [0u16; 20];
+        let mut start = units.len();
+        loop {
+            start -= 1;
+            units[start] = u16::from(b'0') + (index % 10) as u16;
+            index /= 10;
+            if index == 0 {
+                break;
+            }
+        }
+        JsString::from_code_units_slice(&units[start..]).into()
+    }
     /// Returns the array index represented by this key, when it is a canonical index.
     #[must_use]
     pub fn array_index(&self) -> Option<u32> {
@@ -2433,6 +2446,11 @@ impl Object {
 impl Value {
     /// Implements ECMAScript `ToPropertyKey`.
     pub fn to_property_key(&self) -> RuntimeResult<PropertyKey> {
+        if let Self::Number(number) = self {
+            if *number >= 0.0 && *number <= f64::from(u32::MAX) && number.fract() == 0.0 {
+                return Ok(PropertyKey::integer_index(*number as u64));
+            }
+        }
         let key = self.to_primitive(super::PrimitiveHint::String)?;
         if let Self::Symbol(symbol) = key {
             Ok(PropertyKey::Symbol(symbol))

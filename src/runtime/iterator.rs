@@ -372,7 +372,7 @@ fn array_next(this: Value, to_primitive: &PropertyKey, prototype: &Object) -> Ru
     {
         *next = index + 1;
     }
-    let value = target.get(&JsString::from(index.to_string()).into())?;
+    let value = target.get(&PropertyKey::integer_index(index))?;
     result(prototype, value, false)
 }
 

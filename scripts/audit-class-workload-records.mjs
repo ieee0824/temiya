@@ -13,8 +13,9 @@ const privateFields = args[0] === '--private';
 const privateElements = args[0] === '--elements';
 const iterators = args[0] === '--iterators';
 const arrayBindings = args[0] === '--bindings';
-if (derived || superProperties || instanceFields || staticElements || privateFields || privateElements || iterators || arrayBindings) args.shift();
-const {classFixtureVersion, classManifestSha256, classReferenceRevision, classWorkloads} = arrayBindings ? await import('./array-binding-benchmark-reference.mjs') : iterators ? await import('./iterator-benchmark-reference.mjs') : privateElements ? await import('./private-element-benchmark-reference.mjs') : privateFields ? await import('./private-field-benchmark-reference.mjs') : staticElements ? await import('./static-class-benchmark-reference.mjs') : instanceFields ? await import('./instance-field-benchmark-reference.mjs') : superProperties ? await import('./super-property-benchmark-reference.mjs') : derived
+const objectBindings = args[0] === '--object-bindings';
+if (derived || superProperties || instanceFields || staticElements || privateFields || privateElements || iterators || arrayBindings || objectBindings) args.shift();
+const {classFixtureVersion, classManifestSha256, classReferenceRevision, classWorkloads} = objectBindings ? await import('./object-binding-benchmark-reference.mjs') : arrayBindings ? await import('./array-binding-benchmark-reference.mjs') : iterators ? await import('./iterator-benchmark-reference.mjs') : privateElements ? await import('./private-element-benchmark-reference.mjs') : privateFields ? await import('./private-field-benchmark-reference.mjs') : staticElements ? await import('./static-class-benchmark-reference.mjs') : instanceFields ? await import('./instance-field-benchmark-reference.mjs') : superProperties ? await import('./super-property-benchmark-reference.mjs') : derived
   ? await import('./derived-class-benchmark-reference.mjs') : baseClassSuite;
 assert(args.length > 0, 'provide authored class comparison reports');
 const sha = b => createHash('sha256').update(b).digest('hex');
@@ -26,7 +27,7 @@ for (const file of args) {
   const before = r.comparison_kind === 'Temiya class before/after or control';
   assert(before || r.comparison_kind === 'Temiya class versus actual Boa');
   assert.equal(sha(JSON.stringify(r.manifest, null, 2) + '\n'), classManifestSha256);
-  assert.equal(r.manifest.fixture_kind, arrayBindings ? 'authored-array-binding' : iterators ? 'authored-sync-iterator-operations' : privateElements ? 'authored-private-class-elements' : privateFields ? 'authored-private-instance-fields' : staticElements ? 'authored-static-class-elements' : instanceFields ? 'authored-instance-fields' : superProperties ? 'authored-super-properties' : derived ? 'authored-derived-classes' : 'authored-base-classes');
+  assert.equal(r.manifest.fixture_kind, objectBindings ? 'authored-object-binding' : arrayBindings ? 'authored-array-binding' : iterators ? 'authored-sync-iterator-operations' : privateElements ? 'authored-private-class-elements' : privateFields ? 'authored-private-instance-fields' : staticElements ? 'authored-static-class-elements' : instanceFields ? 'authored-instance-fields' : superProperties ? 'authored-super-properties' : derived ? 'authored-derived-classes' : 'authored-base-classes');
   assert.equal(r.manifest.fixture_version, classFixtureVersion);
   assert.equal(r.manifest.reference_engine_revision, classReferenceRevision);
   assert.deepEqual(r.capture_errors, []);

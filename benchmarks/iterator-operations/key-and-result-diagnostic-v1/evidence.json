@@ -373,6 +373,36 @@
           "instructions": 851045790
         }
       ]
+    },
+    {
+      "name": "deferred-arrays",
+      "source": "b0c6d496708325fd7d2f8927524ef32f8b6b6c8e",
+      "profiles": [
+        {
+          "name": "array-spread",
+          "instructions": 216708192
+        },
+        {
+          "name": "call-spread",
+          "instructions": 223812487
+        },
+        {
+          "name": "captured-next",
+          "instructions": 332613075
+        },
+        {
+          "name": "string-codepoints",
+          "instructions": 206277625
+        },
+        {
+          "name": "done-value-order",
+          "instructions": 902459233
+        },
+        {
+          "name": "invalid-next-result",
+          "instructions": 754330970
+        }
+      ]
     }
   ],
   "files": {
@@ -601,7 +631,26 @@
     "outlined-strings/done-value-order-valgrind.log": "ff2bf5a4ee00f9c645db4ad685c099b770a86ef007f86e9f9fbb68303ce64916",
     "outlined-strings/invalid-next-result.callgrind.gz": "e807f586009204e39575d2fcc0e6e291633a372f5f989a62f3179b734391215b",
     "outlined-strings/invalid-next-result-worker.json": "41ccd57f70a03016badfe5a8e9f079cb1981024762e52369794ba59ecd030d74",
-    "outlined-strings/invalid-next-result-valgrind.log": "e40139b98ac7e9299c8f98e2a1303eb2673f2a38fbf083db64ff4144e439d951"
+    "outlined-strings/invalid-next-result-valgrind.log": "e40139b98ac7e9299c8f98e2a1303eb2673f2a38fbf083db64ff4144e439d951",
+    "deferred-arrays/worker-info.json": "61e3feb3aa919e4eb73895e48af268c550531ef40e5bb941120b650aa3be8501",
+    "deferred-arrays/array-spread.callgrind.gz": "253fc688125aab4a6ed26d821d93ffc2d97a24fd37f05832d16952d203a76667",
+    "deferred-arrays/array-spread-worker.json": "53aa8805ecbbe885a4924f659d9fa680c62d8b597eec83af07f45f6b5f059ec5",
+    "deferred-arrays/array-spread-valgrind.log": "5855b6431ccaeecb55e0f1f7d822df9081a786bbeb844a783ff86fbee3c5733b",
+    "deferred-arrays/call-spread.callgrind.gz": "a4918aaa7f86d622e3fdbe8af0cf257b1f2df70e7cfdc9807f54ded86d09df07",
+    "deferred-arrays/call-spread-worker.json": "7ed6bbd2e423bbefd14b01311fd78f2b72a731efa6fb90dbf9934c49308db468",
+    "deferred-arrays/call-spread-valgrind.log": "59b3b59e55ecd7c6dd9cee527c1fc255cd87e10340fcbf2d7e2df31ad90e9cfc",
+    "deferred-arrays/captured-next.callgrind.gz": "0d665f145de2e4cb9657156431f2d3b2ba432ddf2bda62ba8f9a6c7b299a8ab1",
+    "deferred-arrays/captured-next-worker.json": "381aacf380ee9410c2deb1676619904a355b0e714fa15411f99b8a922b56690a",
+    "deferred-arrays/captured-next-valgrind.log": "e854dadd77d454be7fd0b7a1320ac839bb37b99e5caf637648378152c350a7f2",
+    "deferred-arrays/string-codepoints.callgrind.gz": "9ccb5a4a7e90f80c23be5c7b16cbf81bbccc4993582762e8b3c319f68c5aac13",
+    "deferred-arrays/string-codepoints-worker.json": "841631aa5f534a4f338055354f294ee110054f3b3fd3f9d0acd46ff98c7635e3",
+    "deferred-arrays/string-codepoints-valgrind.log": "d990ad2c0b9d5af676db1a2592d9fb12ee17c7703e848f63b5fd694e71e74e47",
+    "deferred-arrays/done-value-order.callgrind.gz": "90578f86ca90e70130ec7ecb6ea96c9560dff53cb4a7ff0fa2888dc766b2c14a",
+    "deferred-arrays/done-value-order-worker.json": "e3e202e6e4dc499331f12cce7714d863fa9db209c2dfcd0e48b7803a40b1bf69",
+    "deferred-arrays/done-value-order-valgrind.log": "1f75f4ed89a6bb413ab4c7426c46cfb4bad5b786dfa1fb61b6b0f78e186e6210",
+    "deferred-arrays/invalid-next-result.callgrind.gz": "8d1bfde36962d7fa6a2ddd21d0047f3aac1305b6481d4f1be6ab0679990e32fc",
+    "deferred-arrays/invalid-next-result-worker.json": "d599a08b75961323fefe3c44b45c24a45038c1f90292506319ea61e5081597b0",
+    "deferred-arrays/invalid-next-result-valgrind.log": "2a79194ae02015a2690d54c73496fe1a4aeee6cc9f37bfb962fd9de0686b8606"
   },
-  "scope": "Instruction diagnostics on identical frozen inputs. All three profiled outputs validate twice per point. Raw self profiles and source-input identities retained. Neither instruction reductions nor embedded single-sample timings establish native Boa speed qualification. Full correctness and two independent hosted speed gates remain separate requirements. Fourth point is a rejected bounded environment-root cache; its adverse invalid-result profile remains recorded and the runtime change is reverted. Native-error and native-step points retain their original diagnostics. Native-step validates all six frozen inputs twice; these remain instruction counts, not hosted Boa speed qualification. Auxiliary-stack and short-function points retain all six unchanged inputs and do not establish native qualification. Stable-slot LRU reduces invalid-result instructions but slightly increases the other five; all six observations are retained without claiming native qualification. Outlined short-ASCII construction improves four instruction profiles and increases captured-next and done/value; all six unchanged observations remain recorded."
+  "scope": "Instruction diagnostics on identical frozen inputs. All three profiled outputs validate twice per point. Raw self profiles and source-input identities retained. Neither instruction reductions nor embedded single-sample timings establish native Boa speed qualification. Full correctness and two independent hosted speed gates remain separate requirements. Fourth point is a rejected bounded environment-root cache; its adverse invalid-result profile remains recorded and the runtime change is reverted. Native-error and native-step points retain their original diagnostics. Native-step validates all six frozen inputs twice; these remain instruction counts, not hosted Boa speed qualification. Auxiliary-stack and short-function points retain all six unchanged inputs and do not establish native qualification. Stable-slot LRU reduces invalid-result instructions but slightly increases the other five; all six observations are retained without claiming native qualification. Outlined short-ASCII construction improves four instruction profiles and increases captured-next and done/value; all six unchanged observations remain recorded. Deferred AST array allocation retains all six fixed observations; this is a new runtime source and does not inherit prior native qualification."
 }

@@ -21,3 +21,9 @@ including all 82 build input hashes, worker outputs, raw compressed instruction
 profiles and logs. Every output validates the original expected value twice.
 Replay with `node benchmarks/object-binding/verify-profiles.mjs`. These are
 instrumented instruction diagnostics and do not qualify native Boa performance.
+
+`hosted-initial-v1` preserves run 41188431466 at 1076d17. Both independent
+jobs record 0/3 significant wins for all six object-binding workloads. Every
+original/control observation is retained; the source does not qualify for
+merging. Independently replay all 76 reports with
+`node benchmarks/object-binding/verify-hosted.mjs`.

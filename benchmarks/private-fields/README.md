@@ -52,3 +52,9 @@ identity retain Ast/Auto tests. All856 native tests and Clippy pass. Callgrind
 records195821712 instructions before and130138634 after on private-update;
 profiled wall times are not speed qualification. New-source original outcomes
 and hosted performance remain pending.
+
+Run verify-initial.mjs to reconstruct all four retained before/after captures,
+including752 preserved passes,655 new passes and all remaining failures/timeouts.
+verify-private-expression.mjs checks both source/binary identities, native tests
+and the complete Callgrind instruction totals. These integrity checks do not
+establish a Boa speed pass. Both verifiers run in CI.

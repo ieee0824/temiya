@@ -106,3 +106,10 @@ The `empty-frame` node in `key-and-result-diagnostic-v1` retains all six
 4a4c103 Callgrind profiles and source hashes, including the new 81st Rust
 input. Every worker output validates the unchanged expected value twice.
 These instrumented instruction counts do not establish native speed versus Boa.
+
+`full-empty-frame-v1` retains all eight shards of run 41186658237 at
+4a4c103: 29,701 pass, 61,923 fail, 18 skip and 8,569 timeout across 100,211
+variants. The preceding native-step candidate's 29,701 passes remain passes,
+with no new passes or regressions. The verifier reconstructs this comparison
+from both archives. This is correctness evidence, not native speed qualification.
+Replay with `node benchmarks/iterator-operations/verify-full.mjs full-empty-frame-v1`.

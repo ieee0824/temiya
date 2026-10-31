@@ -13,17 +13,18 @@ const superProperties = args[0] === '--super';
 const instanceFields = args[0] === '--fields';
 const staticElements = args[0] === '--static';
 const privateFields = args[0] === '--private';
-if (derived || superProperties || instanceFields || staticElements || privateFields) args.shift();
-const {classFixtureVersion, classManifestSha256, classReferenceRevision, classWorkloads} = privateFields ? await import('./private-field-benchmark-reference.mjs') : staticElements ? await import('./static-class-benchmark-reference.mjs') : instanceFields ? await import('./instance-field-benchmark-reference.mjs') : superProperties ? await import('./super-property-benchmark-reference.mjs') : derived
+const privateElements = args[0] === '--elements';
+if (derived || superProperties || instanceFields || staticElements || privateFields || privateElements) args.shift();
+const {classFixtureVersion, classManifestSha256, classReferenceRevision, classWorkloads} = privateElements ? await import('./private-element-benchmark-reference.mjs') : privateFields ? await import('./private-field-benchmark-reference.mjs') : staticElements ? await import('./static-class-benchmark-reference.mjs') : instanceFields ? await import('./instance-field-benchmark-reference.mjs') : superProperties ? await import('./super-property-benchmark-reference.mjs') : derived
   ? await import('./derived-class-benchmark-reference.mjs') : baseClassSuite;
-const fixtureKind = privateFields ? 'authored-private-instance-fields' : staticElements ? 'authored-static-class-elements' : instanceFields ? 'authored-instance-fields' : superProperties ? 'authored-super-properties' : derived ? 'authored-derived-classes' : 'authored-base-classes';
+const fixtureKind = privateElements ? 'authored-private-class-elements' : privateFields ? 'authored-private-instance-fields' : staticElements ? 'authored-static-class-elements' : instanceFields ? 'authored-instance-fields' : superProperties ? 'authored-super-properties' : derived ? 'authored-derived-classes' : 'authored-base-classes';
 const beforeAfter = args[0] === '--temiya-baseline';
 if (beforeAfter) args.shift();
 const [directory, temiya, referenceFile, samplesText = '15', pairsText = '3'] = args;
 const samples = Number(samplesText), pairs = Number(pairsText), spiderMonkey = false;
 if (args.length < 3 || args.length > 5 || !Number.isInteger(samples) || samples < 1 || samples > 1000 ||
     !Number.isInteger(pairs) || pairs < 1 || pairs > 10 || !/^[a-f0-9]{40}$/.test(process.env.TEMIYA_REVISION ?? ''))
-  throw Error('set TEMIYA_REVISION; usage: compare-class-workloads.mjs [--derived|--super|--fields|--static|--private] [--temiya-baseline] WORKLOAD_DIR TEMIYA_WORKER REFERENCE_INFO [SAMPLES=15] [PAIRS=3]');
+  throw Error('set TEMIYA_REVISION; usage: compare-class-workloads.mjs [--derived|--super|--fields|--static|--private|--elements] [--temiya-baseline] WORKLOAD_DIR TEMIYA_WORKER REFERENCE_INFO [SAMPLES=15] [PAIRS=3]');
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 if (os.platform() !== 'linux') throw Error('Linux /proc watchdog required');
 const manifestPath = join(directory, 'manifest.json'), manifestBytes = readFileSync(manifestPath);
@@ -54,7 +55,7 @@ const workloads = manifest.workloads.map((entry, index) => {
       entry.iterations !== fixed.iterations || entry.expected !== fixed.expected || entry.oracle !== fixed.oracle)
     throw Error('class input identity/oracle changed');
   const workload = JSON.parse(bytes);
-  const expected = (instanceFields || staticElements || privateFields) ? fixed.iterations * (fixed.iterations + 1) / 2 : superProperties
+  const expected = (instanceFields || staticElements || privateFields || privateElements) ? fixed.iterations * (fixed.iterations + 1) / 2 : superProperties
     ? fixed.oracle === 'half-n-times42-plus-half-n-times84'
       ? (fixed.iterations / 2) * 42 + (fixed.iterations / 2) * 84
       : fixed.iterations * (fixed.iterations + 1) / 2

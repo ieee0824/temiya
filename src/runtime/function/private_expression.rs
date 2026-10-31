@@ -148,9 +148,9 @@ impl Plan {
                 "private in receiver is not an object",
             ));
         }
-        let name = match &closure.private_expression_name {
-            Some(name) => name.clone(),
-            None => closure
+        let name = match closure.private_bindings.as_deref() {
+            Some(PrivateBindings::Expression(name)) => name.clone(),
+            _ => closure
                 .environment
                 .load(owner)?
                 .resolve_private_key(&self.name)?,

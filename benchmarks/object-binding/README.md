@@ -56,3 +56,11 @@ test, Clippy, i686 check, and all 11 object-binding integration tests under
 strict Miri passed. Replay with
 `node benchmarks/object-binding/inline-parent-correctness-v1/verify.mjs`.
 These logs do not establish native speed or full Test262 qualification.
+
+Source `fe67ff56a766d834bc70c4e8219f4fad47b06723` is retained in
+`hosted-inline-parent-v1`: both unfiltered AMD EPYC 9V45 jobs fail speed
+qualification. Object wins are 0/0/0/0/3/0 and 0/0/0/0/1/0; preceding array
+rest and TDZ-close each record 0/3 on both jobs. All 76 reports and adverse
+observations remain. Complete source security passes all 19 jobs, with 163
+strict Miri tests and 947 ASan passes, in `security-inline-parent-v1`.
+Safety success does not qualify native speed.

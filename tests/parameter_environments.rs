@@ -45,3 +45,37 @@ fn parameter_tdz_and_rest_without_expressions_preserve_cells() {
         "let tdz=0;function f(a=b,b=42){}for(let i=0;i<2;i++){try{f();}catch(e){if(e instanceof ReferenceError)tdz++;}}function rest(...items){var items;return items[0];}function plain({value}){var value;return value;}tdz===2&&rest(42)===42&&plain({value:42})===42;",
     );
 }
+
+#[test]
+fn escaping_defaults_and_suspended_generator_keep_cells_across_gc() {
+    for backend in [ScriptBackend::Ast, ScriptBackend::Auto] {
+        let engine = Engine::builder().script_backend(backend).build();
+        {
+            let realm = engine.create_realm();
+            let gc = temiya::runtime::Object::native_function_with_context(
+                engine.allocation_context(),
+                |context, _, _| {
+                    context.collect_garbage()?;
+                    Ok(Value::Undefined)
+                },
+            );
+            engine
+                .set_global(
+                    &realm,
+                    "gcNow",
+                    engine.value(&realm, Value::Object(gc)).unwrap(),
+                )
+                .unwrap();
+            let source = "let saved;function f(a=()=>value,value={answer:20}){var value={answer:99};gcNow();saved=a;return value.answer;}let body=f();gcNow();let first=saved().answer;function* g(a=()=>value,value={answer:22}){var value={answer:99};gcNow();yield a();}let it=g();let yielded=it.next().value;gcNow();first+yielded.answer===42&&body===99;";
+            let script = engine.compile(&realm, source).unwrap();
+            assert!(
+                matches!(
+                    engine.evaluate(&script).unwrap().value(),
+                    Value::Boolean(true)
+                ),
+                "{backend:?}"
+            );
+        }
+        assert_eq!(engine.collect_garbage().unwrap().retained, 0);
+    }
+}

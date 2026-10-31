@@ -1,0 +1,7 @@
+{
+  "name": "parameter-env-default-closure",
+  "setup": "let outer=0;function read(a=()=>outer){var outer=0;return a();}function bench(n){let total=0;for(let i=1;i<=n;i++){outer=i;total+=read();}return total;}",
+  "invocation": "bench(10000);",
+  "iterations": 10000,
+  "expected": 50005000
+}

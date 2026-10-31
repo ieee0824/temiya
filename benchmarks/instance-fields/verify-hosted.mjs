@@ -8,7 +8,7 @@ import {execFileSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 const root=path.dirname(fileURLToPath(import.meta.url)),repo=path.resolve(root,'../..');
 const read=p=>JSON.parse(fs.readFileSync(p)),sha=b=>createHash('sha256').update(b).digest('hex');
-const captures=new Map([['hosted-initial-fields-v1',{source:'3f9cbec87efb6f0cab9a6f84684082711b37566f',run:41141045021,baseline:'f2b00836572c2d46efc4d3223b779d7e17b58859'}],['hosted-cache-fields-v1',{source:'835b21da13c4ffffb06359790995ce6a0a1a67eb',run:41145596030,baseline:'38983db0900f8f91b9aa2bcb0baaf04ffdbf2793'}]]);
+const captures=new Map([['hosted-initial-fields-v1',{source:'3f9cbec87efb6f0cab9a6f84684082711b37566f',run:41141045021,baseline:'f2b00836572c2d46efc4d3223b779d7e17b58859'}],['hosted-cache-fields-v1',{source:'835b21da13c4ffffb06359790995ce6a0a1a67eb',run:41145596030,baseline:'38983db0900f8f91b9aa2bcb0baaf04ffdbf2793'}],['hosted-direct-fields-v1',{source:'20d94f70b2b65c56e6c6e76761a7d4455be71434',run:41147603605,baseline:'835b21da13c4ffffb06359790995ce6a0a1a67eb'}]]);
 const groups=[
  ['original','audit-original-workload-records.mjs',[],['beforeafter','boa','baseline-boa','same-binary-control']],
  ['class','audit-class-workload-records.mjs',[],['class-beforeafter','class-boa','class-baseline-boa','class-same-binary']],
@@ -54,7 +54,7 @@ for(const name of selected){
      if(i===2)assert.equal(first.executable_sha256,baseline.executable_sha256);
      if(i===3)assert(r.workers.every(w=>w.executable_sha256===candidate.executable_sha256));
     }
-    const wins={};for(const comparison of read(capture+'/'+reports[1]+'.json').comparisons)wins[comparison.workload]=(wins[comparison.workload]??0)+(comparison.outcome==='Temiya faster beyond threshold'?1:0);const historicalFailure=name==='hosted-initial-fields-v1'?copy===1&&group==='fields':copy===2&&group==='class';assert.equal(Object.values(wins).every(n=>n>=2),!historicalFailure);if(historicalFailure)assert.equal(wins[name==='hosted-initial-fields-v1'?'field-arrow-initializer':'class-construct'],0);
+    const wins={};for(const comparison of read(capture+'/'+reports[1]+'.json').comparisons)wins[comparison.workload]=(wins[comparison.workload]??0)+(comparison.outcome==='Temiya faster beyond threshold'?1:0);const historicalFailure=name==='hosted-initial-fields-v1'?copy===1&&group==='fields':name==='hosted-cache-fields-v1'?copy===2&&group==='class':false;assert.equal(Object.values(wins).every(n=>n>=2),!historicalFailure);if(historicalFailure)assert.equal(wins[name==='hosted-initial-fields-v1'?'field-arrow-initializer':'class-construct'],0);
     summary.groups.push({suite:group,boa_wins_by_workload:wins,outcomes:audit.reports.map(r=>r.outcomes)});
    }
    summaries.push(summary);

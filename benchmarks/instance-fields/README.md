@@ -74,3 +74,11 @@ hosted-cache-fields-v1 retains the intervening cache-only source835b21d on
 EPYC7763 and9V74. Both field suites have15/15significant Boa wins, but9V74
 class-construct has0/3wins (and its baseline also0/3); this source remains
 unqualified. All40reports and controls are replayed by verify-hosted.mjs.
+
+hosted-direct-fields-v1 retains all40current reports on9V45 and9V74. Every
+workload meets the fixed minimum2/3gate per host; fields15/15 on both.
+validation-direct-fields-v1 retains16passing Miri shards, dependency audit and
+the initial ASan failure: a finite async rejection case hit its200ms test
+budget. Only that attribution test now uses the existing1500ms semantic budget;
+200ms deadline tests remain. Native/ARM-ASan semantic tests and complete x86 ASan
+rerun pass. verify-validation.mjs checks the recorded outcomes and source identity.

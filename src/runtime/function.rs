@@ -395,6 +395,28 @@ impl StoredFunctionClosure {
         } else {
             None
         };
+        if self.constructor_kind == ConstructorKind::Base {
+            if let Some(plan) = &self.code.constructor_assignments {
+                // This prepared body cannot observe an activation or lexical
+                // this. Do not revive those unused roots for every instance.
+                let realm = self.realm.load(owner)?;
+                // Prototype/allocation failures occur before entering the body
+                // and retain the caller realm; bind only body errors below.
+                let prototype = match prototype {
+                    Some(prototype) => prototype,
+                    None => new_target
+                        .constructor_prototype(super::IntrinsicId::ObjectPrototype, || {
+                            Ok(realm.intrinsic(super::IntrinsicId::ObjectPrototype))
+                        })?,
+                };
+                let instance = Object::new_for(&new_target);
+                instance.initialize_prototype(Some(prototype));
+                owner.initialize_instance_fields(&instance)?;
+                plan.execute(&instance, arguments, &self.environment.load(owner)?)
+                    .map_err(|error| realm.bind_exception(error))?;
+                return Ok(instance);
+            }
+        }
         let closure = self.load(owner)?;
         construct_function(&closure, owner.clone(), arguments, new_target, prototype)
     }
@@ -645,11 +667,6 @@ fn construct_function(
     let instance = Object::new_for(&new_target);
     instance.initialize_prototype(Some(prototype));
     function.initialize_instance_fields(&instance)?;
-    if let Some(plan) = &closure.code.constructor_assignments {
-        plan.execute(&instance, arguments, &closure.environment)
-            .map_err(|error| closure.realm.bind_exception(error))?;
-        return Ok(instance);
-    }
     let result = call_function(
         closure,
         function,

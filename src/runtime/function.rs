@@ -832,14 +832,7 @@ pub(super) fn bind_arguments(
     environment: &Environment,
     arguments: &[Value],
 ) -> RuntimeResult<()> {
-    let object = Object::new_for(&realm.global_object());
-    for (index, value) in arguments.iter().enumerate() {
-        object.create_data_property(
-            PropertyKey::String(JsString::from(index.to_string())),
-            value.clone(),
-        )?;
-    }
-    object.create_data_property("length".into(), Value::Number(arguments.len() as f64))?;
+    let object = Object::indexed_values_object(&realm.global_object(), arguments)?;
     let name = JsString::from("arguments");
     environment.create_mutable_binding(name.clone(), false)?;
     environment.initialize_binding(&name, Value::Object(object))

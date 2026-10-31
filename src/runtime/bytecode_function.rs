@@ -62,11 +62,15 @@ impl DefinitionEvaluationContext {
 
     pub(crate) fn evaluate_object_literal(
         &mut self,
-        expression: &crate::ast::Expr,
+        expression: &Rc<crate::ast::Expr>,
         strict: bool,
         realm: &Realm,
         environment: &Environment,
     ) -> RuntimeResult<Value> {
+        super::function::retain_definition(
+            self.cache.get_or_insert_with(Default::default),
+            expression,
+        );
         self.evaluator(realm, environment, strict)?
             .evaluate(expression)
     }
@@ -77,11 +81,15 @@ impl DefinitionEvaluationContext {
     // own call frame when invoked and still capture this environment.
     pub(crate) fn evaluate_object_literal_without_frame_observers(
         &mut self,
-        expression: &crate::ast::Expr,
+        expression: &Rc<crate::ast::Expr>,
         strict: bool,
         realm: &Realm,
         environment: &Environment,
     ) -> RuntimeResult<Value> {
+        super::function::retain_definition(
+            self.cache.get_or_insert_with(Default::default),
+            expression,
+        );
         super::ExpressionEvaluator::with_environment(
             realm.clone(),
             environment.clone(),

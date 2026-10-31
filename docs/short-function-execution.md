@@ -25,6 +25,14 @@ and direct `eval` throughout metadata expressions before execution. Metadata
 still uses the original environment, Realm and immutable function-code cache;
 computed keys and subsequently invoked ordinary methods keep their effects.
 
+Function-code caches can memoize exact function syntax sites only while retaining
+the immutable object-definition tree or the FunctionCode AST that owns them.
+The owner pins each node address for the cache lifetime. Unknown borrowed syntax
+still uses the full structural comparison, including collision checks for equal
+source spans and different function kinds. No address is dereferenced and no
+Realm, environment or JavaScript value is stored in this syntax cache. Generated
+function objects still receive fresh identities and captures.
+
 This reduces general VM setup for eligible callbacks without changing workload
 inputs or statistical gates. Fixed/full corpus, security and two independent
 native Boa comparisons remain required for qualification.

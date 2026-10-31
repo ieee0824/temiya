@@ -206,6 +206,7 @@ coercion, property and unresolvable references retain the complete operation.
 Relative to fdecf72, instructions decline4.73% for done/value,1.76% for invalid
 results and4.04% for captured-next; other cases are nearly unchanged, including
 a0.0020% array increase. All6 expected outputs validate twice. All-target
-tests912, Clippy, MSRV, i686 and doctest pass. Focused strict Miri is still
-running at this checkpoint and is not counted as passed. This diagnostic
+tests912, Clippy, MSRV, i686 and doctest pass. The focused strict Miri
+Ast/VM numeric-update integration test also passes (one test,194.48seconds);
+its raw log, flags and test-source hash are retained. This diagnostic
 does not qualify native speed or replace current-source full/fixed/security gates.

@@ -16,6 +16,12 @@ for(const [file,hash]of Object.entries(e.files)){
 for(const node of e.nodes){
  const info=read(dir+'/'+node.name+'/worker-info.json');assert.equal(info.revision,node.source);assert.equal(info.profile,'release');assert.deepEqual(info.features,[]);assert.equal(info.provenance.source_clean,true);assert.equal(info.provenance.source_inputs.length,['short-functions','metadata-observers','stable-roots','outlined-strings','deferred-arrays','owned-sites','weak-environments','literal-accessors','weak-objects','hot-sites','reference-updates'].includes(node.name)?82:['empty-frame','error-strings','activation-fingerprints','inline-stacks','inline-auxiliary'].includes(node.name)?81:80);
  for(const input of info.provenance.source_inputs)assert.equal(sha(execFileSync('git',['-c','safe.directory='+repo,'show',node.source+':'+input.file],{cwd:repo})),input.sha256,input.file);
+ if(node.name==='reference-updates'){
+  const v=read(dir+'/'+node.name+'/validation.json');assert.equal(v.source,node.source);assert.equal(v.miri.status,'pass');
+  assert.equal(v.miri.toolchain,'nightly-2026-10-20');assert.deepEqual(v.miri.flags,['-Zmiri-strict-provenance','-Zmiri-symbolic-alignment-check']);
+  assert.equal(sha(execFileSync('git',['-c','safe.directory='+repo,'show',node.source+':'+v.miri.integration_source.file],{cwd:repo})),v.miri.integration_source.sha256);
+  assert(fs.readFileSync(dir+'/'+node.name+'/miri.log','utf8').includes('test result: ok. 1 passed; 0 failed; 0 ignored;'));
+ }
  if(node.name==='hot-sites'){
   const validation=read(dir+'/'+node.name+'/validation.json');assert.equal(validation.source,node.source);
   assert.equal(validation.miri.toolchain,'nightly-2026-10-20');

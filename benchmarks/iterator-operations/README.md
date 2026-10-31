@@ -119,3 +119,11 @@ Replay with `node benchmarks/iterator-operations/verify-full.mjs full-empty-fram
 records 1/3 for captured-next and for the preceding derived-definition control.
 All 68 reports independently replay; the source does not meet the speed gate.
 Replay with `node benchmarks/iterator-operations/verify-hosted.mjs hosted-empty-frame-v1`.
+
+The `error-strings`, `activation-fingerprints`, and `inline-stacks` nodes in
+`key-and-result-diagnostic-v1` preserve all original 48185f4, 5852248 and 17905b8
+profiles with their build-input hashes and twice-validated worker outputs.
+The combined inline-stack experiment increases instructions for five of six
+inputs (up to about 15.7%); its operand representation is being removed rather
+than treating allocation avoidance as a speed pass. These remain diagnostics,
+not native Boa qualification. Replay with `verify-key-profiles.mjs`.

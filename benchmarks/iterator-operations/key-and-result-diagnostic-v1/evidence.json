@@ -142,6 +142,87 @@
           "instructions": 927230321
         }
       ]
+    },
+    {
+      "name": "error-strings",
+      "source": "48185f4158f70bcabb0f0e9486b98e75f3e1e48d",
+      "profiles": [
+        {
+          "name": "invalid-next-result",
+          "instructions": 900677437
+        },
+        {
+          "name": "done-value-order",
+          "instructions": 924220007
+        },
+        {
+          "name": "array-spread",
+          "instructions": 219179109
+        }
+      ],
+      "scope": "Bounded native message strings and ASCII widening."
+    },
+    {
+      "name": "activation-fingerprints",
+      "source": "5852248d97efe990392fb326bac71c77ab5a46d5",
+      "profiles": [
+        {
+          "name": "invalid-next-result",
+          "instructions": 894250177
+        },
+        {
+          "name": "done-value-order",
+          "instructions": 918493851
+        },
+        {
+          "name": "array-spread",
+          "instructions": 219906195
+        },
+        {
+          "name": "call-spread",
+          "instructions": 222567486
+        },
+        {
+          "name": "captured-next",
+          "instructions": 337202094
+        },
+        {
+          "name": "string-codepoints",
+          "instructions": 205705940
+        }
+      ],
+      "scope": "Conservative fingerprint negative lookup; same LRU and collection boundaries."
+    },
+    {
+      "name": "inline-stacks",
+      "source": "17905b8483a4429fd433067ee90389ce1cbe92f1",
+      "profiles": [
+        {
+          "name": "done-value-order",
+          "instructions": 930324749
+        },
+        {
+          "name": "invalid-next-result",
+          "instructions": 889474436
+        },
+        {
+          "name": "captured-next",
+          "instructions": 351421855
+        },
+        {
+          "name": "array-spread",
+          "instructions": 237546420
+        },
+        {
+          "name": "call-spread",
+          "instructions": 241551011
+        },
+        {
+          "name": "string-codepoints",
+          "instructions": 238077869
+        }
+      ],
+      "scope": "Rejected operand-stack experiment: higher instruction counts in five of six inputs; raw results retained."
     }
   ],
   "files": {
@@ -227,7 +308,55 @@
     "empty-frame/string-codepoints-valgrind.log": "dc16bf93ab68c4f7f28ea663f0ade1b560481ecb3c6a49f464bbfe2d67076eb3",
     "empty-frame/string-codepoints-worker.json": "7e9a69ecedcf5fcce7c94f0771d1a0a376a2ac8d7126428727c6ac91d42bd06f",
     "empty-frame/string-codepoints.callgrind.gz": "a1af6423c83fffa363ddc991eda4e660b7f1ed4409494af93c312bc40febe06f",
-    "empty-frame/worker-info.json": "111ce1100d28a3fb39d728c947fa442dff255bf0445f841009bd52f0c14b00fe"
+    "empty-frame/worker-info.json": "111ce1100d28a3fb39d728c947fa442dff255bf0445f841009bd52f0c14b00fe",
+    "error-strings/array-spread-valgrind.log": "b93beef00729544aac47bffcf575939252c100d93aff9e03f65e5962fb8d6137",
+    "error-strings/array-spread-worker.json": "81d860f9ef166d84af16fe7b3da770d41c97c01947215a0f8e14fe094be1e1d0",
+    "error-strings/array-spread.callgrind.gz": "179f65a787100c3bcfef639d5269d65241832049009e728c891a4822ac652539",
+    "error-strings/done-value-order-valgrind.log": "d778bc62f435619f782200cfd5b47dcf81ba808e860989834ba6721dc6234be2",
+    "error-strings/done-value-order-worker.json": "3fa64629855a2c1a2009ab92db638e9648733e0e2f2c76bac70e0bf20fb04cc4",
+    "error-strings/done-value-order.callgrind.gz": "78f7df9391acee575d351285a465bc6060d84ba08160eb55f85cfa20f37b76e7",
+    "error-strings/invalid-next-result-valgrind.log": "97546b4c548ec23be982be9e682550d02a575a353f9bbd03fcec870db3ae95f6",
+    "error-strings/invalid-next-result-worker.json": "fcba03adb9ac0c1b72f5b6f64bd09df633ceb931e3a256ac817ebcb72e4d989e",
+    "error-strings/invalid-next-result.callgrind.gz": "19d62bc05bde76534a6b889c3c758ec20faafff66a74c741eb5392f00f080990",
+    "error-strings/worker-info.json": "4dcb8a2db302dbc6ec864e863bd39604231afcee9af372042044cdd6965feaa0",
+    "activation-fingerprints/array-spread-valgrind.log": "41c44a45d0f991ac419e14e83ba5814cb99235611129da078f771d93ee3b29e4",
+    "activation-fingerprints/array-spread-worker.json": "f48cc92a8197dfce1f6fc8a17da47b1458fb869af7b092b379ff9692101a3616",
+    "activation-fingerprints/array-spread.callgrind.gz": "9946e925c1fe615ee7a6b719040adcff795ffc55d7d4c901c313f417cf9dcc77",
+    "activation-fingerprints/call-spread-valgrind.log": "cf20b229b9ecc1e7f78ad48cedb028b88db27ba518bd55d4735c50b6dd652d38",
+    "activation-fingerprints/call-spread-worker.json": "20d91286920d7b545c9796fc64e860cb28815aeda4596747ea0fa56642c73577",
+    "activation-fingerprints/call-spread.callgrind.gz": "c042f081a1a929909bdeb8a066b5a119d38b158c4cdaa1e177b7f94175b41641",
+    "activation-fingerprints/captured-next-valgrind.log": "9db6fc5052bf169e14b308b5cef384bca5e8abec80d3a3e3ed426f87fc0c70db",
+    "activation-fingerprints/captured-next-worker.json": "a7571e12e18b8cac8879d36f21cd44f6e5a3c9cbd7e0de69e84383699eb0eab4",
+    "activation-fingerprints/captured-next.callgrind.gz": "75af15ebe01571b4764a19f512dd9219b4e096be3fb260743e8d27e4b16600a2",
+    "activation-fingerprints/done-value-order-valgrind.log": "85b61d8d9063fc75cc79a6935b21e719ca93116212df7224725ff62c050c204b",
+    "activation-fingerprints/done-value-order-worker.json": "e88be5094f3cef5d35cddd8a7a07ff8bcdb09c422b402804fcafe419a630cdb4",
+    "activation-fingerprints/done-value-order.callgrind.gz": "660c276a1062630526085d0c7c4dd56b271728e7b0b1b8f535245fb286024887",
+    "activation-fingerprints/invalid-next-result-valgrind.log": "76696aa35e694cde992743fccf27c7fd8d00b11b07b980977544d240cb7c79b6",
+    "activation-fingerprints/invalid-next-result-worker.json": "e1530987e182ebc3c8467995ee67a35587136e569ca2b30570ecd02dd6f2cfd0",
+    "activation-fingerprints/invalid-next-result.callgrind.gz": "332f46d4aad93b2e3828000e3704a89c575d3e67a82d74a44fd74d928397bf3e",
+    "activation-fingerprints/string-codepoints-valgrind.log": "d047279e18ecfd582dccd3685048971cd36d245bc91c404da41c2d989da12406",
+    "activation-fingerprints/string-codepoints-worker.json": "5abfd84f38bb24192d2db6230b654643c69123b49d26a0ef43d8c55f7eb8f3c9",
+    "activation-fingerprints/string-codepoints.callgrind.gz": "c1665ba5cbb6ddd18375db561504d757f0e71d6d5f83a26e33cc2a7c6fdbcae2",
+    "activation-fingerprints/worker-info.json": "d9c6c4cc8f5ceb5487b7855307a7074bec2dc76474f46f52aa91a219814c2670",
+    "inline-stacks/array-spread-valgrind.log": "64c88bd855790e4d436f98f168975d45ad34c3a4a371347b8596afe0c2b6afac",
+    "inline-stacks/array-spread-worker.json": "1a5cf57fd0c76af534cd0629e6502d731413f227f25106616df7c092a7c0c85d",
+    "inline-stacks/array-spread.callgrind.gz": "863bc33326bdc73289300ab490fa9fb163213d6a17acc0a03cc01a1139284066",
+    "inline-stacks/call-spread-valgrind.log": "802bc854cd1d1724807d87a7a449f1f824f4cd30364d172236516c36211a30e9",
+    "inline-stacks/call-spread-worker.json": "1de082a6fb81e3a899ae4480281a69c5d0c19c6c827dd8785a476eb7d3e43b27",
+    "inline-stacks/call-spread.callgrind.gz": "cfe52c6f81ff1c95e76334881ced73b8d612aff7dd80bdfca9d6daa9dba9201e",
+    "inline-stacks/captured-next-valgrind.log": "6b113dfa5b9bae8ac5729dc41a95561d8b042b43ae24daf1f1c0e5d28aac569f",
+    "inline-stacks/captured-next-worker.json": "205907b4b894c7e3c56f623bdfda23830af59b57fb4719612c495bbee25a5e50",
+    "inline-stacks/captured-next.callgrind.gz": "91d487ae8ef5aba41a5a3dd45f032d9b98b29ca7f71c3a4d0579d2e7fb78e4df",
+    "inline-stacks/done-value-order-valgrind.log": "4574ea3560dadf2eab31c8ef97afec570a6af9ccce4b29729070b2565ef7d664",
+    "inline-stacks/done-value-order-worker.json": "adfe68335a372bd34f5b4925d43e28ddab0fdca53fd58b45c137cf31789c7189",
+    "inline-stacks/done-value-order.callgrind.gz": "4bf87cb2d574cc021be45e66f06673ebaf5a3a7eed31af9e1daa5287d86c5f01",
+    "inline-stacks/invalid-next-result-valgrind.log": "8a81927201412cbd44a6c9fec9f1178639982117bc3c1fe808b9c99555b55230",
+    "inline-stacks/invalid-next-result-worker.json": "248943afd51a375a329d38eca4a071672967584f8848b78cb38c55349d21b59b",
+    "inline-stacks/invalid-next-result.callgrind.gz": "4d10a04838b6a37d16034543b7de6e8bd6e96c047f014ca19d5728c883c18103",
+    "inline-stacks/string-codepoints-valgrind.log": "de36b4464ce019cc3bfa54b3dfe71feff4558631da04ec485d42a917c311dc88",
+    "inline-stacks/string-codepoints-worker.json": "91ea7fcc86cfd7d87956fe2e9c046c14579b41d92e03d7bf0f1bad32db140841",
+    "inline-stacks/string-codepoints.callgrind.gz": "2cb84fa845d0131bfcdabe9a67ca7396659608f2b0b7a8ebb46a3b753af20632",
+    "inline-stacks/worker-info.json": "77ee114afc69da5c4eecdb5c3234729f25e9d79e73f6cbb4fbe269a426549bb3"
   },
   "scope": "Instruction diagnostics on identical frozen inputs. All three profiled outputs validate twice per point. Raw self profiles and source-input identities retained. Neither instruction reductions nor embedded single-sample timings establish native Boa speed qualification. Full correctness and two independent hosted speed gates remain separate requirements. Fourth point is a rejected bounded environment-root cache; its adverse invalid-result profile remains recorded and the runtime change is reverted. Native-error and native-step points retain their original diagnostics. Native-step validates all six frozen inputs twice; these remain instruction counts, not hosted Boa speed qualification."
 }

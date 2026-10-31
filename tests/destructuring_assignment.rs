@@ -72,3 +72,37 @@ fn strict_const_and_readonly_failures_preserve_prior_assignments() {
         "'use strict';let a=0;const b=0;let caught=false;try{[a,b]=[42,99];}catch(e){caught=e instanceof TypeError;}let obj={};Object.defineProperty(obj,'value',{value:0,writable:false});let readonly=false;try{({value:obj.value}={value:42});}catch(e){readonly=e instanceof TypeError;}a===42&&b===0&&caught&&readonly&&obj.value===0;",
     );
 }
+
+#[test]
+fn reentrant_gc_preserves_ephemeral_targets_and_releases_references() {
+    for backend in [ScriptBackend::Ast, ScriptBackend::Auto] {
+        let engine = Engine::builder().script_backend(backend).build();
+        {
+            let realm = engine.create_realm();
+            let gc = temiya::runtime::Object::native_function_with_context(
+                engine.allocation_context(),
+                |context, _, _| {
+                    context.collect_garbage()?;
+                    Ok(Value::Undefined)
+                },
+            );
+            engine
+                .set_global(
+                    &realm,
+                    "gcNow",
+                    engine.value(&realm, Value::Object(gc)).unwrap(),
+                )
+                .unwrap();
+            let source = "let writes=0;function target(){return {set value(v){gcNow();writes+=v;},set rest(v){gcNow();writes+=v.answer;}};}[target().value=(gcNow(),20)]=[undefined];({answer:target().value=(gcNow(),22)}={get answer(){gcNow();return undefined;}});({...target().rest}={get answer(){gcNow();return 42;}});[...({set values(v){gcNow();if(v[0].answer!==42)throw 1;}}).values]=[{answer:42}];writes===84;";
+            let script = engine.compile(&realm, source).unwrap();
+            assert!(
+                matches!(
+                    engine.evaluate(&script).unwrap().value(),
+                    Value::Boolean(true)
+                ),
+                "{backend:?}"
+            );
+        }
+        assert_eq!(engine.collect_garbage().unwrap().retained, 0);
+    }
+}

@@ -50,8 +50,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Value::Number(42.0)
     ));
 
-    // Static fields remain a separate unsupported runtime boundary.
-    let script = engine.compile(&realm, "(class { static field; });")?;
+    // Private fields remain a separate unsupported runtime boundary.
+    let script = engine.compile(&realm, "(class { #field; });")?;
     assert!(engine.evaluate(&script).is_err());
 
     let bytecode = BytecodeCompiler::compile("40 + 2;")?;

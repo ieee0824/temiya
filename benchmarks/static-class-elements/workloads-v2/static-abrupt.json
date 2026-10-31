@@ -1,0 +1,8 @@
+{
+  "name": "static-abrupt",
+  "iterations": 10000,
+  "oracle": "sum-one-to-n-and-per-case-invariants",
+  "setup": "function bench(n){let total=0;let effects=0;let marker={};for(let i=0;i<n;i++){let caught=false;try{class C{static first=(effects++,i+1);static{if(i===n-1)throw marker;}static later=effects++;}}catch(error){caught=error===marker;}if(caught!==(i===n-1))throw 42;total+=i+1;}if(effects!==2*n-1)throw 42;return total;}",
+  "invocation": "bench(10000);",
+  "expected": 50005000
+}

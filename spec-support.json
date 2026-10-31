@@ -10757,31 +10757,31 @@
     {
       "id": "syntax.class-static-block",
       "kind": "syntax",
-      "status": "unconnected",
+      "status": "partial",
       "reference": "ECMA-262 2026 language syntax and evaluation",
       "issues": [
         158
       ],
-      "rationale": "Authored public Engine probe covers the stated example only; complete specification semantics remain unqualified.",
+      "rationale": "Public Engine Ast and Auto execute static blocks after class keys and methods, with class this/super, separate variable scopes and abrupt completion. Fixed official-suite qualification remains pending.",
       "tests": [
-        "tests/spec_support.rs"
+        "tests/spec_support.rs",
+        "tests/static_class_elements.rs"
       ],
       "test262": {
         "status": "not-run"
       },
       "probes": [
         {
-          "source": "class A { static { this.x=42; } } true;",
+          "source": "class A { static { this.x=42; } } A.x===42;",
           "expected": {
             "parser": "accept",
-            "ast": "engine-error",
+            "ast": "true",
             "bytecode": "bytecode-unsupported",
-            "auto": "engine-error"
-          },
-          "diagnostic_contains": "class"
+            "auto": "true"
+          }
         }
       ],
-      "evidence_kind": "unconnected-boundary"
+      "evidence_kind": "examples"
     },
     {
       "id": "syntax.closure",

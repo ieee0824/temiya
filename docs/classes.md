@@ -357,3 +357,6 @@ The same source's full run41105090864 is retained in
 replayed over100211 variants:26276 pass,64978 fail,18 skip,8939 timeout,
 zero missing. This records the remaining failures and establishes no complete
 ECMAScript conformance claim. Security and final-head checks remain separate.
+
+[Public static fields and static blocks](static-class-elements.md) evaluate
+through Ast and Auto after key evaluation and method installation.

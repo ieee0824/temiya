@@ -8,8 +8,9 @@ const args = process.argv.slice(2);
 const derived = args[0] === '--derived';
 const superProperties = args[0] === '--super';
 const instanceFields = args[0] === '--fields';
-if (derived || superProperties || instanceFields) args.shift();
-const {classFixtureVersion, classManifestSha256, classReferenceRevision, classWorkloads} = instanceFields ? await import('./instance-field-benchmark-reference.mjs') : superProperties ? await import('./super-property-benchmark-reference.mjs') : derived
+const staticElements = args[0] === '--static';
+if (derived || superProperties || instanceFields || staticElements) args.shift();
+const {classFixtureVersion, classManifestSha256, classReferenceRevision, classWorkloads} = staticElements ? await import('./static-class-benchmark-reference.mjs') : instanceFields ? await import('./instance-field-benchmark-reference.mjs') : superProperties ? await import('./super-property-benchmark-reference.mjs') : derived
   ? await import('./derived-class-benchmark-reference.mjs') : baseClassSuite;
 assert(args.length > 0, 'provide authored class comparison reports');
 const sha = b => createHash('sha256').update(b).digest('hex');
@@ -21,7 +22,7 @@ for (const file of args) {
   const before = r.comparison_kind === 'Temiya class before/after or control';
   assert(before || r.comparison_kind === 'Temiya class versus actual Boa');
   assert.equal(sha(JSON.stringify(r.manifest, null, 2) + '\n'), classManifestSha256);
-  assert.equal(r.manifest.fixture_kind, instanceFields ? 'authored-instance-fields' : superProperties ? 'authored-super-properties' : derived ? 'authored-derived-classes' : 'authored-base-classes');
+  assert.equal(r.manifest.fixture_kind, staticElements ? 'authored-static-class-elements' : instanceFields ? 'authored-instance-fields' : superProperties ? 'authored-super-properties' : derived ? 'authored-derived-classes' : 'authored-base-classes');
   assert.equal(r.manifest.fixture_version, classFixtureVersion);
   assert.equal(r.manifest.reference_engine_revision, classReferenceRevision);
   assert.deepEqual(r.capture_errors, []);

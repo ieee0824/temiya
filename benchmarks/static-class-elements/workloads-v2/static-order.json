@@ -1,0 +1,8 @@
+{
+  "name": "static-order",
+  "iterations": 10000,
+  "oracle": "sum-one-to-n-and-per-case-invariants",
+  "setup": "function bench(n){let total=0;for(let i=0;i<n;i++){let log='';class C{static first=(log+='a',i+1);static{log+='b';this.second=this.first;}static third=(log+='c',this.second);}if(log!=='abc'||C.first!==C.third)throw 42;total+=C.third;}return total;}",
+  "invocation": "bench(10000);",
+  "expected": 50005000
+}

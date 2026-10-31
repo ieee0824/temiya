@@ -123,6 +123,42 @@ impl Initializer {
     }
 }
 
+pub(super) fn initializer(
+    home: &Object,
+    evaluator: &ExpressionEvaluator,
+    key: &PropertyKey,
+    expression: &Expr,
+) -> RuntimeResult<Object> {
+    let function =
+        Object::new_with_prototype(evaluator.realm.intrinsic(IntrinsicId::FunctionPrototype));
+    let name = match key {
+        PropertyKey::String(name) => name.clone(),
+        PropertyKey::Symbol(symbol) => {
+            symbol
+                .description()
+                .map_or_else(JsString::default, |description| {
+                    let mut units = vec![u16::from(b'[')];
+                    units.extend_from_slice(description.code_units());
+                    units.push(u16::from(b']'));
+                    JsString::from_code_units_slice(&units)
+                })
+        }
+    };
+    let initializer = Initializer {
+        expression: Rc::new(expression.clone()),
+        cache: evaluator.function_cache.clone(),
+        direct: can_evaluate_without_function_environment(expression),
+        name,
+        realm: StoredRealm::store(&function, &evaluator.realm)?,
+        environment: StoredEnvironment::store(&function, &evaluator.environment)?,
+        home: StoredObject::store(&function, home)?,
+    };
+    function.set_managed_callable(super::object::ManagedCallable::FieldInitializer(
+        initializer,
+    ));
+    Ok(function)
+}
+
 pub(super) fn add(
     constructor: &Object,
     home: &Object,
@@ -132,34 +168,7 @@ pub(super) fn add(
 ) -> RuntimeResult<()> {
     let initializer = expression
         .map(|expression| {
-            let function = Object::new_with_prototype(
-                evaluator.realm.intrinsic(IntrinsicId::FunctionPrototype),
-            );
-            let name = match &key {
-                PropertyKey::String(name) => name.clone(),
-                PropertyKey::Symbol(symbol) => {
-                    symbol
-                        .description()
-                        .map_or_else(JsString::default, |description| {
-                            let mut units = vec![u16::from(b'[')];
-                            units.extend_from_slice(description.code_units());
-                            units.push(u16::from(b']'));
-                            JsString::from_code_units_slice(&units)
-                        })
-                }
-            };
-            let initializer = Initializer {
-                expression: Rc::new(expression.clone()),
-                cache: evaluator.function_cache.clone(),
-                direct: can_evaluate_without_function_environment(expression),
-                name,
-                realm: StoredRealm::store(&function, &evaluator.realm)?,
-                environment: StoredEnvironment::store(&function, &evaluator.environment)?,
-                home: StoredObject::store(&function, home)?,
-            };
-            function.set_managed_callable(super::object::ManagedCallable::FieldInitializer(
-                initializer,
-            ));
+            let function = initializer(home, evaluator, &key, expression)?;
             StoredObject::store(constructor, &function)
         })
         .transpose()?;

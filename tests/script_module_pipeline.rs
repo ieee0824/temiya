@@ -197,3 +197,35 @@ fn namespace_membership_does_not_read_uninitialized_exports() {
         );
     }
 }
+
+#[test]
+fn anonymous_default_class_has_its_name_before_static_initialization() {
+    let (graph, _) = graph(&[(
+        "entry",
+        "export let seen; export default class {static field=(seen=this.name);static{this.blockName=this.name;}value=42;}",
+    )]);
+    let module = graph.load("entry").unwrap();
+    module.link().unwrap();
+    module.evaluate().unwrap();
+    assert!(
+        module
+            .get_export(&JsString::from("seen"))
+            .unwrap()
+            .same_value(&Value::String(JsString::from("default")))
+    );
+    let Value::Object(class) = module.get_export(&JsString::from("default")).unwrap() else {
+        panic!("class")
+    };
+    assert!(
+        class
+            .get(&"blockName".into())
+            .unwrap()
+            .same_value(&Value::String(JsString::from("default")))
+    );
+    assert!(
+        !module
+            .environment()
+            .has_binding(&JsString::from("default"))
+            .unwrap()
+    );
+}

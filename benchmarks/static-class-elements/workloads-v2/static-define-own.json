@@ -1,0 +1,8 @@
+{
+  "name": "static-define-own",
+  "iterations": 10000,
+  "oracle": "sum-one-to-n-and-per-case-invariants",
+  "setup": "function bench(n){let calls=0;class A{static set value(v){calls++;}}let total=0;for(let i=0;i<n;i++){class B extends A{static value=i+1;}let d=Object.getOwnPropertyDescriptor(B,'value');if(!d.writable||!d.enumerable||!d.configurable)throw 42;total+=B.value;}if(calls!==0)throw 42;return total;}",
+  "invocation": "bench(10000);",
+  "expected": 50005000
+}

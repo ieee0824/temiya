@@ -1,5 +1,6 @@
 //! ECMAScript function objects, calls, constructors, and parameter binding.
 
+mod constructor_assignments;
 mod super_call;
 
 use super::{
@@ -52,6 +53,7 @@ pub(super) struct FunctionCode {
     kind: FunctionKind,
     compiled: Option<Rc<FunctionTemplate>>,
     lexical_property: Option<PropertyKey>,
+    constructor_assignments: Option<constructor_assignments::Plan>,
     may_observe_arguments: bool,
     delegated_parameters: Option<Box<[usize]>>,
     super_call: Option<super_call::Plan>,
@@ -105,6 +107,11 @@ fn prepare_code(
         ast: code.clone(),
         kind,
         compiled,
+        constructor_assignments: if cache.is_some() {
+            constructor_assignments::Plan::prepare(code, kind)
+        } else {
+            None
+        },
         lexical_property: if cache.is_some() {
             lexical_property(code, kind)
         } else {
@@ -618,6 +625,11 @@ fn construct_function(
     let instance = Object::new_for(&new_target);
     instance.initialize_prototype(Some(prototype));
     function.initialize_instance_fields(&instance)?;
+    if let Some(plan) = &closure.code.constructor_assignments {
+        plan.execute(&instance, arguments)
+            .map_err(|error| closure.realm.bind_exception(error))?;
+        return Ok(instance);
+    }
     let result = call_function(
         closure,
         function,

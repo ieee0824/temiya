@@ -1,0 +1,8 @@
+{
+  "name": "static-super",
+  "iterations": 10000,
+  "oracle": "sum-one-to-n-and-per-case-invariants",
+  "setup": "function bench(n){let total=0;for(let i=0;i<n;i++){class A{static seed=i;}class B extends A{static value=super.seed+1;static{this.read=()=>this.value;}}if(B.read()!==i+1||A.hasOwnProperty('value'))throw 42;total+=B.read();}return total;}",
+  "invocation": "bench(10000);",
+  "expected": 50005000
+}

@@ -27,3 +27,5 @@ and two-job Boa speed qualification remain pending; no conformance or performanc
 completion is claimed by the focused integration tests.
 
 A parameter BoundName of `arguments` suppresses the implicit arguments object. Array/default/rest parameter bindings keep their own uninitialized slot until their turn, including TDZ when an earlier default reads a later `arguments` parameter. Ordinary calls and construction share this rule.
+
+Function preparation retains the ordered BoundNames for supported non-simple parameters. Each call still creates fresh uninitialized bindings before evaluating any defaults or iterators. The cached list contains syntax names only; values and environments are never reused. Unsupported patterns keep their original call-time error path, and generators retain their existing parameter setup.

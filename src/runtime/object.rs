@@ -699,6 +699,52 @@ impl ObjectState {
 }
 
 impl Object {
+    // Captured native next functions produce fresh, otherwise unobservable
+    // result objects. Internal consumers can take their value directly, while
+    // custom, bound, proxy and replaced next methods use ordinary calls.
+    pub(super) fn try_builtin_iterator_step(
+        &self,
+        iterator: &Self,
+    ) -> Option<RuntimeResult<Option<Value>>> {
+        let payload = {
+            let state = self.0.state.borrow();
+            if state.proxy.is_some() {
+                return None;
+            }
+            state.managed_callable.clone()?
+        };
+        let ManagedCallable::CapturedObject(capture) = &payload.body else {
+            return None;
+        };
+        let CapturedObjectHandler::Eager(callback) = capture.callback else {
+            return None;
+        };
+        let array = std::ptr::fn_addr_eq(
+            callback,
+            super::iterator::array_next_call as CapturedObjectCallback,
+        );
+        let string = std::ptr::fn_addr_eq(
+            callback,
+            super::iterator::string_next_call as CapturedObjectCallback,
+        );
+        if !array && !string {
+            return None;
+        }
+        Some((|| {
+            StoredObject::check_context(self, iterator)?;
+            let _depth = CallDepthGuard::enter()?;
+            let _prototype = capture.object.load(self)?;
+            let result = if array {
+                super::iterator::array_step_value(
+                    Value::Object(iterator.clone()),
+                    capture.key.as_ref().expect("iterator primitive key"),
+                )
+            } else {
+                super::iterator::string_step_value(Value::Object(iterator.clone()))
+            };
+            result.map_err(|error| self.bind_native_exception(payload.source.as_ref(), error))
+        })())
+    }
     // Native exceptions are unpublished ordinary objects with one own data
     // property. Prototype and message are initialized before user code can run.
     pub(super) fn native_error(prototype: Self, message: JsString) -> Self {

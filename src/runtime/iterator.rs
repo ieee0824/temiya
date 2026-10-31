@@ -123,6 +123,14 @@ impl IteratorRecord {
     }
 
     pub(crate) fn step_value(&mut self) -> RuntimeResult<Option<Value>> {
+        if let Value::Object(method) = &self.next_method {
+            if let Some(result) = method.try_builtin_iterator_step(&self.iterator) {
+                if !matches!(&result, Ok(Some(_))) {
+                    self.done = true;
+                }
+                return result;
+            }
+        }
         let Some(result) = self.step()? else {
             return Ok(None);
         };
@@ -225,7 +233,7 @@ pub(super) fn install(
         0,
         &object,
         Some(length_key),
-        |prototype, key, this, _| array_next(this, key.expect("iterator primitive key"), prototype),
+        array_next_call,
     )?;
     array_iterator.define_own_property(
         "next".into(),
@@ -237,7 +245,7 @@ pub(super) fn install(
         0,
         &object,
         None,
-        |prototype, _, this, _| string_next(this, prototype),
+        string_next_call,
     )?;
     string_iterator.define_own_property(
         "next".into(),
@@ -332,7 +340,25 @@ fn result(prototype: &Object, value: Value, done: bool) -> RuntimeResult<Value> 
     Object::iterator_result(prototype, value, done).map(Value::Object)
 }
 
-fn array_next(this: Value, to_primitive: &PropertyKey, prototype: &Object) -> RuntimeResult<Value> {
+pub(super) fn array_next_call(
+    prototype: &Object,
+    key: Option<&PropertyKey>,
+    this: Value,
+    _: &[Value],
+) -> RuntimeResult<Value> {
+    array_next(this, key.expect("iterator primitive key"), prototype)
+}
+
+fn array_next(this: Value, key: &PropertyKey, prototype: &Object) -> RuntimeResult<Value> {
+    let value = array_step_value(this, key)?;
+    let done = value.is_none();
+    result(prototype, value.unwrap_or(Value::Undefined), done)
+}
+
+pub(super) fn array_step_value(
+    this: Value,
+    to_primitive: &PropertyKey,
+) -> RuntimeResult<Option<Value>> {
     let Value::Object(iterator) = this else {
         return Err(RuntimeError::type_error(
             "incompatible array iterator receiver",
@@ -348,7 +374,7 @@ fn array_next(this: Value, to_primitive: &PropertyKey, prototype: &Object) -> Ru
         (target.clone(), *index)
     };
     let Some(target) = target else {
-        return result(prototype, Value::Undefined, true);
+        return Ok(None);
     };
     let target = target.load(&iterator)?;
     let length = primitive(&target.get(&"length".into())?, to_primitive, false)?.to_number()?;
@@ -359,7 +385,7 @@ fn array_next(this: Value, to_primitive: &PropertyKey, prototype: &Object) -> Ru
         {
             *target = None;
         }
-        return result(prototype, Value::Undefined, true);
+        return Ok(None);
     }
     // The captured index is advanced after length coercion, before element Get,
     // matching reentrant getters and abrupt element access without RefCell borrows.
@@ -369,10 +395,25 @@ fn array_next(this: Value, to_primitive: &PropertyKey, prototype: &Object) -> Ru
         *next = index + 1;
     }
     let value = target.get(&PropertyKey::integer_index(index))?;
-    result(prototype, value, false)
+    Ok(Some(value))
+}
+
+pub(super) fn string_next_call(
+    prototype: &Object,
+    _: Option<&PropertyKey>,
+    this: Value,
+    _: &[Value],
+) -> RuntimeResult<Value> {
+    string_next(this, prototype)
 }
 
 fn string_next(this: Value, prototype: &Object) -> RuntimeResult<Value> {
+    let value = string_step_value(this)?;
+    let done = value.is_none();
+    result(prototype, value.unwrap_or(Value::Undefined), done)
+}
+
+pub(super) fn string_step_value(this: Value) -> RuntimeResult<Option<Value>> {
     let Value::Object(iterator) = this else {
         return Err(RuntimeError::type_error(
             "incompatible string iterator receiver",
@@ -408,8 +449,7 @@ fn string_next(this: Value, prototype: &Object) -> RuntimeResult<Value> {
             None
         }
     };
-    let done = value.is_none();
-    result(prototype, value.unwrap_or(Value::Undefined), done)
+    Ok(value)
 }
 
 #[cfg(test)]

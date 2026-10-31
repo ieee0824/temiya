@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import crypto from 'node:crypto';
 import assert from 'node:assert/strict';
-import {classManifestSha256,classWorkloads} from '../../../scripts/assignment-benchmark-reference.mjs';
+import {classManifestSha256,classWorkloads} from '../../scripts/assignment-benchmark-reference.mjs';
 const dir=new URL('./boa-oracles-v1/',import.meta.url);
 const read=file=>JSON.parse(fs.readFileSync(new URL(file,dir)));
 for(const r of read('integrity.json'))assert.equal(crypto.createHash('sha256').update(fs.readFileSync(new URL(r.file,dir))).digest('hex'),r.sha256);

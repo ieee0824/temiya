@@ -18,3 +18,9 @@ pending. The implementation does not establish complete eval, generator or
 async semantics.
 
 Reference: [ECMA-262 2026 FunctionDeclarationInstantiation](https://tc39.es/ecma262/2026/multipage/ordinary-and-exotic-objects-behaviours.html#sec-functiondeclarationinstantiation).
+
+Local proof is retained in `benchmarks/parameter-environments/correctness-v1`.
+Replay with `node benchmarks/parameter-environments/correctness-v1/verify.mjs`.
+It covers the initial 962-test all-target run, all six final integration tests
+under native Ast/Auto, strict Miri and Rust 1.85.0, plus Clippy and i686.
+The record does not qualify native Boa speed or full Test262 compatibility.

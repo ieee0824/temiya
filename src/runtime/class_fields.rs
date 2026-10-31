@@ -11,6 +11,7 @@ use crate::ast::{Expr, ExprKind};
 #[derive(Clone)]
 pub(super) struct Field {
     key: PropertyKey,
+    private: Option<super::private_fields::Name>,
     initializer: Option<StoredObject>,
 }
 
@@ -177,7 +178,39 @@ pub(super) fn add(
         .state
         .borrow_mut()
         .instance_fields
-        .push(Field { key, initializer });
+        .push(Field {
+            key,
+            private: None,
+            initializer,
+        });
+    Ok(())
+}
+
+pub(super) fn add_private(
+    constructor: &Object,
+    home: &Object,
+    evaluator: &ExpressionEvaluator,
+    name: &str,
+    expression: Option<&Expr>,
+) -> RuntimeResult<()> {
+    let key = PropertyKey::from(format!("#{name}").as_str());
+    let private = Some(evaluator.environment.resolve_private(name)?);
+    let initializer = expression
+        .map(|expression| {
+            let function = initializer(home, evaluator, &key, expression)?;
+            StoredObject::store(constructor, &function)
+        })
+        .transpose()?;
+    constructor
+        .0
+        .state
+        .borrow_mut()
+        .instance_fields
+        .push(Field {
+            key,
+            private,
+            initializer,
+        });
     Ok(())
 }
 
@@ -193,6 +226,10 @@ impl Object {
                     .call(Value::Object(receiver.clone()), &[])?,
                 None => Value::Undefined,
             };
+            if let Some(name) = field.private {
+                receiver.add_private(name, value)?;
+                continue;
+            }
             if !receiver
                 .define_own_property(field.key, PropertyDescriptor::data(value, true, true, true))?
             {

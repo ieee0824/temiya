@@ -120,6 +120,7 @@ impl StoredOwner for Environment {
 }
 
 pub(super) struct EnvironmentData {
+    pub(super) private_names: RefCell<Option<Box<super::private_fields::Names>>>,
     pub(super) facade: RefCell<Weak<EnvironmentRoot>>,
     outer: Option<StoredEnvironment>,
     record: RefCell<EnvironmentRecord>,
@@ -551,6 +552,7 @@ impl Environment {
     ) -> Self {
         let runtime = runtime.expect("environment allocation context");
         let data = EnvironmentData {
+            private_names: RefCell::new(None),
             facade: RefCell::new(Weak::new()),
             outer: outer
                 .as_ref()
@@ -1667,6 +1669,7 @@ mod slot_hint_tests {
     fn managed_module_import_cycles_keep_live_bindings_without_internal_roots() {
         let runtime = Runtime::new();
         let parent = runtime.allocate_environment(EnvironmentData {
+            private_names: RefCell::new(None),
             facade: RefCell::new(Weak::new()),
             outer: None,
             record: RefCell::new(EnvironmentRecord::Declarative(DeclarativeRecord::default())),
@@ -1730,6 +1733,7 @@ mod slot_hint_tests {
     fn managed_bindings_trace_objects_and_release_replaced_cycles() {
         let runtime = Runtime::new();
         let environment = runtime.allocate_environment(EnvironmentData {
+            private_names: RefCell::new(None),
             facade: RefCell::new(Weak::new()),
             outer: None,
             record: RefCell::new(EnvironmentRecord::Declarative(DeclarativeRecord::default())),
@@ -1793,6 +1797,7 @@ mod slot_hint_tests {
     fn managed_outer_environment_is_traced_without_an_internal_root() {
         let runtime = Runtime::new();
         let outer = runtime.allocate_environment(EnvironmentData {
+            private_names: RefCell::new(None),
             facade: RefCell::new(Weak::new()),
             outer: None,
             record: RefCell::new(EnvironmentRecord::Declarative(DeclarativeRecord::default())),

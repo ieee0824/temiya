@@ -12,7 +12,8 @@ accessors and static private elements.
 The preimplementation runtime is612d759 (the pending #158 implementation), with
 its immutable binary and build identities in
 /tmp/temiya-158-constructor-assignments-v1. This is not a claim that #158 has
-merged or that #159 has any runtime support yet.
+merged. Initial #159 runtime support is under validation; no merge qualification
+or complete conformance is claimed.
 
 The project targets ECMAScript2026. Implementation must follow
 [PrivateFieldAdd](https://tc39.es/ecma262/2026/#sec-privatefieldadd),
@@ -29,3 +30,9 @@ whose expected rejection differs from the2026 PrivateFieldAdd algorithm.
 Retain their actual outcomes and record this discrepancy; do not make private
 field storage obey ordinary property extensibility merely to pass those tests.
 No skip, failure, missing result or unmeasured benchmark counts as a pass.
+
+workloads-v1 freezes five10000-iteration inputs with expected50005000 before
+the first candidate timing. They cover construction/read, mutation, positive
+and negative brands, lexical capture and a wrong receiver on the final iteration.
+All five passed actual pinned Boa twice (warmup and sample); oracle probes
+establish outputs only, not performance. workload-freeze.json records hashes.

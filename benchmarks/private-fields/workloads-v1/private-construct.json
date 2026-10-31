@@ -1,0 +1,7 @@
+{
+  "name": "private-construct",
+  "setup": "class Box{#value;constructor(v){this.#value=v;}read(){return this.#value;}}function bench(n){let total=0;for(let i=0;i<n;i++){let box=new Box(i+1);total+=box.read();}return total;}",
+  "invocation": "bench(10000);",
+  "expected": 50005000,
+  "iterations": 10000
+}

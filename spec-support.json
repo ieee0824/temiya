@@ -10728,31 +10728,31 @@
     {
       "id": "syntax.class-private-field",
       "kind": "syntax",
-      "status": "unconnected",
+      "status": "partial",
       "reference": "ECMA-262 2026 language syntax and evaluation",
       "issues": [
         159
       ],
-      "rationale": "Authored public Engine probe covers the stated example only; complete specification semantics remain unqualified.",
+      "rationale": "Public Engine Ast and Auto execute private instance field initialization, access, mutation and brand checks with distinct lexical identities and traced storage. Private methods/accessors and static private elements remain unsupported; complete conformance and performance qualification are pending.",
       "tests": [
-        "tests/spec_support.rs"
+        "tests/spec_support.rs",
+        "tests/private_fields.rs"
       ],
       "test262": {
         "status": "not-run"
       },
       "probes": [
         {
-          "source": "class A { #x=42; } true;",
+          "source": "class A { #x=42; read(){return this.#x;} } new A().read()===42;",
           "expected": {
             "parser": "accept",
-            "ast": "engine-error",
+            "ast": "true",
             "bytecode": "bytecode-unsupported",
-            "auto": "engine-error"
-          },
-          "diagnostic_contains": "class"
+            "auto": "true"
+          }
         }
       ],
-      "evidence_kind": "unconnected-boundary"
+      "evidence_kind": "examples"
     },
     {
       "id": "syntax.class-static-block",

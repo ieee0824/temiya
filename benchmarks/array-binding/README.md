@@ -47,3 +47,12 @@ The frozen selection contains8806 files and17414 variants. Baseline and initial
 candidate captures are running; focused integration tests are not Test262 passes.
 
 The workload manifest and array-binding-benchmark-reference.mjs are materialized from the preimplementation frozen hashes; none of the six input bytes changed. The hosted workflow auto-includes this suite when include_controls is true and the manifest exists, preserving all earlier suites and the two-job policy. It retains actual Boa and identical-binary reports. The preimplementation baseline lacks array binding, so it is not labeled a successful before/after comparison. No hosted qualification is claimed yet.
+
+`fixed-initial-ast-v1` preserves the full frozen 17,414-variant Ast captures
+for the pre-implementation baseline c2bc478 and initial implementation 208ecd7.
+The initial result is 5,291 pass, 7,691 fail and 4,432 timeout. The comparison
+records 3,792 new passes and one previous pass becoming a timeout. A separate
+same-binary/same-limit diagnostic is retained without replacing that timeout.
+This is historical evidence; it does not qualify the later integrated source.
+Replay both raw captures and their comparison with
+`node benchmarks/array-binding/verify-fixed.mjs`.

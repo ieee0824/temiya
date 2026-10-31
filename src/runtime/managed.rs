@@ -24,6 +24,7 @@ pub(super) struct RuntimeData {
     allocation_interval: Cell<usize>,
     allocation_remaining: Cell<usize>,
     active_objects: RefCell<Weak<RefCell<Vec<Object>>>>,
+    active_environments: RefCell<Weak<RefCell<Vec<super::Environment>>>>,
     #[cfg(all(test, not(miri)))]
     collection_ns: Cell<u128>,
 }
@@ -54,12 +55,16 @@ const ACTIVE_OBJECTS: usize = 16;
 pub(crate) struct ObjectRootRegion {
     runtime: Runtime,
     objects: Rc<RefCell<Vec<Object>>>,
+    environments: Rc<RefCell<Vec<super::Environment>>>,
 }
 impl Drop for ObjectRootRegion {
     fn drop(&mut self) {
         let mut active = self.runtime.0.active_objects.borrow_mut();
         debug_assert_eq!(active.as_ptr(), Rc::as_ptr(&self.objects));
         *active = Weak::new();
+        let mut environments = self.runtime.0.active_environments.borrow_mut();
+        debug_assert_eq!(environments.as_ptr(), Rc::as_ptr(&self.environments));
+        *environments = Weak::new();
     }
 }
 
@@ -138,10 +143,13 @@ impl Runtime {
             return None;
         }
         let objects = Rc::new(RefCell::new(Vec::with_capacity(ACTIVE_OBJECTS)));
+        let environments = Rc::new(RefCell::new(Vec::with_capacity(ACTIVE_OBJECTS)));
         *active = Rc::downgrade(&objects);
+        *self.0.active_environments.borrow_mut() = Rc::downgrade(&environments);
         Some(ObjectRootRegion {
             runtime: self.clone(),
             objects,
+            environments,
         })
     }
     fn remember_active_object(&self, object: &Object) {
@@ -165,6 +173,31 @@ impl Runtime {
     fn clear_active_objects(&self) {
         if let Some(active) = self.0.active_objects.borrow().upgrade() {
             active.borrow_mut().clear();
+        }
+        if let Some(active) = self.0.active_environments.borrow().upgrade() {
+            active.borrow_mut().clear();
+        }
+    }
+
+    fn remember_active_environment(&self, environment: &super::Environment) {
+        let Some(active) = self.0.active_environments.borrow().upgrade() else {
+            return;
+        };
+        let mut environments = active.borrow_mut();
+        if environments.last().is_some_and(|last| last == environment) {
+            return;
+        }
+        if let Some(index) = environments
+            .iter()
+            .rposition(|cached| cached == environment)
+        {
+            let cached = environments.remove(index);
+            environments.push(cached);
+        } else {
+            if environments.len() == ACTIVE_OBJECTS {
+                environments.remove(0);
+            }
+            environments.push(environment.clone());
         }
     }
     fn allocation_safepoint(&self, incoming: &impl Trace) {
@@ -332,7 +365,10 @@ impl Runtime {
         let heap = self.0.heap.borrow();
         let data = heap.shared(handle)?;
         if let Some(facade) = data.facade.borrow().upgrade() {
-            return Some(super::Environment(EnvironmentReference(facade)));
+            let environment = super::Environment(EnvironmentReference(facade));
+            drop(heap);
+            self.remember_active_environment(&environment);
+            return Some(environment);
         }
         let root = heap.root(handle)?;
         drop(heap);
@@ -342,7 +378,9 @@ impl Runtime {
             runtime: self.clone(),
         });
         *data.facade.borrow_mut() = Rc::downgrade(&facade);
-        Some(super::Environment(EnvironmentReference(facade)))
+        let environment = super::Environment(EnvironmentReference(facade));
+        self.remember_active_environment(&environment);
+        Some(environment)
     }
     pub(super) fn allocate_environment(
         &self,
@@ -372,6 +410,7 @@ impl Runtime {
             allocation_interval: Cell::new(4096),
             allocation_remaining: Cell::new(4096),
             active_objects: RefCell::new(Weak::new()),
+            active_environments: RefCell::new(Weak::new()),
             #[cfg(all(test, not(miri)))]
             collection_ns: Cell::new(0),
         }))
@@ -1536,5 +1575,45 @@ mod stored_graph_tests {
             assert!(owner.try_set_prototype(Some(foreign)).is_err());
             assert!(owner.prototype().is_none());
         }
+    }
+}
+
+#[cfg(test)]
+mod environment_root_region_tests {
+    use super::*;
+
+    #[test]
+    fn revived_environment_roots_are_bounded_reused_and_cleared_before_gc() {
+        let runtime = Runtime::new();
+        runtime.set_allocation_collection_interval(usize::MAX);
+        let region = runtime.enter_object_root_region().unwrap();
+        let mut handles = Vec::new();
+        for _ in 0..32 {
+            let environment = super::super::Environment::declarative_in(&runtime);
+            let handle = environment.0.0.root.handle();
+            assert_eq!(runtime.root_environment(handle).unwrap(), environment);
+            handles.push(handle);
+        }
+        assert_eq!(runtime.diagnostics().rooted, ACTIVE_OBJECTS);
+        #[cfg(not(miri))]
+        let (_, before, _) = runtime.profile_snapshot();
+        for _ in 0..100 {
+            drop(runtime.root_environment(*handles.last().unwrap()).unwrap());
+        }
+        #[cfg(not(miri))]
+        {
+            let (_, after, _) = runtime.profile_snapshot();
+            assert_eq!(
+                before, after,
+                "warm revivals reuse their facade registration"
+            );
+        }
+        assert_eq!(runtime.collect_garbage().unwrap().retained, 0);
+        assert!(
+            handles
+                .into_iter()
+                .all(|handle| runtime.root_environment(handle).is_none())
+        );
+        drop(region);
     }
 }

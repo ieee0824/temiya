@@ -24,7 +24,7 @@ impl VirtualMachine {
         {
             return Self::execute_in_realm(bytecode, &Realm::ordinary());
         }
-        Self::run::<false>(bytecode, None, None, false)
+        Self::run::<false>(bytecode, None, None, false, None)
     }
 
     /// Executes Script bytecode in a persistent host-supplied Realm.
@@ -32,7 +32,7 @@ impl VirtualMachine {
         bytecode: &VerifiedBytecode,
         realm: &Realm,
     ) -> RuntimeResult<Completion> {
-        Self::run::<false>(bytecode, Some(realm), None, false)
+        Self::run::<false>(bytecode, Some(realm), None, false, None)
     }
 
     /// Executes function-body bytecode with a caller-prepared function frame.
@@ -47,7 +47,7 @@ impl VirtualMachine {
                 "bytecode requires a function environment",
             ));
         }
-        Self::run::<false>(bytecode, Some(realm), Some(frame), false)
+        Self::run::<false>(bytecode, Some(realm), Some(frame), false, None)
     }
 
     // This entry never treats the captured outer environment as a private
@@ -56,6 +56,7 @@ impl VirtualMachine {
         bytecode: &VerifiedBytecode,
         realm: &Realm,
         outer: &Environment,
+        this_value: &Value,
     ) -> RuntimeResult<Completion> {
         if !bytecode.can_elide_empty_function_frame() {
             return Err(RuntimeError::internal_error(
@@ -65,7 +66,7 @@ impl VirtualMachine {
         if bytecode.has_short_function_path() {
             return super::short_function::execute(bytecode, realm, outer);
         }
-        Self::run::<false>(bytecode, Some(realm), Some(outer), false)
+        Self::run::<false>(bytecode, Some(realm), Some(outer), false, Some(this_value))
     }
 
     // Internal calls own their freshly instantiated frame. Scalar binding
@@ -78,13 +79,14 @@ impl VirtualMachine {
         scalar_bindings_unobserved: bool,
     ) -> RuntimeResult<Completion> {
         if scalar_bindings_unobserved && scalar_loop_locals(bytecode) {
-            Self::run::<true>(bytecode, Some(realm), Some(frame), true)
+            Self::run::<true>(bytecode, Some(realm), Some(frame), true, None)
         } else {
             Self::run::<false>(
                 bytecode,
                 Some(realm),
                 Some(frame),
                 bytecode.reuse_loop_bindings,
+                None,
             )
         }
     }
@@ -94,6 +96,7 @@ impl VirtualMachine {
         realm: Option<&Realm>,
         function: Option<&Environment>,
         reuse_loop_bindings: bool,
+        own_this: Option<&Value>,
     ) -> RuntimeResult<Completion> {
         let _object_roots = realm.and_then(Realm::enter_object_root_region);
         let mut property_context = realm.map(PropertyReferenceContext::new);
@@ -744,25 +747,29 @@ impl VirtualMachine {
                     }
                 }
                 Instruction::LoadThis => {
-                    let mut environment = scopes
-                        .last()
-                        .expect("verified active scope")
-                        .environment
-                        .clone();
-                    loop {
-                        if environment.kind() == EnvironmentKind::Global {
-                            stack.push(environment.global_this_value()?);
-                            break;
+                    if let Some(value) = own_this {
+                        stack.push(value.clone());
+                    } else {
+                        let mut environment = scopes
+                            .last()
+                            .expect("verified active scope")
+                            .environment
+                            .clone();
+                        loop {
+                            if environment.kind() == EnvironmentKind::Global {
+                                stack.push(environment.global_this_value()?);
+                                break;
+                            }
+                            if environment.kind() == EnvironmentKind::Function
+                                && environment.has_this_binding()?
+                            {
+                                stack.push(environment.get_this_binding()?);
+                                break;
+                            }
+                            environment = environment
+                                .outer()
+                                .ok_or_else(|| RuntimeError::reference_error("no this binding"))?;
                         }
-                        if environment.kind() == EnvironmentKind::Function
-                            && environment.has_this_binding()?
-                        {
-                            stack.push(environment.get_this_binding()?);
-                            break;
-                        }
-                        environment = environment
-                            .outer()
-                            .ok_or_else(|| RuntimeError::reference_error("no this binding"))?;
                     }
                 }
                 Instruction::JumpIfNullish(target) => {

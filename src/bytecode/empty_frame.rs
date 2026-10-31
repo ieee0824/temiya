@@ -1,4 +1,4 @@
-//! Conservative proof that a function's empty activation has no observer.
+//! Conservative proof that no observable binding requires a function environment.
 use super::{Bytecode, Constant, Instruction, ScopeKind};
 use crate::ast::ExprKind;
 
@@ -65,8 +65,7 @@ pub(super) fn proven(code: &Bytecode) -> bool {
     }
     for instruction in &code.instructions {
         match instruction {
-            Instruction::LoadThis
-            | Instruction::LoadNewTarget
+            Instruction::LoadNewTarget
             | Instruction::LoadSuperBinding
             | Instruction::ResolveSuperProperty { .. }
             | Instruction::CreateFunction(_)
@@ -80,7 +79,8 @@ pub(super) fn proven(code: &Bytecode) -> bool {
                     return false;
                 }
             }
-            Instruction::CreateObject
+            Instruction::LoadThis
+            | Instruction::CreateObject
             | Instruction::CoercePropertyKey
             | Instruction::DefineObjectProperty { .. }
             | Instruction::DefineNamedObjectProperty { .. }
@@ -154,6 +154,7 @@ mod tests {
     }
     #[test]
     fn accepts_captured_bindings_and_fresh_method_definitions() {
+        assert!(eligible("function f(){return this;}"));
         assert!(eligible(
             "function f(){if(state!==0)throw 42;state=1;reads++;return current>n;}"
         ));
@@ -164,7 +165,6 @@ mod tests {
     #[test]
     fn rejects_activation_observers_in_instructions_and_nested_metadata() {
         for source in [
-            "function f(){return this;}",
             "function f(){return new.target;}",
             "function f(){return arguments;}",
             "function f(){let local=1;return local;}",

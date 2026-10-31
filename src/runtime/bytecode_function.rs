@@ -418,10 +418,14 @@ impl Closure {
         {
             #[cfg(test)]
             EMPTY_FRAME_CALLS.with(|count| count.set(count.get() + 1));
+            let FunctionThis::Initialized(this_value) = &this else {
+                unreachable!("ordinary call has initialized this");
+            };
             let result = VirtualMachine::execute_without_own_frame(
                 &self.template.body,
                 &self.realm,
                 &self.environment,
+                this_value,
             )?;
             // Preserve receiver boxing and the live function root across every
             // callback, even though their empty environment is unobservable.
@@ -705,6 +709,43 @@ mod empty_frame_tests {
             assert!(EMPTY_FRAME_CALLS.with(|count| count.get()) > before);
         }
         assert_eq!(engine.collect_garbage().unwrap().retained, 0);
+    }
+
+    #[test]
+    fn elided_this_calls_preserve_strict_receivers_boxing_and_gc() {
+        for backend in [ScriptBackend::Ast, ScriptBackend::Auto] {
+            let engine = Engine::builder().script_backend(backend).build();
+            {
+                let realm = engine.create_realm();
+                let gc = Object::native_function_with_context(
+                    engine.allocation_context(),
+                    |context, _, _| {
+                        context.collect_garbage()?;
+                        Ok(Value::Undefined)
+                    },
+                );
+                engine
+                    .set_global(
+                        &realm,
+                        "gcNow",
+                        engine.value(&realm, Value::Object(gc)).unwrap(),
+                    )
+                    .unwrap();
+                let before = EMPTY_FRAME_CALLS.with(|count| count.get());
+                let script = engine.compile(&realm, "let expectedGlobal=this;function strict(){'use strict';gcNow();return this;}function loose(){gcNow();return this;}let owner={answer:20,read(){gcNow();return this.answer;}};let boxed=loose.call(17);strict()===undefined&&strict.call(null)===null&&strict.call(17)===17&&1/strict.call(-0)===-Infinity&&owner.read()===20&&owner.read.call({answer:42})===42&&boxed.valueOf()===17&&loose.call(null)===expectedGlobal;").unwrap();
+                assert!(
+                    matches!(
+                        engine.evaluate(&script).unwrap().value(),
+                        Value::Boolean(true)
+                    ),
+                    "{backend:?}"
+                );
+                if backend == ScriptBackend::Auto {
+                    assert!(EMPTY_FRAME_CALLS.with(|count| count.get()) > before);
+                }
+            }
+            assert_eq!(engine.collect_garbage().unwrap().retained, 0);
+        }
     }
 
     #[test]

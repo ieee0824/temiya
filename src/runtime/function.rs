@@ -45,8 +45,50 @@ pub(super) enum ConstructorKind {
 }
 
 type FunctionCacheKey = (usize, usize, u8);
-type CodeCache = HashMap<FunctionCacheKey, Vec<Rc<FunctionCode>>>;
+#[derive(Debug, Default)]
+pub(super) struct CodeCache {
+    entries: HashMap<FunctionCacheKey, Vec<Rc<FunctionCode>>>,
+    // Only nodes in these owned, immutable syntax trees enter the identity
+    // table. Keeping the owners alive prevents address reuse for cached sites.
+    definitions: HashMap<usize, Rc<Expr>>,
+    sites: HashMap<(usize, u8), Option<Rc<FunctionCode>>>,
+}
 pub(super) type FunctionCache = Rc<RefCell<CodeCache>>;
+
+impl CodeCache {
+    fn retain_site(&mut self, expression: &Expr) {
+        let (function, kind) = match &expression.kind {
+            ExprKind::Function(function) => (function.as_ref(), FunctionKind::Normal),
+            ExprKind::Arrow(function) => (function.as_ref(), FunctionKind::Arrow),
+            ExprKind::Method { function, kind } => (function.as_ref(), FunctionKind::Method(*kind)),
+            _ => return,
+        };
+        self.sites
+            .entry((std::ptr::from_ref(function) as usize, kind_tag(kind)))
+            .or_default();
+    }
+}
+
+fn kind_tag(kind: FunctionKind) -> u8 {
+    match kind {
+        FunctionKind::Normal => 0,
+        FunctionKind::Arrow => 1,
+        FunctionKind::Method(MethodKind::Method) => 2,
+        FunctionKind::Method(MethodKind::Get) => 3,
+        FunctionKind::Method(MethodKind::Set) => 4,
+        FunctionKind::Method(MethodKind::Constructor) => 5,
+    }
+}
+
+pub(super) fn retain_definition(cache: &FunctionCache, definition: &Rc<Expr>) {
+    let mut cache = cache.borrow_mut();
+    let identity = Rc::as_ptr(definition) as usize;
+    if cache.definitions.contains_key(&identity) {
+        return;
+    }
+    definition.visit(&mut |expression| cache.retain_site(expression));
+    cache.definitions.insert(identity, definition.clone());
+}
 
 #[derive(Debug)]
 pub(super) struct FunctionCode {
@@ -81,22 +123,30 @@ fn prepare_code(
     kind: FunctionKind,
     cache: &Option<FunctionCache>,
 ) -> Rc<FunctionCode> {
-    let tag = match kind {
-        FunctionKind::Normal => 0,
-        FunctionKind::Arrow => 1,
-        FunctionKind::Method(MethodKind::Method) => 2,
-        FunctionKind::Method(MethodKind::Get) => 3,
-        FunctionKind::Method(MethodKind::Set) => 4,
-        FunctionKind::Method(MethodKind::Constructor) => 5,
-    };
+    let tag = kind_tag(kind);
     let key = (code.span.start, code.span.end, tag);
+    let site = (std::ptr::from_ref(code) as usize, tag);
     if let Some(cache) = cache {
-        if let Some(found) = cache.borrow().get(&key).and_then(|entries| {
-            entries
-                .iter()
-                .find(|entry| entry.kind == kind && entry.ast == *code)
-        }) {
-            return found.clone();
+        let found = {
+            let cache = cache.borrow();
+            if let Some(Some(found)) = cache.sites.get(&site) {
+                return found.clone();
+            }
+            cache
+                .entries
+                .get(&key)
+                .and_then(|entries| {
+                    entries
+                        .iter()
+                        .find(|entry| entry.kind == kind && entry.ast == *code)
+                })
+                .cloned()
+        };
+        if let Some(found) = found {
+            if let Some(slot) = cache.borrow_mut().sites.get_mut(&site) {
+                *slot = Some(found.clone());
+            }
+            return found;
         }
     }
     let compiled = if cache.is_some() && kind != FunctionKind::Arrow {
@@ -139,11 +189,16 @@ fn prepare_code(
         cache: cache.as_ref().map_or_else(Weak::new, Rc::downgrade),
     });
     if let Some(cache) = cache {
-        cache
-            .borrow_mut()
-            .entry(key)
-            .or_default()
-            .push(prepared.clone());
+        let mut cache = cache.borrow_mut();
+        cache.entries.entry(key).or_default().push(prepared.clone());
+        // entries owns this FunctionCode and its cloned AST. Nested syntax
+        // evaluated by the AST interpreter is therefore stable as well.
+        prepared
+            .ast
+            .visit_expressions(&mut |expression| cache.retain_site(expression));
+        if let Some(slot) = cache.sites.get_mut(&site) {
+            *slot = Some(prepared.clone());
+        }
     }
     prepared
 }
@@ -935,6 +990,79 @@ fn bind_parameter(environment: &Environment, binding: &Expr, value: Value) -> Ru
     } else {
         environment.create_mutable_binding(name.clone(), false)?;
         environment.initialize_binding(&name, value)
+    }
+}
+
+#[cfg(test)]
+mod owned_definition_tests {
+    use super::*;
+
+    fn definition(value: u8) -> Rc<Expr> {
+        Rc::new(
+            crate::parser::parse_expression(&format!("{{get value(){{return {value};}}}}"))
+                .unwrap(),
+        )
+    }
+    fn getter(expression: &Expr) -> &Function {
+        let ExprKind::Object(properties) = &expression.kind else {
+            panic!("object")
+        };
+        let ExprKind::Method { function, .. } = &properties[0].value.as_ref().unwrap().kind else {
+            panic!("getter")
+        };
+        function
+    }
+
+    #[test]
+    fn owned_sites_pin_syntax_and_keep_colliding_spans_distinct() {
+        let cache: FunctionCache = Default::default();
+        let first = definition(1);
+        let second = definition(2);
+        assert_eq!(getter(&first).span, getter(&second).span);
+        retain_definition(&cache, &first);
+        retain_definition(&cache, &second);
+        let kind = FunctionKind::Method(MethodKind::Get);
+        let a = prepare_code(getter(&first), kind, &Some(cache.clone()));
+        let b = prepare_code(getter(&second), kind, &Some(cache.clone()));
+        assert!(!Rc::ptr_eq(&a, &b));
+        assert!(Rc::ptr_eq(
+            &a,
+            &prepare_code(getter(&first), kind, &Some(cache.clone()))
+        ));
+        let weak = Rc::downgrade(&first);
+        drop(first);
+        assert!(weak.upgrade().is_some());
+        assert_eq!(cache.borrow().definitions.len(), 2);
+        assert_eq!(cache.borrow().sites.len(), 2);
+        drop(cache);
+        assert!(
+            weak.upgrade().is_none(),
+            "syntax owners must release with cache"
+        );
+    }
+
+    #[test]
+    fn borrowed_clones_and_different_kinds_keep_structural_fallback() {
+        let cache: FunctionCache = Default::default();
+        let root = definition(1);
+        retain_definition(&cache, &root);
+        let kind = FunctionKind::Method(MethodKind::Get);
+        let a = prepare_code(getter(&root), kind, &Some(cache.clone()));
+        let mut borrowed = getter(&root).clone();
+        assert!(Rc::ptr_eq(
+            &a,
+            &prepare_code(&borrowed, kind, &Some(cache.clone()))
+        ));
+        borrowed.body = getter(&definition(2)).body.clone();
+        let b = prepare_code(&borrowed, kind, &Some(cache.clone()));
+        assert!(!Rc::ptr_eq(&a, &b));
+        let normal = prepare_code(getter(&root), FunctionKind::Normal, &Some(cache.clone()));
+        assert!(!Rc::ptr_eq(&normal, &a));
+        assert_eq!(
+            cache.borrow().sites.len(),
+            1,
+            "unowned addresses must never be memoized"
+        );
     }
 }
 

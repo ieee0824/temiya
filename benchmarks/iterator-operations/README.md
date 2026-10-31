@@ -85,7 +85,7 @@ native logs and all6 output oracles. These are instruction diagnostics only.
 
 The fourth diagnostic point (0269ef9 environment-root cache) is rejected and reverted: getter instructions improve but invalid-result instructions increase. Raw profiles and the successful bounded-root test remain evidence, not qualification.
 
-`key-and-result-diagnostic-v1` retains three source-specific Callgrind points for short key conversion and fresh iterator results. `verify-key-profiles.mjs` checks all raw counts, output oracles and 80 compiled inputs per point. Array instructions decline from 329,647,241 to 290,521,403; getter and invalid-result gains are smaller. These diagnostics do not satisfy the native Boa speed gate.
+`key-and-result-diagnostic-v1` retains 19 source-specific Callgrind points, including rejected experiments. `verify-key-profiles.mjs` checks raw counts, output oracles and the exact compiled-input inventory for each historical source (80, 81 or 82 inputs). Later points cover function frames, activation roots, short callbacks, owned function sites, weak environment hints and literal accessor initialization. These diagnostics do not satisfy the native Boa speed gate.
 
 `fixed-definition-cache-v1` retains historical09766bb fixed Ast/Auto captures:235pass1983fail1662timeout each. Every outcome agrees with c2bc478; no regressions or missing records. These captures do not qualify the later key/result/native-step changes.
 
@@ -106,3 +106,61 @@ The `empty-frame` node in `key-and-result-diagnostic-v1` retains all six
 4a4c103 Callgrind profiles and source hashes, including the new 81st Rust
 input. Every worker output validates the unchanged expected value twice.
 These instrumented instruction counts do not establish native speed versus Boa.
+
+`full-empty-frame-v1` retains all eight shards of run 41186658237 at
+4a4c103: 29,701 pass, 61,923 fail, 18 skip and 8,569 timeout across 100,211
+variants. The preceding native-step candidate's 29,701 passes remain passes,
+with no new passes or regressions. The verifier reconstructs this comparison
+from both archives. This is correctness evidence, not native speed qualification.
+Replay with `node benchmarks/iterator-operations/verify-full.mjs full-empty-frame-v1`.
+
+`hosted-empty-frame-v1` retains run 41186655959 at 4a4c103. Both jobs record
+0/3 significant wins for done/value order and invalid next results. Copy 2 also
+records 1/3 for captured-next and for the preceding derived-definition control.
+All 68 reports independently replay; the source does not meet the speed gate.
+Replay with `node benchmarks/iterator-operations/verify-hosted.mjs hosted-empty-frame-v1`.
+
+The `error-strings`, `activation-fingerprints`, and `inline-stacks` nodes in
+`key-and-result-diagnostic-v1` preserve all original 48185f4, 5852248 and 17905b8
+profiles with their build-input hashes and twice-validated worker outputs.
+The combined inline-stack experiment increases instructions for five of six
+inputs (up to about 15.7%); its operand representation was reverted in d9906db while the separate auxiliary
+stack storage was retained. These remain diagnostics,
+not native Boa qualification. Replay with `verify-key-profiles.mjs`.
+
+`fixed-empty-frame-v1` retains complete fixed Ast/Auto outcomes at f678ea7,
+a metadata-only build of runtime 4a4c103. Both backends record 235 pass, 1,983
+fail and 1,662 timeout across 3,880 variants, with every outcome matching the
+preceding 09766bba source. The original baseline collection failure and its
+missing-only recovery remain archived. `verify-fixed.mjs` checks the raw reports
+and runtime/build source equivalence. This does not qualify later runtime edits.
+
+`full-inline-auxiliary-v1` retains run 41192023972 at d9906db. All eight
+complete-corpus known-pass gates replay independently, and all 29,701 preceding
+4a4c103 passes remain passes, with zero new passes or regressions. Failures,
+skips and timeouts remain recorded. Replay with
+`node benchmarks/iterator-operations/verify-full.mjs full-inline-auxiliary-v1`.
+This is correctness evidence and does not establish native speed qualification.
+
+
+`full-literal-accessors-v1` retains run 41204131637 at 702ee76 (compiled
+runtime 0e9c642). All 100,211 variants are independently audited. Comparison
+against `full-weak-environments-v1` preserves all 29,701 preceding passes,
+with zero regressions or new passes. The 61,923 failures, 18 skips and 8,569
+timeouts remain recorded. Replay both archive integrity and the parent
+comparison with `node benchmarks/iterator-operations/verify-full.mjs full-literal-accessors-v1`.
+
+`hosted-weak-environments-v1` retains all 68 reports from run 41200250693
+at fd4ad7b (compiled runtime 37a6d37). In workload order from the frozen manifest,
+iterator significant wins are 3/3/3/3/0/0 on copy 1 and 3/3/3/3/2/3 on copy 2.
+All preceding 46 workloads qualify on both hosts. Because two iterator cases
+fail on copy 1, this source fails the unchanged two-host speed gate. Replay with
+`node benchmarks/iterator-operations/verify-hosted.mjs hosted-weak-environments-v1`.
+This capture cannot qualify the later literal accessor runtime.
+
+`security-owned-sites-timeout-v1` preserves the original 60-minute Miri
+shard timeout in run 41198356374. Eight selected tests completed, the ninth
+was interrupted and the tenth did not start. Neither incomplete test counts
+as a pass. Commit d8c8dca increases the Miri job budget to 90 minutes without
+changing the 16 shards, test selection or strict interpreter flags. The timeout
+record and focused Miri diagnostics do not replace a completed full security run.

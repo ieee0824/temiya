@@ -7,10 +7,11 @@ import {execFileSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 const root=path.dirname(fileURLToPath(import.meta.url)),repo=path.resolve(root,'../..');
 const read=p=>JSON.parse(fs.readFileSync(p)),sha=b=>createHash('sha256').update(b).digest('hex');
-for(const [name,source]of [['fixed-initial-v1','c2bc478647815fdc013f254f5e1e72cfd804945b'],['fixed-definition-cache-v1','09766bba7308eaede7b76059b88b73dd2bbb4efe']]) {
+for(const [name,source]of [['fixed-inline-auxiliary-v1','d9906db3c26e0b6b3663206fe0617fa5dbd7bbfc'],['fixed-empty-frame-v1','f678ea70d4a5ab38703d6956a88f34151025c766'],['fixed-initial-v1','c2bc478647815fdc013f254f5e1e72cfd804945b'],['fixed-definition-cache-v1','09766bba7308eaede7b76059b88b73dd2bbb4efe']]) {
 const dir=root+'/'+name;
 const e=read(dir+'/evidence.json'),comparison=read(dir+'/comparison.json'),freeze=read(root+'/selection-freeze.json');
-assert.equal(e.source,source);assert.equal(e.baseline_source,'622bc975af697c49298d2fb5b71b575aeed6cdb5');
+assert.equal(e.source,source);assert.equal(comparison.source,source);assert.equal(comparison.baseline_source,e.baseline_source);
+if(name==='fixed-empty-frame-v1'){assert.equal(e.runtime_source,'4a4c103ade6b0acae5f5a16cfa68220f24c2300e');execFileSync('git',['-c','safe.directory='+repo,'diff','--exit-code',e.runtime_source,e.source,'--','Cargo.toml','Cargo.lock','build.rs','src','examples/measure_workload.rs','test262/manifest.json'],{cwd:repo});}assert.equal(e.baseline_source,'622bc975af697c49298d2fb5b71b575aeed6cdb5');
 assert.equal(sha(fs.readFileSync(root+'/selection.json')),freeze.selection_sha256);
 const bytes=fs.readFileSync(dir+'/capture.tar.gz');assert.equal(bytes.length,e.archive.bytes);assert.equal(sha(bytes),e.archive.sha256);
 const temp=fs.mkdtempSync(path.join(os.tmpdir(),'temiya-iterator-fixed-')),opts={encoding:'utf8',maxBuffer:16*1024*1024};

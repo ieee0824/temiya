@@ -1,6 +1,7 @@
 use super::*;
+use crate::ast::Stmt;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 enum Receiver {
     This,
     Argument(usize),
@@ -10,6 +11,8 @@ enum Operation {
     Read,
     Update { increment: bool, prefix: bool },
     Has,
+    Call(Box<[usize]>),
+    Assign { argument: usize, readback: bool },
 }
 
 // Shared code caches syntax and parameter positions only. A closure may bind
@@ -23,7 +26,10 @@ pub(super) struct Plan {
 
 pub(super) fn prepare(function: &Function, kind: FunctionKind) -> Option<Plan> {
     if !(kind == FunctionKind::Arrow
-        || kind == FunctionKind::Method(MethodKind::Method) && function.strict)
+        || matches!(
+            kind,
+            FunctionKind::Method(MethodKind::Method | MethodKind::Get | MethodKind::Set)
+        ) && function.strict)
         || function.asynchronous
         || function.generator
     {
@@ -47,13 +53,35 @@ pub(super) fn prepare(function: &Function, kind: FunctionKind) -> Option<Plan> {
             let StmtKind::Block(statements) = &body.kind else {
                 return None;
             };
-            let [statement] = statements.as_slice() else {
-                return None;
-            };
-            let StmtKind::Return(Some(expression)) = &statement.kind else {
-                return None;
-            };
-            expression
+            match statements.as_slice() {
+                [
+                    Stmt {
+                        kind: StmtKind::Return(Some(expression)),
+                        ..
+                    },
+                ] => expression,
+                [
+                    Stmt {
+                        kind: StmtKind::Expression(expression),
+                        ..
+                    },
+                ] => {
+                    return assignment(expression, None, &parameters);
+                }
+                [
+                    Stmt {
+                        kind: StmtKind::Expression(expression),
+                        ..
+                    },
+                    Stmt {
+                        kind: StmtKind::Return(Some(readback)),
+                        ..
+                    },
+                ] => {
+                    return assignment(expression, Some(readback), &parameters);
+                }
+                _ => return None,
+            }
         }
         _ => return None,
     };
@@ -71,6 +99,22 @@ pub(super) fn prepare(function: &Function, kind: FunctionKind) -> Option<Plan> {
                 receiver: receiver(right, &parameters)?,
                 operation: Operation::Has,
             });
+        }
+        ExprKind::Call {
+            callee,
+            arguments,
+            optional: false,
+        } => {
+            let positions = arguments
+                .iter()
+                .map(|argument| {
+                    let ExprKind::Identifier(name) = &argument.kind else {
+                        return None;
+                    };
+                    parameters.get(name.as_str()).copied()
+                })
+                .collect::<Option<Box<[_]>>>()?;
+            (callee.as_ref(), Operation::Call(positions))
         }
         ExprKind::Update {
             operator,
@@ -102,6 +146,64 @@ pub(super) fn prepare(function: &Function, kind: FunctionKind) -> Option<Plan> {
         receiver: receiver(object, &parameters)?,
         operation,
     })
+}
+
+// Only parameter-to-private writes can omit an activation. A readback must
+// name the same receiver/slot, and still runs after the ordinary setter call.
+fn assignment(
+    expression: &Expr,
+    readback: Option<&Expr>,
+    parameters: &HashMap<&str, usize>,
+) -> Option<Plan> {
+    let ExprKind::Assignment {
+        operator,
+        target,
+        value,
+    } = &expression.kind
+    else {
+        return None;
+    };
+    if operator != "=" {
+        return None;
+    }
+    let ExprKind::Identifier(parameter) = &value.kind else {
+        return None;
+    };
+    let argument = *parameters.get(parameter.as_str())?;
+    let (name, target_receiver) = private_member(target, parameters)?;
+    if let Some(readback) = readback {
+        let (read_name, read_receiver) = private_member(readback, parameters)?;
+        if read_name != name || read_receiver != target_receiver {
+            return None;
+        }
+    }
+    Some(Plan {
+        name: name.into(),
+        receiver: target_receiver,
+        operation: Operation::Assign {
+            argument,
+            readback: readback.is_some(),
+        },
+    })
+}
+
+fn private_member<'a>(
+    expression: &'a Expr,
+    parameters: &HashMap<&str, usize>,
+) -> Option<(&'a str, Receiver)> {
+    let ExprKind::Member {
+        object,
+        property,
+        computed: false,
+        optional: false,
+    } = &expression.kind
+    else {
+        return None;
+    };
+    let ExprKind::PrivateIdentifier(name) = &property.kind else {
+        return None;
+    };
+    Some((name.as_str(), receiver(object, parameters)?))
 }
 
 fn receiver(expression: &Expr, parameters: &HashMap<&str, usize>) -> Option<Receiver> {
@@ -155,7 +257,7 @@ impl Plan {
                 .load(owner)?
                 .resolve_private_key(&self.name)?,
         };
-        match self.operation {
+        match &self.operation {
             Operation::Has => {
                 let Value::Object(object) = receiver else {
                     unreachable!()
@@ -163,12 +265,43 @@ impl Plan {
                 Ok(Value::Boolean(object.has_private(&name)))
             }
             Operation::Read => super::super::Reference::private(receiver, name).get_value(),
+            Operation::Assign { argument, readback } => {
+                let reference = super::super::Reference::private(receiver, name);
+                let value = arguments
+                    .get(*argument)
+                    .cloned()
+                    .unwrap_or(Value::Undefined);
+                reference.put_value(value)?;
+                if *readback {
+                    reference.get_value()
+                } else {
+                    Ok(Value::Undefined)
+                }
+            }
+            Operation::Call(positions) => {
+                // Resolve the callee/getter before selecting arguments. Simple
+                // parameter reads cannot expose an activation; keep the actual
+                // receiver and ordinary callable/error/GC behavior.
+                let callee =
+                    super::super::Reference::private(receiver.clone(), name).get_value()?;
+                let values = positions
+                    .iter()
+                    .map(|index| arguments.get(*index).cloned().unwrap_or(Value::Undefined))
+                    .collect::<Vec<_>>();
+                let Value::Object(function) = callee else {
+                    return Err(RuntimeError::type_error("value is not callable"));
+                };
+                if !function.is_callable() {
+                    return Err(RuntimeError::type_error("value is not callable"));
+                }
+                function.call(receiver, &values)
+            }
             Operation::Update { increment, prefix } => {
                 super::super::interpreter::update_reference_in_realm(
                     realm,
                     &super::super::Reference::private(receiver, name),
-                    increment,
-                    prefix,
+                    *increment,
+                    *prefix,
                 )
             }
         }

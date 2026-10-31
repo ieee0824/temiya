@@ -1,0 +1,7 @@
+{
+  "name": "static-private-field",
+  "setup": "class C{static #x;static put(v){this.#x=v;return this.#x;}}function bench(n){let total=0;for(let i=0;i<n;i++){total+=C.put(i+1);}return total;}",
+  "invocation": "bench(10000);",
+  "iterations": 10000,
+  "expected": 50005000
+}

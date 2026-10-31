@@ -1,0 +1,7 @@
+{
+  "name": "static-private-method",
+  "setup": "class C{static #m(v){return v+1;}static call(v){return this.#m(v);}}function bench(n){let total=0;for(let i=0;i<n;i++){total+=C.call(i);}return total;}",
+  "invocation": "bench(10000);",
+  "iterations": 10000,
+  "expected": 50005000
+}

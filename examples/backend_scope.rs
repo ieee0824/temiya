@@ -58,8 +58,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     ));
     assert!(BytecodeCompiler::compile(private_fields).is_err());
 
-    // Private methods retain a separate unsupported runtime boundary.
-    let script = engine.compile(&realm, "(class { #method() {} });")?;
+    let private_elements = "class PrivateElementsExample { static #x=40; static #m(){return this.#x+2;} static get #v(){return this.#m();} static read(){return this.#v;} } PrivateElementsExample.read();";
+    let script = engine.compile(&realm, private_elements)?;
+    assert!(matches!(
+        engine.evaluate(&script)?.value(),
+        Value::Number(42.0)
+    ));
+    assert!(BytecodeCompiler::compile(private_elements).is_err());
+
+    // Async generator functions retain a separate unsupported runtime boundary.
+    let script = engine.compile(&realm, "(class { async *method() {} });")?;
     assert!(engine.evaluate(&script).is_err());
 
     let bytecode = BytecodeCompiler::compile("40 + 2;")?;

@@ -1,0 +1,7 @@
+{
+  "name": "private-accessor",
+  "setup": "class C{#x=0;get #v(){return this.#x;}set #v(v){this.#x=v;}put(v){this.#v=v;return this.#v;}}function bench(n){let c=new C();let total=0;for(let i=0;i<n;i++){total+=c.put(i+1);}return total;}",
+  "invocation": "bench(10000);",
+  "iterations": 10000,
+  "expected": 50005000
+}

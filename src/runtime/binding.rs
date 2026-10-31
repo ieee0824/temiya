@@ -179,7 +179,12 @@ fn object(
             "cannot destructure null or undefined",
         ));
     }
-    let mut excluded = Vec::with_capacity(properties.len());
+    let has_rest = properties.iter().any(|property| property.spread);
+    let mut excluded = if has_rest {
+        Vec::with_capacity(properties.len())
+    } else {
+        Vec::new()
+    };
     for property in properties {
         if property.spread {
             let target = Target::prepare(evaluator, &property.key, initialize)?;
@@ -204,18 +209,21 @@ fn object(
         element(
             evaluator,
             binding,
-            &mut || {
-                Reference::property_in_realm(
+            &mut || match &value {
+                Value::Object(object) => object.get_with_receiver(&key, value.clone()),
+                _ => Reference::property_in_realm(
                     &evaluator.realm,
                     value.clone(),
                     ReferencedName::PropertyKey(key.clone()),
                     evaluator.strict,
                 )
-                .get_value()
+                .get_value(),
             },
             initialize,
         )?;
-        excluded.push(key);
+        if has_rest {
+            excluded.push(key);
+        }
     }
     Ok(())
 }

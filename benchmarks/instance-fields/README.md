@@ -59,3 +59,8 @@ minimum2/3criterion. Same-executable control is15noise; source comparison is
 14noise and one improvement. Hosted and full-suite qualifications are separate.
 verify-arrow-read-v1.mjs and verify-direct-fields-v1.mjs independently check all
 raw values, statistical decisions and77compiled source hashes.
+
+full-direct-fields-v1 retains the current runtime2639a70 full run41147468864.
+All eight known-pass gates independently pass over52133files100211variants:
+26826pass,64484fail,18skip,8883timeout, with no missing outcomes or known-pass
+regressions. The remaining failures/skips/timeouts are not conformance passes.

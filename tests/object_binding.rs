@@ -133,3 +133,10 @@ fn prepared_object_parameters_keep_computed_keys_and_fresh_tdz_cells() {
         "let calls=0;function f({a=b},b=42){return a;}for(let i=0;i<2;i++){try{f({});}catch(e){if(e instanceof ReferenceError)calls++;}}calls===2;",
     );
 }
+
+#[test]
+fn catch_identifier_cells_survive_closures_and_mutation() {
+    check(
+        "let readers=[];for(let i=0;i<3;i++){try{throw i;}catch(error){readers.push(()=>error);error+=10;}}readers[0]()===10&&readers[1]()===11&&readers[2]()===12;",
+    );
+}

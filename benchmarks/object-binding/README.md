@@ -287,3 +287,10 @@ All six profiles are retained. The archive has22 valid captures/132 profiles,
 two stale-worker rejections and17 later correctness captures. Changed-source
 native41283370723, full41283372476 and security41283373955 are pending; no native
 qualification or conformance transfer from preceding sources is claimed.
+
+`hosted-static-plan-v1` retains all76 reports from run41280566961 at809af2d.
+Both unfiltered jobs FAIL speed qualification: object wins1/1/1/1/3/0 on
+Intel Xeon8573C and2/2/1/3/3/0 on EPYC9V74. Every preceding group meets
+two-of-three in both jobs. All reports, controls and adverse values remain
+retained; no CPU is excluded and the unchanged source is not retimed.
+The laterdc9bd56 runtime has separate qualification jobs still pending.

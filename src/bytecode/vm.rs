@@ -120,6 +120,12 @@ impl VirtualMachine {
                 Instruction::CreateObject => stack.push(Value::Object(
                     crate::runtime::object_literal::create(realm.expect("verified object Realm")),
                 )),
+                Instruction::CreateObjectReserved(count) => stack.push(Value::Object(
+                    crate::runtime::object_literal::create_reserved(
+                        realm.expect("verified object Realm"),
+                        count,
+                    ),
+                )),
                 Instruction::CoercePropertyKey => {
                     let key = crate::runtime::object_literal::property_key(
                         realm.expect("verified object Realm"),

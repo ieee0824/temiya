@@ -8,6 +8,12 @@ pub(crate) fn create(realm: &Realm) -> Object {
     Object::new_with_prototype(realm.intrinsic(IntrinsicId::ObjectPrototype))
 }
 
+pub(crate) fn create_reserved(realm: &Realm, count: u8) -> Object {
+    let object = create(realm);
+    object.reserve_literal_properties(usize::from(count).min(4));
+    object
+}
+
 pub(crate) fn property_key(realm: &Realm, value: Value) -> RuntimeResult<PropertyKey> {
     if !matches!(value, Value::Object(_)) {
         return value.to_property_key();

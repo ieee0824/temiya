@@ -261,6 +261,8 @@ impl BinaryOperator {
 pub enum Instruction {
     /// Push a fresh ordinary object with the Realm's Object prototype.
     CreateObject,
+    /// Push a fresh ordinary object with a bounded property allocation hint.
+    CreateObjectReserved(u8),
     /// Convert the top value to a String/Symbol property key before its RHS.
     CoercePropertyKey,
     /// Consume object/key/value and retain the object after a data definition.
@@ -412,7 +414,7 @@ impl Instruction {
         match self {
             Self::LoadSuperBinding => 0,
             Self::ResolveSuperProperty { .. } => 3,
-            Self::CreateObject => 0,
+            Self::CreateObject | Self::CreateObjectReserved(_) => 0,
             Self::CoercePropertyKey => 1,
             Self::DefineObjectProperty { .. } => 3,
             Self::DefineNamedObjectProperty { .. } => 2,
@@ -475,7 +477,7 @@ impl Instruction {
         match self {
             Self::LoadSuperBinding => 2,
             Self::ResolveSuperProperty { .. } => -3,
-            Self::CreateObject => 1,
+            Self::CreateObject | Self::CreateObjectReserved(_) => 1,
             Self::CoercePropertyKey => 0,
             Self::DefineObjectProperty { .. } => -2,
             Self::DefineNamedObjectProperty { .. } => -1,
@@ -870,6 +872,7 @@ fn loop_bindings_are_unobserved(code: &Bytecode, states: &[Option<FlowState>]) -
                 .as_ref()
                 .is_some_and(|state| state.references.is_empty() && state.calls.is_empty()),
             Instruction::CreateObject
+            | Instruction::CreateObjectReserved(_)
             | Instruction::CoercePropertyKey
             | Instruction::DefineObjectProperty { .. }
             | Instruction::DefineNamedObjectProperty { .. }
@@ -1192,6 +1195,7 @@ fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
             }
             Instruction::GetProperty { .. }
             | Instruction::CreateObject
+            | Instruction::CreateObjectReserved(_)
             | Instruction::CoercePropertyKey
             | Instruction::DefineObjectProperty { .. }
             | Instruction::SpreadObject

@@ -745,7 +745,7 @@ impl Object {
             result.map_err(|error| self.bind_native_exception(payload.source.as_ref(), error))
         })())
     }
-    // Only the unpublished ordinary object created for an AST literal uses
+    // Only the unpublished ordinary object created for an object literal uses
     // these initializers. No property/proxy hooks or descriptor observers can
     // see it before construction finishes.
     pub(super) fn reserve_literal_properties(&self, count: usize) {

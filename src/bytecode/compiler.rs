@@ -438,7 +438,13 @@ impl Compiler {
                     self.code.push(Instruction::CreateObjectLiteral(index));
                     return Ok(());
                 }
-                self.code.push(Instruction::CreateObject);
+                self.code.push(
+                    if !properties.is_empty() && !properties.iter().any(|p| p.spread) {
+                        Instruction::CreateObjectReserved(properties.len().min(4) as u8)
+                    } else {
+                        Instruction::CreateObject
+                    },
+                );
                 for property in properties {
                     if property.spread {
                         self.expression(&property.key)?;

@@ -294,3 +294,9 @@ Intel Xeon8573C and2/2/1/3/3/0 on EPYC9V74. Every preceding group meets
 two-of-three in both jobs. All reports, controls and adverse values remain
 retained; no CPU is excluded and the unchanged source is not retimed.
 The laterdc9bd56 runtime has separate qualification jobs still pending.
+
+`security-initial-catch-v1` retains the complete19-job run41281843076 at
+runtime sourced58d4d4. Independent canonical replay verifies171 unique exact
+strict-provenance/symbolic-alignment Miri tests and987 ASan tests, plus the
+dependency audit and aggregate. This proves that recorded source's security
+checks only; later sources and native speed remain separately qualified.

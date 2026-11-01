@@ -8,7 +8,7 @@ import {execFileSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 const root=path.dirname(fileURLToPath(import.meta.url)),repo=path.resolve(root,'../..');
 const read=p=>JSON.parse(fs.readFileSync(p)),sha=b=>createHash('sha256').update(b).digest('hex');
-const captures=new Map([['hosted-cache32-v1',{source:'9f84bc5c6416911df51d76cf10b936ad3c3e003f',run:41234439927,baseline:'38fcaf00e4a39c8e97f31f6cda82b0ae8adc7600'}],['hosted-array-data-properties-v1',{source:'1090d929ab73326097af7c5e0b8a9a685d761cd3',run:41223792234,baseline:'38fcaf00e4a39c8e97f31f6cda82b0ae8adc7600'}],['hosted-current-integrated-v1',{source:'6c65967973ad4de72986db751d7c7e30547251c2',run:41207657318,baseline:'fd4ad7b521537dc0266424c40bd59e7dc6bb3c59'}],['hosted-initial-integrated-v1',{source:'91fb9f4e516e12b738e729f3f6441920ca642c49',run:41187179432,baseline:'7eba69e8d8e5927b5f5c73dbdd57b30749e16442'}]]);
+const captures=new Map([['hosted-inline-thrown-v1',{source:'7a154b17dd6982913047b364e7bf4c293103798a',run:41243217454,baseline:'38fcaf00e4a39c8e97f31f6cda82b0ae8adc7600'}],['hosted-cache32-v1',{source:'9f84bc5c6416911df51d76cf10b936ad3c3e003f',run:41234439927,baseline:'38fcaf00e4a39c8e97f31f6cda82b0ae8adc7600'}],['hosted-array-data-properties-v1',{source:'1090d929ab73326097af7c5e0b8a9a685d761cd3',run:41223792234,baseline:'38fcaf00e4a39c8e97f31f6cda82b0ae8adc7600'}],['hosted-current-integrated-v1',{source:'6c65967973ad4de72986db751d7c7e30547251c2',run:41207657318,baseline:'fd4ad7b521537dc0266424c40bd59e7dc6bb3c59'}],['hosted-initial-integrated-v1',{source:'91fb9f4e516e12b738e729f3f6441920ca642c49',run:41187179432,baseline:'7eba69e8d8e5927b5f5c73dbdd57b30749e16442'}]]);
 const groups=[
  ['original','audit-original-workload-records.mjs',[],['beforeafter','boa','baseline-boa','same-binary-control']],
  ['class','audit-class-workload-records.mjs',[],['class-beforeafter','class-boa','class-baseline-boa','class-same-binary']],
@@ -59,6 +59,7 @@ for(const name of selected){
      if((group!=='elements'&&group!=='bindings')&&i===2)assert.equal(first.executable_sha256,baseline.executable_sha256);
      if((group==='elements'||group==='bindings')?i===1:i===3)assert(r.workers.every(w=>w.executable_sha256===candidate.executable_sha256));
     }
+    if(name==='hosted-inline-thrown-v1'){const within={};for(const c of read(capture+'/'+reports.at(-1)+'.json').comparisons)within[c.workload]=(within[c.workload]??0)+(c.outcome==='within noise threshold'?1:0);assert(Object.values(within).every(n=>n>=2));assert(saved.minimum_two_of_three);}
     const wins={};for(const comparison of read(capture+'/'+reports[(group==='elements'||group==='bindings')?0:1]+'.json').comparisons)wins[comparison.workload]=(wins[comparison.workload]??0)+(comparison.outcome==='Temiya faster beyond threshold'?1:0);assert.deepEqual(wins,saved.boa_wins_by_workload);assert.equal(Object.values(wins).every(n=>n>=2),saved.minimum_two_of_three);
     summary.groups.push({suite:group,boa_wins_by_workload:wins,outcomes:audit.reports.map(r=>r.outcomes)});
    }

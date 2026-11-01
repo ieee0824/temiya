@@ -2,8 +2,8 @@
 
 This branch builds on merged #161. Array binding now executes through
 declarations, ordinary parameters,
-catch and supported loop declarations. Boa speed qualification and current fixed-capture preservation
-remain pending; this branch is not eligible for merge yet.
+catch and supported loop declarations. Native Boa qualification and full recorded-outcome preservation pass for
+source7a154b1. Fixed Ast/Auto preservation is complete; final merging requires current PR CI.
 
 selection.json freezes all destructuring-binding metadata tests and every /dstr/
 path from the complete pinned Test262 catalog before implementation. Object
@@ -95,3 +95,32 @@ Runtime9f84bc5 has completed two-job native collection, but TDZ-close fails the 
 `fixed-cache32-v1` preserves completed frozen sourcee9854f8 (all83compiler inputs match9f84bc5): Ast/Auto each5292pass7691fail4431timeout,0missing/errors; all17414outcomes match the preceding866runtime, with zero pass regressions. Native9f84bc5 remains unqualified because AMD TDZ-close fails.
 
 `compact-error-diagnostic-v1` preserves the rejected compact-error experiment54e5ea9, whose six instruction counts regress. `inline-thrown-error-diagnostic-v1` retains source5b88eea: explicit throws use an inline Value, normal errors retain their40byte layout, and reference diagnostics use bounded immutable Rust strings.936tests and4focused strict Miri tests pass; all six instruction counts decrease0.46–1.19%. Fresh native/full/security/fixed qualification is required; previous results do not qualify this source.
+
+Current inline-thrown-error source `7a154b17dd6982913047b364e7bf4c293103798a`
+completed security run `41243222743`: all 19 jobs passed, with 163 unique
+exact strict Miri tests and 936 ASan test passes. Canonical logs and independent
+replay are retained in `security-inline-thrown-v1`. This is safety evidence;
+native speed and full Test262 qualification remain separate.
+
+Current source `7a154b17dd6982913047b364e7bf4c293103798a` qualifies native
+speed in `hosted-inline-thrown-v1`: all 58 workloads meet the unchanged
+threshold in at least two of three pairs on both independent AMD EPYC 7763
+jobs in run `41243217454`. No CPU filter was used. Every same-binary control
+stays within noise in at least two pairs. Array-case wins are 3/3/3/3/3/2
+and 3/3/3/2/3/3; all 72 reports and adverse/noisy observations are retained.
+Replay with `node benchmarks/array-binding/verify-hosted.mjs hosted-inline-thrown-v1`.
+Fixed Ast/Auto preservation is recorded separately; current PR CI remains a merge requirement.
+
+`full-inline-thrown-v1` retains the complete source7a154b1 capture and the
+preceding source9f84bc5 capture. Independent replay preserves all 33,565 prior
+passes across 100,211 variants, with no regressions or missing results. Outcomes
+remain 33,565 pass, 58,059 fail, 18 skip and 8,569 timeout. This aggregate is
+recorded-outcome preservation, not whole-feature conformance.
+
+`fixed-inline-thrown-v1` retains nine captures, including the original failed
+Auto collection and its missing-only recovery. Current runtime5b88 compiler
+inputs equal qualified source7a. Ast and Auto each record 5,292 pass, 7,691
+fail and 4,431 timeout across 17,414 variants, with no missing results or
+collection errors. Every outcome matches preceding cache32 in each backend;
+all 5,292 prior passes remain. Earlier baseline/initial passes also remain.
+Replay with `node benchmarks/array-binding/fixed-inline-thrown-v1/verify.mjs`.

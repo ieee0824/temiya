@@ -8,6 +8,12 @@ pub(crate) fn create(realm: &Realm) -> Object {
     Object::new_with_prototype(realm.intrinsic(IntrinsicId::ObjectPrototype))
 }
 
+pub(crate) fn create_reserved(realm: &Realm, count: u8) -> Object {
+    let object = create(realm);
+    object.reserve_literal_properties(usize::from(count).min(4));
+    object
+}
+
 pub(crate) fn property_key(realm: &Realm, value: Value) -> RuntimeResult<PropertyKey> {
     if !matches!(value, Value::Object(_)) {
         return value.to_property_key();
@@ -77,11 +83,20 @@ pub(super) fn spread_excluding(
         if excluded.contains(&key) {
             continue;
         }
-        if source
-            .try_get_own_property(&key)?
-            .is_some_and(|descriptor| descriptor.enumerable == Some(true))
-        {
-            let value = source.get(&key)?;
+        let value = match source.try_own_enumerable_value(&key) {
+            Some(value) => value?,
+            None => {
+                if source
+                    .try_get_own_property(&key)?
+                    .is_some_and(|descriptor| descriptor.enumerable == Some(true))
+                {
+                    Some(source.get(&key)?)
+                } else {
+                    None
+                }
+            }
+        };
+        if let Some(value) = value {
             define_data(object, key, value, false)?;
         }
     }

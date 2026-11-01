@@ -1,0 +1,20 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import assert from 'node:assert/strict';
+import {createHash} from 'node:crypto';
+import {execFileSync} from 'node:child_process';
+import {fileURLToPath} from 'node:url';
+const dir=path.dirname(fileURLToPath(import.meta.url)),repo=path.resolve(dir,'../../..'),read=p=>JSON.parse(fs.readFileSync(p));
+const sha=b=>createHash('sha256').update(b).digest('hex'),e=read(dir+'/evidence.json');
+assert.equal(e.source,'073b43995ad22605fd52b56260b83055a6573ea8');
+for(const [file,hash]of Object.entries(e.files)){assert.equal(path.basename(file),file);assert.equal(sha(fs.readFileSync(dir+'/'+file)),hash);}
+const info=read(dir+'/worker-info.json');assert.equal(info.source_revision,e.source);assert.equal(info.source_clean,true);assert.equal(info.profile,'release');assert.deepEqual(info.features,[]);assert.equal(info.source_inputs.length,83);
+for(const row of info.source_inputs)assert.equal(sha(execFileSync('git',['show',e.source+':'+row.path],{cwd:repo})),row.sha256);
+assert.equal(sha(execFileSync('git',['show',e.source+':tests/object_binding.rs'],{cwd:repo})),e.integration_test_sha256);
+const text=f=>fs.readFileSync(dir+'/'+f+'.log','utf8'),suites=[...text('all-targets').matchAll(/test result: ok\. (\d+) passed; (\d+) failed; (\d+) ignored;/g)];
+assert.equal(suites.length,124);assert.equal(suites.reduce((a,m)=>a+Number(m[1]),0),953);assert.equal(suites.reduce((a,m)=>a+Number(m[2]),0),0);assert.equal(suites.reduce((a,m)=>a+Number(m[3]),0),26);
+assert(text('clippy').includes('Finished `dev` profile'));assert(!text('clippy').includes('error:'));assert(text('release').includes('Finished `release` profile'));
+for(const test of ['rest_accessor_copy_preserves_missing_getters_and_proxy_callable_receivers','reentrant_collection_preserves_source_and_rest_and_releases_everything'])assert(text('miri').includes(test+' ... ok'));
+assert.equal([...text('miri').matchAll(/test result: ok\. 1 passed; 0 failed; 0 ignored;/g)].length,2);
+assert.deepEqual(e.miri_flags,['-Zmiri-strict-provenance','-Zmiri-symbolic-alignment-check']);assert.equal(e.miri_toolchain,'nightly-2026-10-20');
+console.log(JSON.stringify({integrity:'pass',source:e.source,scope:e.scope}));

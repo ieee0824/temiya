@@ -1,20 +1,27 @@
 # Object binding preparation (#163)
 
-Initial runtime implementation is under correctness verification; no merge or
-speed qualification is claimed. Commit 75d6b2a freezes the complete
-17,415-variant selection and six authored workloads before candidate timing.
-The selection retains array, assignment, async and generator dependencies.
-Every workload executes 10,000 iterations with expected sum 50,005,000.
-The actual pinned Boa binary validates each oracle twice. This provides no
-candidate speed qualification.
+The qualified runtime source is `ab8997d839263eae34315dc232f79b7bdbf65a36`.
+Both original, unfiltered jobs of native run41291042940 pass the unchanged
+Boa speed gate for all six object cases and every preceding feature group.
+Object wins are3/3/3/3/3/3 and3/3/3/3/3/2. Full run41291044397 accounts for all
+100211 variants (37919 pass,53705 fail,18 skip,8569 timeout,0 missing), preserving
+all37919 preceding object and33565 merged array passes. Security run41291045818
+passes all19 jobs:173 exact strict Miri tests and998 ASan tests.
 
-Run `node benchmarks/object-binding/verify-workloads.mjs` to verify the frozen
-inputs, selection, reference identity and saved Boa output hashes.
+Run `node benchmarks/object-binding/verify-qualified.mjs --current-source`
+to replay every native report, both full-corpus comparisons, all security logs,
+and exact equality of all83 current runtime compiler inputs with the measured
+source. PR549 CI also checks that equality. Later feature PRs replay the recorded
+qualification without asserting their changed runtime equals an older source.
+Source-specific experimental measurements below remain historical evidence;
+no later experiment's correctness or speed is transferred to this runtime.
 
-Coverage planned: declarations and parameters, nested patterns, computed key
-conversion order, defaults and TDZ, rest key exclusions, symbols, enumerability,
-getter order/abrupt completions, null/undefined and primitive sources. Merge
-after #161 and #162, with independent correctness and unchanged speed gates.
+The frozen17,415-variant selection and six authored workloads predate timing.
+Every workload executes10,000 iterations with expected sum50,005,000; the pinned
+Boa worker validates each oracle twice. Coverage includes declarations and
+parameters, nesting, computed-key/default order, TDZ, symbol/rest exclusions,
+getters, abrupt completions and nullish/primitive sources. #161 and #162 are merged.
+Use `node benchmarks/object-binding/verify-workloads.mjs` to replay frozen inputs.
 
 `initial-profiles-v1` retains the first six Callgrind captures at 1076d17,
 including all 82 build input hashes, worker outputs, raw compressed instruction
@@ -56,3 +63,344 @@ test, Clippy, i686 check, and all 11 object-binding integration tests under
 strict Miri passed. Replay with
 `node benchmarks/object-binding/inline-parent-correctness-v1/verify.mjs`.
 These logs do not establish native speed or full Test262 qualification.
+
+Source `fe67ff56a766d834bc70c4e8219f4fad47b06723` is retained in
+`hosted-inline-parent-v1`: both unfiltered AMD EPYC 9V45 jobs fail speed
+qualification. Object wins are 0/0/0/0/3/0 and 0/0/0/0/1/0; preceding array
+rest and TDZ-close each record 0/3 on both jobs. All 76 reports and adverse
+observations remain. Complete source security passes all 19 jobs, with 163
+strict Miri tests and 947 ASan passes, in `security-inline-parent-v1`.
+Safety success does not qualify native speed.
+
+`allocation-diagnostics-v1` retains all six unchanged workloads at fe67,
+15a5671 and 3dad119, including raw compressed profiles, outputs and build
+input hashes. The direct-get change reduces instructions in every case
+(about 8.9% for declarations and 8.1% for parameters). Sharing empty optional
+object state increases instructions in all six cases relative to direct-get;
+that prototype is withdrawn. The lifecycle regression test remains. Replay
+with `node benchmarks/object-binding/allocation-diagnostics-v1/verify.mjs`.
+These instrumented measurements do not establish native Boa speed.
+
+`full-inline-parent-v1` retains all eight shards of run 41245246099 at
+fe67ff5: 37,919 pass, 53,705 fail, 18 skip and 8,569 timeout across
+100,211 variants, with none missing. Its verifier replays this capture and
+the retained array7a154b1 and previous-object010ac60 captures, then compares
+every variant: all 33,565 array passes and 37,919 previous object passes
+remain, with zero regressions. This historical source still fails native
+speed qualification; these results do not transfer to changed runtime.
+Run `node benchmarks/object-binding/full-inline-parent-v1/verify.mjs`.
+
+The fourth allocation diagnostic, `name-visitor` (3d08637), validates the
+complete binding pattern before visiting names directly. It removes the
+temporary name Vec while retaining callback failure order. All949 tests
+(26 ignored), Clippy and release build pass. Five instruction profiles
+improve relative to direct-get; parameters rise by about0.063%. This is
+retained as mixed evidence and is not a native performance qualification.
+
+Fresh array initialization at aa77879 bypasses the generic DefineOwnProperty
+path only for the unpublished object created by ArrayObject. The immutable
+numeric length has the same writable/non-enumerable/non-configurable descriptor.
+All949 tests (26 ignored), focused43 tests (one ignored), Clippy and release
+build pass. `fresh-array-diagnostics-v1` retains every before/after array
+profile: declaration instructions drop5.72%, parameters4.47%, rest5.00%;
+the other three change by less than0.004%. Allocation diagnostics also retain
+all six object profiles at this source. Neither establishes native Boa speed.
+Replay with `node benchmarks/object-binding/fresh-array-diagnostics-v1/verify.mjs`.
+
+Single catch bindings at6587184 remain inline until record extension, avoiding
+the initial binding Vec. Name hints, mutability/non-deletability, closure cells
+and managed edges remain checked. `single-catch-correctness-v1` retains951
+all-target passes (26 ignored), Clippy/release and two exact strict Miri tests,
+including GC/promotion and public Ast/Auto closure mutation. All six instruction
+profiles are retained under allocation diagnostics: abrupt-coercion drops2.26%
+relative to aa77879, while the other five rise0.27–0.42%. This is mixed
+diagnostic evidence, not native performance or complete security qualification.
+Replay with `node benchmarks/object-binding/single-catch-correctness-v1/verify.mjs`.
+
+`security-direct-get-v1` retains all19 successful jobs from run41254034829
+at1807734. Independent replay verifies163 unique exact strict Miri tests
+and948 ASan passes. This is preceding-source safety evidence; it does not
+qualify name-visitor, fresh-array or single-catch changes, nor native speed.
+
+`full-direct-get-v1` retains all eight shards from run41254032628 at1807734:
+100211 variants,37919pass53705fail18skip8569timeout,0missing. Its verifier
+replays candidate, fe67 previous object and7a154b1 array archives, preserving
+all37919 and33565 preceding passes respectively, with zero regressions.
+This source precedes later optimizations and cannot qualify their behavior.
+Replay with `node benchmarks/object-binding/full-direct-get-v1/verify.mjs`.
+
+The single-catch local correctness capture additionally retains45 MSRV
+integration passes (one ignored) and a successful i686 all-target check.
+
+Ordinary rest data at ca10d67 loads an enumerable own data edge once.
+Proxy, namespace and indexed-exotic sources retain the full descriptor/Get
+path. Accessors retain Get, preserving reentrant changes to later properties.
+Public Ast/Auto tests verify later data replacement/deletion and distinct
+Proxy Get values. All952 tests (26ignored), Clippy/release pass. All six
+instruction profiles are retained: rest-symbol drops1.225% but getter-order
+rises0.3915%. This is mixed diagnostic evidence, not native qualification.
+
+`hosted-direct-get-v1` retains every76 reports of run41254030647 at1807734.
+Unfiltered CPUs are AMD EPYC7763 and9V74. Both fail the unchanged speed gate:
+object wins0/0/0/0/3/0 and0/0/0/0/2/0. Array TDZ-close is0/3 both; rest is
+3/3 and0/3. All52 earlier control workloads qualify. No observations or
+CPUs are filtered, and the unchanged source is not timed again. Replay with
+`node benchmarks/object-binding/verify-hosted.mjs hosted-direct-get-v1`.
+
+Source6587184 now has a complete strict Miri run of all12 object integration
+tests retained in single-catch-correctness-v1 (817.48s). The focused closure
+test overlaps that suite and is not an additional unique integration test.
+
+`rest-data-correctness-v1` retains sourceca10d67 all952 tests (26ignored),
+Clippy/release and the exact strict Miri test for later data mutations and
+distinct Proxy Get values. These do not qualify complete security or speed.
+Replay with `node benchmarks/object-binding/rest-data-correctness-v1/verify.mjs`.
+
+Ordinary rest accessors at073b439 select the getter once and release the
+source borrow before invocation. Missing getters yield undefined; non-enumerable
+accessors are skipped. Proxy callable getters retain the original receiver.
+All953 tests (26ignored), Clippy/release and two exact strict Miri tests pass,
+including reentrant GC/release. `rest-accessor-correctness-v1` retains these
+logs and source hashes. All six instruction profiles are preserved: getter-order
+drops1.071% versus ca10d67; the other five are almost unchanged. This resolves
+the preceding getter instruction regression without native speed qualification.
+Replay with `node benchmarks/object-binding/rest-accessor-correctness-v1/verify.mjs`.
+
+Nullish binding diagnostics atca0f6eb share exactly one fixed Rust String per
+thread. No Realm/Object/GC root is cached; TLS teardown falls back to an owned
+message. Each JavaScript exception and writable message property remains fresh.
+All954 tests (26ignored), Clippy/release and the exact strict Miri identity/message
+test pass, retained in nullish-message-correctness-v1. All six instruction
+profiles remain: abrupt-coercion drops0.602%, while the other five rise0.036–0.094%.
+This is mixed diagnostic evidence, not native performance qualification.
+Replay with `node benchmarks/object-binding/nullish-message-correctness-v1/verify.mjs`.
+
+At sourcee83240f, full-single-catch-v1 retains run41256651468, all100211
+variants:37919pass53705fail18skip8569timeout,0missing. Independent replay
+preserves all37919 preceding-object and33565 array-parent passes,0regressions.
+security-single-catch-v1 retains all19 successful jobs of run41256654479,
+165 exact strict Miri tests and951ASan passes. These results belong only to
+the recorded source and cannot qualify later rest/message/payload changes.
+Replay with `node benchmarks/object-binding/full-single-catch-v1/verify.mjs`
+and the security verifier/source arguments in the retained-evidence helper.
+
+`hosted-single-catch-v1` retains all76 reports from run41256648814 at e83240f.
+Both unfiltered AMD EPYC9V45 jobs fail speed qualification:object wins
+0/0/0/0/3/0 both, array TDZ-close0/3 both. Prior derived-definition also
+records1/3 on copy1. The independent replay preserves all adverse outcomes,
+including existing controls, without unchanged-source retiming. Replay with
+`node benchmarks/object-binding/verify-hosted.mjs hosted-single-catch-v1`.
+
+The ordinary-data-rest stage (`683ec764`) in `bytecode-experiments-v1`
+retains all six fixed instruction profiles, including adverse results, plus
+982 passing native tests (26 ignored) and two focused strict-Miri tests.
+Compared with literal projection, rest-symbol instructions decrease from
+976053511 to 944716242; getter-order increases from 693493894 to 698560161.
+These instruction counts do not establish native superiority over Boa.
+The archive now contains 12 valid stages (72 profiles), two rejected stale
+worker captures, and seven later source-scoped correctness captures.
+
+The nullish-bridge stage (`c8228f2`) rejects nullish object patterns before
+constructing their evaluator context. All six profiles are retained: abrupt
+coercion instructions decrease3.0%, while declaration/computed/rest/getter
+increase0.02–0.07%. Source-scoped validation records983 passing native tests
+(26 ignored), Clippy, explicit release workers and one strict-Miri test.
+The archive contains13 valid stages/78 profiles, two rejected stale workers,
+and eight later correctness captures. Native Boa qualification remains separate.
+
+`hosted-literal-projection-v1` retains all76 reports from run41276966573
+at bda63e1. Both unfiltered jobs fail speed qualification: object workload
+wins are3/2/3/3/3/0 and2/1/2/3/3/0. All preceding groups meet the speed
+condition in both jobs. Recording workflow success does not mean qualification.
+
+The borrowed-literal stage (`7743662`) retains all six diagnostics and
+source-scoped983 native tests (26 ignored), Clippy, explicit release workers
+and one strict-Miri test covering exact Unicode keys and fallback behavior.
+Parameter instructions decrease from414343828 to404963921 (2.3%).
+The archive now has14 valid stages/84 profiles, two rejected stale workers
+and nine later correctness captures. These are not native speed qualification.
+
+The static-object stage (`34d9ff7`) retains all six profiles,984 passing
+native tests (26 ignored), Clippy, release workers and a strict-Miri test
+for getter/Proxy receiver/TDZ order. Abrupt instructions decrease from
+880538571 to861324572; all five other cases increase0.2–0.5%.
+Its manifest transparently distinguishes the runtime source tree from the
+later evidence-only qualification tree; all83 compiler inputs are pinned.
+The archive contains15 valid stages/90 profiles and ten later correctness
+captures, with the two previously rejected stale workers still retained.
+
+The static-plan stage (`809af2d`) prepares immutable static binding keys after
+ordinary bytecode scope/binding verification. All six profiles are retained:
+versus34d9ff7, abrupt decreases0.31%, declaration decreases0.19%, while
+computed/getter increase0.17–0.18%. Source-scoped984 native tests (26 ignored),
+Clippy, explicit release workers and strict Miri pass. The archive contains
+16 valid stages/96 profiles, two rejected stale workers and11 later
+correctness captures. Native run41280566961 measures this changed source with
+two unfiltered hosts and all prior controls; qualification is still pending.
+
+The global-data stage (`bbf9a5e`) retains all six profiles,985 native passes
+(26 ignored), Clippy, explicit release workers and two strict-Miri tests
+(global redefinition/shadowing and GC during reentrant unscopables lookup).
+Against809af2d, abrupt instructions decrease5.35%, rest decreases4.10%,
+while parameter/computed/getter increase0.09/0.33/0.06%. All adverse results
+are retained. The archive contains17 valid stages/102 profiles, two rejected
+stale workers and12 later correctness captures. No native qualification is
+claimed for this changed source.
+
+The fused-lookup experiment (`e988b1c`) is rejected despite985 native passes,
+Clippy, release workers and two strict-Miri passes: all six instruction counts
+increase againstbbf9a5e (parameters0.54%, computed0.45%, rest0.17%, abrupt0.14%).
+All raw results and validation remain retained. Commit5d03308 restores the
+bbf9a5e runtime; all83 compiler inputs are identical to that tested source.
+The archive now has18 valid source captures/108 profiles and13 later
+correctness captures. A valid capture does not imply an adopted optimization
+or native Boa qualification. The two stale-worker captures remain rejected.
+
+The initial-catch stage (`d58d4d4`) initializes a real one-binding scope while
+allocating it only when verified EnterScope/InitializeBinding are adjacent.
+All987 native tests (26 ignored), Clippy, release workers and two strict-Miri
+tests pass (allocation-time GC and escaped distinct mutable catch cells).
+Versusbbf9a5e, abrupt instructions decrease1.33%, computed/getter decrease
+0.12/0.20%, while declaration/parameters/rest increase0.19/0.38/0.09%.
+All six profiles are retained. The archive has19 valid source captures/114
+profiles, two stale-worker rejections and14 later correctness captures.
+Source-matched native41281869695, full41281841829 and security41281843076
+are dispatched independently; none is claimed qualified while still pending.
+
+The ordinary inline-record hint (`d370178`) has no material instruction-count
+improvement: all six changes round to0.001% or less versusd58d4d4. Retained
+validation includes987 native passes (26 ignored), Clippy, explicit release
+workers and strict Miri for GC during unscopables reentry. All raw results
+remain retained. The archive now has20 valid source captures/120 profiles,
+two rejected stale workers and15 later correctness captures. No native speed
+qualification is inferred from this negligible local difference.
+
+The always-inline-record stage (`da7b51f`) removes the checked selector call.
+Againstd58d4d4, abrupt instructions decrease0.96%, rest0.83%, parameters0.06%
+and computed0.08%; declaration/getter increase0.007/0.003%. All six raw
+profiles remain retained, along with987 native passes (26 ignored), Clippy,
+release workers and strict Miri for GC reentry. The archive has21 valid
+captures/126 profiles, two stale-worker rejections and16 later correctness
+captures. These local diagnostics do not qualify native speed.
+
+The function-name stage (`dc9bd56`) derives name lookup starting points from
+verified flow scopes. Only unshadowed names can skip intervening block records;
+eval bindings/loads/metadata and opaque function/class/try metadata keep the
+original path. Public LoadName/GetName shadowing and outer with getter receiver
+plus GC pass strict Miri. All990 native tests (26 ignored), Clippy and explicit
+release workers pass. Againstda7b51f, abrupt/rest instructions decrease1.68/1.91%,
+parameters decrease0.19%, while declaration/computed/getter increase0.33/0.28/0.29%.
+All six profiles are retained. The archive has22 valid captures/132 profiles,
+two stale-worker rejections and17 later correctness captures. Changed-source
+native41283370723, full41283372476 and security41283373955 are pending; no native
+qualification or conformance transfer from preceding sources is claimed.
+
+`hosted-static-plan-v1` retains all76 reports from run41280566961 at809af2d.
+Both unfiltered jobs FAIL speed qualification: object wins1/1/1/1/3/0 on
+Intel Xeon8573C and2/2/1/3/3/0 on EPYC9V74. Every preceding group meets
+two-of-three in both jobs. All reports, controls and adverse values remain
+retained; no CPU is excluded and the unchanged source is not retimed.
+The laterdc9bd56 runtime has separate qualification jobs still pending.
+
+`security-initial-catch-v1` retains the complete19-job run41281843076 at
+runtime sourced58d4d4. Independent canonical replay verifies171 unique exact
+strict-provenance/symbolic-alignment Miri tests and987 ASan tests, plus the
+dependency audit and aggregate. This proves that recorded source's security
+checks only; later sources and native speed remain separately qualified.
+
+`full-initial-catch-v1` retains all8 shards/100211 variants from run41281841829
+atd58d4d4:37919 pass,53705 fail,18 skip,8569 timeout,0 missing. Independent
+replay preserves all37919 preceding object passes and33565 merged array
+passes (4354 additions), with0 regressions. A separate latest-dispatch comparison
+also preserves37919 passes. This records correctness, not full conformance.
+`hosted-initial-catch-v1` retains all76 reports of run41281869695. Both speed
+gates FAIL: object wins2/1/2/3/3/0 on EPYC9V74 and0/3/3/3/3/3 on Intel8370C;
+copy1 also has derived-definition1/3. Every adverse result/control is retained.
+
+The pinned-context stage (`2c09b52`) pins only a verified single Function root
+and lexical block descendants, keeping this lazy and lexical arrows on their
+own path. It also corrects a reproduced baseline AST-arrow new.target bug;
+the before-failure log and equivalent baseline compiler sources are pinned.
+All993 native tests (26 ignored), Clippy, release workers and3 strict-Miri
+tests pass. Againstdc9bd56, declaration/computed/rest/getter/abrupt instructions
+decrease1.68/1.77/0.60/1.33/0.95%; parameters increase0.019%. All six are retained.
+The archive has23 valid captures/138 profiles, two stale-worker rejections and
+18 later correctness captures. Source-matched hosted gates remain pending.
+
+The source-matched pinned-context jobs have now completed. Run41285425622
+fails speed qualification on copy1 (object wins3/0/1/3/3/0); copy2 has
+3/3/2/3/3/2. `hosted-pinned-context-v1` preserves both unfiltered jobs,
+all76 reports and adverse controls. `security-pinned-context-v1` independently
+replays all19 jobs:172 unique strict Miri tests and993 ASan tests.
+Full run41285427317 was independently audited over100211 variants:
+37919 pass,53705 fail,18 skip,8569 timeout,0 missing; a complete outcome
+comparison preserves all37919 preceding object passes. These results cover
+2c09b52 only, not subsequent compiler changes.
+
+The lowered-object stage (`9e559cc`) compiles lexical computed keys and
+undefined-only defaults to verified property reads/branches while retaining
+real binding cells and rooted source values. Unsupported function/eval
+expressions roll back to the shared binder. All996 tests (26 ignored), Clippy,
+release workers and2 focused strict Miri tests pass. Against2c09b52, fixed-input
+instruction counts change -4.664/+0.00001/-3.824/+0.00009/+0.00005/+2.373%.
+The adverse abrupt-coercion result is retained; this is not native speed
+qualification. There are24 valid captures/144 profiles, two stale-worker
+rejections and19 later correctness captures. A subsequent change retains the
+existing cached static-pattern instruction rather than expanding static reads.
+
+`full-pinned-context-v1` now retains that complete2c09b52 corpus capture and
+independently replays all100211 outcomes against both preceding object and
+merged array archives. The hybrid-object stage (`54a411e`) preserves cached
+static bindings within otherwise lowered patterns. Its997 native tests,
+Clippy, release workers and GC-focused strict Miri pass. Against2c09b52,
+declaration/computed instruction counts decrease7.343/3.825%; the abrupt
+regression from9e559cc is removed (773376222 versus773374682 instructions).
+The remaining parameter/rest/getter counts are essentially unchanged; all
+six profiles remain available. The archive has25 valid captures/150 profiles,
+two stale-worker rejections and20 later correctness captures. These are
+instruction diagnostics, not native speed qualification.
+
+The prepared-guards stage (`ab8997d`) reads actual initialized parameter cells
+for bounded pure bodies (constants, strict equality, forward branches, throw,
+return). All999 native tests (26 ignored), Clippy, release workers and2 focused
+strict Miri tests pass, including reentrant GC and escaped default closures.
+No activation/cell is elided. New bindings, calls/properties, assignments,
+backedges and frame observers retain the ordinary VM body. Against54a411e,
+parameter instructions decrease5.709%; the other five changes are
++0.00008/-0.01886/+0.00458/-0.02299/-0.00937%, all retained without filtering.
+The archive has26 valid captures/156 profiles, two rejected stale workers and
+21 later correctness captures. New exact-source native41291042940,
+full41291044397 and security41291045818 are running; no speed qualification
+is claimed from instruction counts or earlier source results.
+
+The preceding function-name source (`dc9bd56`) now has complete retained
+hosted/full/security archives as well. Both native jobs fail speed:
+object wins2/3/1/3/3/2 on EPYC7763 and1/1/0/3/3/0 on EPYC9V74; all prior
+feature groups meet two-of-three. Full100211 outcomes preserve37919 object
+and33565 array passes. All19 security jobs independently replay172 strict
+Miri tests and990 ASan tests. These are source-specific historical evidence.
+
+`nayuta-allocation-review-v1` records a fresh three-file review with Nayuta
+v0.3.3, verified as the latest release on2026-11-01. The preserved binary hash
+matches its original source-pinned build; compiler inputs match the release
+tag. Its63 syntax findings are review leads, not runtime complexity proofs.
+Fixed-bound cache loops fall within documented heuristic limitations; no
+Nayuta defect was reproduced. Frozen abrupt-coercion profiles independently
+identify repeated root-cache hits as a concrete cost. A second-chance cache
+experiment keeps capacity32, full object/handle identity checks and collection
+clearing while replacing per-hit linked-list maintenance with a reference bit.
+
+The clock-roots source (`d060829`) passes999 all-target/all-feature tests,
+Clippy, explicit release workers and3 focused strict Miri tests covering
+bounded retention, collection/unwind and region/runtime ownership cycles.
+All six first fixed-input instruction captures improve againstab8997d:
+-0.988/-1.470/-1.258/-1.680/-1.138/-1.870%. Cache hits keep full identity
+checks and capacity32; no workload, sampling or threshold was changed.
+The archive now has27 valid captures/162 profiles, two stale-worker rejections
+and22 later correctness sets. Native qualification still requires exact-source
+hosted measurements and all previous controls; instruction reductions alone
+do not authorize merging.
+Exact clock-roots source gates are native41292124102 (two unfiltered jobs),
+full41292126001 (all8 shards) and security41292127687 (complete workflow).
+All source inputs, controls and noise thresholds remain fixed. Earlierab8997d
+runs remain independently live and are not canceled or attributed to this source.

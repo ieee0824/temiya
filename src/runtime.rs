@@ -191,6 +191,13 @@ impl RuntimeError {
             None,
         )
     }
+    fn type_error_shared(message: Rc<String>) -> Self {
+        Self::native(
+            RuntimeErrorKind::TypeError,
+            ErrorMessage::Shared(message),
+            None,
+        )
+    }
     fn attach_thrown(&mut self, value: Value) {
         match &mut self.0 {
             RuntimeErrorData::Native(error) => error.thrown = Some(Box::new(value)),

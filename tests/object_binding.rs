@@ -133,3 +133,70 @@ fn prepared_object_parameters_keep_computed_keys_and_fresh_tdz_cells() {
         "let calls=0;function f({a=b},b=42){return a;}for(let i=0;i<2;i++){try{f({});}catch(e){if(e instanceof ReferenceError)calls++;}}calls===2;",
     );
 }
+
+#[test]
+fn catch_identifier_cells_survive_closures_and_mutation() {
+    check(
+        "let readers=[];for(let i=0;i<3;i++){try{throw i;}catch(error){readers.push(()=>error);error+=10;}}readers[0]()===10&&readers[1]()===11&&readers[2]()===12;",
+    );
+}
+
+#[test]
+fn rest_reads_changed_data_and_keeps_proxy_get_distinct_from_descriptor() {
+    check(
+        "let inherited=0;let input={get first(){input.later=42;delete input.gone;return 20;},later:1,gone:99};Object.setPrototypeOf(input,{get gone(){inherited++;return 99;}});let {...rest}=input;rest.first===20&&rest.later===42&&!Object.prototype.hasOwnProperty.call(rest,'gone')&&inherited===0;",
+    );
+    check(
+        "let calls=0;let source=new Proxy({value:1},{get(target,key){calls++;return 42;}});let {...rest}=source;rest.value===42&&calls===1;",
+    );
+}
+
+#[test]
+fn rest_accessor_copy_preserves_missing_getters_and_proxy_callable_receivers() {
+    check(
+        "let calls=0;let source={set empty(value){calls++;}};Object.defineProperty(source,'hidden',{get(){throw 42;},enumerable:false});let {...rest}=source;Object.prototype.hasOwnProperty.call(rest,'empty')&&rest.empty===undefined&&!Object.prototype.hasOwnProperty.call(rest,'hidden')&&calls===0;",
+    );
+    check(
+        "let source={marker:42};let seen=false;let getter=new Proxy(function(){return this.marker;},{apply(target,receiver,args){seen=receiver===source&&args.length===0;return Reflect.apply(target,receiver,args);}});Object.defineProperty(source,'answer',{get:getter,enumerable:true});let {...rest}=source;rest.answer===42&&seen;",
+    );
+}
+
+#[test]
+fn repeated_nullish_binding_errors_keep_fresh_exception_identity_and_messages() {
+    check(
+        "let first,second;try{let {}=null;}catch(error){first=error;error.message='changed';}try{let {}=undefined;}catch(error){second=error;}first!==second&&first instanceof TypeError&&second instanceof TypeError&&first.message==='changed'&&second.message==='cannot destructure null or undefined';",
+    );
+}
+
+#[test]
+fn nullish_bytecode_patterns_fail_before_keys_and_uninitialized_this() {
+    check(
+        "let keys=0,defaults=0;class Base{}class Derived extends Base{constructor(){let first,second;try{let {[++keys]:x=(++defaults)}=null;}catch(e){first=e;}try{let {...rest}=undefined;}catch(e){second=e;}super();this.ok=first instanceof TypeError&&second instanceof TypeError&&first!==second;}}new Derived().ok&&keys===0&&defaults===0;",
+    );
+    check(
+        "let keys=0;function run(){let read;try{let {[++keys]:x}=null;}catch({message}){read=message;}return typeof read==='string'&&keys===0;}run();",
+    );
+}
+
+#[test]
+fn static_bytecode_pattern_preserves_getters_proxy_receiver_and_tdz_order() {
+    check(
+        "function run(){let trace='',read;let {a,b}={get a(){trace+='a';read=()=>a;return 20;},get b(){trace+='b';return read()+2;}};return a+b===42&&trace==='ab';}run();",
+    );
+    check(
+        "function run(){let source,seen;source=new Proxy({x:42},{get(target,key,receiver){seen=receiver;return target[key];}});let {x}=source;return x===42&&seen===source;}run();",
+    );
+    check(
+        "function run(){let caught=false;try{let {a,b}={get a(){return b;},b:42};}catch(e){caught=e instanceof ReferenceError;}return caught;}run();",
+    );
+}
+
+#[test]
+fn initialized_catch_cells_remain_distinct_and_mutable_after_escape() {
+    check(
+        "let saved=[];function run(){for(let i=0;i<3;i++){try{throw {value:i};}catch(error){saved.push(()=>error);error={value:i+40};}}return saved[0]().value===40&&saved[1]().value===41&&saved[2]().value===42;}run();",
+    );
+    check(
+        "function run(){let saved;try{throw 20;}catch(error){saved=()=>error;try{throw 22;}catch(error){if(error!==22)throw 42;}error+=22;}return saved()===42;}run();",
+    );
+}

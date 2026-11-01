@@ -81,6 +81,7 @@ case "${1:-}" in
     node benchmarks/array-binding/verify-workloads.mjs
     node benchmarks/array-binding/verify-fixed.mjs
     node benchmarks/array-binding/fixed-array-data-properties-v1/verify.mjs
+    node benchmarks/array-binding/fixed-inline-thrown-v1/verify.mjs
     node benchmarks/array-binding/fixed-cache32-v1/verify.mjs
     node benchmarks/array-binding/verify-hosted.mjs
     node benchmarks/array-binding/verify-full.mjs
@@ -97,9 +98,30 @@ case "${1:-}" in
     node benchmarks/array-binding/compact-error-diagnostic-v1/verify.mjs
     node benchmarks/array-binding/inline-thrown-error-diagnostic-v1/verify.mjs
     node benchmarks/array-binding/security-array-data-properties-v1/verify.mjs benchmarks/array-binding/security-array-data-properties-v1 cd6c0294bba1a2f4ac2059dfb56cb6cd289aba8a
+    node benchmarks/array-binding/security-inline-thrown-v1/verify.mjs benchmarks/array-binding/security-inline-thrown-v1 7a154b17dd6982913047b364e7bf4c293103798a
     node benchmarks/array-binding/security-cache32-v1/verify.mjs benchmarks/array-binding/security-cache32-v1 9f84bc5c6416911df51d76cf10b936ad3c3e003f
     ;;
   objects)
+    node benchmarks/object-binding/verify-qualified.mjs
+    node benchmarks/object-binding/verify-bytecode-experiments.mjs
+    node benchmarks/object-binding/full-single-catch-v1/verify.mjs
+    node benchmarks/object-binding/full-initial-catch-v1/verify.mjs
+    node benchmarks/object-binding/security-single-catch-v1/verify.mjs benchmarks/object-binding/security-single-catch-v1 e83240f33e8b2953fe728bfc7fb40842b210367a
+    node benchmarks/object-binding/security-initial-catch-v1/verify.mjs benchmarks/object-binding/security-initial-catch-v1 d58d4d41e93ce2fcc7fdd220cf5e7ae63e1c540e
+    node benchmarks/object-binding/security-pinned-context-v1/verify.mjs benchmarks/object-binding/security-pinned-context-v1 2c09b52f7b9692ea4781932bc923ecf0ff60a3c9
+    node benchmarks/object-binding/full-pinned-context-v1/verify.mjs
+    node benchmarks/object-binding/full-function-name-v1/verify.mjs
+    node benchmarks/object-binding/security-function-name-v1/verify.mjs benchmarks/object-binding/security-function-name-v1 dc9bd56ca7ff473774b62218d0cbb4b8de5aeaf9
+    node benchmarks/object-binding/nayuta-allocation-review-v1/verify.mjs
+    node benchmarks/object-binding/nullish-message-correctness-v1/verify.mjs
+    node benchmarks/object-binding/rest-accessor-correctness-v1/verify.mjs
+    node benchmarks/object-binding/rest-data-correctness-v1/verify.mjs
+    node benchmarks/object-binding/full-direct-get-v1/verify.mjs
+    node benchmarks/object-binding/security-direct-get-v1/verify.mjs benchmarks/object-binding/security-direct-get-v1 180773483841e2c163d6ee42d3ece9ae1a981645
+    node benchmarks/object-binding/single-catch-correctness-v1/verify.mjs
+    node benchmarks/object-binding/fresh-array-diagnostics-v1/verify.mjs
+    node benchmarks/object-binding/full-inline-parent-v1/verify.mjs
+    node benchmarks/object-binding/allocation-diagnostics-v1/verify.mjs
     node benchmarks/destructuring-assignment/correctness-v1/verify.mjs
     node benchmarks/destructuring-assignment/verify-selection.mjs
     node benchmarks/destructuring-assignment/verify-oracles.mjs
@@ -108,6 +130,7 @@ case "${1:-}" in
     node benchmarks/object-binding/verify-hosted.mjs
     node benchmarks/object-binding/verify-symbol-regression.mjs
     node benchmarks/object-binding/verify-full.mjs
+    node benchmarks/object-binding/security-inline-parent-v1/verify.mjs benchmarks/object-binding/security-inline-parent-v1 fe67ff56a766d834bc70c4e8219f4fad47b06723
     node benchmarks/object-binding/inline-parent-correctness-v1/verify.mjs
     node benchmarks/object-binding/latest-parent-diagnostic-v1/verify.mjs
     node benchmarks/object-binding/security-current-integrated-v1/verify.mjs benchmarks/object-binding/security-current-integrated-v1 010ac60ddeb68ce702e1f3b2a4cfdd87345f2568

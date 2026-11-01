@@ -74,6 +74,63 @@ payload_slots! {
     Proxy => proxy, proxy_mut: Box<super::super::proxy::ProxySlot>;
 }
 
+impl ObjectState {
+    #[inline]
+    pub(in crate::runtime) fn ordinary_copy_shape(&self) -> bool {
+        match &self.payload {
+            ObjectPayload::Proxy(Some(_))
+            | ObjectPayload::ModuleNamespace(Some(_))
+            | ObjectPayload::StringData(Some(_))
+            | ObjectPayload::View(Some(_))
+            | ObjectPayload::Buffer(Some(_)) => false,
+            ObjectPayload::Multiple(slots) => {
+                slots.proxy.is_none()
+                    && slots.module_namespace.is_none()
+                    && slots.string_data.is_none()
+                    && slots.view.is_none()
+                    && slots.buffer.is_none()
+            }
+            _ => true,
+        }
+    }
+
+    #[inline]
+    pub(in crate::runtime) fn ordinary_get_shape(&self, key: &super::PropertyKey) -> bool {
+        let special_string_key = || {
+            matches!(key, super::PropertyKey::String(name) if name.code_units().iter().copied().eq("length".encode_utf16()))
+                || key.array_index().is_some()
+        };
+        match &self.payload {
+            ObjectPayload::Proxy(Some(_))
+            | ObjectPayload::ModuleNamespace(Some(_))
+            | ObjectPayload::View(Some(_))
+            | ObjectPayload::Buffer(Some(_)) => false,
+            ObjectPayload::StringData(Some(_)) => !special_string_key(),
+            ObjectPayload::Multiple(slots) => {
+                slots.proxy.is_none()
+                    && slots.module_namespace.is_none()
+                    && slots.view.is_none()
+                    && slots.buffer.is_none()
+                    && !(slots.string_data.is_some() && special_string_key())
+            }
+            _ => true,
+        }
+    }
+
+    #[inline]
+    pub(in crate::runtime) fn ordinary_set_shape(&self) -> bool {
+        match &self.payload {
+            ObjectPayload::StringData(Some(_))
+            | ObjectPayload::View(Some(_))
+            | ObjectPayload::Buffer(Some(_)) => false,
+            ObjectPayload::Multiple(slots) => {
+                slots.string_data.is_none() && slots.view.is_none() && slots.buffer.is_none()
+            }
+            _ => true,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

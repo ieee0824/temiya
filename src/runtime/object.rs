@@ -2211,9 +2211,7 @@ impl Object {
             let mut state = self.0.state.borrow_mut();
             if state.array
                 && state.proxy().is_none()
-                && state.string_data().is_none()
-                && state.view().is_none()
-                && state.buffer().is_none()
+                && state.ordinary_set_shape()
                 && state.elements.is_some()
             {
                 if let Some(index) = key.array_index() {
@@ -2334,14 +2332,7 @@ impl Object {
         key: &PropertyKey,
     ) -> Option<RuntimeResult<Option<Value>>> {
         let state = self.0.state.borrow();
-        if state.proxy().is_some()
-            || state.module_namespace().is_some()
-            || state.lazy_function_prototype.is_some()
-            || state.array
-            || state.string_data().is_some()
-            || state.view().is_some()
-            || state.buffer().is_some()
-        {
+        if !state.ordinary_copy_shape() || state.lazy_function_prototype.is_some() || state.array {
             return None;
         }
         let Some(index) = state.checked_property_position(key) else {
@@ -2386,15 +2377,9 @@ impl Object {
     // current value/getter before releasing it; no user code runs under borrow.
     fn own_get_value(&self, key: &PropertyKey) -> RuntimeResult<Option<OwnGet>> {
         let state = self.0.state.borrow();
-        if state.proxy().is_some()
-            || state.module_namespace().is_some()
+        if !state.ordinary_get_shape(key)
             || state.lazy_function_prototype.is_some()
-            || (state.string_data().is_some()
-                && (matches!(key, PropertyKey::String(name) if name.code_units().iter().copied().eq("length".encode_utf16()))
-                    || key.array_index().is_some()))
             || (state.elements.is_some() && key.array_index().is_some())
-            || state.view().is_some()
-            || state.buffer().is_some()
         {
             return Ok(None);
         }

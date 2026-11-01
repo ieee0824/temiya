@@ -116,3 +116,11 @@ equality hooks, operand GC storage, and all15 assignment/VM/GC regressions.
 `comparisons-correctness-v1` retains complete logs and all83 compiler-input
 hashes. This changed source has its own fresh hosted native/full/security
 runs; the preceding successful corpus/security records remain historical.
+
+A subsequent verifier proof permits header-cell reuse around hoisted leaf-like
+functions only when their verified names cannot observe any cloned header name
+or eval. Nested closures, metadata bridges, calls and unlisted instructions
+remain conservative. Function bodies may retain their own fresh body variables;
+body environments and function/prototype identities remain distinct. The
+regression executes both eligible fresh-body captures and ineligible direct or
+nested header captures, and passes native execution and strict Miri.

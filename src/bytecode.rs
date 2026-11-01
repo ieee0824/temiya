@@ -905,6 +905,80 @@ fn pattern_does_not_observe_loop_bindings(
     visit(expression, loop_names, false)
 }
 
+// Hoisted leaf-like declarations may retain a body environment without
+// observing any cloned header cells. Inspect the verified names and reject
+// metadata bridges, nested closures, calls and all unlisted instructions.
+// The whitelist keeps future implicit scope observers conservative.
+fn hoisted_function_does_not_observe_loop_bindings(
+    template: &FunctionTemplate,
+    names: &std::collections::HashSet<Vec<u16>>,
+) -> bool {
+    let observes =
+        |name: &JsString| name == &JsString::from("eval") || names.contains(name.code_units());
+    template
+        .body
+        .bytecode
+        .constants
+        .iter()
+        .all(|constant| match constant {
+            Constant::String(name) => !observes(name),
+            Constant::Scope(scope) => {
+                scope.kind != ScopeKind::Global
+                    && scope.functions.is_empty()
+                    && scope
+                        .bindings
+                        .iter()
+                        .all(|binding| !observes(&binding.name))
+            }
+            Constant::Undefined
+            | Constant::Null
+            | Constant::Boolean(_)
+            | Constant::Number(_)
+            | Constant::BigInt(_) => true,
+            _ => false,
+        })
+        && template
+            .body
+            .bytecode
+            .instructions
+            .iter()
+            .all(|instruction| {
+                matches!(
+                    instruction,
+                    Instruction::EnterScope(_)
+                        | Instruction::ExitScope
+                        | Instruction::LoadConstant(_)
+                        | Instruction::LoadBinding { .. }
+                        | Instruction::InitializeBinding { .. }
+                        | Instruction::StoreBinding { .. }
+                        | Instruction::ResolveBinding { .. }
+                        | Instruction::AppendStringBinding { .. }
+                        | Instruction::UpdateBinding { .. }
+                        | Instruction::LoadName(_)
+                        | Instruction::GetName { .. }
+                        | Instruction::ResolveName { .. }
+                        | Instruction::LoadReference
+                        | Instruction::StoreReference
+                        | Instruction::DiscardReference
+                        | Instruction::Duplicate
+                        | Instruction::Pop
+                        | Instruction::Binary(_)
+                        | Instruction::UnaryNumeric(_)
+                        | Instruction::Add
+                        | Instruction::Subtract
+                        | Instruction::Multiply
+                        | Instruction::Divide
+                        | Instruction::StrictEqual
+                        | Instruction::LogicalNot
+                        | Instruction::Jump(_)
+                        | Instruction::JumpIfFalse(_)
+                        | Instruction::Return
+                        | Instruction::Complete
+                        | Instruction::Throw
+                )
+            })
+}
+
 // Reuse requires that no closure/eval observer can read these cells and that
 // no reference or pending invocation spans a clone. This exhaustive instruction
 // match requires a fresh review whenever an opcode is added.
@@ -976,7 +1050,12 @@ fn loop_bindings_are_unobserved(code: &Bytecode, states: &[Option<FlowState>]) -
                     return false;
                 };
                 plan.kind != ScopeKind::Global
-                    && plan.functions.is_empty()
+                    && plan.functions.iter().all(|function| {
+                        hoisted_function_does_not_observe_loop_bindings(
+                            &function.template,
+                            &loop_names,
+                        )
+                    })
                     && plan.bindings.iter().all(|binding| binding.name != eval)
             }
             Instruction::LoadName(index)
@@ -1756,6 +1835,56 @@ mod function_name_lookup_tests {
                     .iter()
                     .any(|enabled| *enabled),
                 expected,
+                "{source}"
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod hoisted_loop_capture_tests {
+    use super::*;
+    #[test]
+    fn leaf_hoists_reuse_only_unobserved_header_cells_and_keep_body_identities() {
+        for (source, reuse) in [
+            (
+                "function make(){let fs=[];for(let i=0;i<3;i++){let obj={};obj.answer=i;let trace='';function read(){trace+='R';return obj;}fs.push(read);}return fs;}let fs=make();fs[0]!==fs[1]&&fs[0].prototype!==fs[1].prototype&&fs[0]().answer===0&&fs[1]().answer===1&&fs[2]().answer===2;",
+                true,
+            ),
+            (
+                "function make(){let fs=[];for(let i=0;i<3;i++){function read(){return i;}fs.push(read);}return fs;}let fs=make();fs[0]()===0&&fs[1]()===1&&fs[2]()===2;",
+                false,
+            ),
+            (
+                "function make(){let fs=[];for(let i=0;i<3;i++){function read(){return ()=>i;}fs.push(read());}return fs;}let fs=make();fs[0]()===0&&fs[1]()===1&&fs[2]()===2;",
+                false,
+            ),
+        ] {
+            let code = BytecodeCompiler::compile(source).unwrap();
+            let function = code
+                .bytecode()
+                .constants
+                .iter()
+                .find_map(|constant| {
+                    if let Constant::Scope(scope) = constant {
+                        scope
+                            .functions
+                            .iter()
+                            .find(|function| function.name == JsString::from("make"))
+                    } else {
+                        None
+                    }
+                })
+                .unwrap();
+            assert_eq!(
+                function.template.body.reuse_loop_bindings, reuse,
+                "{source}"
+            );
+            assert!(
+                matches!(
+                    VirtualMachine::execute(&code).unwrap(),
+                    crate::runtime::Completion::Normal(Some(crate::runtime::Value::Boolean(true)))
+                ),
                 "{source}"
             );
         }

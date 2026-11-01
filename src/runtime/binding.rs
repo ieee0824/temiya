@@ -129,6 +129,13 @@ fn element(
     let mut value = get_value()?;
     if matches!(value, Value::Undefined) {
         if let Some(default) = default {
+            if initialize
+                && matches!(binding.kind, ExprKind::Object(_))
+                && matches!(default.kind, ExprKind::Object(_))
+                && initialize_literal_default(evaluator, binding, default)?
+            {
+                return Ok(());
+            }
             value = if let ExprKind::Identifier(name) = &binding.kind {
                 evaluator.evaluate_named(default, &name.as_str().into())?
             } else {
@@ -196,6 +203,116 @@ fn element(
     } else {
         iterator.close(result).map(|_| ())
     }
+}
+
+// Values remain rooted Rust Values until initialization completes. The one-key
+// case needs no buffer allocation; overwrites release the previous value at
+// the same point as an ordinary own data property overwrite.
+enum LiteralValues {
+    Empty,
+    One(JsString, Value),
+    Many(Vec<(JsString, Value)>),
+}
+impl LiteralValues {
+    fn insert(&mut self, key: JsString, value: Value) {
+        match self {
+            Self::Empty => *self = Self::One(key, value),
+            Self::One(old, entry) if *old == key => *entry = value,
+            Self::One(_, _) => {
+                let Self::One(old, entry) = std::mem::replace(self, Self::Empty) else {
+                    unreachable!()
+                };
+                *self = Self::Many(vec![(old, entry), (key, value)]);
+            }
+            Self::Many(entries) => {
+                if let Some((_, entry)) = entries.iter_mut().find(|(old, _)| *old == key) {
+                    *entry = value;
+                } else {
+                    entries.push((key, value));
+                }
+            }
+        }
+    }
+    fn get(&self, key: &JsString) -> Option<&Value> {
+        match self {
+            Self::Empty => None,
+            Self::One(old, value) => (*old == *key).then_some(value),
+            Self::Many(entries) => entries
+                .iter()
+                .find(|(old, _)| old == key)
+                .map(|(_, value)| value),
+        }
+    }
+}
+fn literal_key(expression: &Expr) -> Option<JsString> {
+    match &expression.kind {
+        ExprKind::Identifier(name) => Some(name.as_str().into()),
+        ExprKind::Literal(Literal::String { value, .. }) => {
+            Some(JsString::from_code_units_slice(value))
+        }
+        _ => None,
+    }
+}
+
+// A fresh literal containing only own data properties cannot be observed by a
+// static object pattern when every requested key is present. Preserve all value
+// evaluation and heap-context validation before initializing any target. Other
+// shapes keep the ordinary object/receiver/prototype path.
+#[inline(never)]
+fn initialize_literal_default(
+    evaluator: &ExpressionEvaluator,
+    binding: &Expr,
+    default: &Expr,
+) -> RuntimeResult<bool> {
+    let (ExprKind::Object(pattern), ExprKind::Object(properties)) = (&binding.kind, &default.kind)
+    else {
+        return Ok(false);
+    };
+    if properties.iter().any(|property| {
+        property.spread
+            || property.computed
+            || literal_key(&property.key).is_none_or(|key| key == JsString::from("__proto__"))
+            || matches!(
+                property.value.as_ref().map(|value| &value.kind),
+                Some(ExprKind::Method { .. })
+            )
+    }) {
+        return Ok(false);
+    }
+    for property in pattern {
+        if property.spread || property.computed {
+            return Ok(false);
+        }
+        let Some(key) = literal_key(&property.key) else {
+            return Ok(false);
+        };
+        if !properties
+            .iter()
+            .any(|property| literal_key(&property.key).as_ref() == Some(&key))
+        {
+            return Ok(false);
+        }
+    }
+    let mut values = LiteralValues::Empty;
+    for property in properties {
+        let key = literal_key(&property.key).expect("validated literal key");
+        let value = evaluator.evaluate(property.value.as_ref().unwrap_or(&property.key))?;
+        if let Value::Object(object) = &value {
+            super::stored::StoredObject::check_context(&evaluator.realm, object)?;
+        }
+        values.insert(key, value);
+    }
+    for property in pattern {
+        let key = literal_key(&property.key).expect("validated pattern key");
+        let value = values.get(&key).expect("present own literal data").clone();
+        element(
+            evaluator,
+            property.value.as_ref().unwrap_or(&property.key),
+            &mut || Ok(value.clone()),
+            true,
+        )?;
+    }
+    Ok(true)
 }
 
 fn object(

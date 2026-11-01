@@ -248,3 +248,14 @@ bbf9a5e runtime; all83 compiler inputs are identical to that tested source.
 The archive now has18 valid source captures/108 profiles and13 later
 correctness captures. A valid capture does not imply an adopted optimization
 or native Boa qualification. The two stale-worker captures remain rejected.
+
+The initial-catch stage (`d58d4d4`) initializes a real one-binding scope while
+allocating it only when verified EnterScope/InitializeBinding are adjacent.
+All987 native tests (26 ignored), Clippy, release workers and two strict-Miri
+tests pass (allocation-time GC and escaped distinct mutable catch cells).
+Versusbbf9a5e, abrupt instructions decrease1.33%, computed/getter decrease
+0.12/0.20%, while declaration/parameters/rest increase0.19/0.38/0.09%.
+All six profiles are retained. The archive has19 valid source captures/114
+profiles, two stale-worker rejections and14 later correctness captures.
+Source-matched native41281869695, full41281841829 and security41281843076
+are dispatched independently; none is claimed qualified while still pending.

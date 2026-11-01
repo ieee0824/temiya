@@ -160,3 +160,10 @@ fn rest_accessor_copy_preserves_missing_getters_and_proxy_callable_receivers() {
         "let source={marker:42};let seen=false;let getter=new Proxy(function(){return this.marker;},{apply(target,receiver,args){seen=receiver===source&&args.length===0;return Reflect.apply(target,receiver,args);}});Object.defineProperty(source,'answer',{get:getter,enumerable:true});let {...rest}=source;rest.answer===42&&seen;",
     );
 }
+
+#[test]
+fn repeated_nullish_binding_errors_keep_fresh_exception_identity_and_messages() {
+    check(
+        "let first,second;try{let {}=null;}catch(error){first=error;error.message='changed';}try{let {}=undefined;}catch(error){second=error;}first!==second&&first instanceof TypeError&&second instanceof TypeError&&first.message==='changed'&&second.message==='cannot destructure null or undefined';",
+    );
+}

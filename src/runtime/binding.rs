@@ -5,6 +5,18 @@ use super::{
 };
 use crate::ast::{Expr, ExprKind, Literal, ObjectProperty};
 
+const NULLISH_OBJECT_MESSAGE: &str = "cannot destructure null or undefined";
+thread_local! {
+    // One fixed Rust string per thread, without a Realm, Object or GC root.
+    static NULLISH_OBJECT_DIAGNOSTIC: std::rc::Rc<String> =
+        std::rc::Rc::new(NULLISH_OBJECT_MESSAGE.to_owned());
+}
+fn nullish_object_error() -> RuntimeError {
+    NULLISH_OBJECT_DIAGNOSTIC
+        .try_with(|message| RuntimeError::type_error_shared(message.clone()))
+        .unwrap_or_else(|_| RuntimeError::type_error(NULLISH_OBJECT_MESSAGE))
+}
+
 pub(super) fn names(binding: &Expr, output: &mut Vec<JsString>) -> RuntimeResult<()> {
     match &binding.kind {
         ExprKind::Identifier(name) => output.push(name.as_str().into()),
@@ -195,9 +207,7 @@ fn object(
     // RequireObjectCoercible precedes even computed-key evaluation and empty
     // patterns. GetV below retains the original primitive as the receiver.
     if matches!(value, Value::Undefined | Value::Null) {
-        return Err(RuntimeError::type_error(
-            "cannot destructure null or undefined",
-        ));
+        return Err(nullish_object_error());
     }
     let has_rest = properties.iter().any(|property| property.spread);
     let mut excluded = if has_rest {

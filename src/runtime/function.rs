@@ -113,6 +113,7 @@ pub(super) struct FunctionCode {
     kind: FunctionKind,
     compiled: Option<Rc<FunctionTemplate>>,
     compiled_body: Option<crate::bytecode::VerifiedBytecode>,
+    prepared_body: Option<super::bytecode_function::PreparedBodyPlan>,
     lexical_property: Option<PropertyKey>,
     private_expression: Option<private_expression::Plan>,
     constructor_assignments: Option<constructor_assignments::Plan>,
@@ -181,14 +182,25 @@ fn prepare_code(
     } else {
         None
     };
+    let compiled_body = if cache.is_some() && compiled.is_none() && kind != FunctionKind::Arrow {
+        BytecodeCompiler::compile_prepared_function_body(code).ok()
+    } else {
+        None
+    };
+    let prepared_body = compiled_body.as_ref().and_then(|body| {
+        let names = code
+            .parameters
+            .iter()
+            .flat_map(crate::semantics::bound_names)
+            .map(|binding| JsString::from(binding.name.as_str()))
+            .collect::<Vec<_>>();
+        super::bytecode_function::PreparedBodyPlan::prepare(body, &names)
+    });
     let prepared = Rc::new(FunctionCode {
         ast: code.clone(),
         kind,
-        compiled_body: if cache.is_some() && compiled.is_none() && kind != FunctionKind::Arrow {
-            BytecodeCompiler::compile_prepared_function_body(code).ok()
-        } else {
-            None
-        },
+        compiled_body,
+        prepared_body,
         compiled,
         private_expression: cache
             .as_ref()
@@ -789,6 +801,9 @@ fn call_function(
         closure.code.parameter_names.is_some(),
     )?;
 
+    if let Some(body) = &closure.code.prepared_body {
+        return body.execute(&closure.realm, &environment);
+    }
     if let Some(body) = &closure.code.compiled_body {
         return match crate::bytecode::VirtualMachine::execute_in_function(
             body,
@@ -1421,6 +1436,36 @@ mod derived_arguments_tests {
 
 #[cfg(test)]
 mod prepared_body_tests {
+    #[test]
+    fn pure_parameter_guards_keep_real_cells_and_reject_observable_body_operations() {
+        for (source, expected) in [
+            ("function f({x,y}){if(x!==y)throw x;return y;}", true),
+            (
+                "function f({x,y}){if(x!==y||x===null)throw 42;return y;}",
+                true,
+            ),
+            ("function f({x},read=()=>x){return read;}", true),
+            ("function f({x}){var other;return x;}", false),
+            ("function f({x}){{let x=42;return x;}}", false),
+            ("function f({x}){return x.value;}", false),
+            ("function f({x}){return x();}", false),
+            ("function f({x}){while(x){}return x;}", false),
+            ("function f({x}){x=42;return x;}", false),
+            ("function f({x}){return this;}", false),
+        ] {
+            let expression = crate::parser::parse_expression(source).unwrap();
+            let crate::ast::ExprKind::Function(function) = expression.kind else {
+                panic!("function")
+            };
+            let code = super::prepare_code(
+                &function,
+                super::FunctionKind::Normal,
+                &Some(Default::default()),
+            );
+            assert_eq!(code.prepared_body.is_some(), expected, "{source}");
+        }
+    }
+
     #[test]
     fn non_simple_parameters_prepare_verified_body_without_full_template() {
         let expression =

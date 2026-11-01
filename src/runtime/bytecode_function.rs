@@ -54,6 +54,168 @@ impl StaticObjectBindingPlan {
     }
 }
 
+// A bounded body can read an already-instantiated parameter frame directly.
+// This keeps the real cells (including cells captured by defaults), but avoids
+// allocating VM operand/scope vectors for pure guards and returns. Only
+// immutable primitive constants and binding names are cached.
+#[derive(Debug)]
+pub(super) struct PreparedBodyPlan(Box<[PreparedBodyOp]>);
+#[derive(Debug)]
+enum PreparedBodyOp {
+    Scope,
+    Read(super::JsString),
+    Primitive(Value),
+    Duplicate,
+    Pop,
+    Not,
+    Equal { negate: bool },
+    Jump(usize),
+    JumpIfFalse(usize),
+    Return,
+    Throw,
+}
+impl PreparedBodyPlan {
+    pub(super) fn prepare(
+        code: &crate::bytecode::VerifiedBytecode,
+        parameters: &[super::JsString],
+    ) -> Option<Self> {
+        use crate::bytecode::{BinaryOperator, BindingKind, ScopeKind};
+        let body = code.bytecode();
+        if code.max_stack() > 4 || body.local_count != 0 || body.instructions.len() > 64 {
+            return None;
+        }
+        let Instruction::EnterScope(root) = *body.instructions.first()? else {
+            return None;
+        };
+        let Constant::Scope(root) = &body.constants[root as usize] else {
+            return None;
+        };
+        if root.kind != ScopeKind::Function
+            || !root.functions.is_empty()
+            || root.bindings.iter().any(|binding| {
+                binding.kind != BindingKind::Var || !parameters.contains(&binding.name)
+            })
+        {
+            return None;
+        }
+        let mut operations = Vec::with_capacity(body.instructions.len());
+        for (pc, instruction) in body.instructions.iter().enumerate() {
+            operations.push(match *instruction {
+                Instruction::EnterScope(index) => {
+                    let Constant::Scope(scope) = &body.constants[index as usize] else {
+                        return None;
+                    };
+                    if pc != 0
+                        && (scope.kind != ScopeKind::Block
+                            || !scope.bindings.is_empty()
+                            || !scope.functions.is_empty())
+                    {
+                        return None;
+                    }
+                    PreparedBodyOp::Scope
+                }
+                Instruction::ExitScope => PreparedBodyOp::Scope,
+                Instruction::LoadBinding { scope: 0, slot } => {
+                    PreparedBodyOp::Read(root.bindings.get(slot as usize)?.name.clone())
+                }
+                Instruction::LoadConstant(index) => {
+                    let value = match &body.constants[index as usize] {
+                        Constant::Undefined => Value::Undefined,
+                        Constant::Null => Value::Null,
+                        Constant::Boolean(value) => Value::Boolean(*value),
+                        Constant::Number(value) => Value::Number(*value),
+                        Constant::String(value) => Value::String(value.clone()),
+                        _ => return None,
+                    };
+                    PreparedBodyOp::Primitive(value)
+                }
+                Instruction::Duplicate => PreparedBodyOp::Duplicate,
+                Instruction::Pop => PreparedBodyOp::Pop,
+                Instruction::LogicalNot => PreparedBodyOp::Not,
+                Instruction::StrictEqual | Instruction::Binary(BinaryOperator::StrictEqual) => {
+                    PreparedBodyOp::Equal { negate: false }
+                }
+                Instruction::Binary(BinaryOperator::StrictNotEqual) => {
+                    PreparedBodyOp::Equal { negate: true }
+                }
+                Instruction::Jump(target) | Instruction::JumpIfFalse(target)
+                    if target as usize > pc =>
+                {
+                    if matches!(instruction, Instruction::Jump(_)) {
+                        PreparedBodyOp::Jump(target as usize)
+                    } else {
+                        PreparedBodyOp::JumpIfFalse(target as usize)
+                    }
+                }
+                Instruction::Return => PreparedBodyOp::Return,
+                Instruction::Throw => PreparedBodyOp::Throw,
+                _ => return None,
+            });
+        }
+        Some(Self(operations.into_boxed_slice()))
+    }
+
+    pub(super) fn execute(&self, realm: &Realm, frame: &Environment) -> RuntimeResult<Value> {
+        let _roots = realm.enter_object_root_region();
+        let mut values = [const { Value::Undefined }; 4];
+        let mut len = 0;
+        let mut pc = 0;
+        // Ordinary verification proves every stack depth, live scope and
+        // target. Preparation additionally excludes backedges and user calls.
+        loop {
+            let operation = &self.0[pc];
+            pc += 1;
+            match operation {
+                PreparedBodyOp::Scope => {}
+                PreparedBodyOp::Read(name) => {
+                    values[len] = frame.get_binding_value(name, true)?;
+                    len += 1;
+                }
+                PreparedBodyOp::Primitive(value) => {
+                    values[len] = value.clone();
+                    len += 1;
+                }
+                PreparedBodyOp::Duplicate => {
+                    values[len] = values[len - 1].clone();
+                    len += 1;
+                }
+                PreparedBodyOp::Pop => {
+                    len -= 1;
+                    values[len] = Value::Undefined;
+                }
+                PreparedBodyOp::Not => {
+                    values[len - 1] = Value::Boolean(!values[len - 1].to_boolean());
+                }
+                PreparedBodyOp::Equal { negate } => {
+                    let equal =
+                        super::interpreter::strict_equal(&values[len - 2], &values[len - 1]);
+                    len -= 1;
+                    values[len] = Value::Undefined;
+                    values[len - 1] = Value::Boolean(equal != *negate);
+                }
+                PreparedBodyOp::Jump(target) => pc = *target,
+                PreparedBodyOp::JumpIfFalse(target) => {
+                    len -= 1;
+                    let condition = values[len].to_boolean();
+                    values[len] = Value::Undefined;
+                    if !condition {
+                        pc = *target;
+                    }
+                }
+                PreparedBodyOp::Return => {
+                    return Ok(std::mem::replace(&mut values[len - 1], Value::Undefined));
+                }
+                PreparedBodyOp::Throw => {
+                    return Err(RuntimeError::thrown(std::mem::replace(
+                        &mut values[len - 1],
+                        Value::Undefined,
+                    )));
+                }
+            }
+        }
+    }
+}
+
 struct Closure {
     template: Rc<FunctionTemplate>,
     realm: Realm,

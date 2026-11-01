@@ -764,7 +764,43 @@ fn lowered_object_source_and_initialized_cells_survive_reentrant_gc() {
                 ),
                 "{backend:?}"
             );
+            let script = engine.compile(&realm, "function make({value=(gcNow(),{answer:42}),read=()=>value}){if(value!==value)throw 0;return read;}let read=make({});gcNow();read().answer===42;").unwrap();
+            assert!(
+                matches!(
+                    engine.evaluate(&script).unwrap().value(),
+                    Value::Boolean(true)
+                ),
+                "{backend:?}"
+            );
         }
         assert_eq!(engine.collect_garbage().unwrap().retained, 0);
+    }
+}
+
+#[test]
+fn prepared_parameter_guards_preserve_strict_equality_short_circuit_and_throw_identity() {
+    for backend in [ScriptBackend::Ast, ScriptBackend::Auto] {
+        for source in [
+            "function f({x,y}){if(x!==y)throw x;return y;}let marker={};f({x:marker,y:marker})===marker;",
+            "function f({x,y}){if(x!==y)throw x;return y;}let marker={},caught=false;try{f({x:marker,y:{}});}catch(e){caught=e===marker;}caught;",
+            "function f({x,y}){if(x!==y)throw x;return y;}let caught=false;try{f({x:0/0,y:0/0});}catch(e){caught=e!==e;}caught;",
+            "function f({x,y}){if(x!==y)throw 42;return y;}1/f({x:0,y:-0})===-1/0;",
+            "function f({x,y}){if(x!==y)throw 42;return y;}f({x:42n,y:42n})===42n;",
+            "function f({x,y}){if(x!==y)throw 42;return y;}f({x:'\\ud800',y:'\\ud800'})==='\\ud800';",
+            "function f({x,y}){if(x!==y||x===null)throw y;return x;}let symbol=Symbol();f({x:symbol,y:symbol})===symbol;",
+            "function f({x,y}){if(x!==y||x===null)throw y;return x;}let caught=false;try{f({x:null,y:null});}catch(e){caught=e===null;}caught;",
+            "function f({x,y}){return x||y;}let marker={};f({x:false,y:marker})===marker&&f({x:42,y:0})===42;",
+        ] {
+            let engine = Engine::builder().script_backend(backend).build();
+            let realm = engine.create_realm();
+            let script = engine.compile(&realm, source).unwrap();
+            assert!(
+                matches!(
+                    engine.evaluate(&script).unwrap().value(),
+                    Value::Boolean(true)
+                ),
+                "{backend:?}: {source}"
+            );
+        }
     }
 }

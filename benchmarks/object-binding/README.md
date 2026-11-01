@@ -340,3 +340,15 @@ The adverse abrupt-coercion result is retained; this is not native speed
 qualification. There are24 valid captures/144 profiles, two stale-worker
 rejections and19 later correctness captures. A subsequent change retains the
 existing cached static-pattern instruction rather than expanding static reads.
+
+`full-pinned-context-v1` now retains that complete2c09b52 corpus capture and
+independently replays all100211 outcomes against both preceding object and
+merged array archives. The hybrid-object stage (`54a411e`) preserves cached
+static bindings within otherwise lowered patterns. Its997 native tests,
+Clippy, release workers and GC-focused strict Miri pass. Against2c09b52,
+declaration/computed instruction counts decrease7.343/3.825%; the abrupt
+regression from9e559cc is removed (773376222 versus773374682 instructions).
+The remaining parameter/rest/getter counts are essentially unchanged; all
+six profiles remain available. The archive has25 valid captures/150 profiles,
+two stale-worker rejections and20 later correctness captures. These are
+instruction diagnostics, not native speed qualification.

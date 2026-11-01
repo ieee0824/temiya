@@ -2330,6 +2330,43 @@ impl Object {
             .map_or(Ok(false), |prototype| prototype.has_property(key))
     }
 
+    // CopyDataProperties needs the own descriptor before Get. An ordinary
+    // data property has no callback between those operations, so load its edge
+    // once. None means the caller must retain the full exotic/accessor path;
+    // Some(Ok(None)) means the property is absent or non-enumerable.
+    pub(super) fn try_own_enumerable_data(
+        &self,
+        key: &PropertyKey,
+    ) -> Option<RuntimeResult<Option<Value>>> {
+        let state = self.0.state.borrow();
+        if state.proxy.is_some()
+            || state.module_namespace.is_some()
+            || state.lazy_function_prototype.is_some()
+            || state.array
+            || state.string_data.is_some()
+            || state.view.is_some()
+            || state.buffer.is_some()
+        {
+            return None;
+        }
+        let Some(index) = state.checked_property_position(key) else {
+            return Some(Ok(None));
+        };
+        match &state.properties[index].descriptor {
+            StoredDescriptor::Data {
+                value, enumerable, ..
+            } => {
+                state.last_property.set(index);
+                Some(if *enumerable {
+                    value.load(self).map(Some)
+                } else {
+                    Ok(None)
+                })
+            }
+            StoredDescriptor::Accessor { .. } => None,
+        }
+    }
+
     // Select the needed edge under one ordinary-property borrow. Root the
     // current value/getter before releasing it; no user code runs under borrow.
     fn own_get_value(&self, key: &PropertyKey) -> RuntimeResult<Option<OwnGet>> {

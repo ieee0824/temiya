@@ -140,3 +140,13 @@ fn catch_identifier_cells_survive_closures_and_mutation() {
         "let readers=[];for(let i=0;i<3;i++){try{throw i;}catch(error){readers.push(()=>error);error+=10;}}readers[0]()===10&&readers[1]()===11&&readers[2]()===12;",
     );
 }
+
+#[test]
+fn rest_reads_changed_data_and_keeps_proxy_get_distinct_from_descriptor() {
+    check(
+        "let inherited=0;let input={get first(){input.later=42;delete input.gone;return 20;},later:1,gone:99};Object.setPrototypeOf(input,{get gone(){inherited++;return 99;}});let {...rest}=input;rest.first===20&&rest.later===42&&!Object.prototype.hasOwnProperty.call(rest,'gone')&&inherited===0;",
+    );
+    check(
+        "let calls=0;let source=new Proxy({value:1},{get(target,key){calls++;return 42;}});let {...rest}=source;rest.value===42&&calls===1;",
+    );
+}

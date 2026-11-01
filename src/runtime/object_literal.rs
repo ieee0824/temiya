@@ -77,11 +77,20 @@ pub(super) fn spread_excluding(
         if excluded.contains(&key) {
             continue;
         }
-        if source
-            .try_get_own_property(&key)?
-            .is_some_and(|descriptor| descriptor.enumerable == Some(true))
-        {
-            let value = source.get(&key)?;
+        let value = match source.try_own_enumerable_data(&key) {
+            Some(value) => value?,
+            None => {
+                if source
+                    .try_get_own_property(&key)?
+                    .is_some_and(|descriptor| descriptor.enumerable == Some(true))
+                {
+                    Some(source.get(&key)?)
+                } else {
+                    None
+                }
+            }
+        };
+        if let Some(value) = value {
             define_data(object, key, value, false)?;
         }
     }

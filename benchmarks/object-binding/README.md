@@ -99,3 +99,13 @@ profile: declaration instructions drop5.72%, parameters4.47%, rest5.00%;
 the other three change by less than0.004%. Allocation diagnostics also retain
 all six object profiles at this source. Neither establishes native Boa speed.
 Replay with `node benchmarks/object-binding/fresh-array-diagnostics-v1/verify.mjs`.
+
+Single catch bindings at6587184 remain inline until record extension, avoiding
+the initial binding Vec. Name hints, mutability/non-deletability, closure cells
+and managed edges remain checked. `single-catch-correctness-v1` retains951
+all-target passes (26 ignored), Clippy/release and two exact strict Miri tests,
+including GC/promotion and public Ast/Auto closure mutation. All six instruction
+profiles are retained under allocation diagnostics: abrupt-coercion drops2.26%
+relative to aa77879, while the other five rise0.27–0.42%. This is mixed
+diagnostic evidence, not native performance or complete security qualification.
+Replay with `node benchmarks/object-binding/single-catch-correctness-v1/verify.mjs`.

@@ -167,3 +167,24 @@ test pass, retained in nullish-message-correctness-v1. All six instruction
 profiles remain: abrupt-coercion drops0.602%, while the other five rise0.036–0.094%.
 This is mixed diagnostic evidence, not native performance qualification.
 Replay with `node benchmarks/object-binding/nullish-message-correctness-v1/verify.mjs`.
+
+Owned object payload experiment (perf/object-payload):15 rare independent
+slots move into an owned enum, with a boxed fallback retaining every slot for
+unusual combinations. No shared Rc state is introduced. Compiler dev layout
+on aarch64 atca0f6eb/a0ea479 records ObjectData400→288bytes and
+ObjectState312→200bytes, with a16byte payload. Normal release workers are
+measured separately. All955 tests (26ignored), Clippy/release and two exact
+strict Miri tests pass for both a0ea479 and563768b; the latter also passes42
+MSRV integration tests and i686 all-target check. The tests include mixed-slot
+GC retention/removal and public reentrant GC/release.
+
+`payload-diagnostics-v1` retains all six profiles at before/compact/shapes stages,
+including five instruction regressions in the first compact version. Shape
+classification lowers all six counts relative to that version, but against
+the original:declaration−0.20%,parameters+1.26%,computed+0.07%,rest+1.97%,
+getter−0.60%,abrupt+0.13%. No adverse result is excluded. Size savings and
+instruction diagnostics do not establish native Boa speed. Fresh qualification
+at563768b is dispatched without CPU filtering.
+
+Replay payload-diagnostics-v1/verify.mjs, payload-correctness-v1/verify.mjs
+and payload-shape-correctness-v1/verify.mjs under this benchmark directory.

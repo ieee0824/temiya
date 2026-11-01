@@ -8,6 +8,12 @@ pub(crate) fn create(realm: &Realm) -> Object {
     Object::new_with_prototype(realm.intrinsic(IntrinsicId::ObjectPrototype))
 }
 
+pub(crate) fn create_reserved(realm: &Realm, count: u8) -> Object {
+    let object = create(realm);
+    object.reserve_literal_properties(usize::from(count).min(4));
+    object
+}
+
 pub(crate) fn property_key(realm: &Realm, value: Value) -> RuntimeResult<PropertyKey> {
     if !matches!(value, Value::Object(_)) {
         return value.to_property_key();
@@ -45,14 +51,26 @@ pub(crate) fn define_data(
 }
 
 pub(crate) fn spread(object: &Object, value: Value) -> RuntimeResult<()> {
+    spread_excluding(object, value, &[])
+}
+
+pub(super) fn spread_excluding(
+    object: &Object,
+    value: Value,
+    excluded: &[PropertyKey],
+) -> RuntimeResult<()> {
     let source = match value {
         Value::Object(source) => source,
         Value::String(string) => {
             // Only the enumerable UTF-16 indices of the boxed String are copied.
             for (index, unit) in string.code_units().iter().enumerate() {
+                let key = PropertyKey::String(index.to_string().into());
+                if excluded.contains(&key) {
+                    continue;
+                }
                 define_data(
                     object,
-                    PropertyKey::String(index.to_string().into()),
+                    key,
                     Value::String(JsString::from_code_units_slice(&[*unit])),
                     false,
                 )?;
@@ -62,11 +80,23 @@ pub(crate) fn spread(object: &Object, value: Value) -> RuntimeResult<()> {
         _ => return Ok(()),
     };
     for key in source.try_own_property_keys()? {
-        if source
-            .try_get_own_property(&key)?
-            .is_some_and(|descriptor| descriptor.enumerable == Some(true))
-        {
-            let value = source.get(&key)?;
+        if excluded.contains(&key) {
+            continue;
+        }
+        let value = match source.try_own_enumerable_value(&key) {
+            Some(value) => value?,
+            None => {
+                if source
+                    .try_get_own_property(&key)?
+                    .is_some_and(|descriptor| descriptor.enumerable == Some(true))
+                {
+                    Some(source.get(&key)?)
+                } else {
+                    None
+                }
+            }
+        };
+        if let Some(value) = value {
             define_data(object, key, value, false)?;
         }
     }

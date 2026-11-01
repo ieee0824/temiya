@@ -1,0 +1,7 @@
+{
+  "name": "object-binding-abrupt-coercion",
+  "setup": "function bench(n){let total=0;for(let i=1;i<=n;i++){let sentinel={};try{let {value}={get value(){throw sentinel;}};throw 42;}catch(error){if(error!==sentinel)throw error;}try{let {}=null;throw 42;}catch(error){if(!(error instanceof TypeError))throw error;}try{let {...rest}=undefined;throw 42;}catch(error){if(!(error instanceof TypeError))throw error;}total+=i;}return total;}",
+  "invocation": "bench(10000);",
+  "iterations": 10000,
+  "expected": 50005000
+}

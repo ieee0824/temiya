@@ -1,0 +1,70 @@
+// Integrity replay deliberately accepts retained adverse speed observations.
+import fs from 'node:fs';
+import path from 'node:path';
+import os from 'node:os';
+import assert from 'node:assert/strict';
+import {createHash} from 'node:crypto';
+import {execFileSync} from 'node:child_process';
+import {fileURLToPath} from 'node:url';
+const root=path.dirname(fileURLToPath(import.meta.url)),repo=path.resolve(root,'../..');
+const read=p=>JSON.parse(fs.readFileSync(p)),sha=b=>createHash('sha256').update(b).digest('hex');
+const captures=new Map([['hosted-prepared-guards-v1',{source:'ab8997d839263eae34315dc232f79b7bdbf65a36',run:41291042940,baseline:'38fcaf00e4a39c8e97f31f6cda82b0ae8adc7600'}],['hosted-function-name-v1',{source:'dc9bd56ca7ff473774b62218d0cbb4b8de5aeaf9',run:41283370723,baseline:'38fcaf00e4a39c8e97f31f6cda82b0ae8adc7600'}],['hosted-pinned-context-v1',{source:'2c09b52f7b9692ea4781932bc923ecf0ff60a3c9',run:41285425622,baseline:'38fcaf00e4a39c8e97f31f6cda82b0ae8adc7600'}],['hosted-initial-catch-v1',{source:'d58d4d41e93ce2fcc7fdd220cf5e7ae63e1c540e',run:41281869695,baseline:'38fcaf00e4a39c8e97f31f6cda82b0ae8adc7600'}],['hosted-static-plan-v1',{source:'809af2d89d8d8cd9213d09d4382e3492b2e3b823',run:41280566961,baseline:'38fcaf00e4a39c8e97f31f6cda82b0ae8adc7600'}],['hosted-literal-projection-v1',{source:'bda63e1b4846d86085f3091e557f7658c889a1b2',run:41276966573,baseline:'38fcaf00e4a39c8e97f31f6cda82b0ae8adc7600'}],['hosted-single-catch-v1',{source:'e83240f33e8b2953fe728bfc7fb40842b210367a',run:41256648814,baseline:'38fcaf00e4a39c8e97f31f6cda82b0ae8adc7600'}],['hosted-direct-get-v1',{source:'180773483841e2c163d6ee42d3ece9ae1a981645',run:41254030647,baseline:'38fcaf00e4a39c8e97f31f6cda82b0ae8adc7600'}],['hosted-inline-parent-v1',{source:'fe67ff56a766d834bc70c4e8219f4fad47b06723',run:41245244580,baseline:'38fcaf00e4a39c8e97f31f6cda82b0ae8adc7600'}],['hosted-current-integrated-v1',{source:'010ac60ddeb68ce702e1f3b2a4cfdd87345f2568',run:41207721402,baseline:'6c65967973ad4de72986db751d7c7e30547251c2'}],['hosted-initial-v1',{source:'1076d17e57f8367c47c1017424fc885f9f14cfe6',run:41188431466,baseline:'7eba69e8d8e5927b5f5c73dbdd57b30749e16442'}]]);
+const groups=[
+ ['original','audit-original-workload-records.mjs',[],['beforeafter','boa','baseline-boa','same-binary-control']],
+ ['class','audit-class-workload-records.mjs',[],['class-beforeafter','class-boa','class-baseline-boa','class-same-binary']],
+ ['derived','audit-class-workload-records.mjs',['--derived'],['derived-beforeafter','derived-boa','derived-baseline-boa','derived-same-binary']],
+ ['super','audit-class-workload-records.mjs',['--super'],['super-beforeafter','super-boa','super-baseline-boa','super-same-binary']],
+ ['fields','audit-class-workload-records.mjs',['--fields'],['fields-beforeafter','fields-boa','fields-baseline-boa','fields-same-binary']],
+ ['static','audit-class-workload-records.mjs',['--static'],['static-beforeafter','static-boa','static-baseline-boa','static-same-binary']],
+ ['private','audit-class-workload-records.mjs',['--private'],['private-beforeafter','private-boa','private-baseline-boa','private-same-binary']],
+ ['elements','audit-class-workload-records.mjs',['--elements'],['elements-boa','elements-same-binary']],
+ ['object-bindings','audit-class-workload-records.mjs',['--object-bindings'],['object-bindings-boa','object-bindings-same-binary']],
+ ['bindings','audit-class-workload-records.mjs',['--bindings'],['bindings-boa','bindings-same-binary']],
+ ['iterator','audit-class-workload-records.mjs',['--iterators'],['iterator-beforeafter','iterator-boa','iterator-baseline-boa','iterator-same-binary']],
+];
+const selected=process.argv.slice(2);if(selected.length===0)selected.push(...captures.keys());
+assert.equal(new Set(selected).size,selected.length);
+for(const name of selected){
+ assert(captures.has(name));const dir=root+'/'+name,e=read(dir+'/evidence.json'),expected=captures.get(name);
+ assert.equal(e.source_revision,expected.source);assert.equal(e.run,expected.run);
+ assert.equal(e.baseline_revision,expected.baseline ?? 'f1ed7c0ab3260de78cbf169651e5093ca8239aa0');
+ assert.equal(e.archive.file,'capture.tar.gz');const archive=dir+'/'+e.archive.file,bytes=fs.readFileSync(archive);
+ assert.equal(bytes.length,e.archive.bytes);assert.equal(sha(bytes),e.archive.sha256);
+ const temp=fs.mkdtempSync(path.join(os.tmpdir(),'temiya-derived-hosted-'));
+ try {
+  const names=execFileSync('tar',['-tzf',archive],{encoding:'utf8'}).trim().split('\n');
+  assert.equal(new Set(names).size,names.length);assert(names.every(n=>!path.isAbsolute(n)&&!n.split('/').some(p=>p==='..'||p==='.')));
+  assert(execFileSync('tar',['-tvzf',archive],{encoding:'utf8'}).trim().split('\n').every(n=>n[0]==='d'||n[0]==='-'));
+  execFileSync('tar',['-xzf',archive,'--no-same-owner','--no-same-permissions','-C',temp]);
+  const summaries=[];
+  for(const copy of [1,2]){
+   const capture=temp+'/copy-'+copy,summary={copy,groups:[]};
+   assert.equal(fs.readFileSync(capture+'/measured-revision.txt','utf8').trim(),e.source_revision);
+   assert.equal(fs.readFileSync(capture+'/baseline-revision.txt','utf8').trim(),e.baseline_revision);
+   assert.equal(read(capture+'/hardware-availability.json').target_available,true);
+   const identity=JSON.parse(execFileSync(process.execPath,[repo+'/scripts/audit-omoikane-hosted-identities.mjs',capture,e.source_revision,e.baseline_revision],{encoding:'utf8',cwd:repo}));
+   const baseline=read(capture+'/baseline-build-info.json');
+   for(const [group,script,flags,reports] of groups){
+    const audit=JSON.parse(execFileSync(process.execPath,[repo+'/scripts/'+script,...flags,...reports.map(n=>capture+'/'+n+'.json')],{encoding:'utf8',cwd:repo,maxBuffer:16*1024*1024}));
+    const saved=e.summaries.find(r=>r.copy===copy).groups.find(r=>r.name===group);
+    assert.deepEqual(audit.reports.map(r=>({sha256:r.sha256,outcomes:r.outcomes,runs:r.runs,checked_values:r.checked_values,comparisons:r.comparisons})),saved.reports.map(r=>({sha256:r.sha256,outcomes:r.outcomes,runs:r.runs,checked_values:r.checked_values,comparisons:r.comparisons})));
+    const candidate=read(capture+'/'+reports[(group==='elements'||(group==='bindings'||group==='object-bindings'))?0:1]+'.json').workers[0];
+    assert.equal(candidate.executable_sha256,identity.same_binary_hash);assert.equal(candidate.revision,e.source_revision);assert.equal(candidate.profile,'release');assert.equal(candidate.mode,'Auto Script');assert.deepEqual(candidate.features,[]);
+    for(let i=0;i<reports.length;i++){
+     const r=read(capture+'/'+reports[i]+'.json');assert.equal(r.machine.architecture,'x64');assert.equal(r.machine.platform,'linux');
+     for(const key of ['platform','release','architecture','cpu_models','logical_cpus','cpu_affinity'])assert.deepEqual(r.machine[key],identity.machine[key],key);
+     assert.equal(r.samples,15);assert.equal(r.pairs,3);assert.equal(r.all_workloads_valid,true);
+     const first=r.workers[0];assert.equal(first.revision,(group!=='elements'&&(group!=='bindings'&&group!=='object-bindings'))&&i===2?e.baseline_revision:e.source_revision);
+     if((group==='elements'||(group==='bindings'||group==='object-bindings'))||i!==2)assert.equal(first.executable_sha256,candidate.executable_sha256);
+     if((group!=='elements'&&(group!=='bindings'&&group!=='object-bindings'))&&i===0){assert.equal(r.workers[1].revision,e.baseline_revision);assert.equal(r.workers[1].executable_sha256,baseline.executable_sha256);}
+     if((group!=='elements'&&(group!=='bindings'&&group!=='object-bindings'))&&i===2)assert.equal(first.executable_sha256,baseline.executable_sha256);
+     if((group==='elements'||(group==='bindings'||group==='object-bindings'))?i===1:i===3)assert(r.workers.every(w=>w.executable_sha256===candidate.executable_sha256));
+    }
+    const wins={};for(const comparison of read(capture+'/'+reports[(group==='elements'||(group==='bindings'||group==='object-bindings'))?0:1]+'.json').comparisons)wins[comparison.workload]=(wins[comparison.workload]??0)+(comparison.outcome==='Temiya faster beyond threshold'?1:0);assert.deepEqual(wins,saved.boa_wins_by_workload);assert.equal(Object.values(wins).every(n=>n>=2),saved.minimum_two_of_three);
+    summary.groups.push({suite:group,boa_wins_by_workload:wins,outcomes:audit.reports.map(r=>r.outcomes)});
+   }
+   summaries.push(summary);
+  }
+  console.log(JSON.stringify({integrity:'pass',capture:name,source:e.source_revision,reports:76,summaries,scope:e.scope}));
+ } finally {fs.rmSync(temp,{recursive:true,force:true});}
+}

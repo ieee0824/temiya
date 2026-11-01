@@ -2,7 +2,7 @@
 
 use std::{cell::RefCell, rc::Rc};
 
-use super::{JsString, Object, PropertyDescriptor, RuntimeError, RuntimeResult, Value};
+use super::{JsString, Object, RuntimeError, RuntimeResult, Value};
 
 pub(super) type BufferSlot = Rc<RefCell<Option<Vec<u8>>>>;
 
@@ -28,12 +28,7 @@ impl ArrayObject {
     }
 
     fn initialize(object: Object, length: u32) -> RuntimeResult<Self> {
-        object.0.state.borrow_mut().array = true;
-        object.0.state.borrow_mut().elements = Some(Box::default());
-        object.define_own_property(
-            "length".into(),
-            PropertyDescriptor::data(Value::Number(f64::from(length)), true, false, false),
-        )?;
+        object.initialize_array(length);
         Ok(Self(object))
     }
 

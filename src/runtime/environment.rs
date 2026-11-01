@@ -139,6 +139,7 @@ pub(super) struct EnvironmentData {
 }
 
 enum EnvironmentRecord {
+    Single(Binding),
     Declarative(DeclarativeRecord),
     Object(ObjectRecord),
     Global(GlobalRecord),
@@ -160,6 +161,11 @@ impl Trace for EnvironmentData {
         }
         match &*self.record.borrow() {
             EnvironmentRecord::Declarative(record) => bindings(record, tracer),
+            EnvironmentRecord::Single(binding) => {
+                if let Some(value) = &binding.value {
+                    value.trace(tracer);
+                }
+            }
             EnvironmentRecord::Object(record) => record.binding_object.trace(tracer),
             EnvironmentRecord::Global(record) => {
                 record.object_record.binding_object.trace(tracer);
@@ -233,6 +239,23 @@ struct ImportBinding {
     target_name: JsString,
 }
 
+impl EnvironmentRecord {
+    // A catch starts with one initialized binding. Mutation promotes the same
+    // stored edge into an ordinary record before existing operations run.
+    fn promote_single(&mut self) {
+        if matches!(self, Self::Single(_)) {
+            let Self::Single(binding) =
+                std::mem::replace(self, Self::Declarative(DeclarativeRecord::default()))
+            else {
+                unreachable!()
+            };
+            *self = Self::Declarative(DeclarativeRecord {
+                bindings: vec![binding],
+            });
+        }
+    }
+}
+
 impl Environment {
     /// Guard-only read: never consult Object/global/module records or invoke JS.
     pub(crate) fn try_pure_number_binding(&self, name: &JsString) -> Option<f64> {
@@ -241,8 +264,9 @@ impl Environment {
             {
                 let record = current.0.record.borrow();
                 let bindings = match &*record {
-                    EnvironmentRecord::Function(record) => &record.declarative_record.bindings,
-                    EnvironmentRecord::Declarative(record) => &record.bindings,
+                    EnvironmentRecord::Function(record) => &record.declarative_record.bindings[..],
+                    EnvironmentRecord::Declarative(record) => &record.bindings[..],
+                    EnvironmentRecord::Single(binding) => std::slice::from_ref(binding),
                     _ => return None,
                 };
                 if let Some(binding) = bindings.iter().find(|binding| binding.name == *name) {
@@ -268,27 +292,22 @@ impl Environment {
     ) -> RuntimeResult<Option<(f64, f64)>> {
         let mut record = self.0.record.borrow_mut();
         let record = match &mut *record {
-            EnvironmentRecord::Function(record) => &mut record.declarative_record,
-            EnvironmentRecord::Declarative(record) => record,
+            EnvironmentRecord::Function(record) => &mut record.declarative_record.bindings[..],
+            EnvironmentRecord::Declarative(record) => &mut record.bindings[..],
+            EnvironmentRecord::Single(binding) => std::slice::from_mut(binding),
             _ => return Ok(None),
         };
         let Some(index) = hint
             .filter(|index| {
                 record
-                    .bindings
                     .get(*index)
                     .is_some_and(|binding| binding.name == *name)
             })
-            .or_else(|| {
-                record
-                    .bindings
-                    .iter()
-                    .position(|binding| binding.name == *name)
-            })
+            .or_else(|| record.iter().position(|binding| binding.name == *name))
         else {
             return Ok(None);
         };
-        let binding = &mut record.bindings[index];
+        let binding = &mut record[index];
         let Some(StoredValue::Number(old)) = &binding.value else {
             return Ok(None);
         };
@@ -306,24 +325,19 @@ impl Environment {
     ) -> Option<Value> {
         let mut record = self.0.record.borrow_mut();
         let record = match &mut *record {
-            EnvironmentRecord::Function(record) => &mut record.declarative_record,
-            EnvironmentRecord::Declarative(record) => record,
+            EnvironmentRecord::Function(record) => &mut record.declarative_record.bindings[..],
+            EnvironmentRecord::Declarative(record) => &mut record.bindings[..],
+            EnvironmentRecord::Single(binding) => std::slice::from_mut(binding),
             _ => return None,
         };
         let index = hint
             .filter(|index| {
                 record
-                    .bindings
                     .get(*index)
                     .is_some_and(|binding| binding.name == *name)
             })
-            .or_else(|| {
-                record
-                    .bindings
-                    .iter()
-                    .position(|binding| binding.name == *name)
-            })?;
-        let binding = &mut record.bindings[index];
+            .or_else(|| record.iter().position(|binding| binding.name == *name))?;
+        let binding = &mut record[index];
         if !binding.mutable {
             return None;
         }
@@ -356,8 +370,11 @@ impl Environment {
         {
             let record = self.0.record.borrow();
             let bindings = match &*record {
-                EnvironmentRecord::Function(record) => Some(&record.declarative_record.bindings),
-                EnvironmentRecord::Declarative(record) => Some(&record.bindings),
+                EnvironmentRecord::Function(record) => {
+                    Some(&record.declarative_record.bindings[..])
+                }
+                EnvironmentRecord::Declarative(record) => Some(&record.bindings[..]),
+                EnvironmentRecord::Single(binding) => Some(std::slice::from_ref(binding)),
                 _ => None,
             };
             if let (Some(bindings), Some(index)) = (bindings, index) {
@@ -380,9 +397,10 @@ impl Environment {
             let mut record = self.0.record.borrow_mut();
             let bindings = match &mut *record {
                 EnvironmentRecord::Function(record) => {
-                    Some(&mut record.declarative_record.bindings)
+                    Some(&mut record.declarative_record.bindings[..])
                 }
-                EnvironmentRecord::Declarative(record) => Some(&mut record.bindings),
+                EnvironmentRecord::Declarative(record) => Some(&mut record.bindings[..]),
+                EnvironmentRecord::Single(binding) => Some(std::slice::from_mut(binding)),
                 _ => None,
             };
             if let (Some(bindings), Some(index)) = (bindings, index) {
@@ -405,6 +423,111 @@ impl Environment {
         )
     }
 
+    // Only verifier-owned descriptors use this unpublished initialization.
+    // Duplicate names have already been rejected; all initial edges are traced
+    // by allocation before the environment can be observed by JavaScript.
+    pub(crate) fn declarative_from_verified_bindings(
+        outer: Self,
+        bindings: impl ExactSizeIterator<Item = (JsString, bool, bool)>,
+    ) -> Self {
+        let record = {
+            let mut entries = bindings.map(|(name, mutable, initialized)| Binding {
+                name,
+                value: initialized.then(|| {
+                    StoredValue::initial(outer.runtime(), &Value::Undefined)
+                        .expect("undefined binding context")
+                }),
+                mutable,
+                strict: !mutable,
+                deletable: false,
+            });
+            if entries.len() == 1 {
+                EnvironmentRecord::Single(entries.next().expect("one verified binding"))
+            } else {
+                EnvironmentRecord::Declarative(DeclarativeRecord {
+                    bindings: entries.collect(),
+                })
+            }
+        };
+        Self::new(Some(outer), record)
+    }
+
+    // The verified VM may fuse a one-binding scope entry with its immediate
+    // initialization. Keep the incoming facade rooted through allocation and
+    // trace its initial edge; the result still owns a distinct mutable cell.
+    pub(crate) fn declarative_with_verified_initial_value(
+        outer: Self,
+        name: JsString,
+        mutable: bool,
+        value: Value,
+    ) -> RuntimeResult<Self> {
+        let stored = StoredValue::initial(outer.runtime(), &value)?;
+        let environment = Self::new(
+            Some(outer),
+            EnvironmentRecord::Single(Binding {
+                name,
+                value: Some(stored),
+                mutable,
+                strict: !mutable,
+                deletable: false,
+            }),
+        );
+        drop(value);
+        Ok(environment)
+    }
+
+    // The verifier restricts this operation to a fresh declarative loop record
+    // with unique mutable names. Copy stored edges within the same heap; the
+    // new record traces them at allocation, without materializing facades.
+    pub(crate) fn clone_verified_loop_bindings<'a>(
+        &self,
+        names: impl ExactSizeIterator<Item = &'a JsString>,
+    ) -> RuntimeResult<Self> {
+        if names.len() == 0 {
+            return Ok(self.clone());
+        }
+        let outer = self
+            .outer()
+            .ok_or_else(|| RuntimeError::internal_error("loop environment has no parent"))?;
+        let record = {
+            let source = self.0.record.borrow();
+            let bindings = match &*source {
+                EnvironmentRecord::Single(binding) => std::slice::from_ref(binding),
+                EnvironmentRecord::Declarative(record) => &record.bindings[..],
+                _ => {
+                    return Err(RuntimeError::internal_error(
+                        "verified loop requires declarative bindings",
+                    ));
+                }
+            };
+            let mut entries = names.map(|name| {
+                let binding = bindings
+                    .iter()
+                    .find(|binding| binding.name == *name)
+                    .ok_or_else(|| reference_error(name, "is not defined"))?;
+                let value = binding
+                    .value
+                    .as_ref()
+                    .ok_or_else(|| reference_error(name, "is in the temporal dead zone"))?;
+                Ok(Binding {
+                    name: name.clone(),
+                    value: Some(value.clone()),
+                    mutable: true,
+                    strict: false,
+                    deletable: false,
+                })
+            });
+            if entries.len() == 1 {
+                EnvironmentRecord::Single(entries.next().expect("one loop binding")?)
+            } else {
+                EnvironmentRecord::Declarative(DeclarativeRecord {
+                    bindings: entries.collect::<RuntimeResult<Vec<_>>>()?,
+                })
+            }
+        };
+        Ok(Self::new(Some(outer), record))
+    }
+
     // A catch parameter is the only binding in an unpublished fresh record.
     // Validate its context before allocation; the incoming record traces both
     // this value and the outer environment at the allocation safepoint.
@@ -416,14 +539,12 @@ impl Environment {
         let value = StoredValue::initial(outer.runtime(), &value)?;
         Ok(Self::new(
             Some(outer),
-            EnvironmentRecord::Declarative(DeclarativeRecord {
-                bindings: vec![Binding {
-                    name,
-                    value: Some(value),
-                    mutable: true,
-                    strict: false,
-                    deletable: false,
-                }],
+            EnvironmentRecord::Single(Binding {
+                name,
+                value: Some(value),
+                mutable: true,
+                strict: false,
+                deletable: false,
             }),
         ))
     }
@@ -506,6 +627,50 @@ impl Environment {
         arguments: &[Value],
         capacity: usize,
     ) -> Self {
+        Self::function_with_parameter_state::<true>(
+            outer,
+            function_object,
+            new_target,
+            this,
+            parameters,
+            arguments,
+            capacity,
+        )
+    }
+
+    pub(crate) fn function_with_uninitialized_parameters(
+        outer: Option<Self>,
+        function_object: Object,
+        new_target: Option<Object>,
+        this_status: ThisBindingStatus,
+        names: &[JsString],
+        extra_bindings: usize,
+    ) -> Self {
+        let this = match this_status {
+            ThisBindingStatus::Lexical => FunctionThis::Lexical,
+            ThisBindingStatus::Uninitialized => FunctionThis::Uninitialized,
+            ThisBindingStatus::Initialized => FunctionThis::Initialized(Value::Undefined),
+        };
+        Self::function_with_parameter_state::<false>(
+            outer,
+            function_object,
+            new_target,
+            this,
+            names,
+            &[],
+            names.len().saturating_add(extra_bindings),
+        )
+    }
+
+    fn function_with_parameter_state<const INITIALIZED: bool>(
+        outer: Option<Self>,
+        function_object: Object,
+        new_target: Option<Object>,
+        this: FunctionThis,
+        parameters: &[JsString],
+        arguments: &[Value],
+        capacity: usize,
+    ) -> Self {
         let runtime = function_object.0.runtime().cloned();
         let stored_new_target = new_target
             .as_ref()
@@ -527,19 +692,25 @@ impl Environment {
         };
         let mut bindings: Vec<Binding> = Vec::with_capacity(capacity.max(parameters.len()));
         for (index, name) in parameters.iter().enumerate() {
-            let value = StoredValue::initial(
-                runtime.as_ref(),
-                arguments.get(index).unwrap_or(&Value::Undefined),
-            )
-            .expect("parameter allocation context");
+            let value = if INITIALIZED {
+                Some(
+                    StoredValue::initial(
+                        runtime.as_ref(),
+                        arguments.get(index).unwrap_or(&Value::Undefined),
+                    )
+                    .expect("parameter allocation context"),
+                )
+            } else {
+                None
+            };
             if let Some(binding) = bindings.iter_mut().find(|binding| binding.name == *name) {
                 // Sloppy duplicate parameters retain the last supplied value,
                 // including undefined when that occurrence has no argument.
-                binding.value = Some(value);
+                binding.value = value;
             } else {
                 bindings.push(Binding {
                     name: name.clone(),
-                    value: Some(value),
+                    value,
                     mutable: true,
                     strict: false,
                     deletable: false,
@@ -608,7 +779,9 @@ impl Environment {
     #[must_use]
     pub fn kind(&self) -> EnvironmentKind {
         match &*self.0.record.borrow() {
-            EnvironmentRecord::Declarative(_) => EnvironmentKind::Declarative,
+            EnvironmentRecord::Declarative(_) | EnvironmentRecord::Single(_) => {
+                EnvironmentKind::Declarative
+            }
             EnvironmentRecord::Object(_) => EnvironmentKind::Object,
             EnvironmentRecord::Global(_) => EnvironmentKind::Global,
             EnvironmentRecord::Function(_) => EnvironmentKind::Function,
@@ -633,6 +806,7 @@ impl Environment {
             let record = self.0.record.borrow();
             match &*record {
                 EnvironmentRecord::Declarative(record) => return Ok(record.has_binding(name)),
+                EnvironmentRecord::Single(binding) => return Ok(binding.name == *name),
                 EnvironmentRecord::Object(record) => record.clone(),
                 EnvironmentRecord::Global(record) => {
                     if record.declarative_record.has_binding(name) {
@@ -668,8 +842,12 @@ impl Environment {
             return record.create_mutable(self, name, deletable);
         }
         let mut record = self.0.record.borrow_mut();
+        record.promote_single();
         match &mut *record {
             EnvironmentRecord::Declarative(record) => record.create_mutable(name, deletable),
+            EnvironmentRecord::Single(_) => {
+                unreachable!("single binding handled before generic operation")
+            }
             EnvironmentRecord::Object(_) => unreachable!(),
             EnvironmentRecord::Global(record) => {
                 record.declarative_record.create_mutable(name, deletable)
@@ -686,8 +864,12 @@ impl Environment {
     /// Creates an uninitialized immutable binding.
     pub fn create_immutable_binding(&self, name: JsString, strict: bool) -> RuntimeResult<()> {
         let mut record = self.0.record.borrow_mut();
+        record.promote_single();
         match &mut *record {
             EnvironmentRecord::Declarative(record) => record.create_immutable(name, strict),
+            EnvironmentRecord::Single(_) => {
+                unreachable!("single binding handled before generic operation")
+            }
             EnvironmentRecord::Global(record) => {
                 record.declarative_record.create_immutable(name, strict)
             }
@@ -710,6 +892,17 @@ impl Environment {
         // records first; observable object/module paths remain below.
         {
             let mut record = self.0.record.borrow_mut();
+            if let EnvironmentRecord::Single(binding) = &mut *record {
+                if binding.name != *name {
+                    return Err(reference_error(name, "is not defined"));
+                }
+                if binding.value.is_some() {
+                    return Err(RuntimeError::type_error("binding is already initialized"));
+                }
+                binding.value = Some(StoredValue::store_owned(self, value)?);
+                return Ok(());
+            }
+            record.promote_single();
             match &mut *record {
                 EnvironmentRecord::Declarative(record) => {
                     return record.initialize(self, name, value);
@@ -725,8 +918,12 @@ impl Environment {
             return record.initialize(self, name, value);
         }
         let mut record = self.0.record.borrow_mut();
+        record.promote_single();
         match &mut *record {
             EnvironmentRecord::Declarative(record) => record.initialize(self, name, value),
+            EnvironmentRecord::Single(_) => {
+                unreachable!("single binding handled before generic operation")
+            }
             EnvironmentRecord::Object(_) => unreachable!(),
             EnvironmentRecord::Global(record) => {
                 record.declarative_record.initialize(self, name, value)
@@ -760,6 +957,13 @@ impl Environment {
         {
             let mut record = self.0.record.borrow_mut();
             match &mut *record {
+                EnvironmentRecord::Single(binding) => {
+                    return if binding.name == *name {
+                        binding.write(self, value, strict)
+                    } else {
+                        Err(reference_error(name, "is not defined"))
+                    };
+                }
                 EnvironmentRecord::Declarative(record) => {
                     return record.set(self, name, value, strict);
                 }
@@ -775,6 +979,9 @@ impl Environment {
         let mut record = self.0.record.borrow_mut();
         match &mut *record {
             EnvironmentRecord::Declarative(record) => record.set(self, name, value, strict),
+            EnvironmentRecord::Single(_) => {
+                unreachable!("single binding handled before generic operation")
+            }
             EnvironmentRecord::Object(_) => unreachable!(),
             EnvironmentRecord::Global(record) => {
                 if record.declarative_record.has_binding(name) {
@@ -808,6 +1015,13 @@ impl Environment {
             let record = self.0.record.borrow();
             match &*record {
                 EnvironmentRecord::Declarative(record) => return record.get(self, name),
+                EnvironmentRecord::Single(binding) => {
+                    return if binding.name == *name {
+                        binding.read(self)
+                    } else {
+                        Err(reference_error(name, "is not defined"))
+                    };
+                }
                 EnvironmentRecord::Function(record) => {
                     return record.declarative_record.get(self, name);
                 }
@@ -838,6 +1052,9 @@ impl Environment {
         let record = self.0.record.borrow();
         match &*record {
             EnvironmentRecord::Declarative(record) => record.get(self, name),
+            EnvironmentRecord::Single(_) => {
+                unreachable!("single binding handled before generic operation")
+            }
             EnvironmentRecord::Object(_) => unreachable!(),
             EnvironmentRecord::Global(record) => {
                 if record.declarative_record.has_binding(name) {
@@ -868,6 +1085,7 @@ impl Environment {
         let mut record = self.0.record.borrow_mut();
         match &mut *record {
             EnvironmentRecord::Declarative(record) => Ok(record.delete(name)),
+            EnvironmentRecord::Single(binding) => Ok(binding.name != *name),
             EnvironmentRecord::Object(_) => unreachable!(),
             EnvironmentRecord::Global(record) => {
                 if record.declarative_record.has_binding(name) {
@@ -904,9 +1122,10 @@ impl Environment {
                 let record = current.0.record.borrow();
                 let bindings = match &*record {
                     EnvironmentRecord::Function(record) => {
-                        Some(&record.declarative_record.bindings)
+                        Some(&record.declarative_record.bindings[..])
                     }
-                    EnvironmentRecord::Declarative(record) => Some(&record.bindings),
+                    EnvironmentRecord::Declarative(record) => Some(&record.bindings[..]),
+                    EnvironmentRecord::Single(binding) => Some(std::slice::from_ref(binding)),
                     _ => None,
                 };
                 bindings.map(|bindings| bindings.iter().position(|binding| binding.name == *name))
@@ -946,13 +1165,18 @@ impl Environment {
             let pure = {
                 let record = current.0.record.borrow();
                 let bindings = match &*record {
-                    EnvironmentRecord::Declarative(record) => Some(record),
-                    EnvironmentRecord::Function(record) => Some(&record.declarative_record),
+                    EnvironmentRecord::Declarative(record) => Some(&record.bindings[..]),
+                    EnvironmentRecord::Single(binding) => Some(std::slice::from_ref(binding)),
+                    EnvironmentRecord::Function(record) => {
+                        Some(&record.declarative_record.bindings[..])
+                    }
+                    EnvironmentRecord::Global(record) => {
+                        Some(&record.declarative_record.bindings[..])
+                    }
                     _ => None,
                 };
-                bindings.map(|record| {
-                    record
-                        .bindings
+                bindings.map(|bindings| {
+                    bindings
                         .iter()
                         .find(|binding| binding.name == *name)
                         .map(|binding| binding.read(&current))
@@ -962,9 +1186,27 @@ impl Environment {
                 Some(Some(value)) => return value,
                 Some(None) => {}
                 None => {
-                    if current.has_binding(name)? {
+                    let object_record =
+                        matches!(&*current.0.record.borrow(), EnvironmentRecord::Object(_));
+                    if !object_record && current.has_binding(name)? {
                         return current.get_binding_value(name, strict);
                     }
+                }
+            }
+            // Ordinary own data lookup cannot invoke Has/Get traps or user
+            // code. A with environment must still consult unscopables, and
+            // accessors/exotics retain the complete observable resolution.
+            if let Some(record) = current.object_record_for_binding(name) {
+                if !record.options.with_environment {
+                    let object = record.binding_object.load(&current)?;
+                    if let Some((value, _)) =
+                        object.own_data_value_with_hint(&string_key(name), None)
+                    {
+                        return Ok(value);
+                    }
+                }
+                if current.has_binding(name)? {
+                    return current.get_binding_value(name, strict);
                 }
             }
             environment = current.outer();
@@ -1281,6 +1523,7 @@ impl Environment {
         self.with_function(|record| Ok(record.this_status))
     }
 
+    #[inline(always)]
     fn object_record_for_binding(&self, name: &JsString) -> Option<ObjectRecord> {
         match &*self.0.record.borrow() {
             EnvironmentRecord::Object(record) => Some(record.clone()),
@@ -1644,6 +1887,178 @@ fn reference_error(name: &JsString, detail: &str) -> RuntimeError {
 #[cfg(test)]
 mod slot_hint_tests {
     use super::*;
+    #[test]
+    fn single_catch_binding_traces_and_promotes_without_losing_attributes() {
+        let runtime = Runtime::new();
+        runtime.set_allocation_collection_interval(0);
+        let outer = Environment::declarative_in(&runtime);
+        let object = Object::new_in(&runtime);
+        let weak = object.downgrade();
+        let name: JsString = "caught".into();
+        let environment =
+            Environment::declarative_initialized(outer, name.clone(), Value::Object(object))
+                .unwrap();
+        assert!(matches!(
+            *environment.0.record.borrow(),
+            EnvironmentRecord::Single(_)
+        ));
+        runtime.collect_garbage().unwrap();
+        assert!(weak.upgrade().is_some());
+        let (_, hint) = environment
+            .resolve_binding_with_hint(&name)
+            .unwrap()
+            .unwrap();
+        assert_eq!(hint, Some(0));
+        assert!(
+            environment
+                .get_function_binding_at(&name, hint, true)
+                .unwrap()
+                .same_value(&Value::Object(weak.upgrade().unwrap()))
+        );
+        let extra: JsString = "extra".into();
+        environment
+            .create_immutable_binding(extra.clone(), true)
+            .unwrap();
+        assert!(matches!(
+            *environment.0.record.borrow(),
+            EnvironmentRecord::Declarative(_)
+        ));
+        environment
+            .initialize_binding(&extra, Value::Number(42.0))
+            .unwrap();
+        runtime.collect_garbage().unwrap();
+        assert!(weak.upgrade().is_some());
+        assert!(!environment.delete_binding(&name).unwrap());
+        assert!(
+            environment
+                .set_mutable_binding(&extra, Value::Number(0.0), true)
+                .is_err()
+        );
+        environment
+            .set_function_binding_at(&name, Some(1), Value::Number(7.0), true)
+            .unwrap();
+        runtime.collect_garbage().unwrap();
+        assert!(weak.upgrade().is_none());
+        assert!(
+            environment
+                .get_identifier_value(&name, true)
+                .unwrap()
+                .same_value(&Value::Number(7.0))
+        );
+        drop(environment);
+        assert_eq!(runtime.collect_garbage().unwrap().retained, 0);
+    }
+
+    #[test]
+    fn verified_single_binding_preserves_tdz_context_and_edges_after_promotion() {
+        for mutable in [false, true] {
+            let runtime = Runtime::new();
+            runtime.set_allocation_collection_interval(0);
+            let outer = Environment::declarative_in(&runtime);
+            let name: JsString = "answer".into();
+            let environment = Environment::declarative_from_verified_bindings(
+                outer,
+                std::iter::once((name.clone(), mutable, false)),
+            );
+            assert!(environment.get_binding_value(&name, true).is_err());
+            let foreign = Object::new_in(&Runtime::new());
+            assert!(
+                environment
+                    .initialize_binding(&name, Value::Object(foreign))
+                    .is_err()
+            );
+            assert!(environment.get_binding_value(&name, true).is_err());
+            let object = Object::new_in(&runtime);
+            let weak = object.downgrade();
+            environment
+                .initialize_binding(&name, Value::Object(object))
+                .unwrap();
+            assert!(
+                environment
+                    .initialize_binding(&name, Value::Undefined)
+                    .is_err()
+            );
+            runtime.collect_garbage().unwrap();
+            assert!(weak.upgrade().is_some());
+            environment
+                .create_mutable_binding("extra".into(), false)
+                .unwrap();
+            runtime.collect_garbage().unwrap();
+            assert!(weak.upgrade().is_some());
+            assert_eq!(
+                environment
+                    .set_mutable_binding(&name, Value::Number(42.0), true)
+                    .is_ok(),
+                mutable
+            );
+            drop(environment);
+            assert_eq!(runtime.collect_garbage().unwrap().retained, 0);
+            assert!(weak.upgrade().is_none());
+        }
+    }
+
+    #[test]
+    fn loop_edge_copies_keep_distinct_cells_and_trace_after_source_release() {
+        for count in [1, 2] {
+            let context = Runtime::new();
+            context.set_allocation_collection_interval(1);
+            let outer = Environment::declarative_in(&context);
+            let names = (0..count)
+                .map(|index| JsString::from(format!("slot{index}")))
+                .collect::<Vec<_>>();
+            let source = Environment::declarative_from_verified_bindings(
+                outer,
+                names.iter().map(|name| (name.clone(), true, false)),
+            );
+            assert!(source.clone_verified_loop_bindings(names.iter()).is_err());
+            let object = Object::new_in(&context);
+            object
+                .create_data_property("answer".into(), Value::Number(42.0))
+                .unwrap();
+            let weak = object.downgrade();
+            source
+                .initialize_binding(&names[0], Value::Object(object))
+                .unwrap();
+            for name in &names[1..] {
+                source.initialize_binding(name, Value::Undefined).unwrap();
+            }
+            let cloned = source.clone_verified_loop_bindings(names.iter()).unwrap();
+            assert_ne!(source, cloned);
+            source
+                .set_mutable_binding(&names[0], Value::Number(0.0), true)
+                .unwrap();
+            drop(source);
+            context.collect_garbage().unwrap();
+            assert!(weak.upgrade().is_some());
+            let Value::Object(value) = cloned.get_binding_value(&names[0], true).unwrap() else {
+                panic!("copied object")
+            };
+            assert!(
+                value
+                    .get(&"answer".into())
+                    .unwrap()
+                    .same_value(&Value::Number(42.0))
+            );
+            drop(value);
+            cloned
+                .set_mutable_binding(&names[0], Value::Number(7.0), true)
+                .unwrap();
+            context.collect_garbage().unwrap();
+            assert!(weak.upgrade().is_none());
+            for name in &names[1..] {
+                assert!(
+                    cloned
+                        .get_binding_value(name, true)
+                        .unwrap()
+                        .same_value(&Value::Undefined)
+                );
+            }
+            context.verify_migration_barriers().unwrap();
+            drop(cloned);
+            assert_eq!(context.collect_garbage().unwrap().retained, 0);
+        }
+    }
+
     #[test]
     fn reference_message_cache_bounds_compact_keys_and_preserves_names() {
         for i in 0..80 {
@@ -2182,6 +2597,53 @@ mod slot_hint_tests {
     }
 
     #[test]
+    fn initial_binding_edges_survive_allocation_and_distinct_cells() {
+        let context = Runtime::new();
+        let outer = Environment::declarative_in(&context);
+        let object = Object::new_in(&context);
+        let weak = object.downgrade();
+        object
+            .create_data_property("self".into(), Value::Object(object.clone()))
+            .unwrap();
+        context.set_allocation_collection_interval(1);
+        let name = JsString::from("error");
+        let first = Environment::declarative_with_verified_initial_value(
+            outer.clone(),
+            name.clone(),
+            true,
+            Value::Object(object),
+        )
+        .unwrap();
+        let second = Environment::declarative_with_verified_initial_value(
+            outer,
+            name.clone(),
+            true,
+            Value::Number(42.0),
+        )
+        .unwrap();
+        context.collect_garbage().unwrap();
+        assert!(weak.upgrade().is_some());
+        assert!(matches!(
+            first.get_binding_value(&name, true).unwrap(),
+            Value::Object(_)
+        ));
+        first
+            .set_mutable_binding(&name, Value::Number(20.0), true)
+            .unwrap();
+        assert!(
+            second
+                .get_binding_value(&name, true)
+                .unwrap()
+                .same_value(&Value::Number(42.0))
+        );
+        context.verify_migration_barriers().unwrap();
+        drop(first);
+        drop(second);
+        assert_eq!(context.collect_garbage().unwrap().retained, 0);
+        assert!(weak.upgrade().is_none());
+    }
+
+    #[test]
     fn prepared_function_edges_survive_collection_before_frame_publication() {
         let context = Runtime::new();
         let function = Object::new_in(&context);
@@ -2245,6 +2707,64 @@ mod slot_hint_tests {
         context.verify_migration_barriers().unwrap();
         drop(environment);
         assert_eq!(context.collect_garbage().unwrap().retained, 0);
+    }
+
+    #[test]
+    fn inline_updates_recheck_names_types_and_readonly_state() {
+        let context = Runtime::new();
+        let name: JsString = "value".into();
+        let env = Environment::declarative_from_verified_bindings(
+            Environment::declarative_in(&context),
+            std::iter::once((name.clone(), true, false)),
+        );
+        assert_eq!(
+            env.update_number_binding(&name, Some(0), true, true)
+                .unwrap(),
+            None
+        );
+        env.initialize_binding(&name, Value::Number(41.0)).unwrap();
+        assert_eq!(
+            env.update_number_binding(&"wrong".into(), Some(0), true, true)
+                .unwrap(),
+            None
+        );
+        assert_eq!(
+            env.update_number_binding(&name, Some(99), true, true)
+                .unwrap(),
+            Some((41.0, 42.0))
+        );
+        env.set_function_binding_at(&name, Some(0), Value::String("first".into()), true)
+            .unwrap();
+        let snapshot = env.get_binding_value(&name, true).unwrap();
+        assert!(
+            env.append_string_binding(&name, Some(99), &" second".into())
+                .unwrap()
+                .same_value(&Value::String("first second".into()))
+        );
+        assert!(snapshot.same_value(&Value::String("first".into())));
+        let fixed = Environment::declarative_from_verified_bindings(
+            Environment::declarative_in(&context),
+            std::iter::once((name.clone(), false, false)),
+        );
+        fixed
+            .initialize_binding(&name, Value::Number(41.0))
+            .unwrap();
+        assert!(
+            fixed
+                .update_number_binding(&name, Some(0), true, false)
+                .is_err()
+        );
+        assert!(
+            fixed
+                .append_string_binding(&name, Some(0), &"suffix".into())
+                .is_none()
+        );
+        assert!(
+            fixed
+                .get_binding_value(&name, true)
+                .unwrap()
+                .same_value(&Value::Number(41.0))
+        );
     }
 
     #[test]

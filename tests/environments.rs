@@ -517,3 +517,21 @@ fn identifier_value_reads_preserve_tdz_with_receivers_and_closure_scope() {
         }
     }
 }
+
+#[test]
+fn identifier_data_reads_observe_global_redefinition_and_lexical_shadowing() {
+    use temiya::{Engine, embedding::ScriptBackend};
+    for backend in [ScriptBackend::Ast, ScriptBackend::Auto] {
+        let engine = Engine::builder().script_backend(backend).build();
+        let realm = engine.create_realm();
+        let source = "let root=this;root.visible=20;function read(){return visible;}let first=read();let calls=0;Object.defineProperty(root,'visible',{get(){calls++;return 21;},configurable:true});let second=read();Object.defineProperty(root,'visible',{value:22,writable:true,configurable:true});let third=read();root.visible=undefined;let fourth=read();delete root.visible;let absent=false;try{read();}catch(e){absent=e instanceof ReferenceError;}root.shadow=1;let shadow=42;function lexical(){return shadow;}first===20&&second===21&&third===22&&fourth===undefined&&calls===1&&absent&&lexical()===42;";
+        let script = engine.compile(&realm, source).unwrap();
+        assert!(
+            matches!(
+                engine.evaluate(&script).unwrap().value(),
+                Value::Boolean(true)
+            ),
+            "{backend:?}"
+        );
+    }
+}

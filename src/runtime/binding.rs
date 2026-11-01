@@ -11,7 +11,7 @@ thread_local! {
     static NULLISH_OBJECT_DIAGNOSTIC: std::rc::Rc<String> =
         std::rc::Rc::new(NULLISH_OBJECT_MESSAGE.to_owned());
 }
-fn nullish_object_error() -> RuntimeError {
+pub(super) fn nullish_object_error() -> RuntimeError {
     NULLISH_OBJECT_DIAGNOSTIC
         .try_with(|message| RuntimeError::type_error_shared(message.clone()))
         .unwrap_or_else(|_| RuntimeError::type_error(NULLISH_OBJECT_MESSAGE))

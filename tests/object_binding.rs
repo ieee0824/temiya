@@ -167,3 +167,13 @@ fn repeated_nullish_binding_errors_keep_fresh_exception_identity_and_messages() 
         "let first,second;try{let {}=null;}catch(error){first=error;error.message='changed';}try{let {}=undefined;}catch(error){second=error;}first!==second&&first instanceof TypeError&&second instanceof TypeError&&first.message==='changed'&&second.message==='cannot destructure null or undefined';",
     );
 }
+
+#[test]
+fn nullish_bytecode_patterns_fail_before_keys_and_uninitialized_this() {
+    check(
+        "let keys=0,defaults=0;class Base{}class Derived extends Base{constructor(){let first,second;try{let {[++keys]:x=(++defaults)}=null;}catch(e){first=e;}try{let {...rest}=undefined;}catch(e){second=e;}super();this.ok=first instanceof TypeError&&second instanceof TypeError&&first!==second;}}new Derived().ok&&keys===0&&defaults===0;",
+    );
+    check(
+        "let keys=0;function run(){let read;try{let {[++keys]:x}=null;}catch({message}){read=message;}return typeof read==='string'&&keys===0;}run();",
+    );
+}

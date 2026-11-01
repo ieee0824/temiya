@@ -91,6 +91,14 @@ impl DefinitionEvaluationContext {
         realm: &Realm,
         environment: &Environment,
     ) -> RuntimeResult<()> {
+        // RequireObjectCoercible precedes computed keys, defaults and target
+        // initialization. A nullish source cannot observe this/new.target or
+        // create closures, so no evaluator context is needed for this failure.
+        if matches!(pattern.kind, crate::ast::ExprKind::Object(_))
+            && matches!(value, Value::Null | Value::Undefined)
+        {
+            return Err(super::binding::nullish_object_error());
+        }
         super::function::retain_definition(
             self.cache.get_or_insert_with(Default::default),
             pattern,

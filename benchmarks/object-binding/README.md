@@ -148,3 +148,13 @@ test overlaps that suite and is not an additional unique integration test.
 Clippy/release and the exact strict Miri test for later data mutations and
 distinct Proxy Get values. These do not qualify complete security or speed.
 Replay with `node benchmarks/object-binding/rest-data-correctness-v1/verify.mjs`.
+
+Ordinary rest accessors at073b439 select the getter once and release the
+source borrow before invocation. Missing getters yield undefined; non-enumerable
+accessors are skipped. Proxy callable getters retain the original receiver.
+All953 tests (26ignored), Clippy/release and two exact strict Miri tests pass,
+including reentrant GC/release. `rest-accessor-correctness-v1` retains these
+logs and source hashes. All six instruction profiles are preserved: getter-order
+drops1.071% versus ca10d67; the other five are almost unchanged. This resolves
+the preceding getter instruction regression without native speed qualification.
+Replay with `node benchmarks/object-binding/rest-accessor-correctness-v1/verify.mjs`.

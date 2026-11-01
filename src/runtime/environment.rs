@@ -1134,55 +1134,65 @@ impl Environment {
 
     /// Reads a resolved identifier through the lexical environment chain.
     pub fn get_identifier_value(&self, name: &JsString, strict: bool) -> RuntimeResult<Value> {
+        enum Lookup {
+            Value(RuntimeResult<Value>),
+            Outer,
+            Object(ObjectRecord),
+            Generic,
+        }
         let mut environment = Some(self.clone());
         while let Some(current) = environment {
-            // Value contexts need neither a Reference nor a second search of
-            // pure bindings. Drop the record borrow before observable lookup.
-            let pure = {
+            // Decide the next operation under one borrow, then release it
+            // before any observable object/module lookup can run JavaScript.
+            let lookup = {
                 let record = current.0.record.borrow();
-                let bindings = match &*record {
-                    EnvironmentRecord::Declarative(record) => Some(&record.bindings[..]),
-                    EnvironmentRecord::Single(binding) => Some(std::slice::from_ref(binding)),
-                    EnvironmentRecord::Function(record) => {
-                        Some(&record.declarative_record.bindings[..])
-                    }
-                    EnvironmentRecord::Global(record) => {
-                        Some(&record.declarative_record.bindings[..])
-                    }
-                    _ => None,
-                };
-                bindings.map(|bindings| {
+                let read = |bindings: &[Binding]| {
                     bindings
                         .iter()
                         .find(|binding| binding.name == *name)
-                        .map(|binding| binding.read(&current))
-                })
+                        .map_or(Lookup::Outer, |binding| {
+                            Lookup::Value(binding.read(&current))
+                        })
+                };
+                match &*record {
+                    EnvironmentRecord::Declarative(record) => read(&record.bindings),
+                    EnvironmentRecord::Single(binding) => read(std::slice::from_ref(binding)),
+                    EnvironmentRecord::Function(record) => {
+                        read(&record.declarative_record.bindings)
+                    }
+                    EnvironmentRecord::Global(record) => {
+                        match read(&record.declarative_record.bindings) {
+                            Lookup::Outer => Lookup::Object(record.object_record.clone()),
+                            found => found,
+                        }
+                    }
+                    EnvironmentRecord::Object(record) => Lookup::Object(record.clone()),
+                    EnvironmentRecord::Module(_) => Lookup::Generic,
+                }
             };
-            match pure {
-                Some(Some(value)) => return value,
-                Some(None) => {}
-                None => {
-                    let object_record =
-                        matches!(&*current.0.record.borrow(), EnvironmentRecord::Object(_));
-                    if !object_record && current.has_binding(name)? {
+            match lookup {
+                Lookup::Value(value) => return value,
+                Lookup::Outer => {}
+                Lookup::Object(record) => {
+                    // Ordinary own data has no Has/Get callbacks. With records
+                    // still consult unscopables; all other shapes use the full
+                    // original lookup, including reentrant binding changes.
+                    if !record.options.with_environment {
+                        let object = record.binding_object.load(&current)?;
+                        if let Some((value, _)) =
+                            object.own_data_value_with_hint(&string_key(name), None)
+                        {
+                            return Ok(value);
+                        }
+                    }
+                    if current.has_binding(name)? {
                         return current.get_binding_value(name, strict);
                     }
                 }
-            }
-            // Ordinary own data lookup cannot invoke Has/Get traps or user
-            // code. A with environment must still consult unscopables, and
-            // accessors/exotics retain the complete observable resolution.
-            if let Some(record) = current.object_record_for_binding(name) {
-                if !record.options.with_environment {
-                    let object = record.binding_object.load(&current)?;
-                    if let Some((value, _)) =
-                        object.own_data_value_with_hint(&string_key(name), None)
-                    {
-                        return Ok(value);
+                Lookup::Generic => {
+                    if current.has_binding(name)? {
+                        return current.get_binding_value(name, strict);
                     }
-                }
-                if current.has_binding(name)? {
-                    return current.get_binding_value(name, strict);
                 }
             }
             environment = current.outer();

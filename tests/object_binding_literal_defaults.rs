@@ -9,6 +9,8 @@ fn literal_projection_preserves_order_defaults_names_and_fallback_receivers() {
     for backend in [ScriptBackend::Ast, ScriptBackend::Auto] {
         let engine = Engine::builder().script_backend(backend).build();
         for source in [
+            "function f({é:a,'\\u{10400}':b,'\\ud800':c}={'é':1,𐐀:20,'\\ud800':21}){return a+b+c;}f()===42;",
+            "function f({x}={x:1,'x':42}){return x;}f()===42;",
             "let trace='';function f({a,b}={a:(trace+='a',1),a:(trace+='A',20),b:(trace+='b',22),unused:(trace+='u',0)}){return a+b;}f()===42&&trace==='aAbu';",
             "function f({fn}={fn:function(){}}){return fn.name;}function g({fn}=({fn:function(){}})){return fn.name;}f()===g();",
             "function f({C}={C:class{}}){return C.name;}function g({C}=({C:class{}})){return C.name;}f()===g();",

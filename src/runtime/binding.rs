@@ -208,13 +208,13 @@ fn element(
 // Values remain rooted Rust Values until initialization completes. The one-key
 // case needs no buffer allocation; overwrites release the previous value at
 // the same point as an ordinary own data property overwrite.
-enum LiteralValues {
+enum LiteralValues<'a> {
     Empty,
-    One(JsString, Value),
-    Many(Vec<(JsString, Value)>),
+    One(LiteralKey<'a>, Value),
+    Many(Vec<(LiteralKey<'a>, Value)>),
 }
-impl LiteralValues {
-    fn insert(&mut self, key: JsString, value: Value) {
+impl<'a> LiteralValues<'a> {
+    fn insert(&mut self, key: LiteralKey<'a>, value: Value) {
         match self {
             Self::Empty => *self = Self::One(key, value),
             Self::One(old, entry) if *old == key => *entry = value,
@@ -233,7 +233,7 @@ impl LiteralValues {
             }
         }
     }
-    fn get(&self, key: &JsString) -> Option<&Value> {
+    fn get(&self, key: &LiteralKey<'_>) -> Option<&Value> {
         match self {
             Self::Empty => None,
             Self::One(old, value) => (*old == *key).then_some(value),
@@ -244,12 +244,29 @@ impl LiteralValues {
         }
     }
 }
-fn literal_key(expression: &Expr) -> Option<JsString> {
-    match &expression.kind {
-        ExprKind::Identifier(name) => Some(name.as_str().into()),
-        ExprKind::Literal(Literal::String { value, .. }) => {
-            Some(JsString::from_code_units_slice(value))
+// Static keys borrow immutable syntax; comparisons preserve exact UTF-16
+// equality without repeatedly converting identifier text into runtime strings.
+#[derive(Clone, Copy)]
+enum LiteralKey<'a> {
+    Identifier(&'a str),
+    String(&'a [u16]),
+}
+impl PartialEq for LiteralKey<'_> {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Identifier(left), Self::Identifier(right)) => left == right,
+            (Self::String(left), Self::String(right)) => left == right,
+            (Self::Identifier(text), Self::String(units))
+            | (Self::String(units), Self::Identifier(text)) => {
+                text.encode_utf16().eq(units.iter().copied())
+            }
         }
+    }
+}
+fn literal_key(expression: &Expr) -> Option<LiteralKey<'_>> {
+    match &expression.kind {
+        ExprKind::Identifier(name) => Some(LiteralKey::Identifier(name.as_str())),
+        ExprKind::Literal(Literal::String { value, .. }) => Some(LiteralKey::String(value)),
         _ => None,
     }
 }
@@ -271,7 +288,8 @@ fn initialize_literal_default(
     if properties.iter().any(|property| {
         property.spread
             || property.computed
-            || literal_key(&property.key).is_none_or(|key| key == JsString::from("__proto__"))
+            || literal_key(&property.key)
+                .is_none_or(|key| key == LiteralKey::Identifier("__proto__"))
             || matches!(
                 property.value.as_ref().map(|value| &value.kind),
                 Some(ExprKind::Method { .. })

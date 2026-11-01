@@ -21,15 +21,28 @@ fn check(source: &str) {
 
 #[test]
 fn frozen_assignment_functions_are_verified_vm_bodies() {
-    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("benchmarks/destructuring-assignment/workloads-v1");
-    let manifest: serde_json::Value =
-        serde_json::from_slice(&std::fs::read(root.join("manifest.json")).unwrap()).unwrap();
-    for input in manifest["workloads"].as_array().unwrap() {
-        let data: serde_json::Value = serde_json::from_slice(
-            &std::fs::read(root.join(input["file"].as_str().unwrap())).unwrap(),
-        )
-        .unwrap();
+    // Embed the original frozen inputs so strict Miri needs no host filesystem access.
+    for input in [
+        include_str!(
+            "../benchmarks/destructuring-assignment/workloads-v1/assignment-array-members.json"
+        ),
+        include_str!(
+            "../benchmarks/destructuring-assignment/workloads-v1/assignment-object-members.json"
+        ),
+        include_str!(
+            "../benchmarks/destructuring-assignment/workloads-v1/assignment-computed-default.json"
+        ),
+        include_str!(
+            "../benchmarks/destructuring-assignment/workloads-v1/assignment-rest-symbol.json"
+        ),
+        include_str!(
+            "../benchmarks/destructuring-assignment/workloads-v1/assignment-close-priority.json"
+        ),
+        include_str!(
+            "../benchmarks/destructuring-assignment/workloads-v1/assignment-const-failure.json"
+        ),
+    ] {
+        let data: serde_json::Value = serde_json::from_str(input).unwrap();
         let source = format!("{}bench(3)===6;", data["setup"].as_str().unwrap());
         let code = BytecodeCompiler::compile(&source).unwrap();
         let template = code
@@ -58,7 +71,7 @@ fn frozen_assignment_functions_are_verified_vm_bodies() {
                         .instructions
                         .contains(&Instruction::InitializePattern(index as u32))),
             "{}",
-            input["name"]
+            data["name"]
         );
         assert!(
             matches!(
@@ -66,7 +79,7 @@ fn frozen_assignment_functions_are_verified_vm_bodies() {
                 Completion::Normal(Some(Value::Boolean(true)))
             ),
             "{}",
-            input["name"]
+            data["name"]
         );
     }
 }

@@ -75,7 +75,7 @@ impl StoredCoercion {
                 }
                 .load(owner)?;
                 let object = Object::new_for(&prototype);
-                object.0.state.borrow_mut().primitive_data = Some(Box::new(value));
+                *object.0.state.borrow_mut().primitive_data_mut() = Some(Box::new(value));
                 (object, prototype)
             }
         };
@@ -355,7 +355,7 @@ fn is_array(object: &Object) -> RuntimeResult<bool> {
         if state.array {
             return Ok(true);
         }
-        let proxy = state.proxy.clone();
+        let proxy = state.proxy().clone();
         drop(state);
         let Some(proxy) = proxy else {
             return Ok(false);
@@ -372,14 +372,14 @@ fn object_tag(object: &Object) -> RuntimeResult<&'static str> {
         return Ok("Function");
     }
     let state = object.0.state.borrow();
-    Ok(if state.string_data.is_some() {
+    Ok(if state.string_data().is_some() {
         "String"
-    } else if state.date_value.is_some() {
+    } else if state.date_value().is_some() {
         "Date"
-    } else if state.regexp.is_some() {
+    } else if state.regexp().is_some() {
         "RegExp"
     } else {
-        match state.primitive_data.as_deref() {
+        match state.primitive_data().as_deref() {
             Some(Value::Number(_)) => "Number",
             Some(Value::Boolean(_)) => "Boolean",
             _ => "Object",
@@ -429,7 +429,7 @@ mod key_tests {
         };
         assert_eq!(boxed.prototype(), weak[1].upgrade());
         assert!(matches!(
-            boxed.0.state.borrow().primitive_data.as_deref(),
+            boxed.0.state.borrow().primitive_data().as_deref(),
             Some(Value::Number(42.0))
         ));
         drop(method);

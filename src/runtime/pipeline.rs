@@ -522,7 +522,7 @@ impl SourceTextModule {
         }
         let realm = self.realm();
         let object = Object::new_for(&realm.global_object());
-        object.0.state.borrow_mut().module_namespace =
+        *object.0.state.borrow_mut().module_namespace_mut() =
             Some(Box::new(StoredModule::store(&object, self)?));
         for name in self.exported_names(&mut HashSet::new())? {
             let (target, binding) = self.resolve_export(&name, &mut Vec::new())?;
@@ -1018,7 +1018,7 @@ mod managed_tests {
             .0
             .state
             .borrow()
-            .module_namespace
+            .module_namespace()
             .as_ref()
             .unwrap()
             .load(&namespace)

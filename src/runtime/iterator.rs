@@ -287,7 +287,7 @@ pub(super) fn array_values(prototype: &Object, target: Object) -> RuntimeResult<
     let result = Object::new_for(prototype);
     let target = super::stored::StoredObject::store(&result, &target)?;
     result.initialize_prototype(Some(prototype.clone()));
-    result.0.state.borrow_mut().iterator = Some(Box::new(IteratorSlot::Array {
+    *result.0.state.borrow_mut().iterator_mut() = Some(Box::new(IteratorSlot::Array {
         target: Some(target),
         index: 0,
     }));
@@ -309,7 +309,7 @@ fn string_values(
         primitive(&this, key.expect("string iterator primitive key"), true)?.to_js_string()?;
     let result = Object::new_for(prototype);
     result.initialize_prototype(Some(prototype.clone()));
-    result.0.state.borrow_mut().iterator = Some(Box::new(IteratorSlot::String {
+    *result.0.state.borrow_mut().iterator_mut() = Some(Box::new(IteratorSlot::String {
         text: Some(text),
         index: 0,
     }));
@@ -370,7 +370,7 @@ pub(super) fn array_step_value(
     };
     let (target, index) = {
         let state = iterator.0.state.borrow();
-        let Some(IteratorSlot::Array { target, index }) = state.iterator.as_deref() else {
+        let Some(IteratorSlot::Array { target, index }) = state.iterator().as_deref() else {
             return Err(RuntimeError::type_error(
                 "incompatible array iterator receiver",
             ));
@@ -392,7 +392,7 @@ pub(super) fn array_step_value(
     };
     if index >= length {
         if let Some(IteratorSlot::Array { target, .. }) =
-            iterator.0.state.borrow_mut().iterator.as_deref_mut()
+            iterator.0.state.borrow_mut().iterator_mut().as_deref_mut()
         {
             *target = None;
         }
@@ -401,7 +401,7 @@ pub(super) fn array_step_value(
     // The captured index is advanced after length coercion, before element Get,
     // matching reentrant getters and abrupt element access without RefCell borrows.
     if let Some(IteratorSlot::Array { index: next, .. }) =
-        iterator.0.state.borrow_mut().iterator.as_deref_mut()
+        iterator.0.state.borrow_mut().iterator_mut().as_deref_mut()
     {
         *next = index + 1;
     }
@@ -439,7 +439,7 @@ pub(super) fn string_step_value(this: Value) -> RuntimeResult<Option<Value>> {
     };
     let value = {
         let mut state = iterator.0.state.borrow_mut();
-        let Some(IteratorSlot::String { text, index }) = state.iterator.as_deref_mut() else {
+        let Some(IteratorSlot::String { text, index }) = state.iterator_mut().as_deref_mut() else {
             return Err(RuntimeError::type_error(
                 "incompatible string iterator receiver",
             ));
@@ -548,7 +548,7 @@ mod managed_tests {
         let weak = target.downgrade();
         let iterator = Object::new_in(&runtime);
         let stored = super::super::stored::StoredObject::store(&iterator, &target).unwrap();
-        iterator.0.state.borrow_mut().iterator = Some(Box::new(IteratorSlot::Array {
+        *iterator.0.state.borrow_mut().iterator_mut() = Some(Box::new(IteratorSlot::Array {
             target: Some(stored),
             index: 0,
         }));

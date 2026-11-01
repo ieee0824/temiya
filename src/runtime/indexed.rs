@@ -114,7 +114,7 @@ impl ArrayBuffer {
             return Err(RuntimeError::range_error("ArrayBuffer is too large"));
         }
         let object = make_object();
-        object.0.state.borrow_mut().buffer =
+        *object.0.state.borrow_mut().buffer_mut() =
             Some(Rc::new(RefCell::new(Some(vec![0; byte_length]))));
         Ok(Self(object))
     }
@@ -122,7 +122,7 @@ impl ArrayBuffer {
     /// Wraps an object when it has ArrayBuffer internal slots.
     #[must_use]
     pub fn from_object(object: Object) -> Option<Self> {
-        object.0.state.borrow().buffer.as_ref()?;
+        object.0.state.borrow().buffer().as_ref()?;
         Some(Self(object))
     }
 
@@ -154,7 +154,7 @@ impl ArrayBuffer {
             .0
             .state
             .borrow()
-            .buffer
+            .buffer()
             .clone()
             .expect("ArrayBuffer slot")
     }
@@ -169,7 +169,7 @@ impl TypedArray {
     pub fn new(buffer: &ArrayBuffer, byte_offset: usize, length: usize) -> RuntimeResult<Self> {
         checked_range(buffer, byte_offset, length)?;
         let object = Object::new_for(&buffer.0);
-        object.0.state.borrow_mut().view = Some(Box::new(ViewSlot {
+        *object.0.state.borrow_mut().view_mut() = Some(Box::new(ViewSlot {
             buffer: buffer.slot(),
             byte_offset,
             byte_length: length,
@@ -186,7 +186,7 @@ impl TypedArray {
     /// Wraps an object when it has typed-array view slots.
     #[must_use]
     pub fn from_object(object: Object) -> Option<Self> {
-        let is_view = object.0.state.borrow().view.is_some();
+        let is_view = object.0.state.borrow().view().is_some();
         is_view.then_some(Self(object))
     }
 
@@ -227,7 +227,7 @@ impl TypedArray {
             return Err(RuntimeError::range_error("subarray range is invalid"));
         }
         let buffer_object = Object::new_for(&self.0);
-        buffer_object.0.state.borrow_mut().buffer = Some(view.buffer.clone());
+        *buffer_object.0.state.borrow_mut().buffer_mut() = Some(view.buffer.clone());
         Self::new(
             &ArrayBuffer(buffer_object),
             view.byte_offset + begin,
@@ -241,7 +241,7 @@ impl TypedArray {
             .0
             .state
             .borrow()
-            .view
+            .view()
             .as_deref()
             .cloned()
             .ok_or_else(|| RuntimeError::type_error("receiver is not a TypedArray"))?;

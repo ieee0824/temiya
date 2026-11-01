@@ -13,13 +13,13 @@ impl NumberObject {
     #[must_use]
     pub fn new(context: &super::AllocationContext, value: f64) -> Self {
         let object = Object::new_in(context);
-        object.0.state.borrow_mut().primitive_data = Some(Box::new(Value::Number(value)));
+        *object.0.state.borrow_mut().primitive_data_mut() = Some(Box::new(Value::Number(value)));
         Self(object)
     }
 
     pub(crate) fn new_for(context: &Object, value: f64) -> Self {
         let object = Object::new_for(context);
-        object.0.state.borrow_mut().primitive_data = Some(Box::new(Value::Number(value)));
+        *object.0.state.borrow_mut().primitive_data_mut() = Some(Box::new(Value::Number(value)));
         Self(object)
     }
 
@@ -32,7 +32,7 @@ impl NumberObject {
     /// Returns the boxed Number.
     #[must_use]
     pub fn value(&self) -> f64 {
-        match self.0.0.state.borrow().primitive_data.as_deref() {
+        match self.0.0.state.borrow().primitive_data().as_deref() {
             Some(Value::Number(value)) => *value,
             _ => unreachable!("Number data"),
         }
@@ -48,13 +48,13 @@ impl BigIntObject {
     #[must_use]
     pub fn new(context: &super::AllocationContext, value: BigInt) -> Self {
         let object = Object::new_in(context);
-        object.0.state.borrow_mut().primitive_data = Some(Box::new(Value::BigInt(value)));
+        *object.0.state.borrow_mut().primitive_data_mut() = Some(Box::new(Value::BigInt(value)));
         Self(object)
     }
 
     pub(crate) fn new_for(context: &Object, value: BigInt) -> Self {
         let object = Object::new_for(context);
-        object.0.state.borrow_mut().primitive_data = Some(Box::new(Value::BigInt(value)));
+        *object.0.state.borrow_mut().primitive_data_mut() = Some(Box::new(Value::BigInt(value)));
         Self(object)
     }
 
@@ -67,7 +67,7 @@ impl BigIntObject {
     /// Returns the boxed BigInt.
     #[must_use]
     pub fn value(&self) -> BigInt {
-        match self.0.0.state.borrow().primitive_data.as_deref() {
+        match self.0.0.state.borrow().primitive_data().as_deref() {
             Some(Value::BigInt(value)) => value.clone(),
             _ => unreachable!("BigInt data"),
         }

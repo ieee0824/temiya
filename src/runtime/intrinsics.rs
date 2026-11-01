@@ -546,7 +546,7 @@ pub(super) fn boxed_value(prototype: &Object, value: Value) -> Object {
         Value::BigInt(value) => super::BigIntObject::new_for(prototype, value).object(),
         value @ Value::Boolean(_) | value @ Value::Symbol(_) => {
             let object = Object::new_for(prototype);
-            object.0.state.borrow_mut().primitive_data = Some(Box::new(value));
+            *object.0.state.borrow_mut().primitive_data_mut() = Some(Box::new(value));
             object
         }
         Value::Object(object) => return object,

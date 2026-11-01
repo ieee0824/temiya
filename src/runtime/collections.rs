@@ -30,14 +30,14 @@ impl MapObject {
     }
 
     fn from_empty(object: Object) -> Self {
-        object.0.state.borrow_mut().map_data = Some(Rc::new(RefCell::new(Vec::new())));
+        *object.0.state.borrow_mut().map_data_mut() = Some(Rc::new(RefCell::new(Vec::new())));
         Self(object)
     }
 
     /// Wraps an object with Map internal slots.
     #[must_use]
     pub fn from_object(object: Object) -> Option<Self> {
-        let present = object.0.state.borrow().map_data.is_some();
+        let present = object.0.state.borrow().map_data().is_some();
         present.then_some(Self(object))
     }
 
@@ -137,7 +137,13 @@ impl MapObject {
     }
 
     fn slot(&self) -> MapSlot {
-        self.0.0.state.borrow().map_data.clone().expect("Map slot")
+        self.0
+            .0
+            .state
+            .borrow()
+            .map_data()
+            .clone()
+            .expect("Map slot")
     }
 }
 
@@ -184,13 +190,13 @@ impl SetObject {
     }
 
     fn from_empty(object: Object) -> Self {
-        object.0.state.borrow_mut().set_data = Some(Rc::new(RefCell::new(Vec::new())));
+        *object.0.state.borrow_mut().set_data_mut() = Some(Rc::new(RefCell::new(Vec::new())));
         Self(object)
     }
     /// Wraps an object with Set internal slots.
     #[must_use]
     pub fn from_object(object: Object) -> Option<Self> {
-        let present = object.0.state.borrow().set_data.is_some();
+        let present = object.0.state.borrow().set_data().is_some();
         present.then_some(Self(object))
     }
     /// Returns the underlying object.
@@ -258,7 +264,13 @@ impl SetObject {
         }
     }
     fn slot(&self) -> SetSlot {
-        self.0.0.state.borrow().set_data.clone().expect("Set slot")
+        self.0
+            .0
+            .state
+            .borrow()
+            .set_data()
+            .clone()
+            .expect("Set slot")
     }
 }
 
@@ -296,7 +308,7 @@ impl WeakMapObject {
         Self::from_empty(Object::new_for(context))
     }
     fn from_empty(object: Object) -> Self {
-        object.0.state.borrow_mut().weak_map_data = Some(Rc::new(RefCell::new(Vec::new())));
+        *object.0.state.borrow_mut().weak_map_data_mut() = Some(Rc::new(RefCell::new(Vec::new())));
         Self(object)
     }
     /// Returns the underlying object.
@@ -307,7 +319,7 @@ impl WeakMapObject {
     /// Wraps an object with WeakMap internal slots.
     #[must_use]
     pub fn from_object(object: Object) -> Option<Self> {
-        let present = object.0.state.borrow().weak_map_data.is_some();
+        let present = object.0.state.borrow().weak_map_data().is_some();
         present.then_some(Self(object))
     }
     /// Associates a value with an Object key.
@@ -357,7 +369,7 @@ impl WeakMapObject {
             .0
             .state
             .borrow()
-            .weak_map_data
+            .weak_map_data()
             .clone()
             .expect("WeakMap slot")
     }
@@ -375,7 +387,7 @@ impl WeakSetObject {
         Self::from_empty(Object::new_for(context))
     }
     fn from_empty(object: Object) -> Self {
-        object.0.state.borrow_mut().weak_set_data = Some(Rc::new(RefCell::new(Vec::new())));
+        *object.0.state.borrow_mut().weak_set_data_mut() = Some(Rc::new(RefCell::new(Vec::new())));
         Self(object)
     }
     /// Returns the underlying object.
@@ -386,7 +398,7 @@ impl WeakSetObject {
     /// Wraps an object with WeakSet internal slots.
     #[must_use]
     pub fn from_object(object: Object) -> Option<Self> {
-        let present = object.0.state.borrow().weak_set_data.is_some();
+        let present = object.0.state.borrow().weak_set_data().is_some();
         present.then_some(Self(object))
     }
     /// Adds an Object key.
@@ -424,7 +436,7 @@ impl WeakSetObject {
             .0
             .state
             .borrow()
-            .weak_set_data
+            .weak_set_data()
             .clone()
             .expect("WeakSet slot")
     }

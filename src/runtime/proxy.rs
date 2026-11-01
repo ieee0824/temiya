@@ -119,7 +119,7 @@ impl ProxyObject {
             callable: target.is_callable(),
             constructor: target.is_constructor(),
         };
-        object.0.state.borrow_mut().proxy = Some(Box::new(slot));
+        *object.0.state.borrow_mut().proxy_mut() = Some(Box::new(slot));
         Ok(Self(object))
     }
 
@@ -131,7 +131,7 @@ impl ProxyObject {
 
     /// Revokes this Proxy. Every later internal operation fails with TypeError.
     pub fn revoke(&self) {
-        if let Some(slot) = &mut self.0.0.state.borrow_mut().proxy {
+        if let Some(slot) = self.0.0.state.borrow_mut().proxy_mut() {
             slot.revoke();
         }
     }
@@ -142,7 +142,7 @@ fn state(proxy: &Object) -> RuntimeResult<(Object, Object)> {
         .0
         .state
         .borrow()
-        .proxy
+        .proxy()
         .as_ref()
         .expect("Proxy slot")
         .pair

@@ -102,7 +102,7 @@ impl DateObject {
         }
     }
     fn initialize(object: Object, milliseconds: f64) -> Self {
-        object.0.state.borrow_mut().date_value = Some(Self::clip(milliseconds));
+        *object.0.state.borrow_mut().date_value_mut() = Some(Self::clip(milliseconds));
         Self(object)
     }
     /// Creates a Date using an explicit host clock.
@@ -113,7 +113,7 @@ impl DateObject {
     /// Wraps an object with Date internal slots.
     #[must_use]
     pub fn from_object(object: Object) -> Option<Self> {
-        let present = object.0.state.borrow().date_value.is_some();
+        let present = object.0.state.borrow().date_value().is_some();
         present.then_some(Self(object))
     }
     /// Returns the underlying object.
@@ -124,7 +124,7 @@ impl DateObject {
     /// Returns the clipped UTC millisecond value.
     #[must_use]
     pub fn value(&self) -> f64 {
-        self.0.0.state.borrow().date_value.expect("Date value")
+        self.0.0.state.borrow().date_value().expect("Date value")
     }
     /// Formats an ISO-8601 UTC string or returns RangeError for an invalid Date.
     pub fn to_iso_string(&self) -> RuntimeResult<JsString> {

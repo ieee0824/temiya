@@ -210,7 +210,7 @@ impl Generator {
     /// Wraps an object with generator internal slots.
     #[must_use]
     pub fn from_object(object: Object) -> Option<Self> {
-        let data = object.0.state.borrow().generator_data.clone()?;
+        let data = object.0.state.borrow().generator_data().clone()?;
         Some(Self { object, data })
     }
     /// Returns the current lifecycle state.
@@ -410,7 +410,7 @@ fn generator_object(frame: GeneratorFrame, realm: &super::Realm) -> RuntimeResul
             &realm.intrinsic(IntrinsicId::ObjectPrototype),
         )?,
     };
-    object.0.state.borrow_mut().generator_data = Some(Rc::new(RefCell::new(slot)));
+    *object.0.state.borrow_mut().generator_data_mut() = Some(Rc::new(RefCell::new(slot)));
     for (name, operation) in [
         ("next", Operation::Next),
         ("throw", Operation::Throw),

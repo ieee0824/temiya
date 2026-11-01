@@ -1,5 +1,7 @@
 //! Property descriptors and ordinary object internal methods.
 
+mod payload;
+
 use std::cell::Cell;
 use std::hash::{Hash, Hasher};
 use std::rc::Rc;
@@ -519,7 +521,7 @@ impl ManagedCallable {
                 let proxy = slot.borrow_mut().take();
                 if let Some(proxy) = proxy {
                     let proxy = proxy.load(owner)?;
-                    if let Some(slot) = &mut proxy.0.state.borrow_mut().proxy {
+                    if let Some(slot) = proxy.0.state.borrow_mut().proxy_mut() {
                         slot.revoke();
                     }
                 }
@@ -645,21 +647,7 @@ pub(super) struct ObjectState {
     lazy_function_prototype: Option<StoredObject>,
     pub(super) array: bool,
     pub(super) elements: Option<Box<super::elements::Elements<StoredDescriptor>>>,
-    pub(super) buffer: Option<super::indexed::BufferSlot>,
-    pub(super) view: Option<Box<super::indexed::ViewSlot>>,
-    pub(super) string_data: Option<Box<JsString>>,
-    pub(super) regexp: Option<super::regexp::RegExpSlot>,
-    pub(super) primitive_data: Option<Box<Value>>,
-    pub(super) map_data: Option<super::collections::MapSlot>,
-    pub(super) set_data: Option<super::collections::SetSlot>,
-    pub(super) weak_map_data: Option<super::collections::WeakMapSlot>,
-    pub(super) weak_set_data: Option<super::collections::WeakSetSlot>,
-    pub(super) promise_data: Option<Rc<std::cell::RefCell<super::promise::PromiseData>>>,
-    pub(super) generator_data: Option<Rc<std::cell::RefCell<super::generator::GeneratorSlot>>>,
-    pub(super) module_namespace: Option<Box<super::pipeline::StoredModule>>,
-    pub(super) date_value: Option<f64>,
-    pub(super) iterator: Option<Box<super::iterator::IteratorSlot>>,
-    pub(super) proxy: Option<Box<super::proxy::ProxySlot>>,
+    payload: payload::ObjectPayload,
 }
 
 pub(super) fn ordinary_state() -> ObjectState {
@@ -708,7 +696,7 @@ impl Object {
     ) -> Option<RuntimeResult<Option<Value>>> {
         let payload = {
             let state = self.0.state.borrow();
-            if state.proxy.is_some() {
+            if state.proxy().is_some() {
                 return None;
             }
             state.managed_callable.clone()?
@@ -750,7 +738,7 @@ impl Object {
     // see it before construction finishes.
     pub(super) fn reserve_literal_properties(&self, count: usize) {
         let mut state = self.0.state.borrow_mut();
-        debug_assert!(state.properties.is_empty() && state.proxy.is_none() && !state.array);
+        debug_assert!(state.properties.is_empty() && state.proxy().is_none() && !state.array);
         state.properties.reserve_exact(count.min(4));
     }
 
@@ -765,7 +753,7 @@ impl Object {
         // Keep the checked store and old-to-young barrier even before publish.
         let function = StoredObject::store(self, &function)?;
         let mut state = self.0.state.borrow_mut();
-        debug_assert!(state.proxy.is_none() && !state.array && state.extensible);
+        debug_assert!(state.proxy().is_none() && !state.array && state.extensible);
         let position = state.properties.iter().position(|entry| entry.key == key);
         let (mut get, mut set) = match position.map(|i| &state.properties[i].descriptor) {
             Some(StoredDescriptor::Accessor {
@@ -806,7 +794,7 @@ impl Object {
     // this. The numeric length needs no coercion and contains no managed edge.
     pub(super) fn initialize_array(&self, length: u32) {
         let mut state = self.0.state.borrow_mut();
-        debug_assert!(!state.array && state.proxy.is_none() && state.properties.is_empty());
+        debug_assert!(!state.array && state.proxy().is_none() && state.properties.is_empty());
         state.array = true;
         state.elements = Some(Box::default());
         state.properties = vec![PropertyEntry {
@@ -990,7 +978,7 @@ impl Object {
         loop {
             let target = {
                 let state = function.0.state.borrow();
-                if let Some(proxy) = &state.proxy {
+                if let Some(proxy) = &state.proxy() {
                     Some(proxy.target(&function)?)
                 } else if let Some(call) = &state.managed_callable {
                     call.body.bound_target(&function)?
@@ -1151,10 +1139,10 @@ impl Object {
     pub(crate) fn own_element_value(&self, index: u32) -> Option<Value> {
         let state = self.0.state.borrow();
         if !state.array
-            || state.proxy.is_some()
-            || state.string_data.is_some()
-            || state.view.is_some()
-            || state.buffer.is_some()
+            || state.proxy().is_some()
+            || state.string_data().is_some()
+            || state.view().is_some()
+            || state.buffer().is_some()
         {
             return None;
         }
@@ -1171,14 +1159,14 @@ impl Object {
         let state = self.0.state.borrow();
         // String length and canonical indices are virtual properties; named
         // ordinary data properties can use the same checked lookup as objects.
-        if state.proxy.is_some()
+        if state.proxy().is_some()
             || state.lazy_function_prototype.is_some()
-            || (state.string_data.is_some()
+            || (state.string_data().is_some()
                 && (matches!(key, PropertyKey::String(name) if name.code_units().iter().copied().eq("length".encode_utf16()))
                     || key.array_index().is_some()))
             || (state.elements.is_some() && key.array_index().is_some())
-            || state.view.is_some()
-            || state.buffer.is_some()
+            || state.view().is_some()
+            || state.buffer().is_some()
         {
             return None;
         }
@@ -1208,7 +1196,7 @@ impl Object {
     pub(super) fn initialize_function_length(&self, length: usize, constructable: bool) {
         let mut state = self.0.state.borrow_mut();
         debug_assert!(state.properties.is_empty());
-        debug_assert!(state.proxy.is_none() && !state.array);
+        debug_assert!(state.proxy().is_none() && !state.array);
         // Named/inferred functions may add name and prototype. Non-constructable
         // functions need at most their inferred name after this length entry.
         state.properties.reserve(if constructable { 3 } else { 2 });
@@ -1236,7 +1224,7 @@ impl Object {
             .transpose()?;
         let mut state = self.0.state.borrow_mut();
         debug_assert!(state.properties.is_empty());
-        debug_assert!(state.proxy.is_none() && !state.array);
+        debug_assert!(state.proxy().is_none() && !state.array);
         // Leave room for the default constructable function's prototype entry.
         state.properties.reserve(3);
         for (key, value) in [
@@ -1570,7 +1558,7 @@ impl Object {
                 .managed_callable
                 .as_ref()
                 .is_some_and(|call| call.is_callable())
-            || state.proxy.as_ref().is_some_and(|proxy| proxy.callable)
+            || state.proxy().as_ref().is_some_and(|proxy| proxy.callable)
     }
 
     /// Invokes this object's `[[Call]]` internal method.
@@ -1587,7 +1575,7 @@ impl Object {
                     .as_ref()
                     .filter(|call| call.is_callable())
                     .cloned(),
-                state.proxy.as_ref().is_some_and(|proxy| proxy.callable),
+                state.proxy().as_ref().is_some_and(|proxy| proxy.callable),
             )
         };
         if callback.is_none() && bound.is_none() && !proxy {
@@ -1646,7 +1634,10 @@ impl Object {
                 .managed_callable
                 .as_ref()
                 .is_some_and(|bound| bound.is_constructor())
-            || state.proxy.as_ref().is_some_and(|proxy| proxy.constructor)
+            || state
+                .proxy()
+                .as_ref()
+                .is_some_and(|proxy| proxy.constructor)
     }
 
     /// Invokes this object's `[[Construct]]` internal method.
@@ -1657,7 +1648,10 @@ impl Object {
             (
                 state.construct.clone(),
                 state.managed_callable.clone(),
-                state.proxy.as_ref().is_some_and(|proxy| proxy.constructor),
+                state
+                    .proxy()
+                    .as_ref()
+                    .is_some_and(|proxy| proxy.constructor),
             )
         };
         if callback.is_none()
@@ -1740,7 +1734,7 @@ impl Object {
 
     /// Fallible `[[GetPrototypeOf]]`, including Proxy traps and invariants.
     pub fn try_prototype(&self) -> RuntimeResult<Option<Self>> {
-        if self.0.state.borrow().proxy.is_some() {
+        if self.0.state.borrow().proxy().is_some() {
             return super::proxy::get_prototype_of(self);
         }
         self.0
@@ -1763,7 +1757,7 @@ impl Object {
             .as_ref()
             .map(|value| StoredObject::store(self, value))
             .transpose()?;
-        if self.0.state.borrow().proxy.is_some() {
+        if self.0.state.borrow().proxy().is_some() {
             return super::proxy::set_prototype_of(self, prototype);
         }
         let current = self.prototype();
@@ -1792,7 +1786,7 @@ impl Object {
 
     /// Fallible `[[IsExtensible]]`, including Proxy invariants.
     pub fn try_is_extensible(&self) -> RuntimeResult<bool> {
-        if self.0.state.borrow().proxy.is_some() {
+        if self.0.state.borrow().proxy().is_some() {
             return super::proxy::is_extensible(self);
         }
         Ok(self.0.state.borrow().extensible)
@@ -1805,7 +1799,7 @@ impl Object {
 
     /// Fallible `[[PreventExtensions]]`, including Proxy traps and invariants.
     pub fn try_prevent_extensions(&self) -> RuntimeResult<bool> {
-        if self.0.state.borrow().proxy.is_some() {
+        if self.0.state.borrow().proxy().is_some() {
             return super::proxy::prevent_extensions(self);
         }
         self.0.state.borrow_mut().extensible = false;
@@ -1824,11 +1818,11 @@ impl Object {
         key: &PropertyKey,
     ) -> RuntimeResult<Option<PropertyDescriptor>> {
         let mut state = self.0.state.borrow();
-        if state.proxy.is_some() {
+        if state.proxy().is_some() {
             drop(state);
             return super::proxy::get_own_property(self, key);
         }
-        if state.module_namespace.is_some() {
+        if state.module_namespace().is_some() {
             // Export getters are internal storage for live bindings. Expose
             // the namespace's data descriptor and propagate an export's TDZ
             // error rather than treating the binding as an accessor property.
@@ -1853,7 +1847,7 @@ impl Object {
             self.materialize_function_prototype(key)?;
             state = self.0.state.borrow();
         }
-        if let Some(string) = &state.string_data {
+        if let Some(string) = &state.string_data() {
             if matches!(key, PropertyKey::String(name) if name == &JsString::from("length")) {
                 return Ok(Some(PropertyDescriptor::data(
                     Value::Number(string.len() as f64),
@@ -1918,14 +1912,14 @@ impl Object {
         {
             StoredObject::check_context(self, value)?;
         }
-        if self.0.state.borrow().proxy.is_some() {
+        if self.0.state.borrow().proxy().is_some() {
             return super::proxy::define_own_property(self, key, descriptor);
         }
         self.materialize_function_prototype(&key)?;
         if Self::legacy_property_key(&key) {
             self.materialize_legacy_function_properties();
         }
-        if self.0.state.borrow().string_data.is_some() {
+        if self.0.state.borrow().string_data().is_some() {
             if let Some(current) = self.string_exotic_property(&key) {
                 return is_compatible_property_descriptor(false, &descriptor, Some(&current));
             }
@@ -2005,10 +1999,10 @@ impl Object {
         let (length_slot, mut prototype) = {
             let state = self.0.state.borrow();
             if !state.array
-                || state.proxy.is_some()
-                || state.string_data.is_some()
-                || state.view.is_some()
-                || state.buffer.is_some()
+                || state.proxy().is_some()
+                || state.string_data().is_some()
+                || state.view().is_some()
+                || state.buffer().is_some()
                 || (!values.is_empty() && !state.extensible)
             {
                 return None;
@@ -2047,10 +2041,10 @@ impl Object {
                     return None;
                 }
                 let state = object.0.state.borrow();
-                if state.proxy.is_some()
-                    || state.string_data.is_some()
-                    || state.view.is_some()
-                    || state.buffer.is_some()
+                if state.proxy().is_some()
+                    || state.string_data().is_some()
+                    || state.view().is_some()
+                    || state.buffer().is_some()
                     || state
                         .elements
                         .as_ref()
@@ -2105,10 +2099,10 @@ impl Object {
     pub(super) fn ordinary_array_length_info(&self) -> Option<(u32, bool)> {
         let state = self.0.state.borrow();
         if !state.array
-            || state.proxy.is_some()
-            || state.string_data.is_some()
-            || state.view.is_some()
-            || state.buffer.is_some()
+            || state.proxy().is_some()
+            || state.string_data().is_some()
+            || state.view().is_some()
+            || state.buffer().is_some()
         {
             return None;
         }
@@ -2216,10 +2210,10 @@ impl Object {
         {
             let mut state = self.0.state.borrow_mut();
             if state.array
-                && state.proxy.is_none()
-                && state.string_data.is_none()
-                && state.view.is_none()
-                && state.buffer.is_none()
+                && state.proxy().is_none()
+                && state.string_data().is_none()
+                && state.view().is_none()
+                && state.buffer().is_none()
                 && state.elements.is_some()
             {
                 if let Some(index) = key.array_index() {
@@ -2273,9 +2267,9 @@ impl Object {
                     }
                 }
             }
-            if state.proxy.is_none()
+            if state.proxy().is_none()
                 && !state.array
-                && state.string_data.is_none()
+                && state.string_data().is_none()
                 && state.lazy_function_prototype.is_none()
             {
                 let position = state.properties.iter().position(|entry| entry.key == key);
@@ -2312,11 +2306,11 @@ impl Object {
     pub fn has_property(&self, key: &PropertyKey) -> RuntimeResult<bool> {
         {
             let state = self.0.state.borrow();
-            if state.proxy.is_some() {
+            if state.proxy().is_some() {
                 drop(state);
                 return super::proxy::has(self, key);
             }
-            if state.module_namespace.is_some() && matches!(key, PropertyKey::String(_)) {
+            if state.module_namespace().is_some() && matches!(key, PropertyKey::String(_)) {
                 // Namespace [[HasProperty]] tests the export names, without
                 // GetBindingValue. An uninitialized export still exists; only
                 // Get and GetOwnProperty consume its value and observe TDZ.
@@ -2340,13 +2334,13 @@ impl Object {
         key: &PropertyKey,
     ) -> Option<RuntimeResult<Option<Value>>> {
         let state = self.0.state.borrow();
-        if state.proxy.is_some()
-            || state.module_namespace.is_some()
+        if state.proxy().is_some()
+            || state.module_namespace().is_some()
             || state.lazy_function_prototype.is_some()
             || state.array
-            || state.string_data.is_some()
-            || state.view.is_some()
-            || state.buffer.is_some()
+            || state.string_data().is_some()
+            || state.view().is_some()
+            || state.buffer().is_some()
         {
             return None;
         }
@@ -2392,15 +2386,15 @@ impl Object {
     // current value/getter before releasing it; no user code runs under borrow.
     fn own_get_value(&self, key: &PropertyKey) -> RuntimeResult<Option<OwnGet>> {
         let state = self.0.state.borrow();
-        if state.proxy.is_some()
-            || state.module_namespace.is_some()
+        if state.proxy().is_some()
+            || state.module_namespace().is_some()
             || state.lazy_function_prototype.is_some()
-            || (state.string_data.is_some()
+            || (state.string_data().is_some()
                 && (matches!(key, PropertyKey::String(name) if name.code_units().iter().copied().eq("length".encode_utf16()))
                     || key.array_index().is_some()))
             || (state.elements.is_some() && key.array_index().is_some())
-            || state.view.is_some()
-            || state.buffer.is_some()
+            || state.view().is_some()
+            || state.buffer().is_some()
         {
             return Ok(None);
         }
@@ -2428,13 +2422,13 @@ impl Object {
             return Ok(None);
         }
         let state = self.0.state.borrow();
-        if state.proxy.is_some()
-            || state.module_namespace.is_some()
+        if state.proxy().is_some()
+            || state.module_namespace().is_some()
             || state.lazy_function_prototype.is_some()
             || state.array
-            || state.string_data.is_some()
-            || state.view.is_some()
-            || state.buffer.is_some()
+            || state.string_data().is_some()
+            || state.view().is_some()
+            || state.buffer().is_some()
         {
             return Ok(None);
         }
@@ -2470,7 +2464,7 @@ impl Object {
                 }
             };
         }
-        if self.0.state.borrow().proxy.is_some() {
+        if self.0.state.borrow().proxy().is_some() {
             return super::proxy::get(self, key, receiver);
         }
         let Some(descriptor) = self.try_get_own_property(key)? else {
@@ -2499,10 +2493,10 @@ impl Object {
         value: Value,
         receiver: Value,
     ) -> RuntimeResult<bool> {
-        if self.0.state.borrow().proxy.is_some() {
+        if self.0.state.borrow().proxy().is_some() {
             return super::proxy::set(self, key, value, receiver);
         }
-        if self.0.state.borrow().module_namespace.is_some() {
+        if self.0.state.borrow().module_namespace().is_some() {
             return Ok(false);
         }
         // An own writable data property shadows every prototype. With the same
@@ -2513,9 +2507,9 @@ impl Object {
             let mut state = self.0.state.borrow_mut();
             ordinary_accessor = !state.array
                 && state.lazy_function_prototype.is_none()
-                && state.string_data.is_none()
-                && state.view.is_none()
-                && state.buffer.is_none();
+                && state.string_data().is_none()
+                && state.view().is_none()
+                && state.buffer().is_none();
             if ordinary_accessor {
                 if let Some(index) = state.properties.iter().position(|entry| entry.key == *key) {
                     if state.properties[index].descriptor.writable() == Some(true) {
@@ -2584,7 +2578,7 @@ impl Object {
 
     /// Fallible `[[Delete]]`, including Proxy invariants.
     pub fn try_delete(&self, key: &PropertyKey) -> RuntimeResult<bool> {
-        if self.0.state.borrow().proxy.is_some() {
+        if self.0.state.borrow().proxy().is_some() {
             return super::proxy::delete(self, key);
         }
         if Self::legacy_property_key(key) {
@@ -2619,7 +2613,7 @@ impl Object {
     /// Reads ordinary enumerable key flags without rooting property values.
     pub(super) fn enumerable_own_string_keys(&self) -> RuntimeResult<Vec<JsString>> {
         let state = self.0.state.borrow();
-        if state.proxy.is_none() && state.string_data.is_none() && state.elements.is_none() {
+        if state.proxy().is_none() && state.string_data().is_none() && state.elements.is_none() {
             let mut indices = Vec::new();
             let mut strings = Vec::new();
             for entry in &state.properties {
@@ -2667,17 +2661,20 @@ impl Object {
 
     /// Fallible `[[OwnPropertyKeys]]`, including Proxy invariants.
     pub fn try_own_property_keys(&self) -> RuntimeResult<Vec<PropertyKey>> {
-        if self.0.state.borrow().proxy.is_some() {
+        if self.0.state.borrow().proxy().is_some() {
             return super::proxy::own_keys(self);
         }
         self.materialize_legacy_function_properties();
         let state = self.0.state.borrow();
-        let string_keys = state.string_data.as_ref().map_or_else(Vec::new, |string| {
-            (0..string.len())
-                .map(|index| PropertyKey::String(JsString::from(index.to_string())))
-                .chain(std::iter::once(PropertyKey::from("length")))
-                .collect()
-        });
+        let string_keys = state
+            .string_data()
+            .as_ref()
+            .map_or_else(Vec::new, |string| {
+                (0..string.len())
+                    .map(|index| PropertyKey::String(JsString::from(index.to_string())))
+                    .chain(std::iter::once(PropertyKey::from("length")))
+                    .collect()
+            });
         let mut indices = state
             .properties
             .iter()
@@ -2727,7 +2724,7 @@ impl Object {
 
     fn string_exotic_property(&self, key: &PropertyKey) -> Option<PropertyDescriptor> {
         let state = self.0.state.borrow();
-        let string = state.string_data.as_ref()?;
+        let string = state.string_data().as_ref()?;
         if matches!(key, PropertyKey::String(name) if name == &JsString::from("length")) {
             return Some(PropertyDescriptor::data(
                 Value::Number(string.len() as f64),
@@ -2882,13 +2879,13 @@ impl super::ObjectData {
         for field in &state.instance_fields {
             field.trace(tracer);
         }
-        if let Some(module) = &state.module_namespace {
+        if let Some(module) = &state.module_namespace() {
             module.trace(tracer);
         }
-        if let Some(generator) = &state.generator_data {
+        if let Some(generator) = &state.generator_data() {
             generator.borrow().trace(tracer);
         }
-        if let Some(promise) = &state.promise_data {
+        if let Some(promise) = &state.promise_data() {
             promise.borrow().trace(tracer);
         }
         if let Some(prototype) = &state.prototype {
@@ -2912,24 +2909,24 @@ impl super::ObjectData {
         {
             source.trace(tracer);
         }
-        if let Some(iterator) = &state.iterator {
+        if let Some(iterator) = &state.iterator() {
             iterator.trace(tracer);
         }
-        if let Some(proxy) = &state.proxy {
+        if let Some(proxy) = &state.proxy() {
             proxy.trace(tracer);
         }
-        if let Some(entries) = &state.map_data {
+        if let Some(entries) = &state.map_data() {
             for (key, value) in entries.borrow().iter().flatten() {
                 key.trace(tracer);
                 value.trace(tracer);
             }
         }
-        if let Some(entries) = &state.set_data {
+        if let Some(entries) = &state.set_data() {
             for value in entries.borrow().iter().flatten() {
                 value.trace(tracer);
             }
         }
-        if let Some(entries) = &state.weak_map_data {
+        if let Some(entries) = &state.weak_map_data() {
             for (key, value) in entries.borrow().iter() {
                 if let (Some(key), StoredValue::Object(StoredObject(value))) =
                     (key.0.handle(), value)

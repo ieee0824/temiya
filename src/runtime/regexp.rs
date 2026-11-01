@@ -333,7 +333,7 @@ impl RegExp {
         let captures = RefCell::new(matcher.create_captures());
         let scratch = RefCell::new(matcher.create_scratch());
         let object = make_object();
-        object.0.state.borrow_mut().regexp = Some(RegExpSlot(Rc::new(RegExpData {
+        *object.0.state.borrow_mut().regexp_mut() = Some(RegExpSlot(Rc::new(RegExpData {
             source: pattern,
             flags,
             matcher,
@@ -368,7 +368,7 @@ impl RegExp {
     /// Wraps an object with RegExp internal slots.
     #[must_use]
     pub fn from_object(object: Object) -> Option<Self> {
-        let present = object.0.state.borrow().regexp.is_some();
+        let present = object.0.state.borrow().regexp().is_some();
         present.then_some(Self(object))
     }
 
@@ -536,7 +536,13 @@ impl RegExp {
     }
 
     fn slot(&self) -> RegExpSlot {
-        self.0.0.state.borrow().regexp.clone().expect("RegExp slot")
+        self.0
+            .0
+            .state
+            .borrow()
+            .regexp()
+            .clone()
+            .expect("RegExp slot")
     }
 }
 
@@ -549,13 +555,13 @@ impl StringObject {
     #[must_use]
     pub fn new(context: &super::AllocationContext, value: JsString) -> Self {
         let object = Object::new_in(context);
-        object.0.state.borrow_mut().string_data = Some(Box::new(value));
+        *object.0.state.borrow_mut().string_data_mut() = Some(Box::new(value));
         Self(object)
     }
 
     pub(crate) fn new_for(context: &Object, value: JsString) -> Self {
         let object = Object::new_for(context);
-        object.0.state.borrow_mut().string_data = Some(Box::new(value));
+        *object.0.state.borrow_mut().string_data_mut() = Some(Box::new(value));
         Self(object)
     }
 
@@ -572,7 +578,7 @@ impl StringObject {
             .0
             .state
             .borrow()
-            .string_data
+            .string_data()
             .as_deref()
             .cloned()
             .expect("String data")

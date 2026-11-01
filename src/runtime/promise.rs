@@ -132,7 +132,7 @@ impl Promise {
                 .transpose()?,
             queue: StoredJobQueue::store(&object, &queue)?,
         }));
-        object.0.state.borrow_mut().promise_data = Some(data.clone());
+        *object.0.state.borrow_mut().promise_data_mut() = Some(data.clone());
         let promise = Self {
             object,
             data,
@@ -148,7 +148,7 @@ impl Promise {
     /// Wraps an object with Promise internal slots, preserving identity and queue.
     #[must_use]
     pub fn from_object(object: Object) -> Option<Self> {
-        let data = object.0.state.borrow().promise_data.clone()?;
+        let data = object.0.state.borrow().promise_data().clone()?;
         let queue = data
             .borrow()
             .queue

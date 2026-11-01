@@ -60,7 +60,7 @@ pub(super) fn install(
                     .0
                     .state
                     .borrow()
-                    .string_data
+                    .string_data()
                     .as_deref()
                     .cloned()
                     .map(Value::String)

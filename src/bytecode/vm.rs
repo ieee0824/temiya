@@ -735,14 +735,18 @@ impl VirtualMachine {
                             }
                         }
                         Instruction::InitializePattern(index) => {
-                            let Constant::BindingPattern {
-                                definition,
-                                initialize,
-                                strict,
-                            } = &body.constants[index as usize]
-                            else {
-                                unreachable!("verified binding pattern")
-                            };
+                            let (definition, initialize, strict) =
+                                match &body.constants[index as usize] {
+                                    Constant::BindingPattern {
+                                        definition,
+                                        initialize,
+                                        strict,
+                                    } => (definition, *initialize, *strict),
+                                    Constant::AssignmentPattern { definition, strict } => {
+                                        (definition, false, *strict)
+                                    }
+                                    _ => unreachable!("verified shared pattern"),
+                                };
                             let value = pop(&mut stack)?;
                             if let (Some(plan), Value::Object(source)) =
                                 (&bytecode.static_object_patterns[index as usize], &value)
@@ -756,8 +760,8 @@ impl VirtualMachine {
                             definition_context.initialize_pattern(
                                 definition,
                                 value,
-                                *initialize,
-                                *strict,
+                                initialize,
+                                strict,
                                 realm.expect("verified pattern Realm"),
                                 &scopes.last().expect("verified pattern scope").environment,
                             )?;
@@ -992,6 +996,7 @@ pub(super) fn constant(constant: &Constant) -> Value {
         | Constant::Class { .. }
         | Constant::ObjectLiteral { .. }
         | Constant::BindingPattern { .. }
+        | Constant::AssignmentPattern { .. }
         | Constant::TryStatement { .. } => {
             unreachable!("verifier rejects metadata values")
         }

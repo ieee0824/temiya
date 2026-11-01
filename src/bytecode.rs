@@ -119,6 +119,13 @@ pub enum Constant {
         definition: Rc<crate::ast::Stmt>,
         strict: bool,
     },
+    /// Assignment targets evaluated through the shared Reference writer.
+    AssignmentPattern {
+        /// Parsed array/object assignment pattern.
+        definition: Rc<crate::ast::Expr>,
+        /// Strictness of the containing code.
+        strict: bool,
+    },
     BindingPattern {
         /// Parsed binding pattern, containing no runtime values.
         definition: Rc<crate::ast::Expr>,
@@ -764,7 +771,8 @@ fn function_name_lookup_plan(code: &Bytecode, states: &[Option<FlowState>]) -> V
                     .any(|binding| binding.name == JsString::from("eval"))
         }
         Constant::ObjectLiteral { definition, .. }
-        | Constant::BindingPattern { definition, .. } => {
+        | Constant::BindingPattern { definition, .. }
+        | Constant::AssignmentPattern { definition, .. } => {
             expression_does_not_observe_loop_bindings(definition, &none)
         }
         _ => true,
@@ -943,7 +951,8 @@ fn loop_bindings_are_unobserved(code: &Bytecode, states: &[Option<FlowState>]) -
             Instruction::ExecuteTry(_) => false,
             Instruction::BeginTryCatch(_) => true,
             Instruction::InitializePattern(index) => {
-                let Constant::BindingPattern { definition, .. } = &code.constants[index as usize]
+                let (Constant::BindingPattern { definition, .. }
+                | Constant::AssignmentPattern { definition, .. }) = &code.constants[index as usize]
                 else {
                     return false;
                 };
@@ -1334,33 +1343,61 @@ fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
                 }
             }
             Instruction::InitializePattern(index) => {
-                let Constant::BindingPattern {
-                    definition,
-                    initialize,
-                    ..
-                } = constant(index)?
-                else {
-                    return Err(error(VerifyErrorKind::InvalidConstantKind));
-                };
-                if state.scopes.is_empty() {
-                    return Err(error(VerifyErrorKind::ScopeMismatch));
-                }
-                if !matches!(
-                    definition.kind,
-                    crate::ast::ExprKind::Array { .. } | crate::ast::ExprKind::Object(_)
-                ) {
-                    return Err(error(VerifyErrorKind::InvalidConstantKind));
-                }
-                let names = compiler::binding_names(definition)
-                    .map_err(|_| error(VerifyErrorKind::InvalidConstantKind))?;
-                for name in names {
-                    let scopes = if *initialize {
-                        &state.scopes[state.scopes.len() - 1..]
-                    } else {
-                        &state.scopes[..]
+                if let Constant::AssignmentPattern { definition, strict } = constant(index)? {
+                    if state.scopes.is_empty() {
+                        return Err(error(VerifyErrorKind::ScopeMismatch));
+                    }
+                    if !matches!(
+                        definition.kind,
+                        crate::ast::ExprKind::Array { .. } | crate::ast::ExprKind::Object(_)
+                    ) {
+                        return Err(error(VerifyErrorKind::InvalidConstantKind));
+                    }
+                    let assignment = crate::ast::Expr::new(
+                        definition.span,
+                        crate::ast::ExprKind::Assignment {
+                            operator: "=".into(),
+                            target: Box::new((**definition).clone()),
+                            value: Box::new(crate::ast::Expr::new(
+                                definition.span,
+                                crate::ast::ExprKind::Literal(crate::ast::Literal::Null),
+                            )),
+                        },
+                    );
+                    crate::semantics::validate_expression(&assignment, crate::semantics::SemanticOptions {
+                        strict: *strict,
+                        in_function: state.scopes.iter().any(|(_, index)| matches!(&bytecode.constants[*index as usize], Constant::Scope(plan) if plan.kind == ScopeKind::Function)),
+                        ..Default::default()
+                    }).map_err(|_| error(VerifyErrorKind::InvalidConstantKind))?;
+                } else {
+                    let Constant::BindingPattern {
+                        definition,
+                        initialize,
+                        ..
+                    } = constant(index)?
+                    else {
+                        return Err(error(VerifyErrorKind::InvalidConstantKind));
                     };
-                    if !scopes.iter().any(|(_, index)| matches!(&bytecode.constants[*index as usize], Constant::Scope(plan) if plan.bindings.iter().any(|binding| binding.name == name.as_str().into() && (!*initialize || binding.kind != BindingKind::Var)))) {
+                    if state.scopes.is_empty() {
+                        return Err(error(VerifyErrorKind::ScopeMismatch));
+                    }
+                    if !matches!(
+                        definition.kind,
+                        crate::ast::ExprKind::Array { .. } | crate::ast::ExprKind::Object(_)
+                    ) {
+                        return Err(error(VerifyErrorKind::InvalidConstantKind));
+                    }
+                    let names = compiler::binding_names(definition)
+                        .map_err(|_| error(VerifyErrorKind::InvalidConstantKind))?;
+                    for name in names {
+                        let scopes = if *initialize {
+                            &state.scopes[state.scopes.len() - 1..]
+                        } else {
+                            &state.scopes[..]
+                        };
+                        if !scopes.iter().any(|(_, index)| matches!(&bytecode.constants[*index as usize], Constant::Scope(plan) if plan.bindings.iter().any(|binding| binding.name == name.as_str().into() && (!*initialize || binding.kind != BindingKind::Var)))) {
                         return Err(error(VerifyErrorKind::BindingOutOfBounds));
+                    }
                     }
                 }
             }
@@ -1481,6 +1518,7 @@ fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
                         | Constant::Class { .. }
                         | Constant::ObjectLiteral { .. }
                         | Constant::BindingPattern { .. }
+                        | Constant::AssignmentPattern { .. }
                         | Constant::TryStatement { .. }
                 ) {
                     return Err(error(VerifyErrorKind::InvalidConstantKind));

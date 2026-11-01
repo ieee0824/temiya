@@ -11,11 +11,21 @@ property get, followed by default evaluation and the write. Earlier writes
 remain observable if a later target throws. IteratorClose preserves the original
 throw completion. Object rest resolves its target before copying properties.
 
+Verified bytecode lowers assignment patterns to `AssignmentPattern` metadata
+consumed by `InitializePattern`. It preserves the RHS on the operand stack and
+uses the same Reference writer as the interpreter. Assignment metadata permits
+member targets without weakening declaration binding validation, cannot be
+loaded as a runtime value, and participates in argument observation and
+per-iteration environment analysis. `tests/bytecode_assignments.rs` checks
+these contracts and that all six frozen benchmark functions compile to VM bodies.
+Mapped sloppy arguments (#166), AST for-let closure capture (#173), and
+optional Annex B var aliases (#174) remain separate work.
+
 Public Engine tests exercise Ast and Auto in
 `tests/destructuring_assignment.rs`. The implementation is pending fixed
 Test262, safety, toolchain, and native Boa performance qualification. It does
-not establish complete for-of or generator support. Issues #162 and #163 must
-land before #164.
+not establish complete for-of or generator support. Issues #162 and #163 have landed; #164 still requires qualification
+of its current runtime source.
 
 Specification: [ECMA-262 destructuring assignment](https://tc39.es/ecma262/2026/multipage/ecmascript-language-expressions.html#sec-destructuring-assignment).
 

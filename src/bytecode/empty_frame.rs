@@ -18,6 +18,7 @@ pub(super) fn proven(code: &Bytecode) -> bool {
             Constant::Class { .. }
             | Constant::Function(_)
             | Constant::BindingPattern { .. }
+            | Constant::AssignmentPattern { .. }
             | Constant::TryStatement { .. } => {
                 return false;
             }

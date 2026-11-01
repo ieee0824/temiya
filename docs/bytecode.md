@@ -288,7 +288,7 @@ Issue #291 remains incomplete. The added shared Object-call guard changes the AS
 hot path; the hosted call-frame comparison below records the required fresh
 comparative evidence. #469's measurement does not include this work. No speed improvement is claimed.
 
-Function expression/arrow lowering is in progress in #292; see [bytecode closures](bytecode-closures.md) for actual execution, ownership, tests and unfinished gates. The full parameter/arguments contract and sloppy block declarations remain incomplete.
+Function expression/arrow lowering is in progress in #292; see [bytecode closures](bytecode-closures.md) for actual execution, ownership, tests and unfinished gates. The full parameter/arguments contract and optional Annex B block-function var aliases (#174) remain incomplete. Core lexical block functions compile in both strict and sloppy code.
 
 Operator lowering and computed-Reference conversion fixes are in progress in #287;
 see [unary/update operators](bytecode-operators.md) and

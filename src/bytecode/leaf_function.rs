@@ -191,6 +191,7 @@ impl LeafFunctionPlan {
                             | Constant::Class { .. }
                             | Constant::ObjectLiteral { .. }
                             | Constant::BindingPattern { .. }
+                            | Constant::AssignmentPattern { .. }
                             | Constant::TryStatement { .. }
                     ) {
                         return None;

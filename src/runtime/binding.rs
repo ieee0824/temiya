@@ -333,6 +333,39 @@ fn initialize_literal_default(
     Ok(true)
 }
 
+// A static object-to-identifier pattern needs no expression evaluator. Getters
+// still run through ordinary Get with the original receiver and each target
+// is initialized immediately before the next property is read.
+pub(super) fn initialize_static_object(
+    environment: &super::Environment,
+    properties: &[ObjectProperty],
+    source: &super::Object,
+) -> Option<RuntimeResult<()>> {
+    if properties.iter().any(|property| {
+        property.spread
+            || property.computed
+            || literal_key(&property.key).is_none()
+            || !matches!(
+                property.value.as_ref().unwrap_or(&property.key).kind,
+                ExprKind::Identifier(_)
+            )
+    }) {
+        return None;
+    }
+    Some((|| {
+        for property in properties {
+            let key = PropertyKey::String(super::interpreter::member_name(&property.key)?);
+            let ExprKind::Identifier(name) = &property.value.as_ref().unwrap_or(&property.key).kind
+            else {
+                unreachable!()
+            };
+            let value = source.get_with_receiver(&key, Value::Object(source.clone()))?;
+            environment.initialize_binding(&name.as_str().into(), value)?;
+        }
+        Ok(())
+    })())
+}
+
 fn object(
     evaluator: &ExpressionEvaluator,
     properties: &[ObjectProperty],

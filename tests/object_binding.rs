@@ -177,3 +177,16 @@ fn nullish_bytecode_patterns_fail_before_keys_and_uninitialized_this() {
         "let keys=0;function run(){let read;try{let {[++keys]:x}=null;}catch({message}){read=message;}return typeof read==='string'&&keys===0;}run();",
     );
 }
+
+#[test]
+fn static_bytecode_pattern_preserves_getters_proxy_receiver_and_tdz_order() {
+    check(
+        "function run(){let trace='',read;let {a,b}={get a(){trace+='a';read=()=>a;return 20;},get b(){trace+='b';return read()+2;}};return a+b===42&&trace==='ab';}run();",
+    );
+    check(
+        "function run(){let source,seen;source=new Proxy({x:42},{get(target,key,receiver){seen=receiver;return target[key];}});let {x}=source;return x===42&&seen===source;}run();",
+    );
+    check(
+        "function run(){let caught=false;try{let {a,b}={get a(){return b;},b:42};}catch(e){caught=e instanceof ReferenceError;}return caught;}run();",
+    );
+}

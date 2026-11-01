@@ -99,6 +99,17 @@ impl DefinitionEvaluationContext {
         {
             return Err(super::binding::nullish_object_error());
         }
+        if initialize {
+            if let (crate::ast::ExprKind::Object(properties), Value::Object(source)) =
+                (&pattern.kind, &value)
+            {
+                if let Some(result) =
+                    super::binding::initialize_static_object(environment, properties, source)
+                {
+                    return result;
+                }
+            }
+        }
         super::function::retain_definition(
             self.cache.get_or_insert_with(Default::default),
             pattern,

@@ -785,10 +785,10 @@ fn class_does_not_observe_loop_bindings(
     !observed
 }
 
-// A complete object initializer may create methods without observing cloned
-// header cells. Inspect keys, spreads, defaults and all nested syntax. Reject
+// Object initializers and binding patterns may create closures without observing
+// cloned header cells. Inspect keys, spreads, defaults and all nested syntax. Reject
 // unsupported class elements conservatively, as the class proof does.
-fn object_does_not_observe_loop_bindings(
+fn expression_does_not_observe_loop_bindings(
     expression: &crate::ast::Expr,
     loop_names: &std::collections::HashSet<Vec<u16>>,
 ) -> bool {
@@ -854,15 +854,21 @@ fn loop_bindings_are_unobserved(code: &Bytecode, states: &[Option<FlowState>]) -
             Instruction::CreateFunction(_)
             | Instruction::LoadSuperBinding
             | Instruction::ResolveSuperProperty { .. } => false,
-            Instruction::InitializePattern(_)
-            | Instruction::ExecuteTry(_)
-            | Instruction::BeginTryCatch(_) => false,
+            Instruction::ExecuteTry(_) => false,
+            Instruction::BeginTryCatch(_) => true,
+            Instruction::InitializePattern(index) => {
+                let Constant::BindingPattern { definition, .. } = &code.constants[index as usize]
+                else {
+                    return false;
+                };
+                expression_does_not_observe_loop_bindings(definition, &loop_names)
+            }
             Instruction::CreateObjectLiteral(index) => {
                 let Constant::ObjectLiteral { definition, .. } = &code.constants[index as usize]
                 else {
                     return false;
                 };
-                object_does_not_observe_loop_bindings(definition, &loop_names)
+                expression_does_not_observe_loop_bindings(definition, &loop_names)
             }
             Instruction::CreateClass(index) => {
                 let Constant::Class { definition, .. } = &code.constants[index as usize] else {

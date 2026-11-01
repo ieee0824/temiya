@@ -94,3 +94,17 @@ fn large_parameter_and_var_sets_preserve_initial_values_and_duplicates() {
         "function f({parameters}){{var {vars};return 值0+值191;}}f()===193;"
     ));
 }
+
+#[test]
+fn prepared_body_keeps_function_context_and_parameter_closures() {
+    // Auto lowers these bodies after parameter initialization, including the
+    // assignment-pattern bridge. The separate body record must retain the
+    // actual Function record for this/new.target and default closures.
+    for source in [
+        "function F(read=()=>new.target){var read;[this.answer=read()===new.target]=[];}new F().answer;",
+        "function F(read=()=>this){var read;({missing:this.answer=read()===this}={});}new F().answer;",
+        "function f(a=1,read=()=>a){function a(){return 42;}return typeof a==='function'&&a()===42&&read()===1;}f();",
+    ] {
+        check(source);
+    }
+}

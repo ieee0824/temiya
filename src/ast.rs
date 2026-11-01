@@ -270,7 +270,7 @@ impl Expr {
         }
     }
 
-    fn children(&self) -> Vec<&Expr> {
+    pub(crate) fn children(&self) -> Vec<&Expr> {
         match &self.kind {
             ExprKind::ImportCall { specifier, options } => std::iter::once(specifier.as_ref())
                 .chain(options.iter().map(Box::as_ref))

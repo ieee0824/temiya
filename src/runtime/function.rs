@@ -113,10 +113,13 @@ pub(super) struct FunctionCode {
     ast: Function,
     kind: FunctionKind,
     compiled: Option<Rc<FunctionTemplate>>,
+    compiled_body: Option<crate::bytecode::VerifiedBytecode>,
+    prepared_body: Option<super::bytecode_function::PreparedBodyPlan>,
     lexical_property: Option<PropertyKey>,
     private_expression: Option<private_expression::Plan>,
     constructor_assignments: Option<constructor_assignments::Plan>,
     may_observe_arguments: bool,
+    may_observe_new_target: bool,
     parameter_binds_arguments: bool,
     parameter_names: Option<Box<[JsString]>>,
     parameter_environment: Option<parameter_environment::Plan>,
@@ -192,9 +195,26 @@ fn prepare_code(
     } else {
         None
     };
+    let parameter_environment = parameter_environment::Plan::prepare(code);
+    let compiled_body = if cache.is_some() && compiled.is_none() && kind != FunctionKind::Arrow {
+        BytecodeCompiler::compile_prepared_function_body(code, parameter_environment.is_some()).ok()
+    } else {
+        None
+    };
+    let prepared_body = compiled_body.as_ref().and_then(|body| {
+        let names = code
+            .parameters
+            .iter()
+            .flat_map(crate::semantics::bound_names)
+            .map(|binding| JsString::from(binding.name.as_str()))
+            .collect::<Vec<_>>();
+        super::bytecode_function::PreparedBodyPlan::prepare(body, &names)
+    });
     let prepared = Rc::new(FunctionCode {
         ast: code.clone(),
         kind,
+        compiled_body,
+        prepared_body,
         compiled,
         private_expression: cache
             .as_ref()
@@ -209,8 +229,9 @@ fn prepare_code(
         } else {
             None
         },
-        parameter_environment: parameter_environment::Plan::prepare(code),
+        parameter_environment,
         may_observe_arguments: may_observe_arguments(code),
+        may_observe_new_target: kind == FunctionKind::Arrow && may_observe_new_target(code),
         parameter_binds_arguments: code.parameters.iter().any(|parameter| {
             crate::semantics::bound_names(parameter)
                 .iter()
@@ -345,6 +366,19 @@ fn may_observe_arguments(function: &Function) -> bool {
         if let ExprKind::Identifier(name) = &expression.kind {
             observed |= name == "arguments" || name == "eval";
         }
+    });
+    observed
+}
+
+// An AST arrow inherits new.target from the nearest non-lexical function.
+// Include defaults and nested syntax conservatively; direct eval can observe
+// it without an explicit MetaProperty node.
+fn may_observe_new_target(function: &Function) -> bool {
+    let mut observed = false;
+    function.visit_expressions(&mut |expression| {
+        observed |= matches!(&expression.kind,
+            ExprKind::MetaProperty {meta, property} if meta == "new" && property == "target")
+            || matches!(&expression.kind, ExprKind::Identifier(name) if name == "eval");
     });
     observed
 }
@@ -717,43 +751,89 @@ fn call_function(
     } else {
         ordinary_this(&closure.realm, this_argument)?
     };
-    let environment = Environment::function(
-        Some(closure.environment.clone()),
-        function,
-        new_target.clone(),
-        if lexical {
-            ThisBindingStatus::Lexical
-        } else {
-            ThisBindingStatus::Uninitialized
-        },
-    );
+    let arguments_needed =
+        !lexical && closure.code.may_observe_arguments && !closure.code.parameter_binds_arguments;
+    let status = if lexical {
+        ThisBindingStatus::Lexical
+    } else {
+        ThisBindingStatus::Uninitialized
+    };
+    let environment = if let Some(names) = closure.code.parameter_names.as_deref() {
+        Environment::function_with_uninitialized_parameters(
+            Some(closure.environment.clone()),
+            function,
+            new_target.clone(),
+            status,
+            names,
+            usize::from(arguments_needed),
+        )
+    } else {
+        Environment::function(
+            Some(closure.environment.clone()),
+            function,
+            new_target.clone(),
+            status,
+        )
+    };
     if !lexical {
         environment.bind_this_value(this_value.clone())?;
     }
     // The complete syntax scan includes defaults, nested classes/functions,
     // arrows and direct eval. Retain the actual object whenever any of those
     // can observe arguments; otherwise this implicit binding is unreachable.
-    if !lexical && closure.code.may_observe_arguments && !closure.code.parameter_binds_arguments {
+    if arguments_needed {
         bind_arguments(&closure.realm, &environment, arguments)?;
     }
+    let evaluation_new_target = if lexical && closure.code.may_observe_new_target {
+        let mut current = Some(closure.environment.clone());
+        let mut target = None;
+        while let Some(scope) = current {
+            if scope.kind() == super::EnvironmentKind::Function && scope.has_this_binding()? {
+                target = scope.new_target()?;
+                break;
+            }
+            current = scope.outer();
+        }
+        target
+    } else {
+        new_target
+    };
     let evaluator = ExpressionEvaluator::with_environment(
         closure.realm.clone(),
         environment.clone(),
         this_value.clone(),
         closure.code.strict,
     )
-    .with_new_target(new_target.clone())
+    .with_new_target(evaluation_new_target.clone())
     .with_this_environment(closure.lexical_this_environment.clone())
     .with_function_cache(closure.code.context());
-    bind_parameters(
+    bind_parameters_impl(
         &evaluator,
         &environment,
         &closure.code.parameters,
         closure.code.parameter_names.as_deref(),
         arguments,
+        closure.code.parameter_names.is_some(),
     )?;
 
     let environment = closure.code.body_environment(environment)?;
+    if let Some(body) = &closure.code.prepared_body {
+        return body.execute(&closure.realm, &environment);
+    }
+    if let Some(body) = &closure.code.compiled_body {
+        return match crate::bytecode::VirtualMachine::execute_in_prepared_body(
+            body,
+            &closure.realm,
+            &environment,
+        )? {
+            Completion::Return(value) => Ok(value),
+            Completion::Normal(_) => Ok(Value::Undefined),
+            Completion::Throw(value) => Err(RuntimeError::thrown(value)),
+            _ => Err(RuntimeError::internal_error(
+                "invalid bytecode function completion",
+            )),
+        };
+    }
 
     match &closure.code.body {
         FunctionBody::Expression(expression) => evaluator.evaluate(expression),
@@ -765,7 +845,7 @@ fn call_function(
                 this_value,
                 closure.code.strict,
             )
-            .with_new_target(new_target)
+            .with_new_target(evaluation_new_target)
             .with_this_environment(closure.lexical_this_environment.clone())
             .with_function_cache(evaluator.function_cache.clone());
             match statements.evaluate_statement(body)? {
@@ -961,22 +1041,43 @@ pub(super) fn bind_parameters(
     prepared_names: Option<&[JsString]>,
     arguments: &[Value],
 ) -> RuntimeResult<()> {
-    if parameters
-        .iter()
-        .any(|parameter| !matches!(parameter.kind, ExprKind::Identifier(_)))
+    bind_parameters_impl(
+        evaluator,
+        environment,
+        parameters,
+        prepared_names,
+        arguments,
+        false,
+    )
+}
+
+fn bind_parameters_impl(
+    evaluator: &ExpressionEvaluator,
+    environment: &Environment,
+    parameters: &[Expr],
+    prepared_names: Option<&[JsString]>,
+    arguments: &[Value],
+    bindings_prepared: bool,
+) -> RuntimeResult<()> {
+    if bindings_prepared
+        || parameters
+            .iter()
+            .any(|parameter| !matches!(parameter.kind, ExprKind::Identifier(_)))
     {
-        let names = if let Some(names) = prepared_names {
-            Cow::Borrowed(names)
-        } else {
-            let mut names = Vec::new();
-            for parameter in parameters {
-                super::binding::names(parameter, &mut names)?;
-            }
-            Cow::Owned(names)
-        };
-        for name in names.iter() {
-            if !environment.has_binding(name)? {
-                environment.create_mutable_binding(name.clone(), false)?;
+        if !bindings_prepared {
+            let names = if let Some(names) = prepared_names {
+                Cow::Borrowed(names)
+            } else {
+                let mut names = Vec::new();
+                for parameter in parameters {
+                    super::binding::names(parameter, &mut names)?;
+                }
+                Cow::Owned(names)
+            };
+            for name in names.iter() {
+                if !environment.has_binding(name)? {
+                    environment.create_mutable_binding(name.clone(), false)?;
+                }
             }
         }
         for (index, parameter) in parameters.iter().enumerate() {
@@ -1347,5 +1448,55 @@ mod derived_arguments_tests {
             };
             assert!(super::may_observe_arguments(&function), "{source}");
         }
+    }
+}
+
+#[cfg(test)]
+mod prepared_body_tests {
+    #[test]
+    fn pure_parameter_guards_keep_real_cells_and_reject_observable_body_operations() {
+        for (source, expected) in [
+            ("function f({x,y}){if(x!==y)throw x;return y;}", true),
+            (
+                "function f({x,y}){if(x!==y||x===null)throw 42;return y;}",
+                true,
+            ),
+            ("function f({x},read=()=>x){return read;}", true),
+            ("function f({x}){var other;return x;}", false),
+            ("function f({x}){{let x=42;return x;}}", false),
+            ("function f({x}){return x.value;}", false),
+            ("function f({x}){return x();}", false),
+            ("function f({x}){while(x){}return x;}", false),
+            ("function f({x}){x=42;return x;}", false),
+            ("function f({x}){return this;}", false),
+        ] {
+            let expression = crate::parser::parse_expression(source).unwrap();
+            let crate::ast::ExprKind::Function(function) = expression.kind else {
+                panic!("function")
+            };
+            let code = super::prepare_code(
+                &function,
+                super::FunctionKind::Normal,
+                &Some(Default::default()),
+            );
+            assert_eq!(code.prepared_body.is_some(), expected, "{source}");
+        }
+    }
+
+    #[test]
+    fn non_simple_parameters_prepare_verified_body_without_full_template() {
+        let expression =
+            crate::parser::parse_expression("function f({a},read=()=>a){a=42;return read();}")
+                .unwrap();
+        let crate::ast::ExprKind::Function(function) = expression.kind else {
+            panic!("function")
+        };
+        let code = super::prepare_code(
+            &function,
+            super::FunctionKind::Normal,
+            &Some(Default::default()),
+        );
+        assert!(code.compiled.is_none());
+        assert!(code.compiled_body.is_some());
     }
 }

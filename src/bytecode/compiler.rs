@@ -43,6 +43,27 @@ impl BytecodeCompiler {
                 Some(function.span),
             ));
         }
+        Self::compile_prepared_function_body(function, false)
+    }
+
+    // Parameters are already initialized in a real Function environment. This
+    // private path never enables scalar locals or activation elision.
+    pub(crate) fn compile_prepared_function_body(
+        function: &Function,
+        separate_parameter_environment: bool,
+    ) -> Result<VerifiedBytecode, CompileError> {
+        if function.asynchronous || function.generator {
+            return Err(CompileError::new(
+                "unsupported async or generator",
+                Some(function.span),
+            ));
+        }
+        let parameters = function
+            .parameters
+            .iter()
+            .flat_map(crate::semantics::bound_names)
+            .map(|binding| JsString::from(binding.name.as_str()))
+            .collect::<Vec<_>>();
         crate::semantics::validate_expression(
             &Expr {
                 span: function.span,
@@ -60,7 +81,18 @@ impl BytecodeCompiler {
                         Some(body.span),
                     ));
                 };
-                let vars = scope_bindings(statements, true, false, true)?;
+                let mut vars = scope_bindings(statements, true, false, true)?;
+                for name in parameters
+                    .iter()
+                    .filter(|_| !separate_parameter_environment)
+                {
+                    if !vars.iter().any(|binding| &binding.name == name) {
+                        vars.push(ScopeBinding {
+                            name: name.clone(),
+                            kind: BindingKind::Var,
+                        });
+                    }
+                }
                 compiler.enter_scope(ScopeKind::Function, vars)?;
                 let target = compiler.scopes.last().expect("function scope").entry;
                 let terminal = compiler.block_with_functions(statements, Some(target))?;
@@ -70,7 +102,16 @@ impl BytecodeCompiler {
                 }
             }
             FunctionBody::Expression(expression) => {
-                compiler.enter_scope(ScopeKind::Function, vec![])?;
+                compiler.enter_scope(
+                    ScopeKind::Function,
+                    parameters
+                        .iter()
+                        .map(|name| ScopeBinding {
+                            name: name.clone(),
+                            kind: BindingKind::Var,
+                        })
+                        .collect(),
+                )?;
                 compiler.expression(expression)?;
                 compiler.code.push(Instruction::Return);
             }
@@ -263,12 +304,8 @@ impl Compiler {
         let has_functions = statements
             .iter()
             .any(|statement| matches!(statement.kind, StmtKind::FunctionDeclaration(_)));
-        if block_functions && has_functions && !self.strict {
-            return Err(CompileError::new(
-                "unsupported sloppy block function Annex B semantics",
-                None,
-            ));
-        }
+        // Match the shared interpreter: block declarations are lexical in
+        // both modes. Optional Annex B var aliases remain tracked in #174.
         let bindings = scope_bindings(statements, false, true, block_functions)?;
         if bindings.is_empty() && !has_functions {
             return self.statements(statements);
@@ -325,7 +362,24 @@ impl Compiler {
             StmtKind::Variable { kind, declarations } => {
                 for declaration in declarations {
                     let ExprKind::Identifier(name) = &declaration.binding.kind else {
-                        return Err(self.unsupported("binding pattern", declaration.binding.span));
+                        let Some(init) = &declaration.init else {
+                            return Err(
+                                self.unsupported("pattern without initializer", declaration.span)
+                            );
+                        };
+                        self.expression(init)?;
+                        if *kind != VariableKind::Var
+                            && self.try_lexical_object_pattern(&declaration.binding)
+                        {
+                            continue;
+                        }
+                        let index = self.pool(Constant::BindingPattern {
+                            definition: std::rc::Rc::new(declaration.binding.clone()),
+                            initialize: *kind != VariableKind::Var,
+                            strict: self.strict,
+                        })?;
+                        self.code.push(Instruction::InitializePattern(index));
+                        continue;
                     };
                     let (scope, slot, _) = self
                         .binding(name)
@@ -397,6 +451,33 @@ impl Compiler {
                 self.code.push(Instruction::Return);
                 Ok(true)
             }
+            StmtKind::Try {
+                block,
+                handler: Some(handler),
+                finalizer: None,
+            } if self
+                .scopes
+                .iter()
+                .any(|scope| scope.kind == ScopeKind::Function) =>
+            {
+                self.try_catch(block, handler)
+            }
+            StmtKind::Try { .. } => {
+                if !supported_try(statement)
+                    || !self
+                        .scopes
+                        .iter()
+                        .any(|scope| scope.kind == ScopeKind::Function)
+                {
+                    return Err(self.unsupported("statement", statement.span));
+                }
+                let index = self.pool(Constant::TryStatement {
+                    definition: std::rc::Rc::new(statement.clone()),
+                    strict: self.strict,
+                })?;
+                self.code.push(Instruction::ExecuteTry(index));
+                Ok(false)
+            }
             StmtKind::Throw(value) => {
                 self.expression(value)?;
                 self.code.push(Instruction::Throw);
@@ -404,6 +485,56 @@ impl Compiler {
             }
             _ => Err(self.unsupported("statement", statement.span)),
         }
+    }
+
+    fn try_catch(
+        &mut self,
+        block: &Stmt,
+        handler: &crate::ast::CatchClause,
+    ) -> Result<bool, CompileError> {
+        let begin = self.emit(Instruction::BeginTryCatch(0));
+        let try_terminal = self.statement(block)?;
+        let skip = (!try_terminal).then(|| self.emit(Instruction::Jump(0)));
+        self.code[begin] = Instruction::BeginTryCatch(self.offset()?);
+        let bindings = handler
+            .param
+            .as_ref()
+            .map(binding_names)
+            .transpose()?
+            .unwrap_or_default()
+            .into_iter()
+            .map(|name| ScopeBinding {
+                name: name.as_str().into(),
+                kind: BindingKind::Let,
+            })
+            .collect();
+        self.enter_scope(ScopeKind::Block, bindings)?;
+        if let Some(parameter) = &handler.param {
+            if let ExprKind::Identifier(name) = &parameter.kind {
+                let (scope, slot, _) = self.binding(name).expect("catch binding");
+                self.code
+                    .push(Instruction::InitializeBinding { scope, slot });
+            } else if !self.try_lexical_object_pattern(parameter) {
+                let index = self.pool(Constant::BindingPattern {
+                    definition: std::rc::Rc::new(parameter.clone()),
+                    initialize: true,
+                    strict: self.strict,
+                })?;
+                self.code.push(Instruction::InitializePattern(index));
+            }
+        } else {
+            self.code.push(Instruction::Pop);
+        }
+        let catch_terminal = self.statement(&handler.body)?;
+        self.scopes.pop();
+        if !catch_terminal {
+            self.code.push(Instruction::ExitScope);
+        }
+        if let Some(skip) = skip {
+            let end = self.offset()?;
+            self.patch(skip, end);
+        }
+        Ok(try_terminal && catch_terminal)
     }
 
     fn expression(&mut self, expression: &Expr) -> Result<(), CompileError> {
@@ -426,7 +557,13 @@ impl Compiler {
                     self.code.push(Instruction::CreateObjectLiteral(index));
                     return Ok(());
                 }
-                self.code.push(Instruction::CreateObject);
+                self.code.push(
+                    if !properties.is_empty() && !properties.iter().any(|p| p.spread) {
+                        Instruction::CreateObjectReserved(properties.len().min(4) as u8)
+                    } else {
+                        Instruction::CreateObject
+                    },
+                );
                 for property in properties {
                     if property.spread {
                         self.expression(&property.key)?;
@@ -529,6 +666,16 @@ impl Compiler {
                 value,
             } if operator == "=" => {
                 let target = unparenthesized(target);
+                if matches!(target.kind, ExprKind::Array { .. } | ExprKind::Object(_)) {
+                    self.expression(value)?;
+                    self.code.push(Instruction::Duplicate);
+                    let index = self.pool(Constant::AssignmentPattern {
+                        definition: std::rc::Rc::new(target.clone()),
+                        strict: self.strict,
+                    })?;
+                    self.code.push(Instruction::InitializePattern(index));
+                    return Ok(());
+                }
                 let binding = match &target.kind {
                     ExprKind::Identifier(name) => {
                         let binding = self.local_binding(name);
@@ -720,6 +867,123 @@ impl Compiler {
             }
             _ => Err(self.unsupported("expression", expression.span)),
         }
+    }
+
+    // Keep direct eval and function-name inference inside computed keys/defaults
+    // on the shared path, including nested assignments and object literal values.
+    fn binding_expression_needs_shared_path(expression: &Expr) -> bool {
+        let mut needed = false;
+        expression.visit(&mut |expression| {
+            needed |= matches!(expression.kind, ExprKind::Function(_) | ExprKind::Arrow(_))
+                || matches!(&expression.kind, ExprKind::Identifier(name) if name == "eval");
+        });
+        needed
+    }
+
+    // Expressions append only code/constants. Roll back both buffers if a
+    // default or nested shape needs the shared binder; never emit half a plan.
+    fn try_lexical_object_pattern(&mut self, pattern: &Expr) -> bool {
+        let checkpoint = (self.code.len(), self.constants.len());
+        if self.lexical_object_pattern(pattern).is_ok() {
+            true
+        } else {
+            self.code.truncate(checkpoint.0);
+            self.constants.truncate(checkpoint.1);
+            false
+        }
+    }
+
+    fn lexical_object_pattern(&mut self, pattern: &Expr) -> Result<(), CompileError> {
+        let ExprKind::Object(properties) = &pattern.kind else {
+            return Err(self.unsupported("non-object binding plan", pattern.span));
+        };
+        // Static reads (including an empty coercibility check) already have a
+        // verified, cached plan. Keep its single dispatch instead of expanding
+        // it into duplicate/check/read/pop instructions.
+        if crate::runtime::bytecode_function::StaticObjectBindingPlan::prepare(pattern).is_some() {
+            let index = self.pool(Constant::BindingPattern {
+                definition: std::rc::Rc::new(pattern.clone()),
+                initialize: true,
+                strict: self.strict,
+            })?;
+            self.code.push(Instruction::InitializePattern(index));
+            return Ok(());
+        }
+        if properties.iter().any(|property| property.spread) {
+            return Err(self.unsupported("object rest binding plan", pattern.span));
+        }
+        // Empty binding initialization is RequireObjectCoercible without
+        // boxing or property access, and must precede computed key evaluation.
+        self.code.push(Instruction::Duplicate);
+        let check = self.pool(Constant::BindingPattern {
+            definition: std::rc::Rc::new(Expr {
+                span: pattern.span,
+                kind: ExprKind::Object(vec![]),
+            }),
+            initialize: true,
+            strict: self.strict,
+        })?;
+        self.code.push(Instruction::InitializePattern(check));
+        for property in properties {
+            if property.computed && Self::binding_expression_needs_shared_path(&property.key) {
+                return Err(self.unsupported("function in binding key", property.key.span));
+            }
+            self.code.push(Instruction::Duplicate);
+            self.member_property(
+                &property.key,
+                property.computed
+                    || matches!(property.key.kind, ExprKind::Literal(Literal::Number { .. })),
+                false,
+            )?;
+            self.lexical_pattern_element(property.value.as_ref().unwrap_or(&property.key))?;
+        }
+        self.code.push(Instruction::Pop);
+        Ok(())
+    }
+
+    fn lexical_pattern_element(&mut self, element: &Expr) -> Result<(), CompileError> {
+        let (target, default) = match &element.kind {
+            ExprKind::Assignment { target, value, .. } => (target.as_ref(), Some(value.as_ref())),
+            _ => (element, None),
+        };
+        if let Some(default) = default {
+            // Anonymous function/arrow naming stays in the shared binder.
+            if Self::binding_expression_needs_shared_path(default) {
+                return Err(self.unsupported("function binding default", default.span));
+            }
+            self.code.push(Instruction::Duplicate);
+            self.constant(Constant::Undefined)?;
+            self.code.push(Instruction::StrictEqual);
+            let present = self.emit(Instruction::JumpIfFalse(0));
+            self.code.push(Instruction::Pop);
+            if let ExprKind::Identifier(name) = &target.kind {
+                self.named_expression(default, name)?;
+            } else {
+                self.expression(default)?;
+            }
+            let end = self.offset()?;
+            self.patch(present, end);
+        }
+        match &target.kind {
+            ExprKind::Identifier(name) => {
+                let (scope, slot, _) = self
+                    .binding(name)
+                    .expect("collected lexical pattern binding");
+                self.code
+                    .push(Instruction::InitializeBinding { scope, slot });
+            }
+            ExprKind::Object(_) => self.lexical_object_pattern(target)?,
+            ExprKind::Array { .. } => {
+                let index = self.pool(Constant::BindingPattern {
+                    definition: std::rc::Rc::new(target.clone()),
+                    initialize: true,
+                    strict: self.strict,
+                })?;
+                self.code.push(Instruction::InitializePattern(index));
+            }
+            _ => return Err(self.unsupported("lexical binding target", target.span)),
+        }
+        Ok(())
     }
 
     fn named_expression(&mut self, expression: &Expr, name: &str) -> Result<(), CompileError> {
@@ -1363,19 +1627,46 @@ impl Compiler {
 
 // Validate the supported statement tree even after terminal statements: var
 // declarations are instantiated before any reachable code executes.
+pub(super) fn binding_names(binding: &Expr) -> Result<Vec<String>, CompileError> {
+    fn collect(binding: &Expr, names: &mut Vec<String>) -> Result<(), CompileError> {
+        match &binding.kind {
+            ExprKind::Identifier(name) => names.push(name.clone()),
+            ExprKind::Assignment { target, .. } | ExprKind::Spread(target) => {
+                collect(target, names)?
+            }
+            ExprKind::Array { elements, .. } => {
+                for element in elements.iter().flatten() {
+                    collect(element, names)?;
+                }
+            }
+            ExprKind::Object(properties) => {
+                for property in properties {
+                    collect(property.value.as_ref().unwrap_or(&property.key), names)?;
+                }
+            }
+            _ => {
+                return Err(CompileError::new(
+                    "invalid binding pattern",
+                    Some(binding.span),
+                ));
+            }
+        }
+        Ok(())
+    }
+    let mut names = Vec::new();
+    collect(binding, &mut names)?;
+    Ok(names)
+}
+
 fn collect_vars(statements: &[Stmt], vars: &mut Vec<String>) -> Result<(), CompileError> {
     for statement in statements {
         match &statement.kind {
             StmtKind::Variable { kind, declarations } => {
                 for declaration in declarations {
-                    let ExprKind::Identifier(name) = &declaration.binding.kind else {
-                        return Err(CompileError::new(
-                            "unsupported binding pattern",
-                            Some(declaration.binding.span),
-                        ));
-                    };
-                    if *kind == VariableKind::Var && !vars.contains(name) {
-                        vars.push(name.clone());
+                    for name in binding_names(&declaration.binding)? {
+                        if *kind == VariableKind::Var && !vars.contains(&name) {
+                            vars.push(name);
+                        }
                     }
                 }
             }
@@ -1396,18 +1687,27 @@ fn collect_vars(statements: &[Stmt], vars: &mut Vec<String>) -> Result<(), Compi
             StmtKind::For { init, body, .. } => {
                 if let Some(ForInit::Variable { kind, declarations }) = init {
                     for declaration in declarations {
-                        let ExprKind::Identifier(name) = &declaration.binding.kind else {
-                            return Err(CompileError::new(
-                                "unsupported binding pattern",
-                                Some(declaration.binding.span),
-                            ));
-                        };
-                        if *kind == VariableKind::Var && !vars.contains(name) {
-                            vars.push(name.clone());
+                        for name in binding_names(&declaration.binding)? {
+                            if *kind == VariableKind::Var && !vars.contains(&name) {
+                                vars.push(name);
+                            }
                         }
                     }
                 }
                 collect_vars(std::slice::from_ref(body), vars)?;
+            }
+            StmtKind::Try {
+                block,
+                handler,
+                finalizer,
+            } => {
+                collect_vars(std::slice::from_ref(block), vars)?;
+                if let Some(handler) = handler {
+                    collect_vars(std::slice::from_ref(&handler.body), vars)?;
+                }
+                if let Some(finalizer) = finalizer {
+                    collect_vars(std::slice::from_ref(finalizer), vars)?;
+                }
             }
             StmtKind::FunctionDeclaration(_) | StmtKind::ClassDeclaration(_) => {}
             StmtKind::Empty
@@ -1490,23 +1790,23 @@ fn scope_bindings(
                 continue;
             }
             for declaration in declarations {
-                let ExprKind::Identifier(name) = &declaration.binding.kind else {
-                    unreachable!("collect_vars checked patterns")
-                };
-                if vars.contains(name) || lexical.iter().any(|(previous, _)| previous == name) {
-                    return Err(CompileError::new(
-                        "duplicate lexical binding",
-                        Some(declaration.span),
+                for name in binding_names(&declaration.binding)? {
+                    if vars.contains(&name) || lexical.iter().any(|(previous, _)| previous == &name)
+                    {
+                        return Err(CompileError::new(
+                            "duplicate lexical binding",
+                            Some(declaration.span),
+                        ));
+                    }
+                    lexical.push((
+                        name,
+                        if *kind == VariableKind::Let {
+                            BindingKind::Let
+                        } else {
+                            BindingKind::Const
+                        },
                     ));
                 }
-                lexical.push((
-                    name.clone(),
-                    if *kind == VariableKind::Let {
-                        BindingKind::Let
-                    } else {
-                        BindingKind::Const
-                    },
-                ));
             }
         }
     }
@@ -1534,6 +1834,17 @@ fn bytecode_may_observe_arguments(body: &VerifiedBytecode) -> bool {
         .constants
         .iter()
         .any(|constant| match constant {
+            Constant::TryStatement { definition, .. } => {
+                let mut observed = false;
+                for expression in definition.expression_roots() {
+                    expression.visit(&mut |expression| {
+                        if let ExprKind::Identifier(name) = &expression.kind {
+                            observed |= name == "arguments" || name == "eval";
+                        }
+                    });
+                }
+                observed
+            }
             Constant::String(name) => {
                 name.code_units()
                     .iter()
@@ -1542,7 +1853,9 @@ fn bytecode_may_observe_arguments(body: &VerifiedBytecode) -> bool {
                     || name.code_units().iter().copied().eq("eval".encode_utf16())
             }
             Constant::Class { .. } => true,
-            Constant::ObjectLiteral { definition, .. } => {
+            Constant::ObjectLiteral { definition, .. }
+            | Constant::BindingPattern { definition, .. }
+            | Constant::AssignmentPattern { definition, .. } => {
                 let mut observed = false;
                 definition.visit(&mut |expression| {
                     if let ExprKind::Identifier(name) = &expression.kind {
@@ -1599,7 +1912,44 @@ fn body_shadows_arguments(function: &Function) -> bool {
     statements.iter().any(|statement| match &statement.kind {
         StmtKind::FunctionDeclaration(function) => matches!(function.name.as_ref().map(|name| &name.kind), Some(ExprKind::Identifier(name)) if name == "arguments"),
         StmtKind::ClassDeclaration(class) => matches!(class.name.as_ref().map(|name| &name.kind), Some(ExprKind::Identifier(name)) if name == "arguments"),
-        StmtKind::Variable { kind, declarations } if *kind != VariableKind::Var => declarations.iter().any(|declaration| matches!(&declaration.binding.kind, ExprKind::Identifier(name) if name == "arguments")),
+        StmtKind::Variable { kind, declarations } if *kind != VariableKind::Var => declarations.iter().any(|declaration| binding_names(&declaration.binding).map(|names| names.iter().any(|name| name == "arguments")).unwrap_or(false)),
         _ => false,
     })
+}
+
+// The shared bridge consumes function returns but cannot dispatch jumps to VM labels.
+pub(super) fn supported_try(statement: &Stmt) -> bool {
+    fn safe(statement: &Stmt) -> bool {
+        match &statement.kind {
+            StmtKind::Block(body) => body.iter().all(safe),
+            StmtKind::If {
+                consequent,
+                alternate,
+                ..
+            } => safe(consequent) && alternate.as_ref().is_none_or(|s| safe(s)),
+            StmtKind::Try {
+                block,
+                handler,
+                finalizer,
+            } => {
+                safe(block)
+                    && handler.as_ref().is_none_or(|h| safe(&h.body))
+                    && finalizer.as_ref().is_none_or(|s| safe(s))
+            }
+            StmtKind::Empty
+            | StmtKind::Debugger
+            | StmtKind::Variable { .. }
+            | StmtKind::Expression(_)
+            | StmtKind::Return(_)
+            | StmtKind::Throw(_) => true,
+            _ => false,
+        }
+    }
+    matches!(&statement.kind, StmtKind::Try { handler, finalizer, .. } if handler.is_some() || finalizer.is_some())
+        && safe(statement)
+}
+pub(super) fn try_vars(statement: &Stmt) -> Result<Vec<String>, CompileError> {
+    let mut vars = Vec::new();
+    collect_vars(std::slice::from_ref(statement), &mut vars)?;
+    Ok(vars)
 }

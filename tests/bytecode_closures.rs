@@ -265,6 +265,7 @@ fn declarations_are_hoisted_and_last_duplicates_win_without_private_self_binding
         "function outer(){function arguments(){return 42;}return arguments();}outer();",
         "function outer(){let arguments=42;return arguments;}outer();",
         "'use strict';let answer;{answer=f();function f(){return 42;}}answer;",
+        "let answer;{answer=f();function f(){return 42;}}answer;",
     ] {
         assert!(
             value(&Realm::ordinary_in(&allocation_context), source)
@@ -282,12 +283,8 @@ fn declarations_are_hoisted_and_last_duplicates_win_without_private_self_binding
             RuntimeErrorKind::ReferenceError
         );
     }
-    for source in [
-        "{function f(){return 42;}}",
-        "if(true) function f(){return 42;}",
-    ] {
-        assert!(BytecodeCompiler::compile(source).is_err(), "{source}");
-    }
+    let source = "if(true) function f(){return 42;}";
+    assert!(BytecodeCompiler::compile(source).is_err(), "{source}");
 }
 
 #[test]

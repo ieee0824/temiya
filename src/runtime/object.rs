@@ -745,7 +745,7 @@ impl Object {
             result.map_err(|error| self.bind_native_exception(payload.source.as_ref(), error))
         })())
     }
-    // Only the unpublished ordinary object created for an AST literal uses
+    // Only the unpublished ordinary object created for an object literal uses
     // these initializers. No property/proxy hooks or descriptor observers can
     // see it before construction finishes.
     pub(super) fn reserve_literal_properties(&self, count: usize) {
@@ -800,6 +800,24 @@ impl Object {
             state.properties.push(PropertyEntry { key, descriptor });
         }
         Ok(())
+    }
+
+    // Only the fresh ordinary object owned by ArrayObject initialization calls
+    // this. The numeric length needs no coercion and contains no managed edge.
+    pub(super) fn initialize_array(&self, length: u32) {
+        let mut state = self.0.state.borrow_mut();
+        debug_assert!(!state.array && state.proxy.is_none() && state.properties.is_empty());
+        state.array = true;
+        state.elements = Some(Box::default());
+        state.properties = vec![PropertyEntry {
+            key: "length".into(),
+            descriptor: StoredDescriptor::Data {
+                value: StoredValue::Number(f64::from(length)),
+                writable: true,
+                enumerable: false,
+                configurable: false,
+            },
+        }];
     }
 
     // Native exceptions are unpublished ordinary objects with one own data
@@ -876,6 +894,85 @@ impl Object {
         });
         object.0.state.borrow_mut().properties = properties;
         Ok(object)
+    }
+
+    // Only ordinary data descriptors are copied; all initial managed edges
+    // belong to the prototype's heap and are traced at the allocation safepoint.
+    // No source borrow is held while allocation can collect.
+    pub(super) fn copy_ordinary_data_rest(
+        &self,
+        prototype: &Self,
+        excluded: &[PropertyKey],
+    ) -> Option<Self> {
+        let runtime = prototype.allocation_context().clone();
+        if !runtime.same_heap(self.allocation_context()) {
+            return None;
+        }
+        let properties = {
+            let state = self.0.state.borrow();
+            if state.proxy.is_some()
+                || state.module_namespace.is_some()
+                || state.array
+                || state.elements.is_some()
+                || state.string_data.is_some()
+                || state.buffer.is_some()
+                || state.view.is_some()
+                || state.lazy_function_prototype.is_some()
+                || state.callable.is_some()
+                || state.managed_callable.is_some()
+                || state.construct.is_some()
+                || state.private_fields.is_some()
+                || !state.instance_fields.is_empty()
+                || state.regexp.is_some()
+                || state.primitive_data.is_some()
+                || state.map_data.is_some()
+                || state.set_data.is_some()
+                || state.weak_map_data.is_some()
+                || state.weak_set_data.is_some()
+                || state.promise_data.is_some()
+                || state.generator_data.is_some()
+                || state.date_value.is_some()
+                || state.iterator.is_some()
+                || state
+                    .properties
+                    .iter()
+                    .any(|entry| !matches!(entry.descriptor, StoredDescriptor::Data { .. }))
+            {
+                return None;
+            }
+            let count = state
+                .properties
+                .iter()
+                .filter(|entry| entry.descriptor.enumerable() && !excluded.contains(&entry.key))
+                .count();
+            let mut properties = Vec::with_capacity(count);
+            for entry in &state.properties {
+                let StoredDescriptor::Data {
+                    value, enumerable, ..
+                } = &entry.descriptor
+                else {
+                    unreachable!("checked data descriptors")
+                };
+                if *enumerable && !excluded.contains(&entry.key) {
+                    properties.push(PropertyEntry {
+                        key: entry.key.clone(),
+                        descriptor: StoredDescriptor::Data {
+                            value: value.clone(),
+                            writable: true,
+                            enumerable: true,
+                            configurable: true,
+                        },
+                    });
+                }
+            }
+            properties
+        };
+        let mut data = super::ObjectData::ordinary();
+        let state = data.state.get_mut();
+        state.prototype =
+            Some(StoredObject::initial(Some(&runtime), prototype).expect("prototype context"));
+        state.properties = properties;
+        Some(runtime.allocate_object(data))
     }
 
     pub(super) fn new_with_prototype(prototype: Self) -> Self {
@@ -2312,6 +2409,64 @@ impl Object {
             .map_or(Ok(false), |prototype| prototype.has_property(key))
     }
 
+    // CopyDataProperties needs the own descriptor before Get. An ordinary
+    // property has no callback between selecting its descriptor and Get. Load
+    // the value/getter once; release the borrow before calling an accessor.
+    // None means the caller must retain the full exotic/legacy path;
+    // Some(Ok(None)) means the property is absent or non-enumerable.
+    pub(super) fn try_own_enumerable_value(
+        &self,
+        key: &PropertyKey,
+    ) -> Option<RuntimeResult<Option<Value>>> {
+        let state = self.0.state.borrow();
+        if state.proxy.is_some()
+            || state.module_namespace.is_some()
+            || state.lazy_function_prototype.is_some()
+            || state.array
+            || state.string_data.is_some()
+            || state.view.is_some()
+            || state.buffer.is_some()
+        {
+            return None;
+        }
+        let Some(index) = state.checked_property_position(key) else {
+            return Some(Ok(None));
+        };
+        match &state.properties[index].descriptor {
+            StoredDescriptor::Data {
+                value, enumerable, ..
+            } => {
+                state.last_property.set(index);
+                Some(if *enumerable {
+                    value.load(self).map(Some)
+                } else {
+                    Ok(None)
+                })
+            }
+            StoredDescriptor::Accessor {
+                get, enumerable, ..
+            } => {
+                if Self::legacy_property_key(key) {
+                    return None;
+                }
+                if !enumerable {
+                    return Some(Ok(None));
+                }
+                let getter = get.as_ref().map(|getter| getter.load(self)).transpose();
+                drop(state);
+                Some(
+                    getter
+                        .and_then(|getter| {
+                            getter.map_or(Ok(Value::Undefined), |getter| {
+                                getter.call(Value::Object(self.clone()), &[])
+                            })
+                        })
+                        .map(Some),
+                )
+            }
+        }
+    }
+
     // Select the needed edge under one ordinary-property borrow. Root the
     // current value/getter before releasing it; no user code runs under borrow.
     fn own_get_value(&self, key: &PropertyKey) -> RuntimeResult<Option<OwnGet>> {
@@ -3081,5 +3236,46 @@ mod own_data_hint_tests {
                 .unwrap()
                 .same_value(&Value::Number(3.0))
         );
+    }
+}
+
+#[cfg(test)]
+mod ordinary_rest_copy_tests {
+    use super::*;
+    #[test]
+    fn incoming_rest_record_traces_copied_edges_after_source_release() {
+        let context = super::super::AllocationContext::new();
+        context.set_allocation_collection_interval(1);
+        let source = Object::new_in(&context);
+        let child = Object::new_in(&context);
+        child
+            .create_data_property("answer".into(), Value::Number(42.0))
+            .unwrap();
+        let weak = child.downgrade();
+        source
+            .create_data_property("value".into(), Value::Object(child))
+            .unwrap();
+        let prototype = Object::new_in(&context);
+        let weak_prototype = prototype.downgrade();
+        let rest = source.copy_ordinary_data_rest(&prototype, &[]).unwrap();
+        drop(source);
+        drop(prototype);
+        context.collect_garbage().unwrap();
+        assert!(weak.upgrade().is_some());
+        assert_eq!(rest.prototype(), weak_prototype.upgrade());
+        let Value::Object(value) = rest.get(&"value".into()).unwrap() else {
+            panic!("copied object")
+        };
+        assert!(
+            value
+                .get(&"answer".into())
+                .unwrap()
+                .same_value(&Value::Number(42.0))
+        );
+        drop(value);
+        context.verify_migration_barriers().unwrap();
+        drop(rest);
+        assert_eq!(context.collect_garbage().unwrap().retained, 0);
+        assert!(weak.upgrade().is_none());
     }
 }

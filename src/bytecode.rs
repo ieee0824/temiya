@@ -113,6 +113,27 @@ pub enum Constant {
         /// Strictness of the containing code.
         strict: bool,
     },
+    /// Binding syntax for the shared initializer; never a runtime value.
+    /// Try source for shared completion semantics, never a runtime Value.
+    TryStatement {
+        definition: Rc<crate::ast::Stmt>,
+        strict: bool,
+    },
+    /// Assignment targets evaluated through the shared Reference writer.
+    AssignmentPattern {
+        /// Parsed array/object assignment pattern.
+        definition: Rc<crate::ast::Expr>,
+        /// Strictness of the containing code.
+        strict: bool,
+    },
+    BindingPattern {
+        /// Parsed binding pattern, containing no runtime values.
+        definition: Rc<crate::ast::Expr>,
+        /// Initialize lexical bindings rather than assign var references.
+        initialize: bool,
+        /// Strictness of the containing code.
+        strict: bool,
+    },
     /// Immutable class source for the shared class evaluator.
     Class {
         /// Parsed definition, containing no runtime values.
@@ -252,6 +273,8 @@ impl BinaryOperator {
 pub enum Instruction {
     /// Push a fresh ordinary object with the Realm's Object prototype.
     CreateObject,
+    /// Push a fresh ordinary object with a bounded property allocation hint.
+    CreateObjectReserved(u8),
     /// Convert the top value to a String/Symbol property key before its RHS.
     CoercePropertyKey,
     /// Consume object/key/value and retain the object after a data definition.
@@ -350,6 +373,12 @@ pub enum Instruction {
     CreateClass(u32),
     /// Evaluate a fresh object initializer in the current environment.
     CreateObjectLiteral(u32),
+    /// Pop a value and initialize a pattern through the shared runtime (`-1`).
+    InitializePattern(u32),
+    /// Evaluate a verified try statement in the current function frame (0).
+    ExecuteTry(u32),
+    /// Catch JS abrupt completions in the following region up to `target`.
+    BeginTryCatch(u32),
     /// Push the initialized super receiver and its owning function before the key.
     LoadSuperBinding,
     /// Consume receiver, owning function and key; retain a super property Reference.
@@ -399,9 +428,10 @@ pub enum Instruction {
 impl Instruction {
     fn required_stack(self) -> usize {
         match self {
+            Self::ExecuteTry(_) | Self::BeginTryCatch(_) => 0,
             Self::LoadSuperBinding => 0,
             Self::ResolveSuperProperty { .. } => 3,
-            Self::CreateObject => 0,
+            Self::CreateObject | Self::CreateObjectReserved(_) => 0,
             Self::CoercePropertyKey => 1,
             Self::DefineObjectProperty { .. } => 3,
             Self::DefineNamedObjectProperty { .. } => 2,
@@ -438,7 +468,10 @@ impl Instruction {
             | Self::LoadBinding { .. }
             | Self::GetName { .. }
             | Self::LoadName(_) => 0,
-            Self::InitializeBinding { .. } | Self::StoreBinding { .. } | Self::StoreReference => 1,
+            Self::InitializePattern(_)
+            | Self::InitializeBinding { .. }
+            | Self::StoreBinding { .. }
+            | Self::StoreReference => 1,
             Self::LoadConstant(_) | Self::LoadLocal(_) | Self::Jump(_) => 0,
             Self::StoreLocal(_)
             | Self::Duplicate
@@ -459,9 +492,10 @@ impl Instruction {
 
     fn stack_delta(self) -> isize {
         match self {
+            Self::ExecuteTry(_) | Self::BeginTryCatch(_) => 0,
             Self::LoadSuperBinding => 2,
             Self::ResolveSuperProperty { .. } => -3,
-            Self::CreateObject => 1,
+            Self::CreateObject | Self::CreateObjectReserved(_) => 1,
             Self::CoercePropertyKey => 0,
             Self::DefineObjectProperty { .. } => -2,
             Self::DefineNamedObjectProperty { .. } => -1,
@@ -502,7 +536,10 @@ impl Instruction {
             | Self::UpdateBinding { .. }
             | Self::LoadName(_)
             | Self::GetName { .. } => 1,
-            Self::InitializeBinding { .. } | Self::StoreBinding { .. } | Self::StoreReference => -1,
+            Self::InitializePattern(_)
+            | Self::InitializeBinding { .. }
+            | Self::StoreBinding { .. }
+            | Self::StoreReference => -1,
             Self::LoadConstant(_) | Self::LoadLocal(_) | Self::Duplicate => 1,
             Self::StoreLocal(_)
             | Self::Pop
@@ -545,7 +582,11 @@ pub struct VerifiedBytecode {
     bytecode: Bytecode,
     max_stack: usize,
     has_backedge: bool,
+    pub(super) has_catch_handlers: bool,
     has_own_property_cache: bool,
+    function_name_lookup: Vec<bool>,
+    definition_function_root: bool,
+    static_object_patterns: Vec<Option<crate::runtime::bytecode_function::StaticObjectBindingPlan>>,
     reuse_loop_bindings: bool,
     numeric_return: Option<numeric_return::NumericReturnPlan>,
     leaf_function: Option<leaf_function::LeafFunctionPlan>,
@@ -709,10 +750,60 @@ impl std::error::Error for VerifyError {}
 
 #[derive(Clone, Debug, PartialEq)]
 struct FlowState {
+    handlers: Vec<(usize, usize, usize)>,
     depth: usize,
     scopes: Vec<(u32, u32)>,
     references: Vec<u32>,
     calls: Vec<(u32, usize)>,
+}
+
+// A name absent from intervening verified block descriptors may start at the
+// real function frame. Keep all dynamic AST/eval observers conservative.
+fn function_name_lookup_plan(code: &Bytecode, states: &[Option<FlowState>]) -> Vec<bool> {
+    let none = std::collections::HashSet::new();
+    let safe = code.constants.iter().all(|constant| match constant {
+        Constant::Function(_) | Constant::Class { .. } | Constant::TryStatement { .. } => false,
+        Constant::Scope(plan) => {
+            plan.functions.is_empty()
+                && !plan
+                    .bindings
+                    .iter()
+                    .any(|binding| binding.name == JsString::from("eval"))
+        }
+        Constant::ObjectLiteral { definition, .. }
+        | Constant::BindingPattern { definition, .. }
+        | Constant::AssignmentPattern { definition, .. } => {
+            expression_does_not_observe_loop_bindings(definition, &none)
+        }
+        _ => true,
+    }) && code
+        .instructions
+        .iter()
+        .all(|instruction| match instruction {
+            Instruction::LoadName(index)
+            | Instruction::GetName { name: index, .. }
+            | Instruction::ResolveName { name: index, .. } => {
+                !matches!(&code.constants[*index as usize], Constant::String(name)
+                if name == &JsString::from("eval"))
+            }
+            _ => true,
+        });
+    code.instructions.iter().enumerate().map(|(offset, instruction)| {
+        if !safe { return false; }
+        let index = match instruction {
+            Instruction::LoadName(index) | Instruction::GetName { name: index, .. } => *index,
+            _ => return false,
+        };
+        let Constant::String(name) = &code.constants[index as usize] else { return false; };
+        let Some(state) = &states[offset] else { return false; };
+        let Some(function) = state.scopes.iter().rposition(|(_, index)|
+            matches!(&code.constants[*index as usize], Constant::Scope(plan)
+                if plan.kind == ScopeKind::Function)) else { return false; };
+        !state.scopes[function + 1..].is_empty() && state.scopes[function + 1..].iter().all(|(_, index)| {
+            matches!(&code.constants[*index as usize], Constant::Scope(plan)
+                if plan.kind == ScopeKind::Block && !plan.bindings.iter().any(|binding| binding.name == *name))
+        })
+    }).collect()
 }
 
 // Source metadata is not a runtime closure. Inspect the complete class syntax,
@@ -753,10 +844,10 @@ fn class_does_not_observe_loop_bindings(
     !observed
 }
 
-// A complete object initializer may create methods without observing cloned
-// header cells. Inspect keys, spreads, defaults and all nested syntax. Reject
+// Object initializers and binding patterns may create closures without observing
+// cloned header cells. Inspect keys, spreads, defaults and all nested syntax. Reject
 // unsupported class elements conservatively, as the class proof does.
-fn object_does_not_observe_loop_bindings(
+fn expression_does_not_observe_loop_bindings(
     expression: &crate::ast::Expr,
     loop_names: &std::collections::HashSet<Vec<u16>>,
 ) -> bool {
@@ -777,6 +868,41 @@ fn object_does_not_observe_loop_bindings(
         _ => {}
     });
     !observed
+}
+
+// Eager key/default reads see the current cell and do not observe its identity.
+// Delayed function bodies must not read a cloned header name; direct eval stays
+// conservative throughout. Classes retain their existing conservative proof.
+fn pattern_does_not_observe_loop_bindings(
+    expression: &crate::ast::Expr,
+    loop_names: &std::collections::HashSet<Vec<u16>>,
+) -> bool {
+    fn visit(
+        expression: &crate::ast::Expr,
+        names: &std::collections::HashSet<Vec<u16>>,
+        delayed: bool,
+    ) -> bool {
+        use crate::ast::ExprKind;
+        if let ExprKind::Class(class) = &expression.kind {
+            return class_does_not_observe_loop_bindings(class, names);
+        }
+        let delayed = delayed
+            || matches!(
+                expression.kind,
+                ExprKind::Function(_) | ExprKind::Arrow(_) | ExprKind::Method { .. }
+            );
+        if let ExprKind::Identifier(name) = &expression.kind {
+            if name == "eval" || delayed && names.contains(&name.encode_utf16().collect::<Vec<_>>())
+            {
+                return false;
+            }
+        }
+        expression
+            .children()
+            .into_iter()
+            .all(|child| visit(child, names, delayed))
+    }
+    visit(expression, loop_names, false)
 }
 
 // Reuse requires that no closure/eval observer can read these cells and that
@@ -822,12 +948,22 @@ fn loop_bindings_are_unobserved(code: &Bytecode, states: &[Option<FlowState>]) -
             Instruction::CreateFunction(_)
             | Instruction::LoadSuperBinding
             | Instruction::ResolveSuperProperty { .. } => false,
+            Instruction::ExecuteTry(_) => false,
+            Instruction::BeginTryCatch(_) => true,
+            Instruction::InitializePattern(index) => {
+                let (Constant::BindingPattern { definition, .. }
+                | Constant::AssignmentPattern { definition, .. }) = &code.constants[index as usize]
+                else {
+                    return false;
+                };
+                pattern_does_not_observe_loop_bindings(definition, &loop_names)
+            }
             Instruction::CreateObjectLiteral(index) => {
                 let Constant::ObjectLiteral { definition, .. } = &code.constants[index as usize]
                 else {
                     return false;
                 };
-                object_does_not_observe_loop_bindings(definition, &loop_names)
+                expression_does_not_observe_loop_bindings(definition, &loop_names)
             }
             Instruction::CreateClass(index) => {
                 let Constant::Class { definition, .. } = &code.constants[index as usize] else {
@@ -852,6 +988,7 @@ fn loop_bindings_are_unobserved(code: &Bytecode, states: &[Option<FlowState>]) -
                 .as_ref()
                 .is_some_and(|state| state.references.is_empty() && state.calls.is_empty()),
             Instruction::CreateObject
+            | Instruction::CreateObjectReserved(_)
             | Instruction::CoercePropertyKey
             | Instruction::DefineObjectProperty { .. }
             | Instruction::DefineNamedObjectProperty { .. }
@@ -934,10 +1071,41 @@ fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
             }
         }
     }
+    let handler_regions = bytecode
+        .instructions
+        .iter()
+        .enumerate()
+        .filter_map(|(entry, instruction)| match instruction {
+            Instruction::BeginTryCatch(target) => Some((entry + 1, *target as usize)),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    let has_catch_handlers = !handler_regions.is_empty();
+    let handler_depths = if has_catch_handlers {
+        let mut changes = vec![0_isize; length + 1];
+        for (start, end) in &handler_regions {
+            if end <= start || *end >= length {
+                return Err(VerifyError::at(VerifyErrorKind::JumpOutOfBounds, start - 1));
+            }
+            changes[*start] += 1;
+            changes[*end] -= 1;
+        }
+        let mut depth = 0_isize;
+        changes
+            .into_iter()
+            .map(|change| {
+                depth += change;
+                depth as usize
+            })
+            .collect::<Vec<_>>()
+    } else {
+        Vec::new()
+    };
     let mut states: Vec<Option<FlowState>> = vec![None; length];
     let mut work = VecDeque::from([(
         0_usize,
         FlowState {
+            handlers: vec![],
             depth: 0,
             scopes: vec![],
             references: vec![],
@@ -946,11 +1114,33 @@ fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
     )]);
     let mut max_stack = 0;
     while let Some((offset, mut state)) = work.pop_front() {
+        while state
+            .handlers
+            .last()
+            .is_some_and(|(start, end, _)| offset < *start || offset >= *end)
+        {
+            state.handlers.pop();
+        }
+        if state.handlers.len() != handler_depths.get(offset).copied().unwrap_or(0) {
+            return Err(VerifyError::at(VerifyErrorKind::ScopeMismatch, offset));
+        }
+        for (start, end, depth) in &state.handlers {
+            if offset < *start || offset >= *end {
+                return Err(VerifyError::at(VerifyErrorKind::ScopeMismatch, offset));
+            }
+            if state.scopes.len() < *depth
+                && !matches!(bytecode.instructions[offset], Instruction::ExitScope)
+                && !matches!(bytecode.instructions[offset], Instruction::Jump(target) if (target as usize)<*start || (target as usize)>=*end)
+            {
+                return Err(VerifyError::at(VerifyErrorKind::ScopeMismatch, offset));
+            }
+        }
         if let Some(previous) = &states[offset] {
             if previous.depth != state.depth {
                 return Err(VerifyError::at(VerifyErrorKind::StackDepthMismatch, offset));
             }
-            if previous.scopes != state.scopes
+            if previous.handlers != state.handlers
+                || previous.scopes != state.scopes
                 || previous.references != state.references
                 || previous.calls != state.calls
             {
@@ -968,6 +1158,18 @@ fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
                 .ok_or_else(|| error(VerifyErrorKind::ConstantOutOfBounds))
         };
         match instruction {
+            Instruction::BeginTryCatch(target) => {
+                if target as usize <= offset + 1 || target as usize >= length {
+                    return Err(error(VerifyErrorKind::JumpOutOfBounds));
+                }
+                if state.depth != 0 || !state.references.is_empty() || !state.calls.is_empty() || !state.scopes.iter().any(|(_, index)| matches!(&bytecode.constants[*index as usize], Constant::Scope(plan) if plan.kind == ScopeKind::Function)) { return Err(error(VerifyErrorKind::ScopeMismatch)); }
+                let mut caught = state.clone();
+                caught.depth = 1;
+                work.push_back((target as usize, caught));
+                state
+                    .handlers
+                    .push((offset + 1, target as usize, state.scopes.len()));
+            }
             Instruction::EnterScope(index) => {
                 let Constant::Scope(plan) = constant(index)? else {
                     return Err(error(VerifyErrorKind::InvalidConstantKind));
@@ -1115,6 +1317,90 @@ fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
                     );
                 }
             }
+            Instruction::ExecuteTry(index) => {
+                let Constant::TryStatement { definition, .. } = constant(index)? else {
+                    return Err(error(VerifyErrorKind::InvalidConstantKind));
+                };
+                if !compiler::supported_try(definition) {
+                    return Err(error(VerifyErrorKind::InvalidConstantKind));
+                }
+                let Some(scope) = state.scopes.iter().find_map(|(_, index)| {
+                    match &bytecode.constants[*index as usize] {
+                        Constant::Scope(scope) if scope.kind == ScopeKind::Function => Some(scope),
+                        _ => None,
+                    }
+                }) else {
+                    return Err(error(VerifyErrorKind::ScopeMismatch));
+                };
+                let vars = compiler::try_vars(definition)
+                    .map_err(|_| error(VerifyErrorKind::InvalidConstantKind))?;
+                if vars.iter().any(|name| {
+                    !scope.bindings.iter().any(|binding| {
+                        binding.kind == BindingKind::Var && binding.name == name.as_str().into()
+                    })
+                }) {
+                    return Err(error(VerifyErrorKind::ScopeMismatch));
+                }
+            }
+            Instruction::InitializePattern(index) => {
+                if let Constant::AssignmentPattern { definition, strict } = constant(index)? {
+                    if state.scopes.is_empty() {
+                        return Err(error(VerifyErrorKind::ScopeMismatch));
+                    }
+                    if !matches!(
+                        definition.kind,
+                        crate::ast::ExprKind::Array { .. } | crate::ast::ExprKind::Object(_)
+                    ) {
+                        return Err(error(VerifyErrorKind::InvalidConstantKind));
+                    }
+                    let assignment = crate::ast::Expr::new(
+                        definition.span,
+                        crate::ast::ExprKind::Assignment {
+                            operator: "=".into(),
+                            target: Box::new((**definition).clone()),
+                            value: Box::new(crate::ast::Expr::new(
+                                definition.span,
+                                crate::ast::ExprKind::Literal(crate::ast::Literal::Null),
+                            )),
+                        },
+                    );
+                    crate::semantics::validate_expression(&assignment, crate::semantics::SemanticOptions {
+                        strict: *strict,
+                        in_function: state.scopes.iter().any(|(_, index)| matches!(&bytecode.constants[*index as usize], Constant::Scope(plan) if plan.kind == ScopeKind::Function)),
+                        ..Default::default()
+                    }).map_err(|_| error(VerifyErrorKind::InvalidConstantKind))?;
+                } else {
+                    let Constant::BindingPattern {
+                        definition,
+                        initialize,
+                        ..
+                    } = constant(index)?
+                    else {
+                        return Err(error(VerifyErrorKind::InvalidConstantKind));
+                    };
+                    if state.scopes.is_empty() {
+                        return Err(error(VerifyErrorKind::ScopeMismatch));
+                    }
+                    if !matches!(
+                        definition.kind,
+                        crate::ast::ExprKind::Array { .. } | crate::ast::ExprKind::Object(_)
+                    ) {
+                        return Err(error(VerifyErrorKind::InvalidConstantKind));
+                    }
+                    let names = compiler::binding_names(definition)
+                        .map_err(|_| error(VerifyErrorKind::InvalidConstantKind))?;
+                    for name in names {
+                        let scopes = if *initialize {
+                            &state.scopes[state.scopes.len() - 1..]
+                        } else {
+                            &state.scopes[..]
+                        };
+                        if !scopes.iter().any(|(_, index)| matches!(&bytecode.constants[*index as usize], Constant::Scope(plan) if plan.bindings.iter().any(|binding| binding.name == name.as_str().into() && (!*initialize || binding.kind != BindingKind::Var)))) {
+                        return Err(error(VerifyErrorKind::BindingOutOfBounds));
+                    }
+                    }
+                }
+            }
             Instruction::CreateObjectLiteral(index) => {
                 if !matches!(constant(index)?, Constant::ObjectLiteral { definition, .. } if matches!(definition.kind, crate::ast::ExprKind::Object(_)))
                 {
@@ -1143,6 +1429,7 @@ fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
             }
             Instruction::GetProperty { .. }
             | Instruction::CreateObject
+            | Instruction::CreateObjectReserved(_)
             | Instruction::CoercePropertyKey
             | Instruction::DefineObjectProperty { .. }
             | Instruction::SpreadObject
@@ -1230,6 +1517,9 @@ fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
                         | Constant::Function(_)
                         | Constant::Class { .. }
                         | Constant::ObjectLiteral { .. }
+                        | Constant::BindingPattern { .. }
+                        | Constant::AssignmentPattern { .. }
+                        | Constant::TryStatement { .. }
                 ) {
                     return Err(error(VerifyErrorKind::InvalidConstantKind));
                 }
@@ -1314,7 +1604,10 @@ fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
         .any(|op| {
             matches!(
                 op,
-                Instruction::CreateObjectLiteral(_) | Instruction::CreateClass(_)
+                Instruction::CreateObjectLiteral(_)
+                    | Instruction::CreateClass(_)
+                    | Instruction::InitializePattern(_)
+                    | Instruction::ExecuteTry(_)
             )
         })
         .then(Default::default);
@@ -1329,7 +1622,35 @@ fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
                 .instructions
                 .iter()
                 .any(|op| matches!(op, Instruction::LoadThis)));
+    let static_object_patterns = bytecode
+        .constants
+        .iter()
+        .map(|constant| match constant {
+            Constant::BindingPattern {
+                definition,
+                initialize: true,
+                ..
+            } => crate::runtime::bytecode_function::StaticObjectBindingPlan::prepare(definition),
+            _ => None,
+        })
+        .collect();
+    // Public bytecode may exit one root and enter a different root. Only a
+    // single Function root followed by lexical blocks can pin this context.
+    let definition_function_root = definition_cache.is_some()
+        && bytecode.instructions.iter().enumerate().all(|(offset, instruction)| {
+            match instruction {
+                Instruction::EnterScope(index) => matches!(&bytecode.constants[*index as usize],
+                    Constant::Scope(plan) if plan.kind == if offset == 0 { ScopeKind::Function } else { ScopeKind::Block }),
+                _ => true,
+            }
+        })
+        && matches!(bytecode.instructions.first(), Some(Instruction::EnterScope(_)));
+    let function_name_lookup = function_name_lookup_plan(&bytecode, &states);
     Ok(VerifiedBytecode {
+        definition_function_root,
+        function_name_lookup,
+        static_object_patterns,
+        has_catch_handlers,
         short_function,
         empty_function_frame,
         definition_cache,
@@ -1381,4 +1702,62 @@ fn validate_function_template(template: &FunctionTemplate) -> Result<(), VerifyE
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod function_name_lookup_tests {
+    use super::*;
+
+    #[test]
+    fn lookup_proof_keeps_dynamic_metadata_and_eval_conservative() {
+        for (source, expected) in [
+            (
+                "function f(){try{throw 0;}catch(e){return outside;}}f();",
+                true,
+            ),
+            (
+                "function f(eval){try{throw 0;}catch(e){return outside;}}f();",
+                false,
+            ),
+            (
+                "function f(){let {x=eval('var injected=42')}={};try{throw 0;}catch(e){return outside;}}f();",
+                false,
+            ),
+            (
+                "function f(){try{}finally{}try{throw 0;}catch(e){return outside;}}f();",
+                false,
+            ),
+            (
+                "function f(){let read=function(){return 1;};try{throw 0;}catch(e){return outside;}}f();",
+                false,
+            ),
+            (
+                "function f(){try{let {value}={get value(){throw 0;}};}catch(e){return TypeError;}}f();",
+                true,
+            ),
+        ] {
+            let code = BytecodeCompiler::compile(source).unwrap();
+            let template = code
+                .bytecode
+                .constants
+                .iter()
+                .find_map(|constant| {
+                    if let Constant::Scope(plan) = constant {
+                        plan.functions.first().map(|function| &function.template)
+                    } else {
+                        None
+                    }
+                })
+                .unwrap();
+            assert_eq!(
+                template
+                    .body
+                    .function_name_lookup
+                    .iter()
+                    .any(|enabled| *enabled),
+                expected,
+                "{source}"
+            );
+        }
+    }
 }

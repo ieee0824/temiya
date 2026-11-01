@@ -159,7 +159,7 @@ impl Class {
 }
 
 impl Stmt {
-    pub(super) fn expression_roots(&self) -> Vec<&Expr> {
+    pub(crate) fn expression_roots(&self) -> Vec<&Expr> {
         let mut expressions = vec![];
         match &self.kind {
             StmtKind::ImportDeclaration(import) => {

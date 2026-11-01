@@ -11,11 +11,21 @@ property get, followed by default evaluation and the write. Earlier writes
 remain observable if a later target throws. IteratorClose preserves the original
 throw completion. Object rest resolves its target before copying properties.
 
+Verified bytecode lowers assignment patterns to `AssignmentPattern` metadata
+consumed by `InitializePattern`. It preserves the RHS on the operand stack and
+uses the same Reference writer as the interpreter. Assignment metadata permits
+member targets without weakening declaration binding validation, cannot be
+loaded as a runtime value, and participates in argument observation and
+per-iteration environment analysis. `tests/bytecode_assignments.rs` checks
+these contracts and that all six frozen benchmark functions compile to VM bodies.
+Mapped sloppy arguments (#166), AST for-let closure capture (#173), and
+optional Annex B var aliases (#174) remain separate work.
+
 Public Engine tests exercise Ast and Auto in
 `tests/destructuring_assignment.rs`. The implementation is pending fixed
 Test262, safety, toolchain, and native Boa performance qualification. It does
-not establish complete for-of or generator support. Issues #162 and #163 must
-land before #164.
+not establish complete for-of or generator support. Issues #162 and #163 have landed; #164 still requires qualification
+of its current runtime source.
 
 Specification: [ECMA-262 destructuring assignment](https://tc39.es/ecma262/2026/multipage/ecmascript-language-expressions.html#sec-destructuring-assignment).
 
@@ -30,3 +40,23 @@ Computed member targets retain the key value in their Reference; conversion
 to a property key happens at PutValue, after source reads and defaults. The
 reference-order regression also checks that a null base rejects the write
 without converting its key, while closing an unfinished iterator.
+
+The first historical instruction captures for all six unchanged inputs are
+retained in `benchmarks/destructuring-assignment/vm-instructions-v1`. Replay
+with `node benchmarks/destructuring-assignment/vm-instructions-v1/verify.mjs`.
+The comparison includes parent-main integration and VM lowering, so it does
+not isolate either change. All six recorded instruction totals decreased
+(4.8–22.5%); this is not a native timing or Boa speed qualification.
+
+Current-source local VM correctness records are retained separately in
+`benchmarks/destructuring-assignment/vm-correctness-v1`; its verifier replays
+the 1,013-test native result, four dedicated strict Miri tests, Clippy and the
+original 46-variant loop audit, including its ten dependency failures. The
+initial isolated-filesystem Miri rejection is retained alongside the successful
+embedded-input run. Complete security and full-corpus checks remain pending.
+
+`vm-gc-correctness-v1` adds one explicit Bytecode-backend test of ephemeral
+assignment targets across reentrant collection from setters, getters, defaults
+and rest writes. Native execution and strict Miri both pass, and the final
+collection retains zero allocations. Its verifier proves that compiler inputs
+match the measured runtime source; it supplements the four VM tests above.

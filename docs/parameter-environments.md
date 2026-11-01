@@ -43,3 +43,16 @@ Callgrind capture per source for the same 192-parameter/384-var input. Both
 return 193; instructions decrease from 17,464,899 to 16,834,912 (3.607%).
 This includes setup and is not a native Boa qualification. Replay with
 `node benchmarks/parameter-environments/large-preparation-v1/verify.mjs`.
+
+Integration with the current assignment VM keeps parameter-only names outside
+the body var descriptor. Verified body reads resolve those names through the
+parent parameter record; redeclared body vars retain independently copied
+cells. An internal VM entry accepts this prepared Declarative body record
+while the public function-frame entry still requires a Function record.
+Pure prepared bodies resolve only proven parameter names through this chain.
+The context regression covers assignment defaults using this/new.target and
+body function declarations shadowing a parameter without changing its closure.
+
+The integrated source passes 1,022 all-target/all-feature tests (26 ignored)
+and Clippy locally. Its eight parameter tests are undergoing fresh strict
+Miri validation; earlier-source captures above remain historical evidence.

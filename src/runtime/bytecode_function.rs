@@ -11,6 +11,220 @@ use super::{
     Completion, Environment, IntrinsicId, Object, Realm, RuntimeError, RuntimeResult, Value,
 };
 
+// Derived exclusively from immutable syntax after ordinary bytecode validation.
+// No runtime values or environments are retained in this plan.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct StaticObjectBindingPlan(Box<[(super::PropertyKey, super::JsString)]>);
+impl StaticObjectBindingPlan {
+    pub(crate) fn prepare(pattern: &crate::ast::Expr) -> Option<Self> {
+        use crate::ast::{ExprKind, Literal};
+        let ExprKind::Object(properties) = &pattern.kind else {
+            return None;
+        };
+        let mut entries = Vec::with_capacity(properties.len());
+        for property in properties {
+            if property.spread || property.computed {
+                return None;
+            }
+            let key = match &property.key.kind {
+                ExprKind::Identifier(name) => name.as_str().into(),
+                ExprKind::Literal(Literal::String { value, .. }) => {
+                    super::JsString::from_code_units_slice(value)
+                }
+                _ => return None,
+            };
+            let ExprKind::Identifier(name) = &property.value.as_ref().unwrap_or(&property.key).kind
+            else {
+                return None;
+            };
+            entries.push((super::PropertyKey::String(key), name.as_str().into()));
+        }
+        Some(Self(entries.into_boxed_slice()))
+    }
+    pub(crate) fn initialize(
+        &self,
+        environment: &Environment,
+        source: &Object,
+    ) -> RuntimeResult<()> {
+        for (key, name) in &self.0 {
+            let value = source.get_with_receiver(key, Value::Object(source.clone()))?;
+            environment.initialize_binding(name, value)?;
+        }
+        Ok(())
+    }
+}
+
+// A bounded body can read an already-instantiated parameter frame directly.
+// This keeps the real cells (including cells captured by defaults), but avoids
+// allocating VM operand/scope vectors for pure guards and returns. Only
+// immutable primitive constants and binding names are cached.
+#[derive(Debug)]
+pub(super) struct PreparedBodyPlan(Box<[PreparedBodyOp]>);
+#[derive(Debug)]
+enum PreparedBodyOp {
+    Scope,
+    Read(super::JsString),
+    Primitive(Value),
+    Duplicate,
+    Pop,
+    Not,
+    Equal { negate: bool },
+    Jump(usize),
+    JumpIfFalse(usize),
+    Return,
+    Throw,
+}
+impl PreparedBodyPlan {
+    pub(super) fn prepare(
+        code: &crate::bytecode::VerifiedBytecode,
+        parameters: &[super::JsString],
+    ) -> Option<Self> {
+        use crate::bytecode::{BinaryOperator, BindingKind, ScopeKind};
+        let body = code.bytecode();
+        if code.max_stack() > 4 || body.local_count != 0 || body.instructions.len() > 64 {
+            return None;
+        }
+        let Instruction::EnterScope(root) = *body.instructions.first()? else {
+            return None;
+        };
+        let Constant::Scope(root) = &body.constants[root as usize] else {
+            return None;
+        };
+        if root.kind != ScopeKind::Function
+            || !root.functions.is_empty()
+            || root.bindings.iter().any(|binding| {
+                binding.kind != BindingKind::Var || !parameters.contains(&binding.name)
+            })
+        {
+            return None;
+        }
+        let mut operations = Vec::with_capacity(body.instructions.len());
+        for (pc, instruction) in body.instructions.iter().enumerate() {
+            operations.push(match *instruction {
+                Instruction::EnterScope(index) => {
+                    let Constant::Scope(scope) = &body.constants[index as usize] else {
+                        return None;
+                    };
+                    if pc != 0
+                        && (scope.kind != ScopeKind::Block
+                            || !scope.bindings.is_empty()
+                            || !scope.functions.is_empty())
+                    {
+                        return None;
+                    }
+                    PreparedBodyOp::Scope
+                }
+                Instruction::ExitScope => PreparedBodyOp::Scope,
+                Instruction::LoadBinding { scope: 0, slot } => {
+                    PreparedBodyOp::Read(root.bindings.get(slot as usize)?.name.clone())
+                }
+                Instruction::LoadName(index) | Instruction::GetName { name: index, .. } => {
+                    let Constant::String(name) = &body.constants[index as usize] else {
+                        return None;
+                    };
+                    if !parameters.contains(name) {
+                        return None;
+                    }
+                    PreparedBodyOp::Read(name.clone())
+                }
+                Instruction::LoadConstant(index) => {
+                    let value = match &body.constants[index as usize] {
+                        Constant::Undefined => Value::Undefined,
+                        Constant::Null => Value::Null,
+                        Constant::Boolean(value) => Value::Boolean(*value),
+                        Constant::Number(value) => Value::Number(*value),
+                        Constant::String(value) => Value::String(value.clone()),
+                        _ => return None,
+                    };
+                    PreparedBodyOp::Primitive(value)
+                }
+                Instruction::Duplicate => PreparedBodyOp::Duplicate,
+                Instruction::Pop => PreparedBodyOp::Pop,
+                Instruction::LogicalNot => PreparedBodyOp::Not,
+                Instruction::StrictEqual | Instruction::Binary(BinaryOperator::StrictEqual) => {
+                    PreparedBodyOp::Equal { negate: false }
+                }
+                Instruction::Binary(BinaryOperator::StrictNotEqual) => {
+                    PreparedBodyOp::Equal { negate: true }
+                }
+                Instruction::Jump(target) | Instruction::JumpIfFalse(target)
+                    if target as usize > pc =>
+                {
+                    if matches!(instruction, Instruction::Jump(_)) {
+                        PreparedBodyOp::Jump(target as usize)
+                    } else {
+                        PreparedBodyOp::JumpIfFalse(target as usize)
+                    }
+                }
+                Instruction::Return => PreparedBodyOp::Return,
+                Instruction::Throw => PreparedBodyOp::Throw,
+                _ => return None,
+            });
+        }
+        Some(Self(operations.into_boxed_slice()))
+    }
+
+    pub(super) fn execute(&self, realm: &Realm, frame: &Environment) -> RuntimeResult<Value> {
+        let _roots = realm.enter_object_root_region();
+        let mut values = [const { Value::Undefined }; 4];
+        let mut len = 0;
+        let mut pc = 0;
+        // Ordinary verification proves every stack depth, live scope and
+        // target. Preparation additionally excludes backedges and user calls.
+        loop {
+            let operation = &self.0[pc];
+            pc += 1;
+            match operation {
+                PreparedBodyOp::Scope => {}
+                PreparedBodyOp::Read(name) => {
+                    values[len] = frame.get_identifier_value(name, true)?;
+                    len += 1;
+                }
+                PreparedBodyOp::Primitive(value) => {
+                    values[len] = value.clone();
+                    len += 1;
+                }
+                PreparedBodyOp::Duplicate => {
+                    values[len] = values[len - 1].clone();
+                    len += 1;
+                }
+                PreparedBodyOp::Pop => {
+                    len -= 1;
+                    values[len] = Value::Undefined;
+                }
+                PreparedBodyOp::Not => {
+                    values[len - 1] = Value::Boolean(!values[len - 1].to_boolean());
+                }
+                PreparedBodyOp::Equal { negate } => {
+                    let equal =
+                        super::interpreter::strict_equal(&values[len - 2], &values[len - 1]);
+                    len -= 1;
+                    values[len] = Value::Undefined;
+                    values[len - 1] = Value::Boolean(equal != *negate);
+                }
+                PreparedBodyOp::Jump(target) => pc = *target,
+                PreparedBodyOp::JumpIfFalse(target) => {
+                    len -= 1;
+                    let condition = values[len].to_boolean();
+                    values[len] = Value::Undefined;
+                    if !condition {
+                        pc = *target;
+                    }
+                }
+                PreparedBodyOp::Return => {
+                    return Ok(std::mem::replace(&mut values[len - 1], Value::Undefined));
+                }
+                PreparedBodyOp::Throw => {
+                    return Err(RuntimeError::thrown(std::mem::replace(
+                        &mut values[len - 1],
+                        Value::Undefined,
+                    )));
+                }
+            }
+        }
+    }
+}
+
 struct Closure {
     template: Rc<FunctionTemplate>,
     realm: Realm,
@@ -39,6 +253,7 @@ impl DefinitionCodeCache {
     pub(crate) fn context(&self) -> DefinitionEvaluationContext {
         DefinitionEvaluationContext {
             cache: Some(self.0.get_or_init(Default::default).clone()),
+            function_frame: None,
         }
     }
 }
@@ -46,9 +261,21 @@ impl DefinitionCodeCache {
 #[derive(Default)]
 pub(crate) struct DefinitionEvaluationContext {
     cache: Option<super::function::FunctionCache>,
+    function_frame: Option<(Environment, Option<Object>)>,
 }
 
 impl DefinitionEvaluationContext {
+    // One verified Function root, with only lexical Block descendants, uses
+    // this same identity-bearing frame throughout the invocation. Do not read
+    // its this value: super() may initialize that cell later.
+    pub(crate) fn pin_function_frame(&mut self, frame: &Environment) -> RuntimeResult<()> {
+        self.function_frame = None;
+        if frame.kind() == super::EnvironmentKind::Function && frame.has_this_binding()? {
+            self.function_frame = Some((frame.clone(), frame.new_target()?));
+        }
+        Ok(())
+    }
+
     pub(crate) fn evaluate(
         &mut self,
         class: &crate::ast::Class,
@@ -58,6 +285,57 @@ impl DefinitionEvaluationContext {
     ) -> RuntimeResult<Object> {
         let evaluator = self.evaluator(realm, environment, true)?;
         super::class::evaluate(class, &evaluator, inferred_name)
+    }
+
+    pub(crate) fn evaluate_try(
+        &mut self,
+        statement: &crate::ast::Stmt,
+        strict: bool,
+        realm: &Realm,
+        environment: &Environment,
+        variable_environment: &Environment,
+    ) -> RuntimeResult<Completion> {
+        let evaluator = self.evaluator(realm, environment, strict)?;
+        super::StatementEvaluator::with_environments(
+            realm.clone(),
+            environment.clone(),
+            variable_environment.clone(),
+            evaluator.this_value.clone(),
+            strict,
+        )
+        .with_this_environment(evaluator.this_environment.clone())
+        .with_new_target(evaluator.new_target.clone())
+        .with_function_cache(evaluator.function_cache.clone())
+        .evaluate_preinstantiated_try(statement)
+    }
+
+    pub(crate) fn initialize_pattern(
+        &mut self,
+        pattern: &Rc<crate::ast::Expr>,
+        value: Value,
+        initialize: bool,
+        strict: bool,
+        realm: &Realm,
+        environment: &Environment,
+    ) -> RuntimeResult<()> {
+        // RequireObjectCoercible precedes computed keys, defaults and target
+        // initialization. A nullish source cannot observe this/new.target or
+        // create closures, so no evaluator context is needed for this failure.
+        if matches!(pattern.kind, crate::ast::ExprKind::Object(_))
+            && matches!(value, Value::Null | Value::Undefined)
+        {
+            return Err(super::binding::nullish_object_error());
+        }
+        super::function::retain_definition(
+            self.cache.get_or_insert_with(Default::default),
+            pattern,
+        );
+        super::binding::initialize(
+            &self.evaluator(realm, environment, strict)?,
+            pattern,
+            value,
+            initialize,
+        )
     }
 
     pub(crate) fn evaluate_object_literal(
@@ -108,6 +386,19 @@ impl DefinitionEvaluationContext {
         environment: &Environment,
         strict: bool,
     ) -> RuntimeResult<super::ExpressionEvaluator> {
+        if let Some((frame, new_target)) = &self.function_frame {
+            return Ok(super::ExpressionEvaluator::with_environment(
+                realm.clone(),
+                environment.clone(),
+                Value::Undefined,
+                strict,
+            )
+            .with_this_environment(Some(frame.clone()))
+            .with_new_target(new_target.clone())
+            .with_function_cache(Some(
+                self.cache.get_or_insert_with(Default::default).clone(),
+            )));
+        }
         let mut current = Some(environment.clone());
         let mut this_environment = None;
         let mut this_value = Value::Undefined;

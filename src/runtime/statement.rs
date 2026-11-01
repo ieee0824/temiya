@@ -158,6 +158,14 @@ impl StatementEvaluator {
         self.statement(statement, &[])
     }
 
+    pub(super) fn evaluate_preinstantiated_try(
+        &self,
+        statement: &Stmt,
+    ) -> RuntimeResult<Completion> {
+        debug_assert!(matches!(statement.kind, StmtKind::Try { .. }));
+        self.statement(statement, &[])
+    }
+
     pub(super) fn evaluate_instantiated(&self, statements: &[Stmt]) -> RuntimeResult<Completion> {
         self.instantiate_functions(statements)?;
         self.statement_list(statements)

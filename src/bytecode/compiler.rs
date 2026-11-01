@@ -453,7 +453,7 @@ impl Compiler {
                         .iter()
                         .any(|scope| scope.kind == ScopeKind::Function)
                 {
-                    return Err(self.unsupported("try statement", statement.span));
+                    return Err(self.unsupported("statement", statement.span));
                 }
                 let index = self.pool(Constant::TryStatement {
                     definition: std::rc::Rc::new(statement.clone()),

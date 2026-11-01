@@ -183,3 +183,12 @@ Both unfiltered AMD EPYC9V45 jobs fail speed qualification:object wins
 records1/3 on copy1. The independent replay preserves all adverse outcomes,
 including existing controls, without unchanged-source retiming. Replay with
 `node benchmarks/object-binding/verify-hosted.mjs hosted-single-catch-v1`.
+
+The ordinary-data-rest stage (`683ec764`) in `bytecode-experiments-v1`
+retains all six fixed instruction profiles, including adverse results, plus
+982 passing native tests (26 ignored) and two focused strict-Miri tests.
+Compared with literal projection, rest-symbol instructions decrease from
+976053511 to 944716242; getter-order increases from 693493894 to 698560161.
+These instruction counts do not establish native superiority over Boa.
+The archive now contains 12 valid stages (72 profiles), two rejected stale
+worker captures, and seven later source-scoped correctness captures.

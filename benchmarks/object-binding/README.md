@@ -200,3 +200,8 @@ increase0.02–0.07%. Source-scoped validation records983 passing native tests
 (26 ignored), Clippy, explicit release workers and one strict-Miri test.
 The archive contains13 valid stages/78 profiles, two rejected stale workers,
 and eight later correctness captures. Native Boa qualification remains separate.
+
+`hosted-literal-projection-v1` retains all76 reports from run41276966573
+at bda63e1. Both unfiltered jobs fail speed qualification: object workload
+wins are3/2/3/3/3/0 and2/1/2/3/3/0. All preceding groups meet the speed
+condition in both jobs. Recording workflow success does not mean qualification.

@@ -102,6 +102,8 @@ case "${1:-}" in
     node benchmarks/array-binding/security-cache32-v1/verify.mjs benchmarks/array-binding/security-cache32-v1 9f84bc5c6416911df51d76cf10b936ad3c3e003f
     ;;
   assignments)
+    node benchmarks/destructuring-assignment/full-comparisons-v1/verify.mjs
+    node benchmarks/object-binding/security-prepared-guards-v1/verify.mjs benchmarks/destructuring-assignment/security-comparisons-v1 a151aedc4b75cfb5812f881f3644fc0d529fcb4e
     node benchmarks/destructuring-assignment/nested-assignment-correctness-v1/verify.mjs
     node benchmarks/destructuring-assignment/nested-assignment-instructions-v1/verify.mjs
     node benchmarks/destructuring-assignment/static-assignment-correctness-v1/verify.mjs

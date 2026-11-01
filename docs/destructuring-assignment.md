@@ -85,3 +85,13 @@ benchmarks/destructuring-assignment/security-vm-v1
 eb29c4169c0fdfd9246546f76b5874097a53ef62` on a single command line. These
 results qualify the recorded runtime source for the stated checks only;
 native Boa speed remains pending.
+
+The frozen142 text-matched assignment files contain219 variants:217 pass
+and2 fail. Both failures are the strict/sloppy variants of
+`for-of/body-dstr-assign-error.js`, whose custom iterator is not consumed by
+the legacy for-of path; Iterator protocol and closing integration remain #171.
+They remain failures in the complete capture. The inherited8,813-file selection
+contains17,424 variants:10,245 pass,2,748 fail and4,431 timeout.
+`selection-summary.json` preserves this full breakdown. The142 text matches
+include one untagged duplicate-__proto__ case; actual assignment metadata tags
+cover141 files and217 variants. No outcome-based selection is applied.

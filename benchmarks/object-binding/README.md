@@ -275,3 +275,15 @@ profiles remain retained, along with987 native passes (26 ignored), Clippy,
 release workers and strict Miri for GC reentry. The archive has21 valid
 captures/126 profiles, two stale-worker rejections and16 later correctness
 captures. These local diagnostics do not qualify native speed.
+
+The function-name stage (`dc9bd56`) derives name lookup starting points from
+verified flow scopes. Only unshadowed names can skip intervening block records;
+eval bindings/loads/metadata and opaque function/class/try metadata keep the
+original path. Public LoadName/GetName shadowing and outer with getter receiver
+plus GC pass strict Miri. All990 native tests (26 ignored), Clippy and explicit
+release workers pass. Againstda7b51f, abrupt/rest instructions decrease1.68/1.91%,
+parameters decrease0.19%, while declaration/computed/getter increase0.33/0.28/0.29%.
+All six profiles are retained. The archive has22 valid captures/132 profiles,
+two stale-worker rejections and17 later correctness captures. Changed-source
+native41283370723, full41283372476 and security41283373955 are pending; no native
+qualification or conformance transfer from preceding sources is claimed.

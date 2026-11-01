@@ -11,6 +11,49 @@ use super::{
     Completion, Environment, IntrinsicId, Object, Realm, RuntimeError, RuntimeResult, Value,
 };
 
+// Derived exclusively from immutable syntax after ordinary bytecode validation.
+// No runtime values or environments are retained in this plan.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct StaticObjectBindingPlan(Box<[(super::PropertyKey, super::JsString)]>);
+impl StaticObjectBindingPlan {
+    pub(crate) fn prepare(pattern: &crate::ast::Expr) -> Option<Self> {
+        use crate::ast::{ExprKind, Literal};
+        let ExprKind::Object(properties) = &pattern.kind else {
+            return None;
+        };
+        let mut entries = Vec::with_capacity(properties.len());
+        for property in properties {
+            if property.spread || property.computed {
+                return None;
+            }
+            let key = match &property.key.kind {
+                ExprKind::Identifier(name) => name.as_str().into(),
+                ExprKind::Literal(Literal::String { value, .. }) => {
+                    super::JsString::from_code_units_slice(value)
+                }
+                _ => return None,
+            };
+            let ExprKind::Identifier(name) = &property.value.as_ref().unwrap_or(&property.key).kind
+            else {
+                return None;
+            };
+            entries.push((super::PropertyKey::String(key), name.as_str().into()));
+        }
+        Some(Self(entries.into_boxed_slice()))
+    }
+    pub(crate) fn initialize(
+        &self,
+        environment: &Environment,
+        source: &Object,
+    ) -> RuntimeResult<()> {
+        for (key, name) in &self.0 {
+            let value = source.get_with_receiver(key, Value::Object(source.clone()))?;
+            environment.initialize_binding(name, value)?;
+        }
+        Ok(())
+    }
+}
+
 struct Closure {
     template: Rc<FunctionTemplate>,
     realm: Realm,
@@ -98,17 +141,6 @@ impl DefinitionEvaluationContext {
             && matches!(value, Value::Null | Value::Undefined)
         {
             return Err(super::binding::nullish_object_error());
-        }
-        if initialize {
-            if let (crate::ast::ExprKind::Object(properties), Value::Object(source)) =
-                (&pattern.kind, &value)
-            {
-                if let Some(result) =
-                    super::binding::initialize_static_object(environment, properties, source)
-                {
-                    return result;
-                }
-            }
         }
         super::function::retain_definition(
             self.cache.get_or_insert_with(Default::default),

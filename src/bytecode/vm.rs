@@ -724,6 +724,15 @@ impl VirtualMachine {
                                 unreachable!("verified binding pattern")
                             };
                             let value = pop(&mut stack)?;
+                            if let (Some(plan), Value::Object(source)) =
+                                (&bytecode.static_object_patterns[index as usize], &value)
+                            {
+                                plan.initialize(
+                                    &scopes.last().expect("verified pattern scope").environment,
+                                    source,
+                                )?;
+                                continue;
+                            }
                             definition_context.initialize_pattern(
                                 definition,
                                 value,

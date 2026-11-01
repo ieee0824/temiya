@@ -577,6 +577,7 @@ pub struct VerifiedBytecode {
     has_backedge: bool,
     pub(super) has_catch_handlers: bool,
     has_own_property_cache: bool,
+    static_object_patterns: Vec<Option<crate::runtime::bytecode_function::StaticObjectBindingPlan>>,
     reuse_loop_bindings: bool,
     numeric_return: Option<numeric_return::NumericReturnPlan>,
     leaf_function: Option<leaf_function::LeafFunctionPlan>,
@@ -1533,7 +1534,20 @@ fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
                 .instructions
                 .iter()
                 .any(|op| matches!(op, Instruction::LoadThis)));
+    let static_object_patterns = bytecode
+        .constants
+        .iter()
+        .map(|constant| match constant {
+            Constant::BindingPattern {
+                definition,
+                initialize: true,
+                ..
+            } => crate::runtime::bytecode_function::StaticObjectBindingPlan::prepare(definition),
+            _ => None,
+        })
+        .collect();
     Ok(VerifiedBytecode {
+        static_object_patterns,
         has_catch_handlers,
         short_function,
         empty_function_frame,

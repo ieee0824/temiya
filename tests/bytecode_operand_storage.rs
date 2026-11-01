@@ -10,6 +10,7 @@ fn small_and_deep_vm_operands_survive_reentrant_collection() {
         for source in [
             "function value(){return {valueOf(){gcNow();return 20;}};}value()+(gcNow(),22);",
             "function value(){return {valueOf(){gcNow();return 20;}};}value()+(1+(2+(3+(4+(gcNow(),12)))));",
+            "function value(){return {valueOf(){throw 99;}};}value()!==(gcNow(),value())?42:0;",
         ] {
             let engine = Engine::builder().script_backend(backend).build();
             {

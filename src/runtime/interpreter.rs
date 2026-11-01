@@ -1489,7 +1489,7 @@ fn bigint_shift(value: &BigInt) -> RuntimeResult<u32> {
         .map_err(|_| RuntimeError::range_error("BigInt exponent or shift count is too large"))
 }
 
-pub(super) fn strict_equal(left: &Value, right: &Value) -> bool {
+pub(crate) fn strict_equal(left: &Value, right: &Value) -> bool {
     match (left, right) {
         (Value::Number(a), Value::Number(b)) => !a.is_nan() && !b.is_nan() && a == b,
         _ => left.same_value(right),

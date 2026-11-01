@@ -587,6 +587,8 @@ pub struct VerifiedBytecode {
     function_name_lookup: Vec<bool>,
     definition_function_root: bool,
     static_object_patterns: Vec<Option<crate::runtime::bytecode_function::StaticObjectBindingPlan>>,
+    static_object_assignments:
+        Vec<Option<crate::runtime::bytecode_function::StaticObjectAssignmentPlan>>,
     reuse_loop_bindings: bool,
     numeric_return: Option<numeric_return::NumericReturnPlan>,
     leaf_function: Option<leaf_function::LeafFunctionPlan>,
@@ -1713,6 +1715,16 @@ fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
             _ => None,
         })
         .collect();
+    let static_object_assignments = bytecode
+        .constants
+        .iter()
+        .map(|constant| match constant {
+            Constant::AssignmentPattern { definition, .. } => {
+                crate::runtime::bytecode_function::StaticObjectAssignmentPlan::prepare(definition)
+            }
+            _ => None,
+        })
+        .collect();
     // Public bytecode may exit one root and enter a different root. Only a
     // single Function root followed by lexical blocks can pin this context.
     let definition_function_root = definition_cache.is_some()
@@ -1729,6 +1741,7 @@ fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
         definition_function_root,
         function_name_lookup,
         static_object_patterns,
+        static_object_assignments,
         has_catch_handlers,
         short_function,
         empty_function_frame,
@@ -1888,5 +1901,41 @@ mod hoisted_loop_capture_tests {
                 "{source}"
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod static_assignment_execution_tests {
+    use super::*;
+    #[test]
+    fn prepared_static_targets_are_used_across_observable_source_reads() {
+        let source = "function run(){let obj={},old=obj,answer;let source={get x(){obj={};return 42;}};({x:obj.value}=source);({x:answer}=source);return old.value===42&&answer===42;}run();";
+        let code = BytecodeCompiler::compile(source).unwrap();
+        let body = code
+            .bytecode()
+            .constants
+            .iter()
+            .find_map(|constant| {
+                if let Constant::Scope(scope) = constant {
+                    scope
+                        .functions
+                        .first()
+                        .map(|function| &function.template.body)
+                } else {
+                    None
+                }
+            })
+            .unwrap();
+        assert_eq!(
+            body.static_object_assignments
+                .iter()
+                .filter(|plan| plan.is_some())
+                .count(),
+            2
+        );
+        assert!(matches!(
+            VirtualMachine::execute(&code).unwrap(),
+            crate::runtime::Completion::Normal(Some(crate::runtime::Value::Boolean(true)))
+        ));
     }
 }

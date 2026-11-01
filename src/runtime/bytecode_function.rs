@@ -54,6 +54,118 @@ impl StaticObjectBindingPlan {
     }
 }
 
+// Prepared syntax only: static names never retain a Realm, value or Reference.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct StaticObjectAssignmentPlan(Box<[(super::PropertyKey, StaticAssignmentTarget)]>);
+#[derive(Clone, Debug, PartialEq)]
+enum StaticAssignmentTarget {
+    Identifier(super::JsString),
+    Member {
+        base: super::JsString,
+        key: super::PropertyKey,
+    },
+}
+impl StaticAssignmentTarget {
+    fn prepare(expression: &crate::ast::Expr) -> Option<Self> {
+        use crate::ast::ExprKind;
+        match &expression.kind {
+            ExprKind::Parenthesized(inner) => Self::prepare(inner),
+            ExprKind::Identifier(name) => Some(Self::Identifier(name.as_str().into())),
+            ExprKind::Member {
+                object,
+                property,
+                computed: false,
+                optional: false,
+            } => {
+                let ExprKind::Identifier(base) = &object.kind else {
+                    return None;
+                };
+                Some(Self::Member {
+                    base: base.as_str().into(),
+                    key: static_assignment_key(property)?,
+                })
+            }
+            _ => None,
+        }
+    }
+    fn resolve(
+        &self,
+        realm: &Realm,
+        environment: &Environment,
+        strict: bool,
+    ) -> RuntimeResult<super::Reference> {
+        match self {
+            Self::Identifier(name) => {
+                super::Reference::resolve_in_environment(realm, environment, name.clone(), strict)
+            }
+            Self::Member { base, key } => Ok(super::Reference::property_in_realm(
+                realm,
+                environment.get_identifier_value(base, strict)?,
+                super::ReferencedName::PropertyKey(key.clone()),
+                strict,
+            )),
+        }
+    }
+}
+fn static_assignment_key(expression: &crate::ast::Expr) -> Option<super::PropertyKey> {
+    use crate::ast::{ExprKind, Literal};
+    let name = match &expression.kind {
+        ExprKind::Identifier(name) => name.as_str().into(),
+        ExprKind::Literal(Literal::String { value, .. }) => {
+            super::JsString::from_code_units_slice(value)
+        }
+        _ => return None,
+    };
+    Some(super::PropertyKey::String(name))
+}
+impl StaticObjectAssignmentPlan {
+    pub(crate) fn prepare(pattern: &crate::ast::Expr) -> Option<Self> {
+        let crate::ast::ExprKind::Object(properties) = &pattern.kind else {
+            return None;
+        };
+        let mut entries = Vec::with_capacity(properties.len());
+        for property in properties {
+            if property.spread || property.computed {
+                return None;
+            }
+            entries.push((
+                static_assignment_key(&property.key)?,
+                StaticAssignmentTarget::prepare(property.value.as_ref().unwrap_or(&property.key))?,
+            ));
+        }
+        Some(Self(entries.into_boxed_slice()))
+    }
+    pub(crate) fn assign(
+        &self,
+        realm: &Realm,
+        environment: &Environment,
+        source: &Value,
+        strict: bool,
+    ) -> RuntimeResult<()> {
+        // This check precedes every target lookup, including an empty pattern.
+        if matches!(source, Value::Null | Value::Undefined) {
+            return Err(super::binding::nullish_object_error());
+        }
+        for (key, target) in &self.0 {
+            // Retain the actual Reference across GetV: a getter may replace the
+            // target binding, mutate its property descriptor, or collect GC.
+            let reference = target.resolve(realm, environment, strict)?;
+            let value = match source {
+                Value::Object(object) => object.get_with_receiver(key, source.clone())?,
+                _ => super::Reference::property_in_realm(
+                    realm,
+                    source.clone(),
+                    super::ReferencedName::PropertyKey(key.clone()),
+                    strict,
+                )
+                .get_value()?,
+            };
+            reference.put_value(value)?;
+        }
+        Ok(())
+    }
+}
+
 // A bounded body can read an already-instantiated parameter frame directly.
 // This keeps the real cells (including cells captured by defaults), but avoids
 // allocating VM operand/scope vectors for pure guards and returns. Only

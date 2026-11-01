@@ -254,6 +254,18 @@ impl<'a> PropertyReferenceContext<'a> {
 }
 
 impl Reference {
+    pub(crate) fn resolve_in_environment(
+        realm: &Realm,
+        environment: &Environment,
+        name: JsString,
+        strict: bool,
+    ) -> RuntimeResult<Self> {
+        Ok(match environment.resolve_binding_with_hint(&name)? {
+            Some((environment, hint)) => Self::function_binding(environment, name, strict, hint),
+            None => Self::unresolvable(realm.global_object(), name, strict),
+        })
+    }
+
     pub(super) fn private(base: Value, name: super::private_fields::Name) -> Self {
         Self {
             base: ReferenceBase::Property(base),
@@ -812,13 +824,7 @@ impl ExpressionEvaluator {
     }
 
     fn identifier(&self, name: &str) -> RuntimeResult<Reference> {
-        let name = JsString::from(name);
-        Ok(match self.environment.resolve_binding_with_hint(&name)? {
-            Some((environment, hint)) => {
-                Reference::function_binding(environment, name, self.strict, hint)
-            }
-            None => Reference::unresolvable(self.realm.global_object(), name, self.strict),
-        })
+        Reference::resolve_in_environment(&self.realm, &self.environment, name.into(), self.strict)
     }
 
     fn member(

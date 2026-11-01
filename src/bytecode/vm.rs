@@ -757,6 +757,19 @@ impl VirtualMachine {
                                 )?;
                                 continue;
                             }
+                            if let Some(plan) = &bytecode.static_object_assignments[index as usize]
+                            {
+                                plan.assign(
+                                    realm.expect("verified assignment Realm"),
+                                    &scopes
+                                        .last()
+                                        .expect("verified assignment scope")
+                                        .environment,
+                                    &value,
+                                    strict,
+                                )?;
+                                continue;
+                            }
                             definition_context.initialize_pattern(
                                 definition,
                                 value,

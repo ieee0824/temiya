@@ -1,0 +1,1194 @@
+{
+  "source_revision": "eb29c4169c0fdfd9246546f76b5874097a53ef62",
+  "run": 41303412892,
+  "baseline_revision": "38fcaf00e4a39c8e97f31f6cda82b0ae8adc7600",
+  "archive": {
+    "file": "capture.tar.gz",
+    "bytes": 809049,
+    "sha256": "9b98658c5793402dafd741008861a519142e0cfe95f26fd6fc8ab6e776c23775"
+  },
+  "summaries": [
+    {
+      "copy": 1,
+      "machine": {
+        "platform": "linux",
+        "release": "7.0.0-1017-azure",
+        "architecture": "x64",
+        "cpu_models": [
+          "AMD EPYC 7763 64-Core Processor"
+        ],
+        "logical_cpus": 4,
+        "cpu_affinity": "0-3",
+        "affinity_scope": "Runner affinity inherited by both workers; guest CPUs only, not host physical-core placement"
+      },
+      "groups": [
+        {
+          "name": "original",
+          "reports": [
+            {
+              "file": "/tmp/temiya-164-hosted-pattern-vm/omoikane-comparison-41303412892-1-copy-1/beforeafter.json",
+              "sha256": "85b0f6bacd13814ef8b8bbc9a6019bc874f27f25460b505e312aa1d34ee8732f",
+              "runs": 66,
+              "checked_values": 1056,
+              "comparisons": 33,
+              "outcomes": {
+                "within noise threshold": 29,
+                "after faster beyond threshold": 4
+              }
+            },
+            {
+              "file": "/tmp/temiya-164-hosted-pattern-vm/omoikane-comparison-41303412892-1-copy-1/boa.json",
+              "sha256": "3b77634eccf8b36ba06451e5bf8389bb08ecf114d5e4be9d4169e5c82af7956b",
+              "runs": 66,
+              "checked_values": 1056,
+              "comparisons": 33,
+              "outcomes": {
+                "Temiya faster beyond threshold": 33
+              }
+            },
+            {
+              "file": "/tmp/temiya-164-hosted-pattern-vm/omoikane-comparison-41303412892-1-copy-1/baseline-boa.json",
+              "sha256": "93bcf74a9700c305c6e143fdc617d57c4261ec0e87fb36f4be784bfc9a4a4704",
+              "runs": 66,
+              "checked_values": 1056,
+              "comparisons": 33,
+              "outcomes": {
+                "Temiya faster beyond threshold": 33
+              }
+            },
+            {
+              "file": "/tmp/temiya-164-hosted-pattern-vm/omoikane-comparison-41303412892-1-copy-1/same-binary-control.json",
+              "sha256": "1893b99d41afa05b2cc4d7d48bdeec11be8a522fd3d024ec5fa80e76302dd293",
+              "runs": 66,
+              "checked_values": 1056,
+              "comparisons": 33,
+              "outcomes": {
+                "within noise threshold": 32,
+                "after slower beyond threshold": 1
+              }
+            }
+          ],
+          "boa_wins_by_workload": {
+            "arith": 3,
+            "prop-mono": 3,
+            "prop-mega": 3,
+            "call": 3,
+            "closure-alloc": 3,
+            "object-alloc": 3,
+            "string-concat": 3,
+            "array": 3,
+            "primitive-string-property": 3,
+            "primitive-string-method": 3,
+            "proto-method": 3
+          },
+          "minimum_two_of_three": true
+        },
+        {
+          "name": "class",
+          "reports": [
+            {
+              "file": "/tmp/temiya-164-hosted-pattern-vm/omoikane-comparison-41303412892-1-copy-1/class-beforeafter.json",
+              "sha256": "88d2e1fc7ce28c1f3ab28c6679af4729763ca535afc8f855ed7ea668f0450c07",
+              "runs": 24,
+              "checked_values": 384,
+              "comparisons": 12,
+              "outcomes": {
+                "after faster beyond threshold": 3,
+                "within noise threshold": 9
+              }
+            },
+            {
+              "file": "/tmp/temiya-164-hosted-pattern-vm/omoikane-comparison-41303412892-1-copy-1/class-boa.json",
+              "sha256": "bdf5d9d796f7fee426a0ccf555fb8b9042e8ce9bbc152372f1b0523227b190f2",
+              "runs": 24,
+              "checked_values": 384,
+              "comparisons": 12,
+              "outcomes": {
+                "Temiya faster beyond threshold": 12
+              }
+            },
+            {
+              "file": "/tmp/temiya-164-hosted-pattern-vm/omoikane-comparison-41303412892-1-copy-1/class-baseline-boa.json",
+              "sha256": "04624096c4df96eef78a65cb7655eb319473ff424681140e2ede4f5efddf6542",
+              "runs": 24,
+              "checked_values": 384,
+              "comparisons": 12,
+              "outcomes": {
+                "Temiya faster beyond threshold": 12
+              }
+            },
+            {
+              "file": "/tmp/temiya-164-hosted-pattern-vm/omoikane-comparison-41303412892-1-copy-1/class-same-binary.json",
+              "sha256": "5d56063a5f715ca9dcdb856f84b4bfa507b19bc4ff8d59919ec86791924d0c35",
+              "runs": 24,
+              "checked_values": 384,
+              "comparisons": 12,
+              "outcomes": {
+                "within noise threshold": 12
+              }
+            }
+          ],
+          "boa_wins_by_workload": {
+            "class-construct": 3,
+            "class-method": 3,
+            "class-static": 3,
+            "class-definition": 3
+          },
+          "minimum_two_of_three": true
+        },
+        {
+          "name": "derived",
+          "reports": [
+            {
+              "file": "/tmp/temiya-164-hosted-pattern-vm/omoikane-comparison-41303412892-1-copy-1/derived-beforeafter.json",
+              "sha256": "f58adbbd07e40a24a61d3ac0bf5940feeb420dea5a72bd3335f699c17be73adc",
+              "runs": 30,
+              "checked_values": 480,
+              "comparisons": 15,
+              "outcomes": {
+                "after faster beyond threshold": 9,
+                "within noise threshold": 6
+              }
+            },
+            {
+              "file": "/tmp/temiya-164-hosted-pattern-vm/omoikane-comparison-41303412892-1-copy-1/derived-boa.json",
+              "sha256": "2a50688e5a65f21906e96705f269ea5a6ae7d30c4a9510b3b35281f9e2704dc4",
+              "runs": 30,
+              "checked_values": 480,
+              "comparisons": 15,
+              "outcomes": {
+                "Temiya faster beyond threshold": 15
+              }
+            },
+            {
+              "file": "/tmp/temiya-164-hosted-pattern-vm/omoikane-comparison-41303412892-1-copy-1/derived-baseline-boa.json",
+              "sha256": "288c76fe144f37d0ae798a490471eae1ec7bafd164b18d33f1592cc0fd7bc680",
+              "runs": 30,
+              "checked_values": 480,
+              "comparisons": 15,
+              "outcomes": {
+                "Temiya faster beyond threshold": 15
+              }
+            },
+            {
+              "file": "/tmp/temiya-164-hosted-pattern-vm/omoikane-comparison-41303412892-1-copy-1/derived-same-binary.json",
+              "sha256": "d4f6a8ec6421fba47d3dd23fdcf576d0926f27497a02ec4a29360dc5ceb26bbe",
+              "runs": 30,
+              "checked_values": 480,
+              "comparisons": 15,
+              "outcomes": {
+                "within noise threshold": 15
+              }
+            }
+          ],
+          "boa_wins_by_workload": {
+            "derived-explicit-construct": 3,
+            "derived-default-construct": 3,
+            "derived-inherited-method": 3,
+            "derived-default-chain": 3,
+            "derived-definition": 3
+          },
+          "minimum_two_of_three": true
+        },
+        {
+          "name": "super",
+          "reports": [
+            {
+              "file": "/tmp/temiya-164-hosted-pattern-vm/omoikane-comparison-41303412892-1-copy-1/super-beforeafter.json",
+              "sha256": "ee48f2964044df22f6fcfb967119a741cd7cac75b5ad0ddcf232059aab2b6128",
+              "runs": 30,
+              "checked_values": 480,
+              "comparisons": 15,
+              "outcomes": {
+                "within noise threshold": 15
+              }
+            },
+            {
+              "file": "/tmp/temiya-164-hosted-pattern-vm/omoikane-comparison-41303412892-1-copy-1/super-boa.json",
+              "sha256": "ba567f9235fd8eb6e7eb836a55007938e7bea15e219eff154f27a7fa05cbde01",
+              "runs": 30,
+              "checked_values": 480,
+              "comparisons": 15,
+              "outcomes": {
+                "Temiya faster beyond threshold": 15
+              }
+            },
+            {
+              "file": "/tmp/temiya-164-hosted-pattern-vm/omoikane-comparison-41303412892-1-copy-1/super-baseline-boa.json",
+              "sha256": "ad9c2ebb43b1538f4fbd70102fd327f0722015ecd8b3dd23e3774519836da6de",
+              "runs": 30,
+              "checked_values": 480,
+              "comparisons": 15,
+              "outcomes": {
+                "Temiya faster beyond threshold": 15
+              }
+            },
+            {
+              "file": "/tmp/temiya-164-hosted-pattern-vm/omoikane-comparison-41303412892-1-copy-1/super-same-binary.json",
+              "sha256": "9b6c8bfdcf06ed93c72cc6fc00642973a72efa63a2131b4c9158fa5afa04e3ed",
+              "runs": 30,
+              "checked_values": 480,
+              "comparisons": 15,
+              "outcomes": {
+                "within noise threshold": 15
+              }
+            }
+          ],
+          "boa_wins_by_workload": {
+            "super-object-call": 3,
+            "super-class-call": 3,
+            "super-accessor-receiver": 3,
+            "super-computed-update": 3,
+            "super-arrow-dynamic-parent": 3
+          },
+          "minimum_two_of_three": true
+        },
+        {
+          "name": "fields",
+          "reports": [
+            {
+              "file": "/tmp/temiya-164-hosted-pattern-vm/omoikane-comparison-41303412892-1-copy-1/fields-beforeafter.json",
+              "sha256": "ce9a73fbf660fc6d9dcbf3822fabd2070d3fb0f89886f37c1b61dc84505bb132",
+              "runs": 30,
+              "checked_values": 480,
+              "comparisons": 15,
+              "outcomes": {
+                "within noise threshold": 15
+              }
+            },
+            {
+              "file": "/tmp/temiya-164-hosted-pattern-vm/omoikane-comparison-41303412892-1-copy-1/fields-boa.json",
+              "sha256": "62908b94bf45642ab37a84375acb91f3c5004d005ecefb96b3ce2c6dce842bbf",
+              "runs": 30,
+              "checked_values": 480,
+              "comparisons": 15,
+              "outcomes": {
+                "Temiya faster beyond threshold": 15
+              }
+            },
+            {
+              "file": "/tmp/temiya-164-hosted-pattern-vm/omoikane-comparison-41303412892-1-copy-1/fields-baseline-boa.json",
+              "sha256": "ca42c2c4bb4d999309ccf51ef4899d6934f38782b30c9acd1a559dafa6236b37",
+              "runs": 30,
+              "checked_values": 480,
+              "comparisons": 15,
+              "outcomes": {
+                "Temiya faster beyond threshold": 15
+              }
+            },
+            {
+              "file": "/tmp/temiya-164-hosted-pattern-vm/omoikane-comparison-41303412892-1-copy-1/fields-same-binary.json",
+              "sha256": "063f330235a8a7d2d28e38c51676378f2ba48d7c98737adb7d7ec663bd41f078",
+              "runs": 30,
+              "checked_values": 480,
+              "comparisons": 15,
+              "outcomes": {
+                "within noise threshold": 15
+              }
+            }
+          ],
+          "boa_wins_by_workload": {
+            "field-base": 3,
+            "field-derived": 3,
+            "field-computed-key": 3,
+            "field-define-own": 3,
+            "field-arrow-initializer": 3
+          },
+          "minimum_two_of_three": true
+        },
+        {
+          "name": "static",
+          "reports": [
+            {
+              "file": "/tmp/temiya-164-hosted-pattern-vm/omoikane-comparison-41303412892-1-copy-1/static-beforeafter.json",
+              "sha256": "418901d97f7b5362b1ed650bc5d14c58d044226b0fbc39b7c4729140496aedfd",
+              "runs": 30,
+              "checked_values": 480,
+              "comparisons": 15,
+              "outcomes": {
+                "within noise threshold": 13,
+                "after faster beyond threshold": 2
+              }
+            },
+            {
+              "file": "/tmp/temiya-164-hosted-pattern-vm/omoikane-comparison-41303412892-1-copy-1/static-boa.json",
+              "sha256": "274d6794f3ebe85ca6629b780a29acb152046ad05c0a8ba675436a8630ce26ae",
+              "runs": 30,
+              "checked_values": 480,
+              "comparisons": 15,
+              "outcomes": {
+                "Temiya faster beyond threshold": 15
+              }
+            },
+            {
+              "file": "/tmp/temiya-164-hosted-pattern-vm/omoikane-comparison-41303412892-1-copy-1/static-baseline-boa.json",
+              "sha256": "41fa0b4fe68098d0915c44c6ecacdba805fddc9f27dba5c0a38a194d21de646e",
+              "runs": 30,
+              "checked_values": 480,
+              "comparisons": 15,
+              "outcomes": {
+                "Temiya faster beyond threshold": 15
+              }
+            },
+            {
+              "file": "/tmp/temiya-164-hosted-pattern-vm/omoikane-comparison-41303412892-1-copy-1/static-same-binary.json",
+              "sha256": "db2e6ac030a1dd65986db71a7dd533646d975553f09185bd422b977d9169150a",
+              "runs": 30,
+              "checked_values": 480,
+              "comparisons": 15,
+              "outcomes": {
+                "within noise threshold": 15
+              }
+            }
+          ],
+          "boa_wins_by_workload": {
+            "static-order": 3,
+            "static-computed-key": 3,
+            "static-super": 3,
+            "static-define-own": 3,
+            "static-abrupt": 3
+          },
+          "minimum_two_of_three": true
+        },
+        {
+          "name": "private",
+          "reports": [
+            {
+              "file": "/tmp/temiya-164-hosted-pattern-vm/omoikane-comparison-41303412892-1-copy-1/private-beforeafter.json",
+              "sha256": "caf3fed9484ff10db354f9b2522f620ca5f3ea74826214eb9cd661b19d3417f4",
+              "runs": 30,
+              "checked_values": 480,
+              "comparisons": 15,
+              "outcomes": {
+                "after faster beyond threshold": 9,
+                "within noise threshold": 6
+              }
+            },
+            {
+              "file": "/tmp/temiya-164-hosted-pattern-vm/omoikane-comparison-41303412892-1-copy-1/private-boa.json",
+              "sha256": "0c98d6fd9fef8a402f4a9b5947429096ae4254bb2a938e9e7515686142fb6709",
+              "runs": 30,
+              "checked_values": 480,
+              "comparisons": 15,
+              "outcomes": {
+                "Temiya faster beyond threshold": 15
+              }
+            },
+            {
+              "file": "/tmp/temiya-164-hosted-pattern-vm/omoikane-comparison-41303412892-1-copy-1/private-baseline-boa.json",
+              "sha256": "166ef023a76479d96b4cee8f4dd0bf70c9aa0bff334ed6deae894b82de72d6a0",
+              "runs": 30,
+              "checked_values": 480,
+              "comparisons": 15,
+              "outcomes": {
+                "Temiya faster beyond threshold": 15
+              }
+            },
+            {
+              "file": "/tmp/temiya-164-hosted-pattern-vm/omoikane-comparison-41303412892-1-copy-1/private-same-binary.json",
+              "sha256": "452c8ad655d5c53054ac172e895629e48a0677af748415adfcfd39f14d4ceffe",
+              "runs": 30,
+              "checked_values": 480,
+              "comparisons": 15,
+              "outcomes": {
+                "within noise threshold": 15
+              }
+            }
+          ],
+          "boa_wins_by_workload": {
+            "private-construct": 3,
+            "private-update": 3,
+            "private-brand": 3,
+            "private-lexical": 3,
+            "private-invalid-receiver": 3
+          },
+          "minimum_two_of_three": true
+        },
+        {
+          "name": "elements",
+          "reports": [
+            {
+              "file": "/tmp/temiya-164-hosted-pattern-vm/omoikane-comparison-41303412892-1-copy-1/elements-boa.json",
+              "sha256": "157934075ca2d5a98821467267b44e7cc3a8b6a427447d522d58256c87ceb581",
+              "runs": 36,
+              "checked_values": 576,
+              "comparisons": 18,
+              "outcomes": {
+                "Temiya faster beyond threshold": 18
+              }
+            },
+            {
+              "file": "/tmp/temiya-164-hosted-pattern-vm/omoikane-comparison-41303412892-1-copy-1/elements-same-binary.json",
+              "sha256": "f0be95f6f8f4e61904b2535bee7ba5d28da5434ade99922b520ac6a79b0a68b6",
+              "runs": 36,
+              "checked_values": 576,
+              "comparisons": 18,
+              "outcomes": {
+                "within noise threshold": 18
+              }
+            }
+          ],
+          "boa_wins_by_workload": {
+            "private-method-call": 3,
+            "private-accessor": 3,
+            "static-private-field": 3,
+            "static-private-method": 3,
+            "static-private-accessor": 3,
+            "private-definition-brand": 3
+          },
+          "minimum_two_of_three": true
+        },
+        {
+          "name": "iterator",
+          "reports": [
+            {
+              "file": "/tmp/temiya-164-hosted-pattern-vm/omoikane-comparison-41303412892-1-copy-1/iterator-beforeafter.json",
+              "sha256": "395c4467e7fd66c0350d051c9e075c47a0ce37254231935df9ae9509553d8e33",
+              "runs": 36,
+              "checked_values": 576,
+              "comparisons": 18,
+              "outcomes": {
+                "after faster beyond threshold": 9,
+                "within noise threshold": 9
+              }
+            },
+            {
+              "file": "/tmp/temiya-164-hosted-pattern-vm/omoikane-comparison-41303412892-1-copy-1/iterator-boa.json",
+              "sha256": "606ab24f1ed1af900565cdb2e9826820e2625e5dc67a7030bebaa8e86fab3a8d",
+              "runs": 36,
+              "checked_values": 576,
+              "comparisons": 18,
+              "outcomes": {
+                "Temiya faster beyond threshold": 18
+              }
+            },
+            {
+              "file": "/tmp/temiya-164-hosted-pattern-vm/omoikane-comparison-41303412892-1-copy-1/iterator-baseline-boa.json",
+              "sha256": "ff8f27608c967090eb641be32b02a5f9922c065d285497c832fad60c34b00baf",
+              "runs": 36,
+              "checked_values": 576,
+              "comparisons": 18,
+              "outcomes": {
+                "Temiya faster beyond threshold": 18
+              }
+            },
+            {
+              "file": "/tmp/temiya-164-hosted-pattern-vm/omoikane-comparison-41303412892-1-copy-1/iterator-same-binary.json",
+              "sha256": "dc412cde5893dee9eaf1dcb11fb9ad66f4b57c08f036605d0602c7205a48af9f",
+              "runs": 36,
+              "checked_values": 576,
+              "comparisons": 18,
+              "outcomes": {
+                "within noise threshold": 18
+              }
+            }
+          ],
+          "boa_wins_by_workload": {
+            "iterator-array-spread": 3,
+            "iterator-call-spread": 3,
+            "iterator-captured-next": 3,
+            "iterator-string-codepoints": 3,
+            "iterator-done-value-order": 3,
+            "iterator-invalid-next-result": 3
+          },
+          "minimum_two_of_three": true
+        },
+        {
+          "name": "bindings",
+          "reports": [
+            {
+              "file": "/tmp/temiya-164-hosted-pattern-vm/omoikane-comparison-41303412892-1-copy-1/bindings-boa.json",
+              "sha256": "279e22aa336ea1d0fa52d052b1fda11467d140cc8623d81c7f086a06fbb426bb",
+              "runs": 36,
+              "checked_values": 576,
+              "comparisons": 18,
+              "outcomes": {
+                "Temiya faster beyond threshold": 18
+              }
+            },
+            {
+              "file": "/tmp/temiya-164-hosted-pattern-vm/omoikane-comparison-41303412892-1-copy-1/bindings-same-binary.json",
+              "sha256": "fb2b469741bbf37b1e78af877cf87b84c4c2d0e7fa3eda8644137a8722dd83bf",
+              "runs": 36,
+              "checked_values": 576,
+              "comparisons": 18,
+              "outcomes": {
+                "within noise threshold": 18
+              }
+            }
+          ],
+          "boa_wins_by_workload": {
+            "array-binding-declaration": 3,
+            "array-binding-parameters": 3,
+            "array-binding-elision-default": 3,
+            "array-binding-rest": 3,
+            "array-binding-close": 3,
+            "array-binding-tdz-close": 3
+          },
+          "minimum_two_of_three": true
+        },
+        {
+          "name": "object-bindings",
+          "reports": [
+            {
+              "file": "/tmp/temiya-164-hosted-pattern-vm/omoikane-comparison-41303412892-1-copy-1/object-bindings-boa.json",
+              "sha256": "e3c9ea3d81ee8af754694930c611a1ac96edce7e30632c3f13fe33e6dc39afd8",
+              "runs": 36,
+              "checked_values": 576,
+              "comparisons": 18,
+              "outcomes": {
+                "Temiya faster beyond threshold": 16,
+                "within noise threshold": 2
+              }
+            },
+            {
+              "file": "/tmp/temiya-164-hosted-pattern-vm/omoikane-comparison-41303412892-1-copy-1/object-bindings-same-binary.json",
+              "sha256": "815dddc292add1aecff3dbc445dad6d4eed2bbdad57234fc4d21dc20303054b7",
+              "runs": 36,
+              "checked_values": 576,
+              "comparisons": 18,
+              "outcomes": {
+                "within noise threshold": 18
+              }
+            }
+          ],
+          "boa_wins_by_workload": {
+            "object-binding-declaration": 3,
+            "object-binding-parameters": 3,
+            "object-binding-computed-default": 3,
+            "object-binding-rest-symbol": 3,
+            "object-binding-getter-order": 3,
+            "object-binding-abrupt-coercion": 1
+          },
+          "minimum_two_of_three": false
+        },
+        {
+          "name": "assignments",
+          "reports": [
+            {
+              "file": "/tmp/temiya-164-hosted-pattern-vm/omoikane-comparison-41303412892-1-copy-1/assignments-boa.json",
+              "sha256": "e813d1ca3e72d6f87fe7a96dd885c084571fc71c5360cdc2728951dd5740e1c6",
+              "runs": 36,
+              "checked_values": 576,
+              "comparisons": 18,
+              "outcomes": {
+                "Temiya faster beyond threshold": 17,
+                "within noise threshold": 1
+              }
+            },
+            {
+              "file": "/tmp/temiya-164-hosted-pattern-vm/omoikane-comparison-41303412892-1-copy-1/assignments-same-binary.json",
+              "sha256": "83ce411f7c23155725e27a990bc621d97e86af490b083dc033a76760f7c55853",
+              "runs": 36,
+              "checked_values": 576,
+              "comparisons": 18,
+              "outcomes": {
+                "within noise threshold": 18
+              }
+            }
+          ],
+          "boa_wins_by_workload": {
+            "assignment-array-members": 3,
+            "assignment-object-members": 3,
+            "assignment-computed-default": 2,
+            "assignment-rest-symbol": 3,
+            "assignment-close-priority": 3,
+            "assignment-const-failure": 3
+          },
+          "minimum_two_of_three": true
+        }
+      ]
+    },
+    {
+      "copy": 2,
+      "machine": {
+        "platform": "linux",
+        "release": "7.0.0-1017-azure",
+        "architecture": "x64",
+        "cpu_models": [
+          "AMD EPYC 7763 64-Core Processor"
+        ],
+        "logical_cpus": 4,
+        "cpu_affinity": "0-3",
+        "affinity_scope": "Runner affinity inherited by both workers; guest CPUs only, not host physical-core placement"
+      },
+      "groups": [
+        {
+          "name": "original",
+          "reports": [
+            {
+              "file": "/tmp/temiya-164-hosted-pattern-vm/omoikane-comparison-41303412892-1-copy-2/beforeafter.json",
+              "sha256": "5ae51fcaeb1776be2e7436e914d3df1e040891f6840d87ff30780996cae3f8c5",
+              "runs": 66,
+              "checked_values": 1056,
+              "comparisons": 33,
+              "outcomes": {
+                "within noise threshold": 33
+              }
+            },
+            {
+              "file": "/tmp/temiya-164-hosted-pattern-vm/omoikane-comparison-41303412892-1-copy-2/boa.json",
+              "sha256": "a2e6a1acf567ef4bd07fcfc19e8d89ad4ef00e5d7af005f25ee2e39adf78ccc7",
+              "runs": 66,
+              "checked_values": 1056,
+              "comparisons": 33,
+              "outcomes": {
+                "Temiya faster beyond threshold": 33
+              }
+            },
+            {
+              "file": "/tmp/temiya-164-hosted-pattern-vm/omoikane-comparison-41303412892-1-copy-2/baseline-boa.json",
+              "sha256": "4d61ae9181a731aee50676ef581a42b3d8cc92a4a1c81c02b39866745be0c71f",
+              "runs": 66,
+              "checked_values": 1056,
+              "comparisons": 33,
+              "outcomes": {
+                "Temiya faster beyond threshold": 33
+              }
+            },
+            {
+              "file": "/tmp/temiya-164-hosted-pattern-vm/omoikane-comparison-41303412892-1-copy-2/same-binary-control.json",
+              "sha256": "423bd41da147ee89b1f07072a26fcc7243e0ff662c49e31ca5f5b1bdd4a78f27",
+              "runs": 66,
+              "checked_values": 1056,
+              "comparisons": 33,
+              "outcomes": {
+                "within noise threshold": 33
+              }
+            }
+          ],
+          "boa_wins_by_workload": {
+            "arith": 3,
+            "prop-mono": 3,
+            "prop-mega": 3,
+            "call": 3,
+            "closure-alloc": 3,
+            "object-alloc": 3,
+            "string-concat": 3,
+            "array": 3,
+            "primitive-string-property": 3,
+            "primitive-string-method": 3,
+            "proto-method": 3
+          },
+          "minimum_two_of_three": true
+        },
+        {
+          "name": "class",
+          "reports": [
+            {
+              "file": "/tmp/temiya-164-hosted-pattern-vm/omoikane-comparison-41303412892-1-copy-2/class-beforeafter.json",
+              "sha256": "ffaee7b58b6911de4418fef518be61619cec9c53e48ec435efe3d0e1a0b63e79",
+              "runs": 24,
+              "checked_values": 384,
+              "comparisons": 12,
+              "outcomes": {
+                "after faster beyond threshold": 3,
+                "within noise threshold": 9
+              }
+            },
+            {
+              "file": "/tmp/temiya-164-hosted-pattern-vm/omoikane-comparison-41303412892-1-copy-2/class-boa.json",
+              "sha256": "64021caf06a73a817537004f40739aeaa43c636686f10ff07617f49613a69572",
+              "runs": 24,
+              "checked_values": 384,
+              "comparisons": 12,
+              "outcomes": {
+                "Temiya faster beyond threshold": 12
+              }
+            },
+            {
+              "file": "/tmp/temiya-164-hosted-pattern-vm/omoikane-comparison-41303412892-1-copy-2/class-baseline-boa.json",
+              "sha256": "078b343e5d20894898150a1ab3a4649f0d78d100f90dc2eb048584bf9ecdb3fa",
+              "runs": 24,
+              "checked_values": 384,
+              "comparisons": 12,
+              "outcomes": {
+                "Temiya faster beyond threshold": 12
+              }
+            },
+            {
+              "file": "/tmp/temiya-164-hosted-pattern-vm/omoikane-comparison-41303412892-1-copy-2/class-same-binary.json",
+              "sha256": "8ec7907467bf45b9192fd66d9c2dfdfa97923fd45a0df125d8083ead348caaee",
+              "runs": 24,
+              "checked_values": 384,
+              "comparisons": 12,
+              "outcomes": {
+                "within noise threshold": 12
+              }
+            }
+          ],
+          "boa_wins_by_workload": {
+            "class-construct": 3,
+            "class-method": 3,
+            "class-static": 3,
+            "class-definition": 3
+          },
+          "minimum_two_of_three": true
+        },
+        {
+          "name": "derived",
+          "reports": [
+            {
+              "file": "/tmp/temiya-164-hosted-pattern-vm/omoikane-comparison-41303412892-1-copy-2/derived-beforeafter.json",
+              "sha256": "abf08dd3791b903c8b23e1de8bf82a1ecd944b7c7ce5d7e42d56532ceae6e90e",
+              "runs": 30,
+              "checked_values": 480,
+              "comparisons": 15,
+              "outcomes": {
+                "after faster beyond threshold": 5,
+                "within noise threshold": 10
+              }
+            },
+            {
+              "file": "/tmp/temiya-164-hosted-pattern-vm/omoikane-comparison-41303412892-1-copy-2/derived-boa.json",
+              "sha256": "63117b95335805aa6be7da663d4ac71f47a437929377995aed17983e2750f674",
+              "runs": 30,
+              "checked_values": 480,
+              "comparisons": 15,
+              "outcomes": {
+                "Temiya faster beyond threshold": 15
+              }
+            },
+            {
+              "file": "/tmp/temiya-164-hosted-pattern-vm/omoikane-comparison-41303412892-1-copy-2/derived-baseline-boa.json",
+              "sha256": "c856df26211a3d481696373e1ea045561b5cea6912a8b21f1a0c0d5f558317b8",
+              "runs": 30,
+              "checked_values": 480,
+              "comparisons": 15,
+              "outcomes": {
+                "Temiya faster beyond threshold": 15
+              }
+            },
+            {
+              "file": "/tmp/temiya-164-hosted-pattern-vm/omoikane-comparison-41303412892-1-copy-2/derived-same-binary.json",
+              "sha256": "6948863073fc100027ca8119dce04aadc230f25588b98ea4c37354964046b29b",
+              "runs": 30,
+              "checked_values": 480,
+              "comparisons": 15,
+              "outcomes": {
+                "within noise threshold": 15
+              }
+            }
+          ],
+          "boa_wins_by_workload": {
+            "derived-explicit-construct": 3,
+            "derived-default-construct": 3,
+            "derived-inherited-method": 3,
+            "derived-default-chain": 3,
+            "derived-definition": 3
+          },
+          "minimum_two_of_three": true
+        },
+        {
+          "name": "super",
+          "reports": [
+            {
+              "file": "/tmp/temiya-164-hosted-pattern-vm/omoikane-comparison-41303412892-1-copy-2/super-beforeafter.json",
+              "sha256": "18677b2a77c19a0d66ece0eac7662b58320ab5362fcbe47bb9d348bc3e521240",
+              "runs": 30,
+              "checked_values": 480,
+              "comparisons": 15,
+              "outcomes": {
+                "within noise threshold": 15
+              }
+            },
+            {
+              "file": "/tmp/temiya-164-hosted-pattern-vm/omoikane-comparison-41303412892-1-copy-2/super-boa.json",
+              "sha256": "d0b7bbca9bc6bcd13c6cfed32ee7fe4c23fba308582bd2274aaa10f84ac043cc",
+              "runs": 30,
+              "checked_values": 480,
+              "comparisons": 15,
+              "outcomes": {
+                "Temiya faster beyond threshold": 15
+              }
+            },
+            {
+              "file": "/tmp/temiya-164-hosted-pattern-vm/omoikane-comparison-41303412892-1-copy-2/super-baseline-boa.json",
+              "sha256": "aefc5ecacbb9d7d5d5295901a018c71445b29fa4f98a1923762d8984fb4388c0",
+              "runs": 30,
+              "checked_values": 480,
+              "comparisons": 15,
+              "outcomes": {
+                "Temiya faster beyond threshold": 15
+              }
+            },
+            {
+              "file": "/tmp/temiya-164-hosted-pattern-vm/omoikane-comparison-41303412892-1-copy-2/super-same-binary.json",
+              "sha256": "df4f1cd1c133734c143bc8962679573f849ccba5da583d89f38c343ab210ac1f",
+              "runs": 30,
+              "checked_values": 480,
+              "comparisons": 15,
+              "outcomes": {
+                "within noise threshold": 15
+              }
+            }
+          ],
+          "boa_wins_by_workload": {
+            "super-object-call": 3,
+            "super-class-call": 3,
+            "super-accessor-receiver": 3,
+            "super-computed-update": 3,
+            "super-arrow-dynamic-parent": 3
+          },
+          "minimum_two_of_three": true
+        },
+        {
+          "name": "fields",
+          "reports": [
+            {
+              "file": "/tmp/temiya-164-hosted-pattern-vm/omoikane-comparison-41303412892-1-copy-2/fields-beforeafter.json",
+              "sha256": "2f8f8a3c9b4c54ebfe9475d360cfb46b858157ac474eaafb9676aff98b498495",
+              "runs": 30,
+              "checked_values": 480,
+              "comparisons": 15,
+              "outcomes": {
+                "within noise threshold": 15
+              }
+            },
+            {
+              "file": "/tmp/temiya-164-hosted-pattern-vm/omoikane-comparison-41303412892-1-copy-2/fields-boa.json",
+              "sha256": "dc400169c331a02a8a6aa56d5fcea06e3c13f43a93d35cd78a275babc2ecbff3",
+              "runs": 30,
+              "checked_values": 480,
+              "comparisons": 15,
+              "outcomes": {
+                "Temiya faster beyond threshold": 15
+              }
+            },
+            {
+              "file": "/tmp/temiya-164-hosted-pattern-vm/omoikane-comparison-41303412892-1-copy-2/fields-baseline-boa.json",
+              "sha256": "0950403bf67643a69d6b613d0fca23ede748a07d02891f80bbe873e6cf2896e2",
+              "runs": 30,
+              "checked_values": 480,
+              "comparisons": 15,
+              "outcomes": {
+                "Temiya faster beyond threshold": 15
+              }
+            },
+            {
+              "file": "/tmp/temiya-164-hosted-pattern-vm/omoikane-comparison-41303412892-1-copy-2/fields-same-binary.json",
+              "sha256": "4724f10ebe9f98941a72ca03e6cae180bab4622115419092180150902a89e1b0",
+              "runs": 30,
+              "checked_values": 480,
+              "comparisons": 15,
+              "outcomes": {
+                "within noise threshold": 15
+              }
+            }
+          ],
+          "boa_wins_by_workload": {
+            "field-base": 3,
+            "field-derived": 3,
+            "field-computed-key": 3,
+            "field-define-own": 3,
+            "field-arrow-initializer": 3
+          },
+          "minimum_two_of_three": true
+        },
+        {
+          "name": "static",
+          "reports": [
+            {
+              "file": "/tmp/temiya-164-hosted-pattern-vm/omoikane-comparison-41303412892-1-copy-2/static-beforeafter.json",
+              "sha256": "e19b2c9e6909f28700ceab72e82e6ce9ebbd68d4f6ee8abbb775c5540b69e26b",
+              "runs": 30,
+              "checked_values": 480,
+              "comparisons": 15,
+              "outcomes": {
+                "within noise threshold": 13,
+                "after faster beyond threshold": 2
+              }
+            },
+            {
+              "file": "/tmp/temiya-164-hosted-pattern-vm/omoikane-comparison-41303412892-1-copy-2/static-boa.json",
+              "sha256": "3003d684c748a3393b2b7c5c43662b69f8944c3875e0cabb0315213d0b42f50f",
+              "runs": 30,
+              "checked_values": 480,
+              "comparisons": 15,
+              "outcomes": {
+                "Temiya faster beyond threshold": 15
+              }
+            },
+            {
+              "file": "/tmp/temiya-164-hosted-pattern-vm/omoikane-comparison-41303412892-1-copy-2/static-baseline-boa.json",
+              "sha256": "be9165ed17effeea02b14f21998bbe95309733326649c125912466770cc83b2a",
+              "runs": 30,
+              "checked_values": 480,
+              "comparisons": 15,
+              "outcomes": {
+                "Temiya faster beyond threshold": 15
+              }
+            },
+            {
+              "file": "/tmp/temiya-164-hosted-pattern-vm/omoikane-comparison-41303412892-1-copy-2/static-same-binary.json",
+              "sha256": "67cdfa59ead95ec67004aeee723e188fb24aa4fd2687952ad69403d847034e7e",
+              "runs": 30,
+              "checked_values": 480,
+              "comparisons": 15,
+              "outcomes": {
+                "within noise threshold": 15
+              }
+            }
+          ],
+          "boa_wins_by_workload": {
+            "static-order": 3,
+            "static-computed-key": 3,
+            "static-super": 3,
+            "static-define-own": 3,
+            "static-abrupt": 3
+          },
+          "minimum_two_of_three": true
+        },
+        {
+          "name": "private",
+          "reports": [
+            {
+              "file": "/tmp/temiya-164-hosted-pattern-vm/omoikane-comparison-41303412892-1-copy-2/private-beforeafter.json",
+              "sha256": "c631590660dc2f599e6c0f5fc2f8af789c9cf8c2475afa6507fb22f8893ca7ec",
+              "runs": 30,
+              "checked_values": 480,
+              "comparisons": 15,
+              "outcomes": {
+                "within noise threshold": 10,
+                "after faster beyond threshold": 5
+              }
+            },
+            {
+              "file": "/tmp/temiya-164-hosted-pattern-vm/omoikane-comparison-41303412892-1-copy-2/private-boa.json",
+              "sha256": "0035c5e56106dcf87a8ad32417ed23e0231127083d1ad447e203734e090e853c",
+              "runs": 30,
+              "checked_values": 480,
+              "comparisons": 15,
+              "outcomes": {
+                "Temiya faster beyond threshold": 15
+              }
+            },
+            {
+              "file": "/tmp/temiya-164-hosted-pattern-vm/omoikane-comparison-41303412892-1-copy-2/private-baseline-boa.json",
+              "sha256": "70eaf35f62c5c9860ba0aa13c634cdbcc2d2c8615f6ba897b1ecb68cdefd14e0",
+              "runs": 30,
+              "checked_values": 480,
+              "comparisons": 15,
+              "outcomes": {
+                "Temiya faster beyond threshold": 15
+              }
+            },
+            {
+              "file": "/tmp/temiya-164-hosted-pattern-vm/omoikane-comparison-41303412892-1-copy-2/private-same-binary.json",
+              "sha256": "65c8a9ddae5d5a9fae7063604438bb025403b4a704d8fec01b8618e9e4369ef3",
+              "runs": 30,
+              "checked_values": 480,
+              "comparisons": 15,
+              "outcomes": {
+                "within noise threshold": 15
+              }
+            }
+          ],
+          "boa_wins_by_workload": {
+            "private-construct": 3,
+            "private-update": 3,
+            "private-brand": 3,
+            "private-lexical": 3,
+            "private-invalid-receiver": 3
+          },
+          "minimum_two_of_three": true
+        },
+        {
+          "name": "elements",
+          "reports": [
+            {
+              "file": "/tmp/temiya-164-hosted-pattern-vm/omoikane-comparison-41303412892-1-copy-2/elements-boa.json",
+              "sha256": "c35080e03ab83b898726424a5a9dcb6ffa70373a654d507bfa56f86223c0a109",
+              "runs": 36,
+              "checked_values": 576,
+              "comparisons": 18,
+              "outcomes": {
+                "Temiya faster beyond threshold": 18
+              }
+            },
+            {
+              "file": "/tmp/temiya-164-hosted-pattern-vm/omoikane-comparison-41303412892-1-copy-2/elements-same-binary.json",
+              "sha256": "ede978f8ee985a8421bc8cdcfbb859bcbc411a55ad80476909532fa9d4e919ac",
+              "runs": 36,
+              "checked_values": 576,
+              "comparisons": 18,
+              "outcomes": {
+                "within noise threshold": 17,
+                "after faster beyond threshold": 1
+              }
+            }
+          ],
+          "boa_wins_by_workload": {
+            "private-method-call": 3,
+            "private-accessor": 3,
+            "static-private-field": 3,
+            "static-private-method": 3,
+            "static-private-accessor": 3,
+            "private-definition-brand": 3
+          },
+          "minimum_two_of_three": true
+        },
+        {
+          "name": "iterator",
+          "reports": [
+            {
+              "file": "/tmp/temiya-164-hosted-pattern-vm/omoikane-comparison-41303412892-1-copy-2/iterator-beforeafter.json",
+              "sha256": "bdc789180c51d68d8c60d642b07d12818d646de1c3257b5b63f7f288b1753b1b",
+              "runs": 36,
+              "checked_values": 576,
+              "comparisons": 18,
+              "outcomes": {
+                "after faster beyond threshold": 9,
+                "within noise threshold": 9
+              }
+            },
+            {
+              "file": "/tmp/temiya-164-hosted-pattern-vm/omoikane-comparison-41303412892-1-copy-2/iterator-boa.json",
+              "sha256": "14b979c343fa0c3cbc7285ab3a24e37ed9021a4b49d975cde3d9d73d08a18409",
+              "runs": 36,
+              "checked_values": 576,
+              "comparisons": 18,
+              "outcomes": {
+                "Temiya faster beyond threshold": 18
+              }
+            },
+            {
+              "file": "/tmp/temiya-164-hosted-pattern-vm/omoikane-comparison-41303412892-1-copy-2/iterator-baseline-boa.json",
+              "sha256": "24b846d247c4cba0971adafd6b9d343800066d6ccd49af60d9e4ac5f7d4371a7",
+              "runs": 36,
+              "checked_values": 576,
+              "comparisons": 18,
+              "outcomes": {
+                "Temiya faster beyond threshold": 18
+              }
+            },
+            {
+              "file": "/tmp/temiya-164-hosted-pattern-vm/omoikane-comparison-41303412892-1-copy-2/iterator-same-binary.json",
+              "sha256": "12042dbc851c2640881b303ebb3a182c994e17997e02ff002b7b9bf260b8267c",
+              "runs": 36,
+              "checked_values": 576,
+              "comparisons": 18,
+              "outcomes": {
+                "within noise threshold": 18
+              }
+            }
+          ],
+          "boa_wins_by_workload": {
+            "iterator-array-spread": 3,
+            "iterator-call-spread": 3,
+            "iterator-captured-next": 3,
+            "iterator-string-codepoints": 3,
+            "iterator-done-value-order": 3,
+            "iterator-invalid-next-result": 3
+          },
+          "minimum_two_of_three": true
+        },
+        {
+          "name": "bindings",
+          "reports": [
+            {
+              "file": "/tmp/temiya-164-hosted-pattern-vm/omoikane-comparison-41303412892-1-copy-2/bindings-boa.json",
+              "sha256": "574dd964a179f21fc85228675a4d0dbc6fc5522939013e88046e04e33f1d4b60",
+              "runs": 36,
+              "checked_values": 576,
+              "comparisons": 18,
+              "outcomes": {
+                "Temiya faster beyond threshold": 18
+              }
+            },
+            {
+              "file": "/tmp/temiya-164-hosted-pattern-vm/omoikane-comparison-41303412892-1-copy-2/bindings-same-binary.json",
+              "sha256": "12a0f31552f5e26e3a46cf56439c815329538ccfc1dad4eee60a54146d63b989",
+              "runs": 36,
+              "checked_values": 576,
+              "comparisons": 18,
+              "outcomes": {
+                "within noise threshold": 18
+              }
+            }
+          ],
+          "boa_wins_by_workload": {
+            "array-binding-declaration": 3,
+            "array-binding-parameters": 3,
+            "array-binding-elision-default": 3,
+            "array-binding-rest": 3,
+            "array-binding-close": 3,
+            "array-binding-tdz-close": 3
+          },
+          "minimum_two_of_three": true
+        },
+        {
+          "name": "object-bindings",
+          "reports": [
+            {
+              "file": "/tmp/temiya-164-hosted-pattern-vm/omoikane-comparison-41303412892-1-copy-2/object-bindings-boa.json",
+              "sha256": "2bbc46de09e1c69d4cdc4e526e668ffb4f24eaabd6d6019cef29a067d0841095",
+              "runs": 36,
+              "checked_values": 576,
+              "comparisons": 18,
+              "outcomes": {
+                "Temiya faster beyond threshold": 17,
+                "within noise threshold": 1
+              }
+            },
+            {
+              "file": "/tmp/temiya-164-hosted-pattern-vm/omoikane-comparison-41303412892-1-copy-2/object-bindings-same-binary.json",
+              "sha256": "0c738e60ba23a75bc6bc89cd1e501a23dfa685a6a21574ec2f3e59282c7b1873",
+              "runs": 36,
+              "checked_values": 576,
+              "comparisons": 18,
+              "outcomes": {
+                "within noise threshold": 18
+              }
+            }
+          ],
+          "boa_wins_by_workload": {
+            "object-binding-declaration": 3,
+            "object-binding-parameters": 3,
+            "object-binding-computed-default": 3,
+            "object-binding-rest-symbol": 3,
+            "object-binding-getter-order": 3,
+            "object-binding-abrupt-coercion": 2
+          },
+          "minimum_two_of_three": true
+        },
+        {
+          "name": "assignments",
+          "reports": [
+            {
+              "file": "/tmp/temiya-164-hosted-pattern-vm/omoikane-comparison-41303412892-1-copy-2/assignments-boa.json",
+              "sha256": "97813d66e6b9242df2830934153e1fd7169f18f7b3e46b703914415efb7ecc3b",
+              "runs": 36,
+              "checked_values": 576,
+              "comparisons": 18,
+              "outcomes": {
+                "Temiya faster beyond threshold": 15,
+                "within noise threshold": 3
+              }
+            },
+            {
+              "file": "/tmp/temiya-164-hosted-pattern-vm/omoikane-comparison-41303412892-1-copy-2/assignments-same-binary.json",
+              "sha256": "3fd81bc11d118c9f76c8ea31ed5f79bdb1afa4d5872f95131e36794c6d9d6275",
+              "runs": 36,
+              "checked_values": 576,
+              "comparisons": 18,
+              "outcomes": {
+                "within noise threshold": 18
+              }
+            }
+          ],
+          "boa_wins_by_workload": {
+            "assignment-array-members": 3,
+            "assignment-object-members": 2,
+            "assignment-computed-default": 1,
+            "assignment-rest-symbol": 3,
+            "assignment-close-priority": 3,
+            "assignment-const-failure": 3
+          },
+          "minimum_two_of_three": false
+        }
+      ]
+    }
+  ],
+  "scope": "Complete80-report adverse native capture from both original jobs. Integrity pass does not qualify speed; every group and control is retained without CPU or result filtering."
+}

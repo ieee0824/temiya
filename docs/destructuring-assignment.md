@@ -95,3 +95,17 @@ contains17,424 variants:10,245 pass,2,748 fail and4,431 timeout.
 `selection-summary.json` preserves this full breakdown. The142 text matches
 include one untagged duplicate-__proto__ case; actual assignment metadata tags
 cover141 files and217 variants. No outcome-based selection is applied.
+
+Both complete earlier native captures are retained by `verify-hosted.mjs`.
+`hosted-initial-v1` preserves all80 reports from run41245424047;
+`hosted-vm-v1` preserves all80 from run41303412892. The latter qualifies
+most groups but fails the required two-of-three gate for object-binding abrupt
+coercion on copy1 (one win) and assignment computed-default on copy2 (one win).
+All inputs,15 samples,3 alternating pairs, thresholds and both original
+unfiltered machines remain recorded. Integrity replay is not a speed pass.
+
+The next source integrates direct verified VM strict comparisons and guarded
+standard instanceof dispatch, including builtin defining-Realm error handling.
+Its native, corpus, safety and speed results require fresh validation; results
+above remain specific to their recorded sources. Assignment evidence has its
+own CI shard, preserving every existing check and the20-minute job timeout.

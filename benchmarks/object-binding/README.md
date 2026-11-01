@@ -267,3 +267,11 @@ workers and strict Miri for GC during unscopables reentry. All raw results
 remain retained. The archive now has20 valid source captures/120 profiles,
 two rejected stale workers and15 later correctness captures. No native speed
 qualification is inferred from this negligible local difference.
+
+The always-inline-record stage (`da7b51f`) removes the checked selector call.
+Againstd58d4d4, abrupt instructions decrease0.96%, rest0.83%, parameters0.06%
+and computed0.08%; declaration/getter increase0.007/0.003%. All six raw
+profiles remain retained, along with987 native passes (26 ignored), Clippy,
+release workers and strict Miri for GC reentry. The archive has21 valid
+captures/126 profiles, two stale-worker rejections and16 later correctness
+captures. These local diagnostics do not qualify native speed.

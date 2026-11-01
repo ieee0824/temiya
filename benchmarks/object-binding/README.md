@@ -192,3 +192,11 @@ Compared with literal projection, rest-symbol instructions decrease from
 These instruction counts do not establish native superiority over Boa.
 The archive now contains 12 valid stages (72 profiles), two rejected stale
 worker captures, and seven later source-scoped correctness captures.
+
+The nullish-bridge stage (`c8228f2`) rejects nullish object patterns before
+constructing their evaluator context. All six profiles are retained: abrupt
+coercion instructions decrease3.0%, while declaration/computed/rest/getter
+increase0.02–0.07%. Source-scoped validation records983 passing native tests
+(26 ignored), Clippy, explicit release workers and one strict-Miri test.
+The archive contains13 valid stages/78 profiles, two rejected stale workers,
+and eight later correctness captures. Native Boa qualification remains separate.

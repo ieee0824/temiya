@@ -292,27 +292,22 @@ impl Environment {
     ) -> RuntimeResult<Option<(f64, f64)>> {
         let mut record = self.0.record.borrow_mut();
         let record = match &mut *record {
-            EnvironmentRecord::Function(record) => &mut record.declarative_record,
-            EnvironmentRecord::Declarative(record) => record,
+            EnvironmentRecord::Function(record) => &mut record.declarative_record.bindings[..],
+            EnvironmentRecord::Declarative(record) => &mut record.bindings[..],
+            EnvironmentRecord::Single(binding) => std::slice::from_mut(binding),
             _ => return Ok(None),
         };
         let Some(index) = hint
             .filter(|index| {
                 record
-                    .bindings
                     .get(*index)
                     .is_some_and(|binding| binding.name == *name)
             })
-            .or_else(|| {
-                record
-                    .bindings
-                    .iter()
-                    .position(|binding| binding.name == *name)
-            })
+            .or_else(|| record.iter().position(|binding| binding.name == *name))
         else {
             return Ok(None);
         };
-        let binding = &mut record.bindings[index];
+        let binding = &mut record[index];
         let Some(StoredValue::Number(old)) = &binding.value else {
             return Ok(None);
         };
@@ -330,24 +325,19 @@ impl Environment {
     ) -> Option<Value> {
         let mut record = self.0.record.borrow_mut();
         let record = match &mut *record {
-            EnvironmentRecord::Function(record) => &mut record.declarative_record,
-            EnvironmentRecord::Declarative(record) => record,
+            EnvironmentRecord::Function(record) => &mut record.declarative_record.bindings[..],
+            EnvironmentRecord::Declarative(record) => &mut record.bindings[..],
+            EnvironmentRecord::Single(binding) => std::slice::from_mut(binding),
             _ => return None,
         };
         let index = hint
             .filter(|index| {
                 record
-                    .bindings
                     .get(*index)
                     .is_some_and(|binding| binding.name == *name)
             })
-            .or_else(|| {
-                record
-                    .bindings
-                    .iter()
-                    .position(|binding| binding.name == *name)
-            })?;
-        let binding = &mut record.bindings[index];
+            .or_else(|| record.iter().position(|binding| binding.name == *name))?;
+        let binding = &mut record[index];
         if !binding.mutable {
             return None;
         }
@@ -407,9 +397,10 @@ impl Environment {
             let mut record = self.0.record.borrow_mut();
             let bindings = match &mut *record {
                 EnvironmentRecord::Function(record) => {
-                    Some(&mut record.declarative_record.bindings)
+                    Some(&mut record.declarative_record.bindings[..])
                 }
-                EnvironmentRecord::Declarative(record) => Some(&mut record.bindings),
+                EnvironmentRecord::Declarative(record) => Some(&mut record.bindings[..]),
+                EnvironmentRecord::Single(binding) => Some(std::slice::from_mut(binding)),
                 _ => None,
             };
             if let (Some(bindings), Some(index)) = (bindings, index) {
@@ -2459,6 +2450,64 @@ mod slot_hint_tests {
         context.verify_migration_barriers().unwrap();
         drop(environment);
         assert_eq!(context.collect_garbage().unwrap().retained, 0);
+    }
+
+    #[test]
+    fn inline_updates_recheck_names_types_and_readonly_state() {
+        let context = Runtime::new();
+        let name: JsString = "value".into();
+        let env = Environment::declarative_from_verified_bindings(
+            Environment::declarative_in(&context),
+            std::iter::once((name.clone(), true, false)),
+        );
+        assert_eq!(
+            env.update_number_binding(&name, Some(0), true, true)
+                .unwrap(),
+            None
+        );
+        env.initialize_binding(&name, Value::Number(41.0)).unwrap();
+        assert_eq!(
+            env.update_number_binding(&"wrong".into(), Some(0), true, true)
+                .unwrap(),
+            None
+        );
+        assert_eq!(
+            env.update_number_binding(&name, Some(99), true, true)
+                .unwrap(),
+            Some((41.0, 42.0))
+        );
+        env.set_function_binding_at(&name, Some(0), Value::String("first".into()), true)
+            .unwrap();
+        let snapshot = env.get_binding_value(&name, true).unwrap();
+        assert!(
+            env.append_string_binding(&name, Some(99), &" second".into())
+                .unwrap()
+                .same_value(&Value::String("first second".into()))
+        );
+        assert!(snapshot.same_value(&Value::String("first".into())));
+        let fixed = Environment::declarative_from_verified_bindings(
+            Environment::declarative_in(&context),
+            std::iter::once((name.clone(), false, false)),
+        );
+        fixed
+            .initialize_binding(&name, Value::Number(41.0))
+            .unwrap();
+        assert!(
+            fixed
+                .update_number_binding(&name, Some(0), true, false)
+                .is_err()
+        );
+        assert!(
+            fixed
+                .append_string_binding(&name, Some(0), &"suffix".into())
+                .is_none()
+        );
+        assert!(
+            fixed
+                .get_binding_value(&name, true)
+                .unwrap()
+                .same_value(&Value::Number(41.0))
+        );
     }
 
     #[test]

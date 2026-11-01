@@ -109,3 +109,10 @@ standard instanceof dispatch, including builtin defining-Realm error handling.
 Its native, corpus, safety and speed results require fresh validation; results
 above remain specific to their recorded sources. Assignment evidence has its
 own CI shard, preserving every existing check and the20-minute job timeout.
+
+Source a151aed passes1,018 all-target/all-feature native tests (26 ignored),
+Clippy, and19 local strict Miri tests: two standard-instance guards, strict
+equality hooks, operand GC storage, and all15 assignment/VM/GC regressions.
+`comparisons-correctness-v1` retains complete logs and all83 compiler-input
+hashes. This changed source has its own fresh hosted native/full/security
+runs; the preceding successful corpus/security records remain historical.

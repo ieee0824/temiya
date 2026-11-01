@@ -644,3 +644,108 @@ fn ast_arrow_defaults_keep_lexical_new_target() {
         }
     }
 }
+
+#[test]
+fn lexical_object_lowering_preserves_order_primitives_and_tdz() {
+    let source = "function f(){let trace='';let key={toString(){trace+='k';return 'value';}};let {[key]:a=(trace+='d',20),nested:{b}={b:22}}={get value(){trace+='g';return undefined;}};return a+b===42&&trace==='kgd';}f();";
+    let code = BytecodeCompiler::compile(source).unwrap();
+    let template = code
+        .bytecode()
+        .constants
+        .iter()
+        .find_map(|constant| {
+            if let Constant::Scope(plan) = constant {
+                plan.functions.first().map(|f| &f.template)
+            } else {
+                None
+            }
+        })
+        .unwrap();
+    assert!(
+        template
+            .body
+            .bytecode()
+            .instructions
+            .iter()
+            .any(|op| matches!(op, Instruction::GetProperty { .. }))
+    );
+    assert!(template.body.bytecode().constants.iter().filter_map(|c| if let Constant::BindingPattern {definition, ..}=c {Some(definition)}else{None}).all(|definition| matches!(&definition.kind, temiya::ast::ExprKind::Object(properties) if properties.is_empty())));
+    check(source);
+    for source in [
+        "function f(){try{throw {value:undefined};}catch({value=42}){return value===42;}}f();",
+        "function f(){let keys=0;try{try{throw null;}catch({[++keys]:x}){return false;}}catch(e){return e instanceof TypeError&&keys===0;}}f();",
+        "let {0:first,length:n}='ab';first==='a'&&n===2;",
+        "function f(){let keys=0;try{let {[++keys]:value}=null;}catch(e){return e instanceof TypeError&&keys===0;}return false;}f();",
+        "function f(){let caught=false;try{let {a=a}={};}catch(e){caught=e instanceof ReferenceError;}return caught;}f();",
+        "function f(){let {a=42,b=21}={a:null,b:undefined};return a===null&&b===21;}f();",
+        "function f(){let marker={},seen=false;try{let {x:{y}}={get x(){throw marker;}};}catch(e){seen=e===marker;}return seen;}f();",
+        "function f(){let {C=class{}}={};return C.name==='C';}f();",
+    ] {
+        check(source);
+    }
+}
+
+#[test]
+fn unsupported_object_defaults_roll_back_before_shared_initialization() {
+    for source in [
+        "function f(){let fn;let {a=(fn=function(){return 42;})}={};return a===fn&&fn.name==='fn';}f();",
+        "function f(){let fn;let {[((fn=function(){return 'x';}),fn())]:a}={x:42};return a===42&&fn.name==='fn';}f();",
+        "function f(){let trace='';let {a=(trace+='a',20),fn=function(){return 22;}}={};return a+fn()===42&&fn.name==='fn'&&trace==='a';}f();",
+        "function f(){let trace='';let {a=(trace+='a',20),read=()=>22}={};return a+read()===42&&read.name==='read'&&trace==='a';}f();",
+        "function f(){let trace='';let {a=(trace+='a',20),...rest}={b:22};return a+rest.b===42&&trace==='a';}f();",
+        "function f(){let closes=0;let input={[Symbol.iterator](){return {next(){return {done:false,value:42};},return(){closes++;return {};}};}};let {values:[x]}={values:input};return x===42&&closes===1;}f();",
+    ] {
+        check(source);
+    }
+    let code =
+        BytecodeCompiler::compile("function f(){let {value=eval('42')}={};return value;}f();")
+            .unwrap();
+    let template = code
+        .bytecode()
+        .constants
+        .iter()
+        .find_map(|constant| {
+            if let Constant::Scope(plan) = constant {
+                plan.functions.first().map(|f| &f.template)
+            } else {
+                None
+            }
+        })
+        .unwrap();
+    assert!(template.body.bytecode().constants.iter().any(|constant|
+        matches!(constant, Constant::BindingPattern {definition, ..}
+            if matches!(&definition.kind, temiya::ast::ExprKind::Object(properties) if !properties.is_empty()))));
+}
+
+#[test]
+fn lowered_object_source_and_initialized_cells_survive_reentrant_gc() {
+    for backend in [ScriptBackend::Ast, ScriptBackend::Auto] {
+        let engine = Engine::builder().script_backend(backend).build();
+        {
+            let realm = engine.create_realm();
+            let gc = Object::native_function_with_context(
+                engine.allocation_context(),
+                |context, _, _| {
+                    context.collect_garbage()?;
+                    Ok(Value::Undefined)
+                },
+            );
+            engine
+                .set_global(
+                    &realm,
+                    "gcNow",
+                    engine.value(&realm, Value::Object(gc)).unwrap(),
+                )
+                .unwrap();
+            let script = engine.compile(&realm, "function f(){let {first=(gcNow(),{answer:20}),last}={get first(){gcNow();return undefined;},get last(){gcNow();return {answer:22};}};gcNow();return first.answer+last.answer===42;}f();").unwrap();
+            assert!(
+                matches!(
+                    engine.evaluate(&script).unwrap().value(),
+                    Value::Boolean(true)
+                ),
+                "{backend:?}"
+            );
+        }
+        assert_eq!(engine.collect_garbage().unwrap().retained, 0);
+    }
+}

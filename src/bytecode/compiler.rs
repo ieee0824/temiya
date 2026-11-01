@@ -368,6 +368,11 @@ impl Compiler {
                             );
                         };
                         self.expression(init)?;
+                        if *kind != VariableKind::Var
+                            && self.try_lexical_object_pattern(&declaration.binding)
+                        {
+                            continue;
+                        }
                         let index = self.pool(Constant::BindingPattern {
                             definition: std::rc::Rc::new(declaration.binding.clone()),
                             initialize: *kind != VariableKind::Var,
@@ -509,7 +514,7 @@ impl Compiler {
                 let (scope, slot, _) = self.binding(name).expect("catch binding");
                 self.code
                     .push(Instruction::InitializeBinding { scope, slot });
-            } else {
+            } else if !self.try_lexical_object_pattern(parameter) {
                 let index = self.pool(Constant::BindingPattern {
                     definition: std::rc::Rc::new(parameter.clone()),
                     initialize: true,
@@ -852,6 +857,111 @@ impl Compiler {
             }
             _ => Err(self.unsupported("expression", expression.span)),
         }
+    }
+
+    // Keep direct eval and function-name inference inside computed keys/defaults
+    // on the shared path, including nested assignments and object literal values.
+    fn binding_expression_needs_shared_path(expression: &Expr) -> bool {
+        let mut needed = false;
+        expression.visit(&mut |expression| {
+            needed |= matches!(expression.kind, ExprKind::Function(_) | ExprKind::Arrow(_))
+                || matches!(&expression.kind, ExprKind::Identifier(name) if name == "eval");
+        });
+        needed
+    }
+
+    // Expressions append only code/constants. Roll back both buffers if a
+    // default or nested shape needs the shared binder; never emit half a plan.
+    fn try_lexical_object_pattern(&mut self, pattern: &Expr) -> bool {
+        let checkpoint = (self.code.len(), self.constants.len());
+        if self.lexical_object_pattern(pattern).is_ok() {
+            true
+        } else {
+            self.code.truncate(checkpoint.0);
+            self.constants.truncate(checkpoint.1);
+            false
+        }
+    }
+
+    fn lexical_object_pattern(&mut self, pattern: &Expr) -> Result<(), CompileError> {
+        let ExprKind::Object(properties) = &pattern.kind else {
+            return Err(self.unsupported("non-object binding plan", pattern.span));
+        };
+        if properties.iter().any(|property| property.spread) {
+            return Err(self.unsupported("object rest binding plan", pattern.span));
+        }
+        // Empty binding initialization is RequireObjectCoercible without
+        // boxing or property access, and must precede computed key evaluation.
+        self.code.push(Instruction::Duplicate);
+        let check = self.pool(Constant::BindingPattern {
+            definition: std::rc::Rc::new(Expr {
+                span: pattern.span,
+                kind: ExprKind::Object(vec![]),
+            }),
+            initialize: true,
+            strict: self.strict,
+        })?;
+        self.code.push(Instruction::InitializePattern(check));
+        for property in properties {
+            if property.computed && Self::binding_expression_needs_shared_path(&property.key) {
+                return Err(self.unsupported("function in binding key", property.key.span));
+            }
+            self.code.push(Instruction::Duplicate);
+            self.member_property(
+                &property.key,
+                property.computed
+                    || matches!(property.key.kind, ExprKind::Literal(Literal::Number { .. })),
+                false,
+            )?;
+            self.lexical_pattern_element(property.value.as_ref().unwrap_or(&property.key))?;
+        }
+        self.code.push(Instruction::Pop);
+        Ok(())
+    }
+
+    fn lexical_pattern_element(&mut self, element: &Expr) -> Result<(), CompileError> {
+        let (target, default) = match &element.kind {
+            ExprKind::Assignment { target, value, .. } => (target.as_ref(), Some(value.as_ref())),
+            _ => (element, None),
+        };
+        if let Some(default) = default {
+            // Anonymous function/arrow naming stays in the shared binder.
+            if Self::binding_expression_needs_shared_path(default) {
+                return Err(self.unsupported("function binding default", default.span));
+            }
+            self.code.push(Instruction::Duplicate);
+            self.constant(Constant::Undefined)?;
+            self.code.push(Instruction::StrictEqual);
+            let present = self.emit(Instruction::JumpIfFalse(0));
+            self.code.push(Instruction::Pop);
+            if let ExprKind::Identifier(name) = &target.kind {
+                self.named_expression(default, name)?;
+            } else {
+                self.expression(default)?;
+            }
+            let end = self.offset()?;
+            self.patch(present, end);
+        }
+        match &target.kind {
+            ExprKind::Identifier(name) => {
+                let (scope, slot, _) = self
+                    .binding(name)
+                    .expect("collected lexical pattern binding");
+                self.code
+                    .push(Instruction::InitializeBinding { scope, slot });
+            }
+            ExprKind::Object(_) => self.lexical_object_pattern(target)?,
+            ExprKind::Array { .. } => {
+                let index = self.pool(Constant::BindingPattern {
+                    definition: std::rc::Rc::new(target.clone()),
+                    initialize: true,
+                    strict: self.strict,
+                })?;
+                self.code.push(Instruction::InitializePattern(index));
+            }
+            _ => return Err(self.unsupported("lexical binding target", target.span)),
+        }
+        Ok(())
     }
 
     fn named_expression(&mut self, expression: &Expr, name: &str) -> Result<(), CompileError> {

@@ -158,3 +158,12 @@ logs and source hashes. All six instruction profiles are preserved: getter-order
 drops1.071% versus ca10d67; the other five are almost unchanged. This resolves
 the preceding getter instruction regression without native speed qualification.
 Replay with `node benchmarks/object-binding/rest-accessor-correctness-v1/verify.mjs`.
+
+Nullish binding diagnostics atca0f6eb share exactly one fixed Rust String per
+thread. No Realm/Object/GC root is cached; TLS teardown falls back to an owned
+message. Each JavaScript exception and writable message property remains fresh.
+All954 tests (26ignored), Clippy/release and the exact strict Miri identity/message
+test pass, retained in nullish-message-correctness-v1. All six instruction
+profiles remain: abrupt-coercion drops0.602%, while the other five rise0.036–0.094%.
+This is mixed diagnostic evidence, not native performance qualification.
+Replay with `node benchmarks/object-binding/nullish-message-correctness-v1/verify.mjs`.

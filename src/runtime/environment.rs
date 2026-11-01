@@ -432,6 +432,31 @@ impl Environment {
         )
     }
 
+    // Only verifier-owned descriptors use this unpublished initialization.
+    // Duplicate names have already been rejected; all initial edges are traced
+    // by allocation before the environment can be observed by JavaScript.
+    pub(crate) fn declarative_from_verified_bindings(
+        outer: Self,
+        bindings: impl ExactSizeIterator<Item = (JsString, bool, bool)>,
+    ) -> Self {
+        let entries = bindings
+            .map(|(name, mutable, initialized)| Binding {
+                name,
+                value: initialized.then(|| {
+                    StoredValue::initial(outer.runtime(), &Value::Undefined)
+                        .expect("undefined binding context")
+                }),
+                mutable,
+                strict: !mutable,
+                deletable: false,
+            })
+            .collect();
+        Self::new(
+            Some(outer),
+            EnvironmentRecord::Declarative(DeclarativeRecord { bindings: entries }),
+        )
+    }
+
     // A catch parameter is the only binding in an unpublished fresh record.
     // Validate its context before allocation; the incoming record traces both
     // this value and the outer environment at the allocation safepoint.

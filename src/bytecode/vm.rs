@@ -1246,7 +1246,18 @@ fn enter_scope(
             if plan.bindings.is_empty() && plan.functions.is_empty() {
                 parent.clone()
             } else {
-                Environment::declarative(parent.clone())
+                let environment = Environment::declarative_from_verified_bindings(
+                    parent.clone(),
+                    plan.bindings.iter().map(|binding| {
+                        (
+                            binding.name.clone(),
+                            binding.kind != BindingKind::Const,
+                            binding.kind == BindingKind::Var,
+                        )
+                    }),
+                );
+                instantiate_functions(plan, parents, entry, &environment, realm)?;
+                return Ok(environment);
             }
         }
     };

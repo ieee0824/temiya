@@ -75,3 +75,13 @@ passes, with zero regressions and one additional assignment-source pass.
 and qualified main, then reconstructs the per-variant comparisons. The
 remaining failures and timeouts are retained and do not establish complete
 ECMAScript conformance or native speed.
+
+Current-runtime security run 41303175895 passes all 19 jobs. Its sixteen
+strict Miri shards execute 173 unique exact library tests; ASan executes
+1,012 tests, with the dependency audit and Miri aggregate both successful.
+`security-vm-v1` retains every job log and the exact test list. Replay with
+`node benchmarks/object-binding/security-prepared-guards-v1/verify.mjs
+benchmarks/destructuring-assignment/security-vm-v1
+eb29c4169c0fdfd9246546f76b5874097a53ef62` on a single command line. These
+results qualify the recorded runtime source for the stated checks only;
+native Boa speed remains pending.

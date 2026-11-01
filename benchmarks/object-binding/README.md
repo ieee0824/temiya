@@ -259,3 +259,11 @@ All six profiles are retained. The archive has19 valid source captures/114
 profiles, two stale-worker rejections and14 later correctness captures.
 Source-matched native41281869695, full41281841829 and security41281843076
 are dispatched independently; none is claimed qualified while still pending.
+
+The ordinary inline-record hint (`d370178`) has no material instruction-count
+improvement: all six changes round to0.001% or less versusd58d4d4. Retained
+validation includes987 native passes (26 ignored), Clippy, explicit release
+workers and strict Miri for GC during unscopables reentry. All raw results
+remain retained. The archive now has20 valid source captures/120 profiles,
+two rejected stale workers and15 later correctness captures. No native speed
+qualification is inferred from this negligible local difference.

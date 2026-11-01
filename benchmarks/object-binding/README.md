@@ -319,3 +319,24 @@ tests pass. Againstdc9bd56, declaration/computed/rest/getter/abrupt instructions
 decrease1.68/1.77/0.60/1.33/0.95%; parameters increase0.019%. All six are retained.
 The archive has23 valid captures/138 profiles, two stale-worker rejections and
 18 later correctness captures. Source-matched hosted gates remain pending.
+
+The source-matched pinned-context jobs have now completed. Run41285425622
+fails speed qualification on copy1 (object wins3/0/1/3/3/0); copy2 has
+3/3/2/3/3/2. `hosted-pinned-context-v1` preserves both unfiltered jobs,
+all76 reports and adverse controls. `security-pinned-context-v1` independently
+replays all19 jobs:172 unique strict Miri tests and993 ASan tests.
+Full run41285427317 was independently audited over100211 variants:
+37919 pass,53705 fail,18 skip,8569 timeout,0 missing; a complete outcome
+comparison preserves all37919 preceding object passes. These results cover
+2c09b52 only, not subsequent compiler changes.
+
+The lowered-object stage (`9e559cc`) compiles lexical computed keys and
+undefined-only defaults to verified property reads/branches while retaining
+real binding cells and rooted source values. Unsupported function/eval
+expressions roll back to the shared binder. All996 tests (26 ignored), Clippy,
+release workers and2 focused strict Miri tests pass. Against2c09b52, fixed-input
+instruction counts change -4.664/+0.00001/-3.824/+0.00009/+0.00005/+2.373%.
+The adverse abrupt-coercion result is retained; this is not native speed
+qualification. There are24 valid captures/144 profiles, two stale-worker
+rejections and19 later correctness captures. A subsequent change retains the
+existing cached static-pattern instruction rather than expanding static reads.

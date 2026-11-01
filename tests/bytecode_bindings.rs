@@ -669,7 +669,26 @@ fn lexical_object_lowering_preserves_order_primitives_and_tdz() {
             .iter()
             .any(|op| matches!(op, Instruction::GetProperty { .. }))
     );
-    assert!(template.body.bytecode().constants.iter().filter_map(|c| if let Constant::BindingPattern {definition, ..}=c {Some(definition)}else{None}).all(|definition| matches!(&definition.kind, temiya::ast::ExprKind::Object(properties) if properties.is_empty())));
+    // Only the coercibility check and the nested static `{b}` remain in the
+    // shared instruction. The computed key/default use verified VM branches.
+    let patterns: Vec<_> = template
+        .body
+        .bytecode()
+        .constants
+        .iter()
+        .filter_map(|constant| match constant {
+            Constant::BindingPattern { definition, .. } => Some(&definition.kind),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(patterns.len(), 2);
+    assert!(
+        matches!(patterns[0], temiya::ast::ExprKind::Object(properties) if properties.is_empty())
+    );
+    assert!(
+        matches!(patterns[1], temiya::ast::ExprKind::Object(properties)
+        if properties.len() == 1 && matches!(&properties[0].key.kind, temiya::ast::ExprKind::Identifier(name) if name == "b"))
+    );
     check(source);
     for source in [
         "function f(){try{throw {value:undefined};}catch({value=42}){return value===42;}}f();",

@@ -887,6 +887,18 @@ impl Compiler {
         let ExprKind::Object(properties) = &pattern.kind else {
             return Err(self.unsupported("non-object binding plan", pattern.span));
         };
+        // Static reads (including an empty coercibility check) already have a
+        // verified, cached plan. Keep its single dispatch instead of expanding
+        // it into duplicate/check/read/pop instructions.
+        if crate::runtime::bytecode_function::StaticObjectBindingPlan::prepare(pattern).is_some() {
+            let index = self.pool(Constant::BindingPattern {
+                definition: std::rc::Rc::new(pattern.clone()),
+                initialize: true,
+                strict: self.strict,
+            })?;
+            self.code.push(Instruction::InitializePattern(index));
+            return Ok(());
+        }
         if properties.iter().any(|property| property.spread) {
             return Err(self.unsupported("object rest binding plan", pattern.span));
         }

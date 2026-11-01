@@ -112,6 +112,7 @@ pub(super) struct FunctionCode {
     ast: Function,
     kind: FunctionKind,
     compiled: Option<Rc<FunctionTemplate>>,
+    compiled_body: Option<crate::bytecode::VerifiedBytecode>,
     lexical_property: Option<PropertyKey>,
     private_expression: Option<private_expression::Plan>,
     constructor_assignments: Option<constructor_assignments::Plan>,
@@ -182,6 +183,11 @@ fn prepare_code(
     let prepared = Rc::new(FunctionCode {
         ast: code.clone(),
         kind,
+        compiled_body: if cache.is_some() && compiled.is_none() && kind != FunctionKind::Arrow {
+            BytecodeCompiler::compile_prepared_function_body(code).ok()
+        } else {
+            None
+        },
         compiled,
         private_expression: cache
             .as_ref()
@@ -738,6 +744,21 @@ fn call_function(
         closure.code.parameter_names.as_deref(),
         arguments,
     )?;
+
+    if let Some(body) = &closure.code.compiled_body {
+        return match crate::bytecode::VirtualMachine::execute_in_function(
+            body,
+            &closure.realm,
+            &environment,
+        )? {
+            Completion::Return(value) => Ok(value),
+            Completion::Normal(_) => Ok(Value::Undefined),
+            Completion::Throw(value) => Err(RuntimeError::thrown(value)),
+            _ => Err(RuntimeError::internal_error(
+                "invalid bytecode function completion",
+            )),
+        };
+    }
 
     match &closure.code.body {
         FunctionBody::Expression(expression) => evaluator.evaluate(expression),
@@ -1330,5 +1351,25 @@ mod derived_arguments_tests {
             };
             assert!(super::may_observe_arguments(&function), "{source}");
         }
+    }
+}
+
+#[cfg(test)]
+mod prepared_body_tests {
+    #[test]
+    fn non_simple_parameters_prepare_verified_body_without_full_template() {
+        let expression =
+            crate::parser::parse_expression("function f({a},read=()=>a){a=42;return read();}")
+                .unwrap();
+        let crate::ast::ExprKind::Function(function) = expression.kind else {
+            panic!("function")
+        };
+        let code = super::prepare_code(
+            &function,
+            super::FunctionKind::Normal,
+            &Some(Default::default()),
+        );
+        assert!(code.compiled.is_none());
+        assert!(code.compiled_body.is_some());
     }
 }

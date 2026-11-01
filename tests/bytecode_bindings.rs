@@ -146,3 +146,28 @@ fn bytecode_pattern_callbacks_survive_gc_and_release_everything() {
     }
     assert_eq!(engine.collect_garbage().unwrap().retained, 0);
 }
+
+#[test]
+fn prepared_parameter_body_preserves_escaped_cells_and_frame_observers() {
+    for backend in [ScriptBackend::Ast, ScriptBackend::Auto] {
+        let engine = Engine::builder().script_backend(backend).build();
+        let realm = engine.create_realm();
+        for source in [
+            "function f({a=1},read=()=>a){a=42;return read();}f({})===42;",
+            "function f({a},b=arguments[0].a){var a;return a+b;}f({a:21})===42;",
+            "function f({a},read=()=>a){function g(){return read();}a=42;return g();}f({a:1})===42;",
+            "function F({a=this.seed},target=new.target){this.a=a;this.target=target;}F.prototype.seed=42;let x=new F({});x.a===42&&x.target===F;",
+            "function sum({a},n){let total=0;for(let i=0;i<n;i++)total+=a;return total;}sum({a:14},3)===42;",
+            "function f({a}){const {b=a}={};return b;}f({a:42})===42;",
+        ] {
+            let script = engine.compile(&realm, source).unwrap();
+            assert!(
+                matches!(
+                    engine.evaluate(&script).unwrap().value(),
+                    Value::Boolean(true)
+                ),
+                "{backend:?}: {source}"
+            );
+        }
+    }
+}

@@ -43,6 +43,26 @@ impl BytecodeCompiler {
                 Some(function.span),
             ));
         }
+        Self::compile_prepared_function_body(function)
+    }
+
+    // Parameters are already initialized in a real Function environment. This
+    // private path never enables scalar locals or activation elision.
+    pub(crate) fn compile_prepared_function_body(
+        function: &Function,
+    ) -> Result<VerifiedBytecode, CompileError> {
+        if function.asynchronous || function.generator {
+            return Err(CompileError::new(
+                "unsupported async or generator",
+                Some(function.span),
+            ));
+        }
+        let parameters = function
+            .parameters
+            .iter()
+            .flat_map(crate::semantics::bound_names)
+            .map(|binding| JsString::from(binding.name.as_str()))
+            .collect::<Vec<_>>();
         crate::semantics::validate_expression(
             &Expr {
                 span: function.span,
@@ -60,7 +80,15 @@ impl BytecodeCompiler {
                         Some(body.span),
                     ));
                 };
-                let vars = scope_bindings(statements, true, false, true)?;
+                let mut vars = scope_bindings(statements, true, false, true)?;
+                for name in &parameters {
+                    if !vars.iter().any(|binding| &binding.name == name) {
+                        vars.push(ScopeBinding {
+                            name: name.clone(),
+                            kind: BindingKind::Var,
+                        });
+                    }
+                }
                 compiler.enter_scope(ScopeKind::Function, vars)?;
                 let target = compiler.scopes.last().expect("function scope").entry;
                 let terminal = compiler.block_with_functions(statements, Some(target))?;
@@ -70,7 +98,16 @@ impl BytecodeCompiler {
                 }
             }
             FunctionBody::Expression(expression) => {
-                compiler.enter_scope(ScopeKind::Function, vec![])?;
+                compiler.enter_scope(
+                    ScopeKind::Function,
+                    parameters
+                        .iter()
+                        .map(|name| ScopeBinding {
+                            name: name.clone(),
+                            kind: BindingKind::Var,
+                        })
+                        .collect(),
+                )?;
                 compiler.expression(expression)?;
                 compiler.code.push(Instruction::Return);
             }

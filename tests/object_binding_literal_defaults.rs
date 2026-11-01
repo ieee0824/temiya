@@ -88,3 +88,19 @@ fn projected_object_values_remain_rooted_through_later_property_and_default_gc()
     }
     assert_eq!(engine.collect_garbage().unwrap().retained, 0);
 }
+
+#[test]
+fn projection_keeps_literal_effects_before_iterator_close_and_original_throw() {
+    for backend in [ScriptBackend::Ast, ScriptBackend::Auto] {
+        let engine = Engine::builder().script_backend(backend).build();
+        let realm = engine.create_realm();
+        let script=engine.compile(&realm,"let trace='';let marker={};let iterable={[Symbol.iterator](){trace+='i';return{next(){trace+='n';return{done:false,value:undefined};},return(){trace+='r';return{done:true};}};}};function fail(){trace+='d';throw marker;}function read({values:[x=fail()]}={values:iterable,unused:(trace+='p',0)}){return false;}function run(){try{read();return false;}catch(e){return e===marker&&trace==='pindr';}}run();").unwrap();
+        assert!(
+            matches!(
+                engine.evaluate(&script).unwrap().value(),
+                Value::Boolean(true)
+            ),
+            "{backend:?}"
+        );
+    }
+}

@@ -124,3 +124,11 @@ Replay with `node benchmarks/object-binding/full-direct-get-v1/verify.mjs`.
 
 The single-catch local correctness capture additionally retains45 MSRV
 integration passes (one ignored) and a successful i686 all-target check.
+
+Ordinary rest data at ca10d67 loads an enumerable own data edge once.
+Proxy, namespace and indexed-exotic sources retain the full descriptor/Get
+path. Accessors retain Get, preserving reentrant changes to later properties.
+Public Ast/Auto tests verify later data replacement/deletion and distinct
+Proxy Get values. All952 tests (26ignored), Clippy/release pass. All six
+instruction profiles are retained: rest-symbol drops1.225% but getter-order
+rises0.3915%. This is mixed diagnostic evidence, not native qualification.

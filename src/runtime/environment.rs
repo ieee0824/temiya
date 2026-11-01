@@ -439,8 +439,8 @@ impl Environment {
         outer: Self,
         bindings: impl ExactSizeIterator<Item = (JsString, bool, bool)>,
     ) -> Self {
-        let entries = bindings
-            .map(|(name, mutable, initialized)| Binding {
+        let record = {
+            let mut entries = bindings.map(|(name, mutable, initialized)| Binding {
                 name,
                 value: initialized.then(|| {
                     StoredValue::initial(outer.runtime(), &Value::Undefined)
@@ -449,12 +449,16 @@ impl Environment {
                 mutable,
                 strict: !mutable,
                 deletable: false,
-            })
-            .collect();
-        Self::new(
-            Some(outer),
-            EnvironmentRecord::Declarative(DeclarativeRecord { bindings: entries }),
-        )
+            });
+            if entries.len() == 1 {
+                EnvironmentRecord::Single(entries.next().expect("one verified binding"))
+            } else {
+                EnvironmentRecord::Declarative(DeclarativeRecord {
+                    bindings: entries.collect(),
+                })
+            }
+        };
+        Self::new(Some(outer), record)
     }
 
     // A catch parameter is the only binding in an unpublished fresh record.
@@ -771,6 +775,16 @@ impl Environment {
         // records first; observable object/module paths remain below.
         {
             let mut record = self.0.record.borrow_mut();
+            if let EnvironmentRecord::Single(binding) = &mut *record {
+                if binding.name != *name {
+                    return Err(reference_error(name, "is not defined"));
+                }
+                if binding.value.is_some() {
+                    return Err(RuntimeError::type_error("binding is already initialized"));
+                }
+                binding.value = Some(StoredValue::store_owned(self, value)?);
+                return Ok(());
+            }
             record.promote_single();
             match &mut *record {
                 EnvironmentRecord::Declarative(record) => {
@@ -1794,6 +1808,54 @@ mod slot_hint_tests {
         );
         drop(environment);
         assert_eq!(runtime.collect_garbage().unwrap().retained, 0);
+    }
+
+    #[test]
+    fn verified_single_binding_preserves_tdz_context_and_edges_after_promotion() {
+        for mutable in [false, true] {
+            let runtime = Runtime::new();
+            runtime.set_allocation_collection_interval(0);
+            let outer = Environment::declarative_in(&runtime);
+            let name: JsString = "answer".into();
+            let environment = Environment::declarative_from_verified_bindings(
+                outer,
+                std::iter::once((name.clone(), mutable, false)),
+            );
+            assert!(environment.get_binding_value(&name, true).is_err());
+            let foreign = Object::new_in(&Runtime::new());
+            assert!(
+                environment
+                    .initialize_binding(&name, Value::Object(foreign))
+                    .is_err()
+            );
+            assert!(environment.get_binding_value(&name, true).is_err());
+            let object = Object::new_in(&runtime);
+            let weak = object.downgrade();
+            environment
+                .initialize_binding(&name, Value::Object(object))
+                .unwrap();
+            assert!(
+                environment
+                    .initialize_binding(&name, Value::Undefined)
+                    .is_err()
+            );
+            runtime.collect_garbage().unwrap();
+            assert!(weak.upgrade().is_some());
+            environment
+                .create_mutable_binding("extra".into(), false)
+                .unwrap();
+            runtime.collect_garbage().unwrap();
+            assert!(weak.upgrade().is_some());
+            assert_eq!(
+                environment
+                    .set_mutable_binding(&name, Value::Number(42.0), true)
+                    .is_ok(),
+                mutable
+            );
+            drop(environment);
+            assert_eq!(runtime.collect_garbage().unwrap().retained, 0);
+            assert!(weak.upgrade().is_none());
+        }
     }
 
     #[test]

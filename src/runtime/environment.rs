@@ -452,6 +452,58 @@ impl Environment {
         Self::new(Some(outer), record)
     }
 
+    // The verifier restricts this operation to a fresh declarative loop record
+    // with unique mutable names. Copy stored edges within the same heap; the
+    // new record traces them at allocation, without materializing facades.
+    pub(crate) fn clone_verified_loop_bindings<'a>(
+        &self,
+        names: impl ExactSizeIterator<Item = &'a JsString>,
+    ) -> RuntimeResult<Self> {
+        let outer = self
+            .outer()
+            .ok_or_else(|| RuntimeError::internal_error("loop environment has no parent"))?;
+        if names.len() == 0 {
+            return Ok(Self::declarative(outer));
+        }
+        let record = {
+            let source = self.0.record.borrow();
+            let bindings = match &*source {
+                EnvironmentRecord::Single(binding) => std::slice::from_ref(binding),
+                EnvironmentRecord::Declarative(record) => &record.bindings[..],
+                _ => {
+                    return Err(RuntimeError::internal_error(
+                        "verified loop requires declarative bindings",
+                    ));
+                }
+            };
+            let mut entries = names.map(|name| {
+                let binding = bindings
+                    .iter()
+                    .find(|binding| binding.name == *name)
+                    .ok_or_else(|| reference_error(name, "is not defined"))?;
+                let value = binding
+                    .value
+                    .as_ref()
+                    .ok_or_else(|| reference_error(name, "is in the temporal dead zone"))?;
+                Ok(Binding {
+                    name: name.clone(),
+                    value: Some(value.clone()),
+                    mutable: true,
+                    strict: false,
+                    deletable: false,
+                })
+            });
+            if entries.len() == 1 {
+                EnvironmentRecord::Single(entries.next().expect("one loop binding")?)
+            } else {
+                EnvironmentRecord::Declarative(DeclarativeRecord {
+                    bindings: entries.collect::<RuntimeResult<Vec<_>>>()?,
+                })
+            }
+        };
+        Ok(Self::new(Some(outer), record))
+    }
+
     // A catch parameter is the only binding in an unpublished fresh record.
     // Validate its context before allocation; the incoming record traces both
     // this value and the outer environment at the allocation safepoint.
@@ -1846,6 +1898,68 @@ mod slot_hint_tests {
             drop(environment);
             assert_eq!(runtime.collect_garbage().unwrap().retained, 0);
             assert!(weak.upgrade().is_none());
+        }
+    }
+
+    #[test]
+    fn loop_edge_copies_keep_distinct_cells_and_trace_after_source_release() {
+        for count in [1, 2] {
+            let context = Runtime::new();
+            context.set_allocation_collection_interval(1);
+            let outer = Environment::declarative_in(&context);
+            let names = (0..count)
+                .map(|index| JsString::from(format!("slot{index}")))
+                .collect::<Vec<_>>();
+            let source = Environment::declarative_from_verified_bindings(
+                outer,
+                names.iter().map(|name| (name.clone(), true, false)),
+            );
+            assert!(source.clone_verified_loop_bindings(names.iter()).is_err());
+            let object = Object::new_in(&context);
+            object
+                .create_data_property("answer".into(), Value::Number(42.0))
+                .unwrap();
+            let weak = object.downgrade();
+            source
+                .initialize_binding(&names[0], Value::Object(object))
+                .unwrap();
+            for name in &names[1..] {
+                source.initialize_binding(name, Value::Undefined).unwrap();
+            }
+            let cloned = source.clone_verified_loop_bindings(names.iter()).unwrap();
+            assert_ne!(source, cloned);
+            source
+                .set_mutable_binding(&names[0], Value::Number(0.0), true)
+                .unwrap();
+            drop(source);
+            context.collect_garbage().unwrap();
+            assert!(weak.upgrade().is_some());
+            let Value::Object(value) = cloned.get_binding_value(&names[0], true).unwrap() else {
+                panic!("copied object")
+            };
+            assert!(
+                value
+                    .get(&"answer".into())
+                    .unwrap()
+                    .same_value(&Value::Number(42.0))
+            );
+            drop(value);
+            cloned
+                .set_mutable_binding(&names[0], Value::Number(7.0), true)
+                .unwrap();
+            context.collect_garbage().unwrap();
+            assert!(weak.upgrade().is_none());
+            for name in &names[1..] {
+                assert!(
+                    cloned
+                        .get_binding_value(name, true)
+                        .unwrap()
+                        .same_value(&Value::Undefined)
+                );
+            }
+            context.verify_migration_barriers().unwrap();
+            drop(cloned);
+            assert_eq!(context.collect_garbage().unwrap().retained, 0);
         }
     }
 

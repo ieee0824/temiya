@@ -306,16 +306,9 @@ impl VirtualMachine {
                                 continue;
                             }
                             let frame = scopes.last_mut().expect("verified loop environment");
-                            let next = Environment::declarative(
-                                frame.environment.outer().expect("verified loop parent"),
-                            );
-                            for binding in &frame.plan.bindings {
-                                let value = frame
-                                    .environment
-                                    .get_binding_value(&binding.name, frame.plan.strict)?;
-                                next.create_mutable_binding(binding.name.clone(), false)?;
-                                next.initialize_binding(&binding.name, value)?;
-                            }
+                            let next = frame.environment.clone_verified_loop_bindings(
+                                frame.plan.bindings.iter().map(|binding| &binding.name),
+                            )?;
                             frame.environment = next;
                         }
                         Instruction::LoadBinding { scope, slot } => {

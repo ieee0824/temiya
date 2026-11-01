@@ -578,6 +578,7 @@ pub struct VerifiedBytecode {
     pub(super) has_catch_handlers: bool,
     has_own_property_cache: bool,
     function_name_lookup: Vec<bool>,
+    definition_function_root: bool,
     static_object_patterns: Vec<Option<crate::runtime::bytecode_function::StaticObjectBindingPlan>>,
     reuse_loop_bindings: bool,
     numeric_return: Option<numeric_return::NumericReturnPlan>,
@@ -1595,8 +1596,20 @@ fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
             _ => None,
         })
         .collect();
+    // Public bytecode may exit one root and enter a different root. Only a
+    // single Function root followed by lexical blocks can pin this context.
+    let definition_function_root = definition_cache.is_some()
+        && bytecode.instructions.iter().enumerate().all(|(offset, instruction)| {
+            match instruction {
+                Instruction::EnterScope(index) => matches!(&bytecode.constants[*index as usize],
+                    Constant::Scope(plan) if plan.kind == if offset == 0 { ScopeKind::Function } else { ScopeKind::Block }),
+                _ => true,
+            }
+        })
+        && matches!(bytecode.instructions.first(), Some(Instruction::EnterScope(_)));
     let function_name_lookup = function_name_lookup_plan(&bytecode, &states);
     Ok(VerifiedBytecode {
+        definition_function_root,
         function_name_lookup,
         static_object_patterns,
         has_catch_handlers,

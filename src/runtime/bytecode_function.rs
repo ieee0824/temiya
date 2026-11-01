@@ -82,6 +82,7 @@ impl DefinitionCodeCache {
     pub(crate) fn context(&self) -> DefinitionEvaluationContext {
         DefinitionEvaluationContext {
             cache: Some(self.0.get_or_init(Default::default).clone()),
+            function_frame: None,
         }
     }
 }
@@ -89,9 +90,21 @@ impl DefinitionCodeCache {
 #[derive(Default)]
 pub(crate) struct DefinitionEvaluationContext {
     cache: Option<super::function::FunctionCache>,
+    function_frame: Option<(Environment, Option<Object>)>,
 }
 
 impl DefinitionEvaluationContext {
+    // One verified Function root, with only lexical Block descendants, uses
+    // this same identity-bearing frame throughout the invocation. Do not read
+    // its this value: super() may initialize that cell later.
+    pub(crate) fn pin_function_frame(&mut self, frame: &Environment) -> RuntimeResult<()> {
+        self.function_frame = None;
+        if frame.kind() == super::EnvironmentKind::Function && frame.has_this_binding()? {
+            self.function_frame = Some((frame.clone(), frame.new_target()?));
+        }
+        Ok(())
+    }
+
     pub(crate) fn evaluate(
         &mut self,
         class: &crate::ast::Class,
@@ -202,6 +215,19 @@ impl DefinitionEvaluationContext {
         environment: &Environment,
         strict: bool,
     ) -> RuntimeResult<super::ExpressionEvaluator> {
+        if let Some((frame, new_target)) = &self.function_frame {
+            return Ok(super::ExpressionEvaluator::with_environment(
+                realm.clone(),
+                environment.clone(),
+                Value::Undefined,
+                strict,
+            )
+            .with_this_environment(Some(frame.clone()))
+            .with_new_target(new_target.clone())
+            .with_function_cache(Some(
+                self.cache.get_or_insert_with(Default::default).clone(),
+            )));
+        }
         let mut current = Some(environment.clone());
         let mut this_environment = None;
         let mut this_value = Value::Undefined;

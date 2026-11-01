@@ -117,6 +117,7 @@ pub(super) struct FunctionCode {
     private_expression: Option<private_expression::Plan>,
     constructor_assignments: Option<constructor_assignments::Plan>,
     may_observe_arguments: bool,
+    may_observe_new_target: bool,
     parameter_binds_arguments: bool,
     parameter_names: Option<Box<[JsString]>>,
     delegated_parameters: Option<Box<[usize]>>,
@@ -203,6 +204,7 @@ fn prepare_code(
             None
         },
         may_observe_arguments: may_observe_arguments(code),
+        may_observe_new_target: kind == FunctionKind::Arrow && may_observe_new_target(code),
         parameter_binds_arguments: code.parameters.iter().any(|parameter| {
             crate::semantics::bound_names(parameter)
                 .iter()
@@ -337,6 +339,19 @@ fn may_observe_arguments(function: &Function) -> bool {
         if let ExprKind::Identifier(name) = &expression.kind {
             observed |= name == "arguments" || name == "eval";
         }
+    });
+    observed
+}
+
+// An AST arrow inherits new.target from the nearest non-lexical function.
+// Include defaults and nested syntax conservatively; direct eval can observe
+// it without an explicit MetaProperty node.
+fn may_observe_new_target(function: &Function) -> bool {
+    let mut observed = false;
+    function.visit_expressions(&mut |expression| {
+        observed |= matches!(&expression.kind,
+            ExprKind::MetaProperty {meta, property} if meta == "new" && property == "target")
+            || matches!(&expression.kind, ExprKind::Identifier(name) if name == "eval");
     });
     observed
 }
@@ -742,13 +757,27 @@ fn call_function(
     if arguments_needed {
         bind_arguments(&closure.realm, &environment, arguments)?;
     }
+    let evaluation_new_target = if lexical && closure.code.may_observe_new_target {
+        let mut current = Some(closure.environment.clone());
+        let mut target = None;
+        while let Some(scope) = current {
+            if scope.kind() == super::EnvironmentKind::Function && scope.has_this_binding()? {
+                target = scope.new_target()?;
+                break;
+            }
+            current = scope.outer();
+        }
+        target
+    } else {
+        new_target
+    };
     let evaluator = ExpressionEvaluator::with_environment(
         closure.realm.clone(),
         environment.clone(),
         this_value.clone(),
         closure.code.strict,
     )
-    .with_new_target(new_target.clone())
+    .with_new_target(evaluation_new_target.clone())
     .with_this_environment(closure.lexical_this_environment.clone())
     .with_function_cache(closure.code.context());
     bind_parameters_impl(
@@ -785,7 +814,7 @@ fn call_function(
                 this_value,
                 closure.code.strict,
             )
-            .with_new_target(new_target)
+            .with_new_target(evaluation_new_target)
             .with_this_environment(closure.lexical_this_environment.clone())
             .with_function_cache(evaluator.function_cache.clone());
             match statements.evaluate_statement(body)? {

@@ -528,3 +528,119 @@ fn free_names_keep_catch_shadowing_and_outer_with_receivers() {
         ));
     }
 }
+
+#[test]
+fn shared_definition_context_keeps_lazy_this_and_per_call_new_target() {
+    for backend in [ScriptBackend::Ast, ScriptBackend::Auto] {
+        let engine = Engine::builder().script_backend(backend).build();
+        for source in [
+            "class B{constructor(){this.answer=42;}}class D extends B{constructor(){let {read=()=>this}={};super();let {value=this.answer,target=new.target}={};this.ok=read()===this&&value===42&&target===D;}}new D().ok;",
+            "function F(){let {first=new.target}={};for(let i=0;i<2;i++){let {next=new.target}={};if(next!==first)throw 42;}this.target=first;}function G(){}let a=new F();let b=Reflect.construct(F,[],G);a.target===F&&b.target===G;",
+            "function F(){let {read=()=>this}={};return read();}let a={answer:20},b={answer:22};F.call(a)===a&&F.call(b)===b;",
+        ] {
+            let realm = engine.create_realm();
+            let script = engine.compile(&realm, source).unwrap();
+            assert!(
+                matches!(
+                    engine.evaluate(&script).unwrap().value(),
+                    Value::Boolean(true)
+                ),
+                "{backend:?}: {source}"
+            );
+        }
+    }
+}
+
+#[test]
+fn public_scope_root_switch_does_not_reuse_function_this_context() {
+    use std::rc::Rc;
+    use temiya::{
+        ast::StmtKind,
+        bytecode::{ScopeDescriptor, ScopeKind},
+        parser::parse_script,
+        runtime::{Environment, ThisBindingStatus},
+    };
+    let parsed = parse_script("let object={value:this};").unwrap();
+    let StmtKind::Variable { declarations, .. } = &parsed.body[0].kind else {
+        panic!("variable")
+    };
+    let definition = Rc::new(declarations[0].init.as_ref().unwrap().clone());
+    let code = Bytecode {
+        constants: vec![
+            Constant::Scope(ScopeDescriptor {
+                kind: ScopeKind::Function,
+                strict: false,
+                bindings: vec![],
+                functions: vec![],
+            }),
+            Constant::Scope(ScopeDescriptor {
+                kind: ScopeKind::Global,
+                strict: false,
+                bindings: vec![],
+                functions: vec![],
+            }),
+            Constant::ObjectLiteral {
+                definition,
+                strict: false,
+            },
+        ],
+        instructions: vec![
+            Instruction::EnterScope(0),
+            Instruction::CreateObjectLiteral(2),
+            Instruction::Pop,
+            Instruction::ExitScope,
+            Instruction::EnterScope(1),
+            Instruction::CreateObjectLiteral(2),
+            Instruction::Return,
+        ],
+        local_count: 0,
+    }
+    .verify()
+    .unwrap();
+    let realm = Realm::ordinary();
+    let frame = Environment::function(
+        Some(realm.global_environment()),
+        Object::new_in(realm.allocation_context()),
+        None,
+        ThisBindingStatus::Uninitialized,
+    );
+    frame
+        .bind_this_value(Value::Object(Object::new_in(realm.allocation_context())))
+        .unwrap();
+    let Completion::Return(Value::Object(result)) =
+        VirtualMachine::execute_in_function(&code, &realm, &frame).unwrap()
+    else {
+        panic!("result")
+    };
+    assert!(
+        result
+            .get(&"value".into())
+            .unwrap()
+            .same_value(&realm.global_environment().global_this_value().unwrap())
+    );
+}
+
+#[test]
+fn ast_arrow_defaults_keep_lexical_new_target() {
+    for backend in [ScriptBackend::Ast, ScriptBackend::Auto] {
+        let engine = Engine::builder().script_backend(backend).build();
+        for source in [
+            "function F(){this.answer=42;let read=()=>{let {answer=this.answer,target=new.target}={};return answer===42&&target===F;};this.ok=read();}new F().ok;",
+            "function F(){let read=(target=new.target)=>target;this.ok=read()===F;}new F().ok;",
+            "function F(){let read=()=>()=>new.target;this.ok=read()()===F;}new F().ok;",
+            "function F(){let read=()=>function(){return new.target;};this.ok=read()()===undefined;}new F().ok;",
+            "function F(){return (()=>new.target)();}F()===undefined;",
+            "function F(){this.ok=((target=new.target)=>target)()===G;}function G(){}Reflect.construct(F,[],G).ok;",
+        ] {
+            let realm = engine.create_realm();
+            let script = engine.compile(&realm, source).unwrap();
+            assert!(
+                matches!(
+                    engine.evaluate(&script).unwrap().value(),
+                    Value::Boolean(true)
+                ),
+                "{backend:?}: {source}"
+            );
+        }
+    }
+}

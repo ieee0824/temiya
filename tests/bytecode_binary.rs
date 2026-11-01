@@ -458,3 +458,21 @@ fn pinned_test262_binary_audit() {
         "binary operator upstream integration remains incomplete"
     );
 }
+
+#[test]
+fn strict_equality_preserves_identity_types_and_never_invokes_proxy_or_coercion_hooks() {
+    let source = "function nope(){throw 42;}let a={valueOf:nope,toString:nope},b={};let proxy=new Proxy(a,{get:nope});let token=Symbol(),other=Symbol();proxy===proxy&&proxy!==a&&a!==b&&a!==42&&null!==undefined&&'42'!==42&&42n!==42&&42n===42n&&token===token&&token!==other&&'\\ud800'==='\\ud800'&&'\\ud800'!=='\\ud801'&&0===-0&&(0/0)!==(0/0)&&!(a===proxy);";
+    let code = BytecodeCompiler::compile(source).unwrap();
+    assert!(
+        code.bytecode()
+            .instructions
+            .iter()
+            .any(|instruction| matches!(instruction, temiya::bytecode::Instruction::StrictEqual))
+    );
+    for vm in [false, true] {
+        assert!(
+            matches!(result(&Realm::ordinary(), source, vm), Value::Boolean(true)),
+            "VM: {vm}"
+        );
+    }
+}

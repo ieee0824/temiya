@@ -459,12 +459,12 @@ impl Environment {
         &self,
         names: impl ExactSizeIterator<Item = &'a JsString>,
     ) -> RuntimeResult<Self> {
+        if names.len() == 0 {
+            return Ok(self.clone());
+        }
         let outer = self
             .outer()
             .ok_or_else(|| RuntimeError::internal_error("loop environment has no parent"))?;
-        if names.len() == 0 {
-            return Ok(Self::declarative(outer));
-        }
         let record = {
             let source = self.0.record.borrow();
             let bindings = match &*source {

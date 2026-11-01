@@ -1523,6 +1523,7 @@ impl Environment {
         self.with_function(|record| Ok(record.this_status))
     }
 
+    #[inline]
     fn object_record_for_binding(&self, name: &JsString) -> Option<ObjectRecord> {
         match &*self.0.record.borrow() {
             EnvironmentRecord::Object(record) => Some(record.clone()),

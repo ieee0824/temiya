@@ -1,20 +1,27 @@
 # Object binding preparation (#163)
 
-Initial runtime implementation is under correctness verification; no merge or
-speed qualification is claimed. Commit 75d6b2a freezes the complete
-17,415-variant selection and six authored workloads before candidate timing.
-The selection retains array, assignment, async and generator dependencies.
-Every workload executes 10,000 iterations with expected sum 50,005,000.
-The actual pinned Boa binary validates each oracle twice. This provides no
-candidate speed qualification.
+The qualified runtime source is `ab8997d839263eae34315dc232f79b7bdbf65a36`.
+Both original, unfiltered jobs of native run41291042940 pass the unchanged
+Boa speed gate for all six object cases and every preceding feature group.
+Object wins are3/3/3/3/3/3 and3/3/3/3/3/2. Full run41291044397 accounts for all
+100211 variants (37919 pass,53705 fail,18 skip,8569 timeout,0 missing), preserving
+all37919 preceding object and33565 merged array passes. Security run41291045818
+passes all19 jobs:173 exact strict Miri tests and998 ASan tests.
 
-Run `node benchmarks/object-binding/verify-workloads.mjs` to verify the frozen
-inputs, selection, reference identity and saved Boa output hashes.
+Run `node benchmarks/object-binding/verify-qualified.mjs --current-source`
+to replay every native report, both full-corpus comparisons, all security logs,
+and exact equality of all83 current runtime compiler inputs with the measured
+source. PR549 CI also checks that equality. Later feature PRs replay the recorded
+qualification without asserting their changed runtime equals an older source.
+Source-specific experimental measurements below remain historical evidence;
+no later experiment's correctness or speed is transferred to this runtime.
 
-Coverage planned: declarations and parameters, nested patterns, computed key
-conversion order, defaults and TDZ, rest key exclusions, symbols, enumerability,
-getter order/abrupt completions, null/undefined and primitive sources. Merge
-after #161 and #162, with independent correctness and unchanged speed gates.
+The frozen17,415-variant selection and six authored workloads predate timing.
+Every workload executes10,000 iterations with expected sum50,005,000; the pinned
+Boa worker validates each oracle twice. Coverage includes declarations and
+parameters, nesting, computed-key/default order, TDZ, symbol/rest exclusions,
+getters, abrupt completions and nullish/primitive sources. #161 and #162 are merged.
+Use `node benchmarks/object-binding/verify-workloads.mjs` to replay frozen inputs.
 
 `initial-profiles-v1` retains the first six Callgrind captures at 1076d17,
 including all 82 build input hashes, worker outputs, raw compressed instruction

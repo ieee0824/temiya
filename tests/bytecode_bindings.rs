@@ -374,6 +374,8 @@ fn direct_catches_do_not_swallow_internal_host_failures() {
 #[test]
 fn pattern_defaults_and_caught_getters_keep_each_iteration_cells() {
     for source in [
+        "function f(){let reads=[];for(let i=0;i<3;i++){let {read=(value=>()=>value)(i)}={};reads.push(read);}return reads[0]()===0&&reads[1]()===1&&reads[2]()===2;}f();",
+        "function f(){let total=0;for(let i=0;i<3;i++){let {value=i}={};total+=value;}return total===3;}f();",
         "function f(){let reads=[];for(let i=0;i<3;i++){let {read=()=>i}={};try{throw read;}catch(read){reads.push(read);}}return reads[0]()===0&&reads[1]()===1&&reads[2]()===2;}f();",
         "function f(){let reads=[];for(let i=0;i<3;i++){try{throw {get value(){return i;}};}catch(value){reads.push(value);}}return reads[0].value===0&&reads[1].value===1&&reads[2].value===2;}f();",
         "function f(){let reads=[];for(let i=0;i<2;i++){for(let j=0;j<2;j++){let {read=()=>i*2+j}={};reads.push(read);}}return reads[0]()===0&&reads[1]()===1&&reads[2]()===2&&reads[3]()===3;}f();",

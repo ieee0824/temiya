@@ -811,6 +811,41 @@ fn expression_does_not_observe_loop_bindings(
     !observed
 }
 
+// Eager key/default reads see the current cell and do not observe its identity.
+// Delayed function bodies must not read a cloned header name; direct eval stays
+// conservative throughout. Classes retain their existing conservative proof.
+fn pattern_does_not_observe_loop_bindings(
+    expression: &crate::ast::Expr,
+    loop_names: &std::collections::HashSet<Vec<u16>>,
+) -> bool {
+    fn visit(
+        expression: &crate::ast::Expr,
+        names: &std::collections::HashSet<Vec<u16>>,
+        delayed: bool,
+    ) -> bool {
+        use crate::ast::ExprKind;
+        if let ExprKind::Class(class) = &expression.kind {
+            return class_does_not_observe_loop_bindings(class, names);
+        }
+        let delayed = delayed
+            || matches!(
+                expression.kind,
+                ExprKind::Function(_) | ExprKind::Arrow(_) | ExprKind::Method { .. }
+            );
+        if let ExprKind::Identifier(name) = &expression.kind {
+            if name == "eval" || delayed && names.contains(&name.encode_utf16().collect::<Vec<_>>())
+            {
+                return false;
+            }
+        }
+        expression
+            .children()
+            .into_iter()
+            .all(|child| visit(child, names, delayed))
+    }
+    visit(expression, loop_names, false)
+}
+
 // Reuse requires that no closure/eval observer can read these cells and that
 // no reference or pending invocation spans a clone. This exhaustive instruction
 // match requires a fresh review whenever an opcode is added.
@@ -861,7 +896,7 @@ fn loop_bindings_are_unobserved(code: &Bytecode, states: &[Option<FlowState>]) -
                 else {
                     return false;
                 };
-                expression_does_not_observe_loop_bindings(definition, &loop_names)
+                pattern_does_not_observe_loop_bindings(definition, &loop_names)
             }
             Instruction::CreateObjectLiteral(index) => {
                 let Constant::ObjectLiteral { definition, .. } = &code.constants[index as usize]

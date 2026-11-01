@@ -352,3 +352,16 @@ The remaining parameter/rest/getter counts are essentially unchanged; all
 six profiles remain available. The archive has25 valid captures/150 profiles,
 two stale-worker rejections and20 later correctness captures. These are
 instruction diagnostics, not native speed qualification.
+
+The prepared-guards stage (`ab8997d`) reads actual initialized parameter cells
+for bounded pure bodies (constants, strict equality, forward branches, throw,
+return). All999 native tests (26 ignored), Clippy, release workers and2 focused
+strict Miri tests pass, including reentrant GC and escaped default closures.
+No activation/cell is elided. New bindings, calls/properties, assignments,
+backedges and frame observers retain the ordinary VM body. Against54a411e,
+parameter instructions decrease5.709%; the other five changes are
++0.00008/-0.01886/+0.00458/-0.02299/-0.00937%, all retained without filtering.
+The archive has26 valid captures/156 profiles, two rejected stale workers and
+21 later correctness captures. New exact-source native41291042940,
+full41291044397 and security41291045818 are running; no speed qualification
+is claimed from instruction counts or earlier source results.

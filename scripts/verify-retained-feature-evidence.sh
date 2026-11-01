@@ -128,6 +128,8 @@ case "${1:-}" in
     node benchmarks/object-binding/fresh-array-diagnostics-v1/verify.mjs
     node benchmarks/object-binding/full-inline-parent-v1/verify.mjs
     node benchmarks/object-binding/allocation-diagnostics-v1/verify.mjs
+    node benchmarks/object-binding/security-prepared-guards-v1/verify.mjs benchmarks/destructuring-assignment/security-vm-v1 eb29c4169c0fdfd9246546f76b5874097a53ef62
+    node benchmarks/destructuring-assignment/full-vm-v1/verify.mjs
     node benchmarks/destructuring-assignment/correctness-v1/verify.mjs
     node benchmarks/destructuring-assignment/vm-correctness-v1/verify.mjs
     node benchmarks/destructuring-assignment/vm-gc-correctness-v1/verify.mjs

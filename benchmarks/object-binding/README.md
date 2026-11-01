@@ -230,3 +230,12 @@ Clippy, explicit release workers and strict Miri pass. The archive contains
 16 valid stages/96 profiles, two rejected stale workers and11 later
 correctness captures. Native run41280566961 measures this changed source with
 two unfiltered hosts and all prior controls; qualification is still pending.
+
+The global-data stage (`bbf9a5e`) retains all six profiles,985 native passes
+(26 ignored), Clippy, explicit release workers and two strict-Miri tests
+(global redefinition/shadowing and GC during reentrant unscopables lookup).
+Against809af2d, abrupt instructions decrease5.35%, rest decreases4.10%,
+while parameter/computed/getter increase0.09/0.33/0.06%. All adverse results
+are retained. The archive contains17 valid stages/102 profiles, two rejected
+stale workers and12 later correctness captures. No native qualification is
+claimed for this changed source.

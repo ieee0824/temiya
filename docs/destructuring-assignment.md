@@ -60,3 +60,7 @@ assignment targets across reentrant collection from setters, getters, defaults
 and rest writes. Native execution and strict Miri both pass, and the final
 collection retains zero allocations. Its verifier proves that compiler inputs
 match the measured runtime source; it supplements the four VM tests above.
+
+All ten AST/Auto assignment regressions also pass strict Miri on the current
+VM runtime; their exact test names and complete log are replayed by
+`vm-correctness-v1/verify.mjs` alongside the four dedicated VM tests.

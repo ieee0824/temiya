@@ -64,3 +64,14 @@ match the measured runtime source; it supplements the four VM tests above.
 All ten AST/Auto assignment regressions also pass strict Miri on the current
 VM runtime; their exact test names and complete log are replayed by
 `vm-correctness-v1/verify.mjs` alongside the four dedicated VM tests.
+
+The complete current-VM Test262 run (41303173669, source eb29c416) covers all
+52,133 original files and 100,211 variants: 38,759 pass, 52,865 fail, 18 skip
+and 8,569 timeout, with no missing or unreported variants. It preserves all
+38,758 prior assignment-source passes and all 37,919 qualified main/object
+passes, with zero regressions and one additional assignment-source pass.
+`full-initial-v1` and `full-vm-v1` retain the complete prior/current captures;
+`full-vm-v1/verify.mjs` independently replays all eight shards for both sources
+and qualified main, then reconstructs the per-variant comparisons. The
+remaining failures and timeouts are retained and do not establish complete
+ECMAScript conformance or native speed.

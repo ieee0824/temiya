@@ -122,6 +122,7 @@ case "${1:-}" in
     node benchmarks/object-binding/fresh-array-diagnostics-v1/verify.mjs
     node benchmarks/object-binding/full-inline-parent-v1/verify.mjs
     node benchmarks/object-binding/allocation-diagnostics-v1/verify.mjs
+    node benchmarks/destructuring-assignment/full-vm-v1/verify.mjs
     node benchmarks/destructuring-assignment/correctness-v1/verify.mjs
     node benchmarks/destructuring-assignment/vm-correctness-v1/verify.mjs
     node benchmarks/destructuring-assignment/vm-gc-correctness-v1/verify.mjs

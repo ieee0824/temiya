@@ -1146,6 +1146,9 @@ impl Environment {
                     EnvironmentRecord::Function(record) => {
                         Some(&record.declarative_record.bindings[..])
                     }
+                    EnvironmentRecord::Global(record) => {
+                        Some(&record.declarative_record.bindings[..])
+                    }
                     _ => None,
                 };
                 bindings.map(|bindings| {
@@ -1159,9 +1162,27 @@ impl Environment {
                 Some(Some(value)) => return value,
                 Some(None) => {}
                 None => {
-                    if current.has_binding(name)? {
+                    let object_record =
+                        matches!(&*current.0.record.borrow(), EnvironmentRecord::Object(_));
+                    if !object_record && current.has_binding(name)? {
                         return current.get_binding_value(name, strict);
                     }
+                }
+            }
+            // Ordinary own data lookup cannot invoke Has/Get traps or user
+            // code. A with environment must still consult unscopables, and
+            // accessors/exotics retain the complete observable resolution.
+            if let Some(record) = current.object_record_for_binding(name) {
+                if !record.options.with_environment {
+                    let object = record.binding_object.load(&current)?;
+                    if let Some((value, _)) =
+                        object.own_data_value_with_hint(&string_key(name), None)
+                    {
+                        return Ok(value);
+                    }
+                }
+                if current.has_binding(name)? {
+                    return current.get_binding_value(name, strict);
                 }
             }
             environment = current.outer();

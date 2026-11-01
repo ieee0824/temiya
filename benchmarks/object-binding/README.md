@@ -132,3 +132,19 @@ Public Ast/Auto tests verify later data replacement/deletion and distinct
 Proxy Get values. All952 tests (26ignored), Clippy/release pass. All six
 instruction profiles are retained: rest-symbol drops1.225% but getter-order
 rises0.3915%. This is mixed diagnostic evidence, not native qualification.
+
+`hosted-direct-get-v1` retains every76 reports of run41254030647 at1807734.
+Unfiltered CPUs are AMD EPYC7763 and9V74. Both fail the unchanged speed gate:
+object wins0/0/0/0/3/0 and0/0/0/0/2/0. Array TDZ-close is0/3 both; rest is
+3/3 and0/3. All52 earlier control workloads qualify. No observations or
+CPUs are filtered, and the unchanged source is not timed again. Replay with
+`node benchmarks/object-binding/verify-hosted.mjs hosted-direct-get-v1`.
+
+Source6587184 now has a complete strict Miri run of all12 object integration
+tests retained in single-catch-correctness-v1 (817.48s). The focused closure
+test overlaps that suite and is not an additional unique integration test.
+
+`rest-data-correctness-v1` retains sourceca10d67 all952 tests (26ignored),
+Clippy/release and the exact strict Miri test for later data mutations and
+distinct Proxy Get values. These do not qualify complete security or speed.
+Replay with `node benchmarks/object-binding/rest-data-correctness-v1/verify.mjs`.

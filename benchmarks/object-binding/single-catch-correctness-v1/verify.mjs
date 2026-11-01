@@ -21,4 +21,6 @@ assert.deepEqual(e.miri_flags,['-Zmiri-strict-provenance','-Zmiri-symbolic-align
 const msrv=[...text('msrv').matchAll(/test result: ok\. (\d+) passed; (\d+) failed; (\d+) ignored;/g)];
 assert.equal(msrv.length,4);assert.equal(msrv.reduce((a,m)=>a+Number(m[1]),0),45);assert.equal(msrv.reduce((a,m)=>a+Number(m[2]),0),0);assert.equal(msrv.reduce((a,m)=>a+Number(m[3]),0),1);
 assert(text('i686').includes('Finished `dev` profile'));assert(!text('i686').includes('error:'));
+assert(text('all-object-miri').includes('test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out;'));
+assert.equal([...text('all-object-miri').matchAll(/^test [^\n]+ \.\.\. ok$/gm)].length,12);
 console.log(JSON.stringify({integrity:'pass',source:e.source,scope:e.scope}));

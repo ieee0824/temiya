@@ -89,3 +89,13 @@ temporary name Vec while retaining callback failure order. All949 tests
 (26 ignored), Clippy and release build pass. Five instruction profiles
 improve relative to direct-get; parameters rise by about0.063%. This is
 retained as mixed evidence and is not a native performance qualification.
+
+Fresh array initialization at aa77879 bypasses the generic DefineOwnProperty
+path only for the unpublished object created by ArrayObject. The immutable
+numeric length has the same writable/non-enumerable/non-configurable descriptor.
+All949 tests (26 ignored), focused43 tests (one ignored), Clippy and release
+build pass. `fresh-array-diagnostics-v1` retains every before/after array
+profile: declaration instructions drop5.72%, parameters4.47%, rest5.00%;
+the other three change by less than0.004%. Allocation diagnostics also retain
+all six object profiles at this source. Neither establishes native Boa speed.
+Replay with `node benchmarks/object-binding/fresh-array-diagnostics-v1/verify.mjs`.

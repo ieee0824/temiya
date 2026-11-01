@@ -77,7 +77,7 @@ pub(super) fn spread_excluding(
         if excluded.contains(&key) {
             continue;
         }
-        let value = match source.try_own_enumerable_data(&key) {
+        let value = match source.try_own_enumerable_value(&key) {
             Some(value) => value?,
             None => {
                 if source

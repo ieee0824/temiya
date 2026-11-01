@@ -150,3 +150,13 @@ fn rest_reads_changed_data_and_keeps_proxy_get_distinct_from_descriptor() {
         "let calls=0;let source=new Proxy({value:1},{get(target,key){calls++;return 42;}});let {...rest}=source;rest.value===42&&calls===1;",
     );
 }
+
+#[test]
+fn rest_accessor_copy_preserves_missing_getters_and_proxy_callable_receivers() {
+    check(
+        "let calls=0;let source={set empty(value){calls++;}};Object.defineProperty(source,'hidden',{get(){throw 42;},enumerable:false});let {...rest}=source;Object.prototype.hasOwnProperty.call(rest,'empty')&&rest.empty===undefined&&!Object.prototype.hasOwnProperty.call(rest,'hidden')&&calls===0;",
+    );
+    check(
+        "let source={marker:42};let seen=false;let getter=new Proxy(function(){return this.marker;},{apply(target,receiver,args){seen=receiver===source&&args.length===0;return Reflect.apply(target,receiver,args);}});Object.defineProperty(source,'answer',{get:getter,enumerable:true});let {...rest}=source;rest.answer===42&&seen;",
+    );
+}

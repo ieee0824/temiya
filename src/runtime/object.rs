@@ -2331,10 +2331,11 @@ impl Object {
     }
 
     // CopyDataProperties needs the own descriptor before Get. An ordinary
-    // data property has no callback between those operations, so load its edge
-    // once. None means the caller must retain the full exotic/accessor path;
+    // property has no callback between selecting its descriptor and Get. Load
+    // the value/getter once; release the borrow before calling an accessor.
+    // None means the caller must retain the full exotic/legacy path;
     // Some(Ok(None)) means the property is absent or non-enumerable.
-    pub(super) fn try_own_enumerable_data(
+    pub(super) fn try_own_enumerable_value(
         &self,
         key: &PropertyKey,
     ) -> Option<RuntimeResult<Option<Value>>> {
@@ -2363,7 +2364,27 @@ impl Object {
                     Ok(None)
                 })
             }
-            StoredDescriptor::Accessor { .. } => None,
+            StoredDescriptor::Accessor {
+                get, enumerable, ..
+            } => {
+                if Self::legacy_property_key(key) {
+                    return None;
+                }
+                if !enumerable {
+                    return Some(Ok(None));
+                }
+                let getter = get.as_ref().map(|getter| getter.load(self)).transpose();
+                drop(state);
+                Some(
+                    getter
+                        .and_then(|getter| {
+                            getter.map_or(Ok(Value::Undefined), |getter| {
+                                getter.call(Value::Object(self.clone()), &[])
+                            })
+                        })
+                        .map(Some),
+                )
+            }
         }
     }
 

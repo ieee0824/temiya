@@ -335,8 +335,24 @@ fn object(
     for property in properties {
         if property.spread {
             let target = Target::prepare(evaluator, &property.key, initialize)?;
-            let rest = super::object_literal::create(&evaluator.realm);
-            super::object_literal::spread_excluding(&rest, value.clone(), &excluded)?;
+            let fast = if let Value::Object(source) = &value {
+                source.copy_ordinary_data_rest(
+                    &evaluator
+                        .realm
+                        .intrinsic(super::IntrinsicId::ObjectPrototype),
+                    &excluded,
+                )
+            } else {
+                None
+            };
+            let rest = match fast {
+                Some(rest) => rest,
+                None => {
+                    let rest = super::object_literal::create(&evaluator.realm);
+                    super::object_literal::spread_excluding(&rest, value.clone(), &excluded)?;
+                    rest
+                }
+            };
             let target = target
                 .ok_or_else(|| RuntimeError::internal_error("invalid object rest binding"))?;
             target.put(evaluator, Value::Object(rest))?;

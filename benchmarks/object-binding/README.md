@@ -382,3 +382,18 @@ Nayuta defect was reproduced. Frozen abrupt-coercion profiles independently
 identify repeated root-cache hits as a concrete cost. A second-chance cache
 experiment keeps capacity32, full object/handle identity checks and collection
 clearing while replacing per-hit linked-list maintenance with a reference bit.
+
+The clock-roots source (`d060829`) passes999 all-target/all-feature tests,
+Clippy, explicit release workers and3 focused strict Miri tests covering
+bounded retention, collection/unwind and region/runtime ownership cycles.
+All six first fixed-input instruction captures improve againstab8997d:
+-0.988/-1.470/-1.258/-1.680/-1.138/-1.870%. Cache hits keep full identity
+checks and capacity32; no workload, sampling or threshold was changed.
+The archive now has27 valid captures/162 profiles, two stale-worker rejections
+and22 later correctness sets. Native qualification still requires exact-source
+hosted measurements and all previous controls; instruction reductions alone
+do not authorize merging.
+Exact clock-roots source gates are native41292124102 (two unfiltered jobs),
+full41292126001 (all8 shards) and security41292127687 (complete workflow).
+All source inputs, controls and noise thresholds remain fixed. Earlierab8997d
+runs remain independently live and are not canceled or attributed to this source.

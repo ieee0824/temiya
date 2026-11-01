@@ -60,6 +60,28 @@ impl DefinitionEvaluationContext {
         super::class::evaluate(class, &evaluator, inferred_name)
     }
 
+    pub(crate) fn evaluate_try(
+        &mut self,
+        statement: &crate::ast::Stmt,
+        strict: bool,
+        realm: &Realm,
+        environment: &Environment,
+        variable_environment: &Environment,
+    ) -> RuntimeResult<Completion> {
+        let evaluator = self.evaluator(realm, environment, strict)?;
+        super::StatementEvaluator::with_environments(
+            realm.clone(),
+            environment.clone(),
+            variable_environment.clone(),
+            evaluator.this_value.clone(),
+            strict,
+        )
+        .with_this_environment(evaluator.this_environment.clone())
+        .with_new_target(evaluator.new_target.clone())
+        .with_function_cache(evaluator.function_cache.clone())
+        .evaluate_preinstantiated_try(statement)
+    }
+
     pub(crate) fn initialize_pattern(
         &mut self,
         pattern: &Rc<crate::ast::Expr>,

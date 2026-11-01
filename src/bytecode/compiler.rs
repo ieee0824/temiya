@@ -446,6 +446,22 @@ impl Compiler {
                 self.code.push(Instruction::Return);
                 Ok(true)
             }
+            StmtKind::Try { .. } => {
+                if !supported_try(statement)
+                    || !self
+                        .scopes
+                        .iter()
+                        .any(|scope| scope.kind == ScopeKind::Function)
+                {
+                    return Err(self.unsupported("try statement", statement.span));
+                }
+                let index = self.pool(Constant::TryStatement {
+                    definition: std::rc::Rc::new(statement.clone()),
+                    strict: self.strict,
+                })?;
+                self.code.push(Instruction::ExecuteTry(index));
+                Ok(false)
+            }
             StmtKind::Throw(value) => {
                 self.expression(value)?;
                 self.code.push(Instruction::Throw);
@@ -1487,6 +1503,19 @@ fn collect_vars(statements: &[Stmt], vars: &mut Vec<String>) -> Result<(), Compi
                 }
                 collect_vars(std::slice::from_ref(body), vars)?;
             }
+            StmtKind::Try {
+                block,
+                handler,
+                finalizer,
+            } => {
+                collect_vars(std::slice::from_ref(block), vars)?;
+                if let Some(handler) = handler {
+                    collect_vars(std::slice::from_ref(&handler.body), vars)?;
+                }
+                if let Some(finalizer) = finalizer {
+                    collect_vars(std::slice::from_ref(finalizer), vars)?;
+                }
+            }
             StmtKind::FunctionDeclaration(_) | StmtKind::ClassDeclaration(_) => {}
             StmtKind::Empty
             | StmtKind::Debugger
@@ -1612,6 +1641,17 @@ fn bytecode_may_observe_arguments(body: &VerifiedBytecode) -> bool {
         .constants
         .iter()
         .any(|constant| match constant {
+            Constant::TryStatement { definition, .. } => {
+                let mut observed = false;
+                for expression in definition.expression_roots() {
+                    expression.visit(&mut |expression| {
+                        if let ExprKind::Identifier(name) = &expression.kind {
+                            observed |= name == "arguments" || name == "eval";
+                        }
+                    });
+                }
+                observed
+            }
             Constant::String(name) => {
                 name.code_units()
                     .iter()
@@ -1681,4 +1721,41 @@ fn body_shadows_arguments(function: &Function) -> bool {
         StmtKind::Variable { kind, declarations } if *kind != VariableKind::Var => declarations.iter().any(|declaration| binding_names(&declaration.binding).map(|names| names.iter().any(|name| name == "arguments")).unwrap_or(false)),
         _ => false,
     })
+}
+
+// The shared bridge consumes function returns but cannot dispatch jumps to VM labels.
+pub(super) fn supported_try(statement: &Stmt) -> bool {
+    fn safe(statement: &Stmt) -> bool {
+        match &statement.kind {
+            StmtKind::Block(body) => body.iter().all(safe),
+            StmtKind::If {
+                consequent,
+                alternate,
+                ..
+            } => safe(consequent) && alternate.as_ref().is_none_or(|s| safe(s)),
+            StmtKind::Try {
+                block,
+                handler,
+                finalizer,
+            } => {
+                safe(block)
+                    && handler.as_ref().is_none_or(|h| safe(&h.body))
+                    && finalizer.as_ref().is_none_or(|s| safe(s))
+            }
+            StmtKind::Empty
+            | StmtKind::Debugger
+            | StmtKind::Variable { .. }
+            | StmtKind::Expression(_)
+            | StmtKind::Return(_)
+            | StmtKind::Throw(_) => true,
+            _ => false,
+        }
+    }
+    matches!(&statement.kind, StmtKind::Try { handler, finalizer, .. } if handler.is_some() || finalizer.is_some())
+        && safe(statement)
+}
+pub(super) fn try_vars(statement: &Stmt) -> Result<Vec<String>, CompileError> {
+    let mut vars = Vec::new();
+    collect_vars(std::slice::from_ref(statement), &mut vars)?;
+    Ok(vars)
 }

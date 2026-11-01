@@ -15,7 +15,10 @@ pub(super) fn proven(code: &Bytecode) -> bool {
             Constant::Scope(scope) if !scope.bindings.is_empty() || !scope.functions.is_empty() => {
                 return false;
             }
-            Constant::Class { .. } | Constant::Function(_) | Constant::BindingPattern { .. } => {
+            Constant::Class { .. }
+            | Constant::Function(_)
+            | Constant::BindingPattern { .. }
+            | Constant::TryStatement { .. } => {
                 return false;
             }
             Constant::ObjectLiteral { definition, .. } => {

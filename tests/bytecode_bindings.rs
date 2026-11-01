@@ -171,3 +171,93 @@ fn prepared_parameter_body_preserves_escaped_cells_and_frame_observers() {
         }
     }
 }
+
+#[test]
+fn try_bridge_preserves_completions_and_enclosing_vm_loop() {
+    let source = "function run(n){let total=0;for(let i=1;i<=n;i++){let sentinel={};try{let {x}={get x(){throw sentinel;}};throw 42;}catch(error){if(error!==sentinel)throw error;}try{let {}=null;throw 42;}catch(error){if(!(error instanceof TypeError))throw error;}total+=i;}return total;}run(3)===6;";
+    let code = BytecodeCompiler::compile(source).unwrap();
+    assert!(code.bytecode().constants.iter().any(|c|matches!(c,Constant::Scope(scope) if scope.functions.iter().any(|f|f.template.body.bytecode().instructions.iter().any(|op|matches!(op,Instruction::ExecuteTry(_)))))));
+    check(source);
+    for source in [
+        "function f(){try{return 1;}finally{return 42;}}f()===42;",
+        "function f(){try{throw 1;}catch(e){return e+41;}finally{let x=0;}}f()===42;",
+        "function f(){let x=20;try{var y=22;let x=0;throw 1;}catch(e){x+=y;}finally{x+=0;}return x;}f()===42;",
+        "function F(value){try{throw 1;}catch(e){this.x=arguments[0];this.target=new.target;}}let x=new F(42);x.x===42&&x.target===F;",
+        "function f(){let read;for(let i=0;i<3;i++){try{if(i===1)read=()=>i;}finally{}}return read();}f()===1;",
+        "function f(){try{try{return 1;}finally{throw 2;}}catch(e){return e+40;}}f()===42;",
+    ] {
+        check(source);
+    }
+}
+
+#[test]
+fn try_metadata_rejects_unhandled_jumps_and_missing_function_frame() {
+    assert!(
+        BytecodeCompiler::compile("function f(){while(true){try{break;}finally{}}}f();").is_err()
+    );
+    let code = BytecodeCompiler::compile("function f(){try{var x=42;}finally{}return x;}f()===42;")
+        .unwrap();
+    let statement = code
+        .bytecode()
+        .constants
+        .iter()
+        .find_map(|c| match c {
+            Constant::Scope(scope) => scope.functions.first().and_then(|f| {
+                f.template
+                    .body
+                    .bytecode()
+                    .constants
+                    .iter()
+                    .find_map(|c| match c {
+                        Constant::TryStatement { .. } => Some(c.clone()),
+                        _ => None,
+                    })
+            }),
+            _ => None,
+        })
+        .unwrap();
+    let mut invalid = Bytecode {
+        instructions: vec![
+            Instruction::ExecuteTry(0),
+            Instruction::LoadConstant(1),
+            Instruction::Complete,
+        ],
+        constants: vec![statement, Constant::Undefined],
+        local_count: 0,
+    };
+    assert!(invalid.clone().verify().is_err());
+    invalid.instructions[0] = Instruction::LoadConstant(0);
+    assert_eq!(
+        invalid.verify().unwrap_err().kind(),
+        VerifyErrorKind::InvalidConstantKind
+    );
+}
+
+#[test]
+fn bytecode_try_callbacks_survive_gc_and_release_everything() {
+    let engine = Engine::builder()
+        .script_backend(ScriptBackend::Bytecode)
+        .build();
+    {
+        let realm = engine.create_realm();
+        let gc =
+            Object::native_function_with_context(engine.allocation_context(), |context, _, _| {
+                context.collect_garbage()?;
+                Ok(Value::Undefined)
+            });
+        engine
+            .set_global(
+                &realm,
+                "gcNow",
+                engine.value(&realm, Value::Object(gc)).unwrap(),
+            )
+            .unwrap();
+        let script=engine.compile(&realm,"function run(){try{throw {get answer(){gcNow();return 42;}};}catch({answer}){gcNow();return answer;}finally{gcNow();}}run()===42;").unwrap();
+        assert_eq!(script.backend(), ScriptBackend::Bytecode);
+        assert!(matches!(
+            engine.evaluate(&script).unwrap().value(),
+            Value::Boolean(true)
+        ));
+    }
+    assert_eq!(engine.collect_garbage().unwrap().retained, 0);
+}

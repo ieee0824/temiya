@@ -657,6 +657,23 @@ impl VirtualMachine {
                     let invocation = calls.pop().expect("verified call frame");
                     stack.push(invocation.invoke()?);
                 }
+                Instruction::ExecuteTry(index) => {
+                    let Constant::TryStatement { definition, strict } =
+                        &body.constants[index as usize]
+                    else {
+                        unreachable!("verified try")
+                    };
+                    let completion = definition_context.evaluate_try(
+                        definition,
+                        *strict,
+                        realm.expect("try Realm"),
+                        &scopes.last().expect("try scope").environment,
+                        function.expect("try function"),
+                    )?;
+                    if !matches!(completion, Completion::Normal(_)) {
+                        return Ok(completion);
+                    }
+                }
                 Instruction::InitializePattern(index) => {
                     let Constant::BindingPattern {
                         definition,
@@ -876,7 +893,8 @@ pub(super) fn constant(constant: &Constant) -> Value {
         | Constant::Function(_)
         | Constant::Class { .. }
         | Constant::ObjectLiteral { .. }
-        | Constant::BindingPattern { .. } => {
+        | Constant::BindingPattern { .. }
+        | Constant::TryStatement { .. } => {
             unreachable!("verifier rejects metadata values")
         }
         Constant::BigInt(value) => Value::BigInt(value.clone()),

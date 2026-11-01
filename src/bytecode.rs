@@ -114,6 +114,11 @@ pub enum Constant {
         strict: bool,
     },
     /// Binding syntax for the shared initializer; never a runtime value.
+    /// Try source for shared completion semantics, never a runtime Value.
+    TryStatement {
+        definition: Rc<crate::ast::Stmt>,
+        strict: bool,
+    },
     BindingPattern {
         /// Parsed binding pattern, containing no runtime values.
         definition: Rc<crate::ast::Expr>,
@@ -363,6 +368,8 @@ pub enum Instruction {
     CreateObjectLiteral(u32),
     /// Pop a value and initialize a pattern through the shared runtime (`-1`).
     InitializePattern(u32),
+    /// Evaluate a verified try statement in the current function frame (0).
+    ExecuteTry(u32),
     /// Push the initialized super receiver and its owning function before the key.
     LoadSuperBinding,
     /// Consume receiver, owning function and key; retain a super property Reference.
@@ -412,6 +419,7 @@ pub enum Instruction {
 impl Instruction {
     fn required_stack(self) -> usize {
         match self {
+            Self::ExecuteTry(_) => 0,
             Self::LoadSuperBinding => 0,
             Self::ResolveSuperProperty { .. } => 3,
             Self::CreateObject | Self::CreateObjectReserved(_) => 0,
@@ -475,6 +483,7 @@ impl Instruction {
 
     fn stack_delta(self) -> isize {
         match self {
+            Self::ExecuteTry(_) => 0,
             Self::LoadSuperBinding => 2,
             Self::ResolveSuperProperty { .. } => -3,
             Self::CreateObject | Self::CreateObjectReserved(_) => 1,
@@ -841,7 +850,7 @@ fn loop_bindings_are_unobserved(code: &Bytecode, states: &[Option<FlowState>]) -
             Instruction::CreateFunction(_)
             | Instruction::LoadSuperBinding
             | Instruction::ResolveSuperProperty { .. } => false,
-            Instruction::InitializePattern(_) => false,
+            Instruction::InitializePattern(_) | Instruction::ExecuteTry(_) => false,
             Instruction::CreateObjectLiteral(index) => {
                 let Constant::ObjectLiteral { definition, .. } = &code.constants[index as usize]
                 else {
@@ -1136,6 +1145,31 @@ fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
                     );
                 }
             }
+            Instruction::ExecuteTry(index) => {
+                let Constant::TryStatement { definition, .. } = constant(index)? else {
+                    return Err(error(VerifyErrorKind::InvalidConstantKind));
+                };
+                if !compiler::supported_try(definition) {
+                    return Err(error(VerifyErrorKind::InvalidConstantKind));
+                }
+                let Some(scope) = state.scopes.iter().find_map(|(_, index)| {
+                    match &bytecode.constants[*index as usize] {
+                        Constant::Scope(scope) if scope.kind == ScopeKind::Function => Some(scope),
+                        _ => None,
+                    }
+                }) else {
+                    return Err(error(VerifyErrorKind::ScopeMismatch));
+                };
+                let vars = compiler::try_vars(definition)
+                    .map_err(|_| error(VerifyErrorKind::InvalidConstantKind))?;
+                if vars.iter().any(|name| {
+                    !scope.bindings.iter().any(|binding| {
+                        binding.kind == BindingKind::Var && binding.name == name.as_str().into()
+                    })
+                }) {
+                    return Err(error(VerifyErrorKind::ScopeMismatch));
+                }
+            }
             Instruction::InitializePattern(index) => {
                 let Constant::BindingPattern {
                     definition,
@@ -1284,6 +1318,7 @@ fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
                         | Constant::Class { .. }
                         | Constant::ObjectLiteral { .. }
                         | Constant::BindingPattern { .. }
+                        | Constant::TryStatement { .. }
                 ) {
                     return Err(error(VerifyErrorKind::InvalidConstantKind));
                 }
@@ -1371,6 +1406,7 @@ fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
                 Instruction::CreateObjectLiteral(_)
                     | Instruction::CreateClass(_)
                     | Instruction::InitializePattern(_)
+                    | Instruction::ExecuteTry(_)
             )
         })
         .then(Default::default);

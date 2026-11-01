@@ -300,3 +300,22 @@ runtime sourced58d4d4. Independent canonical replay verifies171 unique exact
 strict-provenance/symbolic-alignment Miri tests and987 ASan tests, plus the
 dependency audit and aggregate. This proves that recorded source's security
 checks only; later sources and native speed remain separately qualified.
+
+`full-initial-catch-v1` retains all8 shards/100211 variants from run41281841829
+atd58d4d4:37919 pass,53705 fail,18 skip,8569 timeout,0 missing. Independent
+replay preserves all37919 preceding object passes and33565 merged array
+passes (4354 additions), with0 regressions. A separate latest-dispatch comparison
+also preserves37919 passes. This records correctness, not full conformance.
+`hosted-initial-catch-v1` retains all76 reports of run41281869695. Both speed
+gates FAIL: object wins2/1/2/3/3/0 on EPYC9V74 and0/3/3/3/3/3 on Intel8370C;
+copy1 also has derived-definition1/3. Every adverse result/control is retained.
+
+The pinned-context stage (`2c09b52`) pins only a verified single Function root
+and lexical block descendants, keeping this lazy and lexical arrows on their
+own path. It also corrects a reproduced baseline AST-arrow new.target bug;
+the before-failure log and equivalent baseline compiler sources are pinned.
+All993 native tests (26 ignored), Clippy, release workers and3 strict-Miri
+tests pass. Againstdc9bd56, declaration/computed/rest/getter/abrupt instructions
+decrease1.68/1.77/0.60/1.33/0.95%; parameters increase0.019%. All six are retained.
+The archive has23 valid captures/138 profiles, two stale-worker rejections and
+18 later correctness captures. Source-matched hosted gates remain pending.

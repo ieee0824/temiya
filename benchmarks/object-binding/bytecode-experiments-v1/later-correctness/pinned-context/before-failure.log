@@ -1,0 +1,22 @@
+
+running 1 test
+test shared_definition_context_keeps_lazy_this_and_per_call_new_target ... FAILED
+
+failures:
+
+---- shared_definition_context_keeps_lazy_this_and_per_call_new_target stdout ----
+
+thread 'shared_definition_context_keeps_lazy_this_and_per_call_new_target' (3771928) panicked at tests/bytecode_bindings.rs:544:13:
+Ast: function F(){this.answer=42;let read=()=>{let {answer=this.answer,target=new.target}={};return answer===42&&target===F;};this.ok=read();}new F().ok;
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    shared_definition_context_keeps_lazy_this_and_per_call_new_target
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 20 filtered out; finished in 0.00s
+
+   Compiling temiya v0.2.0 (/tmp/temiya-binding-bytecode)
+    Finished `test` profile [unoptimized] target(s) in 4.82s
+     Running tests/bytecode_bindings.rs (/tmp/temiya-163-binding-vm-target/debug/deps/bytecode_bindings-5dc56ecccc886ea5)
+error: test failed, to rerun pass `--test bytecode_bindings`

@@ -15,7 +15,7 @@ const hash = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
 const git = (...args) => execFileSync('git', ['-c', `safe.directory=${repo}`, ...args], {cwd: repo});
 const summaries = [];
 let rejected = 0;
-assert.equal(manifest.stages.length, 24);
+assert.equal(manifest.stages.length, 25);
 for (const stage of manifest.stages) {
   const dir = path.join(root, stage.name);
   assert.deepEqual(fs.readdirSync(dir).sort(), Object.keys(stage.files).sort());
@@ -62,7 +62,7 @@ for (const stage of manifest.stages) {
   summaries.push({source: stage.source, rows: summary.rows});
 }
 assert.equal(rejected, 2);
-assert.equal(summaries.length, 22);
+assert.equal(summaries.length, 23);
 const correctness = path.join(root, 'correctness');
 const evidence = JSON.parse(fs.readFileSync(path.join(correctness, 'evidence.json')));
 assert(summaries.some(stage => stage.source === evidence.source));
@@ -89,7 +89,7 @@ execFileSync(process.execPath, ['scripts/check-bytecode-loop-audit.mjs',
   path.join(correctness, 'loop-audit.json'), '101'], {cwd: repo});
 const laterRoot = path.join(root, 'later-correctness');
 const later = JSON.parse(fs.readFileSync(path.join(laterRoot, 'evidence.json')));
-assert.equal(later.captures.length, 17);
+assert.equal(later.captures.length, 18);
 for (const capture of later.captures) {
   const dir = path.join(laterRoot, capture.name);
   assert.deepEqual(fs.readdirSync(dir).sort(), Object.keys(capture.files).sort());
@@ -123,6 +123,15 @@ for (const capture of later.captures) {
   if (capture.name === 'literal-projection') {
     assert.match(fs.readFileSync(path.join(dir, 'supplemental-native.log'), 'utf8'), /test result: ok\. 4 passed; 0 failed;/);
     assert.match(fs.readFileSync(path.join(dir, 'supplemental-miri.log'), 'utf8'), /test result: ok\. 1 passed; 0 failed; 0 ignored;/);
+  }
+  if (capture.name === 'pinned-context') {
+    assert.equal(capture.beforeCompilerSource, 'dc9bd56ca7ff473774b62218d0cbb4b8de5aeaf9');
+    assert.match(capture.beforeSource, /^[a-f0-9]{40}$/);
+    assert.equal(git('diff', '--name-only', capture.beforeSource, capture.beforeCompilerSource,
+      '--', 'src', 'examples/measure_workload.rs', 'Cargo.toml', 'Cargo.lock', 'build.rs').length, 0);
+    const before = fs.readFileSync(path.join(dir, 'before-failure.log'), 'utf8');
+    assert(before.includes('Ast: function F(){this.answer=42;let read=()=>'));
+    assert(before.includes('test result: FAILED. 0 passed; 1 failed;'));
   }
   if (capture.name === 'empty-loop') {
     assert.match(fs.readFileSync(path.join(dir, 'before-failure.log'), 'utf8'), /loop environment has no parent/);

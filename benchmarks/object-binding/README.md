@@ -212,3 +212,12 @@ and one strict-Miri test covering exact Unicode keys and fallback behavior.
 Parameter instructions decrease from414343828 to404963921 (2.3%).
 The archive now has14 valid stages/84 profiles, two rejected stale workers
 and nine later correctness captures. These are not native speed qualification.
+
+The static-object stage (`34d9ff7`) retains all six profiles,984 passing
+native tests (26 ignored), Clippy, release workers and a strict-Miri test
+for getter/Proxy receiver/TDZ order. Abrupt instructions decrease from
+880538571 to861324572; all five other cases increase0.2–0.5%.
+Its manifest transparently distinguishes the runtime source tree from the
+later evidence-only qualification tree; all83 compiler inputs are pinned.
+The archive contains15 valid stages/90 profiles and ten later correctness
+captures, with the two previously rejected stale workers still retained.

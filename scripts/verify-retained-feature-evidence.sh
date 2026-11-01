@@ -124,6 +124,7 @@ case "${1:-}" in
     node benchmarks/object-binding/allocation-diagnostics-v1/verify.mjs
     node benchmarks/destructuring-assignment/correctness-v1/verify.mjs
     node benchmarks/destructuring-assignment/vm-correctness-v1/verify.mjs
+    node benchmarks/destructuring-assignment/vm-gc-correctness-v1/verify.mjs
     node benchmarks/destructuring-assignment/vm-instructions-v1/verify.mjs
     node benchmarks/destructuring-assignment/verify-selection.mjs
     node benchmarks/destructuring-assignment/verify-oracles.mjs

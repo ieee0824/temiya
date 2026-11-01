@@ -54,3 +54,9 @@ the 1,013-test native result, four dedicated strict Miri tests, Clippy and the
 original 46-variant loop audit, including its ten dependency failures. The
 initial isolated-filesystem Miri rejection is retained alongside the successful
 embedded-input run. Complete security and full-corpus checks remain pending.
+
+`vm-gc-correctness-v1` adds one explicit Bytecode-backend test of ephemeral
+assignment targets across reentrant collection from setters, getters, defaults
+and rest writes. Native execution and strict Miri both pass, and the final
+collection retains zero allocations. Its verifier proves that compiler inputs
+match the measured runtime source; it supplements the four VM tests above.

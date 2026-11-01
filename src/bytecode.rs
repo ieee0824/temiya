@@ -577,6 +577,7 @@ pub struct VerifiedBytecode {
     has_backedge: bool,
     pub(super) has_catch_handlers: bool,
     has_own_property_cache: bool,
+    function_name_lookup: Vec<bool>,
     static_object_patterns: Vec<Option<crate::runtime::bytecode_function::StaticObjectBindingPlan>>,
     reuse_loop_bindings: bool,
     numeric_return: Option<numeric_return::NumericReturnPlan>,
@@ -746,6 +747,54 @@ struct FlowState {
     scopes: Vec<(u32, u32)>,
     references: Vec<u32>,
     calls: Vec<(u32, usize)>,
+}
+
+// A name absent from intervening verified block descriptors may start at the
+// real function frame. Keep all dynamic AST/eval observers conservative.
+fn function_name_lookup_plan(code: &Bytecode, states: &[Option<FlowState>]) -> Vec<bool> {
+    let none = std::collections::HashSet::new();
+    let safe = code.constants.iter().all(|constant| match constant {
+        Constant::Function(_) | Constant::Class { .. } | Constant::TryStatement { .. } => false,
+        Constant::Scope(plan) => {
+            plan.functions.is_empty()
+                && !plan
+                    .bindings
+                    .iter()
+                    .any(|binding| binding.name == JsString::from("eval"))
+        }
+        Constant::ObjectLiteral { definition, .. }
+        | Constant::BindingPattern { definition, .. } => {
+            expression_does_not_observe_loop_bindings(definition, &none)
+        }
+        _ => true,
+    }) && code
+        .instructions
+        .iter()
+        .all(|instruction| match instruction {
+            Instruction::LoadName(index)
+            | Instruction::GetName { name: index, .. }
+            | Instruction::ResolveName { name: index, .. } => {
+                !matches!(&code.constants[*index as usize], Constant::String(name)
+                if name == &JsString::from("eval"))
+            }
+            _ => true,
+        });
+    code.instructions.iter().enumerate().map(|(offset, instruction)| {
+        if !safe { return false; }
+        let index = match instruction {
+            Instruction::LoadName(index) | Instruction::GetName { name: index, .. } => *index,
+            _ => return false,
+        };
+        let Constant::String(name) = &code.constants[index as usize] else { return false; };
+        let Some(state) = &states[offset] else { return false; };
+        let Some(function) = state.scopes.iter().rposition(|(_, index)|
+            matches!(&code.constants[*index as usize], Constant::Scope(plan)
+                if plan.kind == ScopeKind::Function)) else { return false; };
+        !state.scopes[function + 1..].is_empty() && state.scopes[function + 1..].iter().all(|(_, index)| {
+            matches!(&code.constants[*index as usize], Constant::Scope(plan)
+                if plan.kind == ScopeKind::Block && !plan.bindings.iter().any(|binding| binding.name == *name))
+        })
+    }).collect()
 }
 
 // Source metadata is not a runtime closure. Inspect the complete class syntax,
@@ -1546,7 +1595,9 @@ fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
             _ => None,
         })
         .collect();
+    let function_name_lookup = function_name_lookup_plan(&bytecode, &states);
     Ok(VerifiedBytecode {
+        function_name_lookup,
         static_object_patterns,
         has_catch_handlers,
         short_function,
@@ -1600,4 +1651,62 @@ fn validate_function_template(template: &FunctionTemplate) -> Result<(), VerifyE
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod function_name_lookup_tests {
+    use super::*;
+
+    #[test]
+    fn lookup_proof_keeps_dynamic_metadata_and_eval_conservative() {
+        for (source, expected) in [
+            (
+                "function f(){try{throw 0;}catch(e){return outside;}}f();",
+                true,
+            ),
+            (
+                "function f(eval){try{throw 0;}catch(e){return outside;}}f();",
+                false,
+            ),
+            (
+                "function f(){let {x=eval('var injected=42')}={};try{throw 0;}catch(e){return outside;}}f();",
+                false,
+            ),
+            (
+                "function f(){try{}finally{}try{throw 0;}catch(e){return outside;}}f();",
+                false,
+            ),
+            (
+                "function f(){let read=function(){return 1;};try{throw 0;}catch(e){return outside;}}f();",
+                false,
+            ),
+            (
+                "function f(){try{let {value}={get value(){throw 0;}};}catch(e){return TypeError;}}f();",
+                true,
+            ),
+        ] {
+            let code = BytecodeCompiler::compile(source).unwrap();
+            let template = code
+                .bytecode
+                .constants
+                .iter()
+                .find_map(|constant| {
+                    if let Constant::Scope(plan) = constant {
+                        plan.functions.first().map(|function| &function.template)
+                    } else {
+                        None
+                    }
+                })
+                .unwrap();
+            assert_eq!(
+                template
+                    .body
+                    .function_name_lookup
+                    .iter()
+                    .any(|enabled| *enabled),
+                expected,
+                "{source}"
+            );
+        }
+    }
 }

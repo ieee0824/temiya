@@ -495,32 +495,25 @@ impl VirtualMachine {
                                 ),
                             }?;
                         }
-                        Instruction::LoadName(index) => {
+                        Instruction::LoadName(index) | Instruction::GetName { name: index, .. } => {
                             let Constant::String(name) = &body.constants[index as usize] else {
                                 unreachable!()
                             };
-                            stack.push(
-                                scopes
-                                    .last()
-                                    .expect("verified active scope")
-                                    .environment
-                                    .get_identifier_value(name, true)?,
-                            );
-                        }
-                        Instruction::GetName {
-                            name: index,
-                            strict,
-                        } => {
-                            let Constant::String(name) = &body.constants[index as usize] else {
-                                unreachable!()
+                            let strict = match instruction {
+                                Instruction::GetName { strict, .. } => strict,
+                                _ => true,
                             };
-                            stack.push(
-                                scopes
-                                    .last()
-                                    .expect("verified active scope")
-                                    .environment
-                                    .get_identifier_value(name, strict)?,
-                            );
+                            let active = &scopes.last().expect("verified active scope").environment;
+                            let environment = if bytecode.function_name_lookup[pc - 1] {
+                                function
+                                    .filter(|environment| {
+                                        environment.kind() == EnvironmentKind::Function
+                                    })
+                                    .unwrap_or(active)
+                            } else {
+                                active
+                            };
+                            stack.push(environment.get_identifier_value(name, strict)?);
                         }
                         Instruction::ResolveName {
                             name: index,

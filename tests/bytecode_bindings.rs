@@ -438,3 +438,93 @@ fn prepared_parameter_cells_trace_values_during_getters_and_defaults() {
     }
     assert_eq!(engine.collect_garbage().unwrap().retained, 0);
 }
+
+#[test]
+fn public_name_instructions_preserve_block_shadowing() {
+    use temiya::runtime::{Environment, ThisBindingStatus};
+    let script =
+        BytecodeCompiler::compile("function f(){let unused=7;{let answer=42;return answer;}}f();")
+            .unwrap();
+    let template = script
+        .bytecode()
+        .constants
+        .iter()
+        .find_map(|constant| {
+            if let Constant::Scope(plan) = constant {
+                plan.functions.first().map(|f| &f.template)
+            } else {
+                None
+            }
+        })
+        .unwrap();
+    for legacy in [false, true] {
+        let mut body = template.body.bytecode().clone();
+        let name = body.constants.len() as u32;
+        body.constants.push(Constant::String("answer".into()));
+        let mut replaced = false;
+        for offset in 0..body.instructions.len() {
+            if let Instruction::LoadBinding { scope, slot } = body.instructions[offset] {
+                let Instruction::EnterScope(index) = body.instructions[scope as usize] else {
+                    panic!("scope")
+                };
+                if matches!(&body.constants[index as usize], Constant::Scope(plan) if plan.bindings[slot as usize].name == "answer".into())
+                {
+                    body.instructions[offset] = if legacy {
+                        Instruction::LoadName(name)
+                    } else {
+                        Instruction::GetName { name, strict: true }
+                    };
+                    replaced = true;
+                }
+            }
+        }
+        assert!(replaced);
+        let body = body.verify().unwrap();
+        let realm = Realm::ordinary();
+        let frame = Environment::function(
+            Some(realm.global_environment()),
+            Object::new_in(realm.allocation_context()),
+            None,
+            ThisBindingStatus::Initialized,
+        );
+        frame
+            .create_mutable_binding("answer".into(), false)
+            .unwrap();
+        frame
+            .initialize_binding(&"answer".into(), Value::Number(99.0))
+            .unwrap();
+        assert!(matches!(
+            VirtualMachine::execute_in_function(&body, &realm, &frame).unwrap(),
+            Completion::Return(Value::Number(42.0))
+        ));
+    }
+}
+
+#[test]
+fn free_names_keep_catch_shadowing_and_outer_with_receivers() {
+    check(
+        "let outside=42;function f(){try{throw 0;}catch(error){{let local=1;return outside+local===43;}}}f();",
+    );
+    check("let outside=99;function f(){try{throw 42;}catch(outside){return outside===42;}}f();");
+    for backend in [ScriptBackend::Ast, ScriptBackend::Auto] {
+        let engine = Engine::builder().script_backend(backend).build();
+        let realm = engine.create_realm();
+        let gc =
+            Object::native_function_with_context(engine.allocation_context(), |context, _, _| {
+                context.collect_garbage()?;
+                Ok(Value::Undefined)
+            });
+        engine
+            .set_global(
+                &realm,
+                "gcNow",
+                engine.value(&realm, Value::Object(gc)).unwrap(),
+            )
+            .unwrap();
+        let script = engine.compile(&realm, "let scope={get answer(){if(this!==scope)throw 1;gcNow();return 42;}},read;with(scope){read=function(){try{throw 0;}catch(error){return answer;}};}read()===42;").unwrap();
+        assert!(matches!(
+            engine.evaluate(&script).unwrap().value(),
+            Value::Boolean(true)
+        ));
+    }
+}

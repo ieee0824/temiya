@@ -476,3 +476,14 @@ fn strict_equality_preserves_identity_types_and_never_invokes_proxy_or_coercion_
         );
     }
 }
+
+#[test]
+fn default_instance_shortcut_preserves_prototype_effects_and_dynamic_fallbacks() {
+    let source = "function run(){function C(){}let x=new C(),B=C.bind(null);B.prototype=42;let good=x instanceof C&&x instanceof B;let effects=0,marker={};let A=()=>0;Object.defineProperty(A,'prototype',{get:function(){effects++;throw marker;}});good=good&&!(42 instanceof A)&&effects===0;try{x instanceof A;}catch(e){good=good&&e===marker&&effects===1;}let custom={};Object.defineProperty(custom,Symbol.hasInstance,{get:function(){effects++;return function(v){return this===C&&v===x;};}});Object.setPrototypeOf(C,custom);good=good&&(x instanceof C)&&effects===2;Object.setPrototypeOf(C,Function.prototype);let trace='';let P=new Proxy(C,{get:function(target,key,receiver){trace+=key===Symbol.hasInstance?'h':'p';return Reflect.get(target,key,receiver);}});good=good&&(x instanceof P)&&trace==='hp';let rev=Proxy.revocable(x,{});rev.revoke();let caught=false;try{rev.proxy instanceof C;}catch(e){caught=e instanceof TypeError;}Object.defineProperty(C,Symbol.hasInstance,{value:undefined});return good&&caught&&(x instanceof C);}run();";
+    for vm in [false, true] {
+        assert!(
+            matches!(result(&Realm::ordinary(), source, vm), Value::Boolean(true)),
+            "VM: {vm}"
+        );
+    }
+}

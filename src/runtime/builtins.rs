@@ -1266,24 +1266,17 @@ pub(super) fn install_has_instance(
     let prototype = intrinsics.get(IntrinsicId::FunctionPrototype);
     let key: PropertyKey = symbols.get(super::WellKnownSymbol::HasInstance).into();
     let call_key = key.clone();
-    let method = Object::native_function_for(&prototype, move |this, arguments| {
-        super::operators::ordinary_has_instance(this, value_arg(arguments.first()), &call_key)
-            .map(Value::Boolean)
-    });
-    method.set_prototype(Some(prototype.clone()));
-    method.define_own_property(
-        "name".into(),
-        PropertyDescriptor::data(
-            Value::String("[Symbol.hasInstance]".into()),
-            false,
-            false,
-            true,
-        ),
-    )?;
-    method.define_own_property(
-        "length".into(),
-        PropertyDescriptor::data(Value::Number(1.0), false, false, true),
-    )?;
+    // The ordinary builtin factory retains the defining Realm as well as its
+    // standard name/length descriptors. Raw native callbacks have no Realm.
+    let method = Object::native_function_with_metadata(
+        &prototype,
+        "[Symbol.hasInstance]",
+        1,
+        move |this, arguments| {
+            super::operators::ordinary_has_instance(this, value_arg(arguments.first()), &call_key)
+                .map(Value::Boolean)
+        },
+    );
     prototype.define_own_property(
         key,
         PropertyDescriptor::data(Value::Object(method), false, false, false),

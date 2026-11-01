@@ -239,3 +239,12 @@ while parameter/computed/getter increase0.09/0.33/0.06%. All adverse results
 are retained. The archive contains17 valid stages/102 profiles, two rejected
 stale workers and12 later correctness captures. No native qualification is
 claimed for this changed source.
+
+The fused-lookup experiment (`e988b1c`) is rejected despite985 native passes,
+Clippy, release workers and two strict-Miri passes: all six instruction counts
+increase againstbbf9a5e (parameters0.54%, computed0.45%, rest0.17%, abrupt0.14%).
+All raw results and validation remain retained. Commit5d03308 restores the
+bbf9a5e runtime; all83 compiler inputs are identical to that tested source.
+The archive now has18 valid source captures/108 profiles and13 later
+correctness captures. A valid capture does not imply an adopted optimization
+or native Boa qualification. The two stale-worker captures remain rejected.

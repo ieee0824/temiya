@@ -575,6 +575,7 @@ pub struct VerifiedBytecode {
     bytecode: Bytecode,
     max_stack: usize,
     has_backedge: bool,
+    pub(super) has_catch_handlers: bool,
     has_own_property_cache: bool,
     reuse_loop_bindings: bool,
     numeric_return: Option<numeric_return::NumericReturnPlan>,
@@ -978,6 +979,27 @@ fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
             _ => None,
         })
         .collect::<Vec<_>>();
+    let has_catch_handlers = !handler_regions.is_empty();
+    let handler_depths = if has_catch_handlers {
+        let mut changes = vec![0_isize; length + 1];
+        for (start, end) in &handler_regions {
+            if end <= start || *end >= length {
+                return Err(VerifyError::at(VerifyErrorKind::JumpOutOfBounds, start - 1));
+            }
+            changes[*start] += 1;
+            changes[*end] -= 1;
+        }
+        let mut depth = 0_isize;
+        changes
+            .into_iter()
+            .map(|change| {
+                depth += change;
+                depth as usize
+            })
+            .collect::<Vec<_>>()
+    } else {
+        Vec::new()
+    };
     let mut states: Vec<Option<FlowState>> = vec![None; length];
     let mut work = VecDeque::from([(
         0_usize,
@@ -998,20 +1020,13 @@ fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
         {
             state.handlers.pop();
         }
-        let expected = handler_regions
-            .iter()
-            .copied()
-            .filter(|(start, end)| *start <= offset && offset < *end)
-            .collect::<Vec<_>>();
-        let actual = state
-            .handlers
-            .iter()
-            .map(|(start, end, _)| (*start, *end))
-            .collect::<Vec<_>>();
-        if actual != expected {
+        if state.handlers.len() != handler_depths.get(offset).copied().unwrap_or(0) {
             return Err(VerifyError::at(VerifyErrorKind::ScopeMismatch, offset));
         }
         for (start, end, depth) in &state.handlers {
+            if offset < *start || offset >= *end {
+                return Err(VerifyError::at(VerifyErrorKind::ScopeMismatch, offset));
+            }
             if state.scopes.len() < *depth
                 && !matches!(bytecode.instructions[offset], Instruction::ExitScope)
                 && !matches!(bytecode.instructions[offset], Instruction::Jump(target) if (target as usize)<*start || (target as usize)>=*end)
@@ -1478,6 +1493,7 @@ fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
                 .iter()
                 .any(|op| matches!(op, Instruction::LoadThis)));
     Ok(VerifiedBytecode {
+        has_catch_handlers,
         short_function,
         empty_function_frame,
         definition_cache,

@@ -96,6 +96,24 @@ impl VirtualMachine {
         function: Option<&Environment>,
         reuse_loop_bindings: bool,
     ) -> RuntimeResult<Completion> {
+        if bytecode.has_catch_handlers {
+            Self::run_catches::<SCALAR_LOCALS, true>(bytecode, realm, function, reuse_loop_bindings)
+        } else {
+            Self::run_catches::<SCALAR_LOCALS, false>(
+                bytecode,
+                realm,
+                function,
+                reuse_loop_bindings,
+            )
+        }
+    }
+
+    fn run_catches<const SCALAR_LOCALS: bool, const HANDLERS: bool>(
+        bytecode: &VerifiedBytecode,
+        realm: Option<&Realm>,
+        function: Option<&Environment>,
+        reuse_loop_bindings: bool,
+    ) -> RuntimeResult<Completion> {
         let _object_roots = realm.and_then(Realm::enter_object_root_region);
         let mut property_context = realm.map(PropertyReferenceContext::new);
         let mut definition_context = bytecode.definition_context();
@@ -117,9 +135,10 @@ impl VirtualMachine {
         loop {
             let result = (|| -> RuntimeResult<Completion> {
                 loop {
-                    while handlers
-                        .last()
-                        .is_some_and(|(start, end, _)| pc < *start || pc >= *end)
+                    while HANDLERS
+                        && handlers
+                            .last()
+                            .is_some_and(|(start, end, _)| pc < *start || pc >= *end)
                     {
                         handlers.pop();
                     }
@@ -127,6 +146,7 @@ impl VirtualMachine {
                     pc += 1;
                     match instruction {
                         Instruction::BeginTryCatch(target) => {
+                            assert!(HANDLERS, "verified handler flag");
                             handlers.push((pc, target as usize, scopes.len()))
                         }
                         Instruction::CreateObject => {
@@ -884,6 +904,9 @@ impl VirtualMachine {
                     }
                 }
             })();
+            if !HANDLERS {
+                return result;
+            }
             let Some((_, target, scope_depth)) = handlers.pop() else {
                 return result;
             };

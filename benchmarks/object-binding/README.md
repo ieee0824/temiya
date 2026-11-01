@@ -205,3 +205,10 @@ and eight later correctness captures. Native Boa qualification remains separate.
 at bda63e1. Both unfiltered jobs fail speed qualification: object workload
 wins are3/2/3/3/3/0 and2/1/2/3/3/0. All preceding groups meet the speed
 condition in both jobs. Recording workflow success does not mean qualification.
+
+The borrowed-literal stage (`7743662`) retains all six diagnostics and
+source-scoped983 native tests (26 ignored), Clippy, explicit release workers
+and one strict-Miri test covering exact Unicode keys and fallback behavior.
+Parameter instructions decrease from414343828 to404963921 (2.3%).
+The archive now has14 valid stages/84 profiles, two rejected stale workers
+and nine later correctness captures. These are not native speed qualification.

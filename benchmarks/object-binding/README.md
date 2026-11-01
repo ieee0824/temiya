@@ -176,3 +176,10 @@ security-single-catch-v1 retains all19 successful jobs of run41256654479,
 the recorded source and cannot qualify later rest/message/payload changes.
 Replay with `node benchmarks/object-binding/full-single-catch-v1/verify.mjs`
 and the security verifier/source arguments in the retained-evidence helper.
+
+`hosted-single-catch-v1` retains all76 reports from run41256648814 at e83240f.
+Both unfiltered AMD EPYC9V45 jobs fail speed qualification:object wins
+0/0/0/0/3/0 both, array TDZ-close0/3 both. Prior derived-definition also
+records1/3 on copy1. The independent replay preserves all adverse outcomes,
+including existing controls, without unchanged-source retiming. Replay with
+`node benchmarks/object-binding/verify-hosted.mjs hosted-single-catch-v1`.

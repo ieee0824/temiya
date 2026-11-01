@@ -221,3 +221,12 @@ Its manifest transparently distinguishes the runtime source tree from the
 later evidence-only qualification tree; all83 compiler inputs are pinned.
 The archive contains15 valid stages/90 profiles and ten later correctness
 captures, with the two previously rejected stale workers still retained.
+
+The static-plan stage (`809af2d`) prepares immutable static binding keys after
+ordinary bytecode scope/binding verification. All six profiles are retained:
+versus34d9ff7, abrupt decreases0.31%, declaration decreases0.19%, while
+computed/getter increase0.17–0.18%. Source-scoped984 native tests (26 ignored),
+Clippy, explicit release workers and strict Miri pass. The archive contains
+16 valid stages/96 profiles, two rejected stale workers and11 later
+correctness captures. Native run41280566961 measures this changed source with
+two unfiltered hosts and all prior controls; qualification is still pending.

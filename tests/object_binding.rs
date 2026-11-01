@@ -190,3 +190,13 @@ fn static_bytecode_pattern_preserves_getters_proxy_receiver_and_tdz_order() {
         "function run(){let caught=false;try{let {a,b}={get a(){return b;},b:42};}catch(e){caught=e instanceof ReferenceError;}return caught;}run();",
     );
 }
+
+#[test]
+fn initialized_catch_cells_remain_distinct_and_mutable_after_escape() {
+    check(
+        "let saved=[];function run(){for(let i=0;i<3;i++){try{throw {value:i};}catch(error){saved.push(()=>error);error={value:i+40};}}return saved[0]().value===40&&saved[1]().value===41&&saved[2]().value===42;}run();",
+    );
+    check(
+        "function run(){let saved;try{throw 20;}catch(error){saved=()=>error;try{throw 22;}catch(error){if(error!==22)throw 42;}error+=22;}return saved()===42;}run();",
+    );
+}

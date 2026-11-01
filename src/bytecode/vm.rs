@@ -259,7 +259,26 @@ impl VirtualMachine {
                             // The whole-body proof excludes all operations that can observe
                             // block environments or retain bindings. Keep primitive slots and
                             // TDZ state locally; loop-environment cloning has no observer.
-                            let environment = if SCALAR_LOCALS && plan.kind == ScopeKind::Block {
+                            let fused_initialization = !SCALAR_LOCALS
+                                && plan.kind == ScopeKind::Block
+                                && plan.bindings.len() == 1
+                                && plan.bindings[0].kind != BindingKind::Var
+                                && plan.functions.is_empty()
+                                && matches!(body.instructions.get(pc),
+                                    Some(Instruction::InitializeBinding {scope, slot: 0})
+                                        if *scope == (pc - 1) as u32);
+                            let environment = if fused_initialization {
+                                Environment::declarative_with_verified_initial_value(
+                                    scopes
+                                        .last()
+                                        .expect("verified block parent")
+                                        .environment
+                                        .clone(),
+                                    plan.bindings[0].name.clone(),
+                                    plan.bindings[0].kind != BindingKind::Const,
+                                    pop(&mut stack)?,
+                                )?
+                            } else if SCALAR_LOCALS && plan.kind == ScopeKind::Block {
                                 function.expect("private function frame").clone()
                             } else {
                                 enter_scope(plan, &scopes, (pc - 1) as u32, realm, function)?
@@ -297,6 +316,9 @@ impl VirtualMachine {
                                 environment,
                                 binding_hints,
                             });
+                            if fused_initialization {
+                                pc += 1;
+                            }
                         }
                         Instruction::ExitScope => {
                             scopes.pop();

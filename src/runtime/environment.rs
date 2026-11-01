@@ -452,6 +452,30 @@ impl Environment {
         Self::new(Some(outer), record)
     }
 
+    // The verified VM may fuse a one-binding scope entry with its immediate
+    // initialization. Keep the incoming facade rooted through allocation and
+    // trace its initial edge; the result still owns a distinct mutable cell.
+    pub(crate) fn declarative_with_verified_initial_value(
+        outer: Self,
+        name: JsString,
+        mutable: bool,
+        value: Value,
+    ) -> RuntimeResult<Self> {
+        let stored = StoredValue::initial(outer.runtime(), &value)?;
+        let environment = Self::new(
+            Some(outer),
+            EnvironmentRecord::Single(Binding {
+                name,
+                value: Some(stored),
+                mutable,
+                strict: !mutable,
+                deletable: false,
+            }),
+        );
+        drop(value);
+        Ok(environment)
+    }
+
     // The verifier restricts this operation to a fresh declarative loop record
     // with unique mutable names. Copy stored edges within the same heap; the
     // new record traces them at allocation, without materializing facades.
@@ -2569,6 +2593,53 @@ mod slot_hint_tests {
                 .unwrap()
                 .same_value(&Value::Number(42.0))
         );
+    }
+
+    #[test]
+    fn initial_binding_edges_survive_allocation_and_distinct_cells() {
+        let context = Runtime::new();
+        let outer = Environment::declarative_in(&context);
+        let object = Object::new_in(&context);
+        let weak = object.downgrade();
+        object
+            .create_data_property("self".into(), Value::Object(object.clone()))
+            .unwrap();
+        context.set_allocation_collection_interval(1);
+        let name = JsString::from("error");
+        let first = Environment::declarative_with_verified_initial_value(
+            outer.clone(),
+            name.clone(),
+            true,
+            Value::Object(object),
+        )
+        .unwrap();
+        let second = Environment::declarative_with_verified_initial_value(
+            outer,
+            name.clone(),
+            true,
+            Value::Number(42.0),
+        )
+        .unwrap();
+        context.collect_garbage().unwrap();
+        assert!(weak.upgrade().is_some());
+        assert!(matches!(
+            first.get_binding_value(&name, true).unwrap(),
+            Value::Object(_)
+        ));
+        first
+            .set_mutable_binding(&name, Value::Number(20.0), true)
+            .unwrap();
+        assert!(
+            second
+                .get_binding_value(&name, true)
+                .unwrap()
+                .same_value(&Value::Number(42.0))
+        );
+        context.verify_migration_barriers().unwrap();
+        drop(first);
+        drop(second);
+        assert_eq!(context.collect_garbage().unwrap().retained, 0);
+        assert!(weak.upgrade().is_none());
     }
 
     #[test]

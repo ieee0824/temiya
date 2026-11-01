@@ -18,4 +18,7 @@ assert(text('clippy').includes('Finished `dev` profile'));assert(!text('clippy')
 for(const name of ['single_catch_binding_traces_and_promotes_without_losing_attributes','catch_identifier_cells_survive_closures_and_mutation'])assert(text('miri').includes(name+' ... ok'));
 assert.equal([...text('miri').matchAll(/test result: ok\. 1 passed; 0 failed; 0 ignored;/g)].length,2);
 assert.deepEqual(e.miri_flags,['-Zmiri-strict-provenance','-Zmiri-symbolic-alignment-check']);assert.equal(e.miri_toolchain,'nightly-2026-10-20');
+const msrv=[...text('msrv').matchAll(/test result: ok\. (\d+) passed; (\d+) failed; (\d+) ignored;/g)];
+assert.equal(msrv.length,4);assert.equal(msrv.reduce((a,m)=>a+Number(m[1]),0),45);assert.equal(msrv.reduce((a,m)=>a+Number(m[2]),0),0);assert.equal(msrv.reduce((a,m)=>a+Number(m[3]),0),1);
+assert(text('i686').includes('Finished `dev` profile'));assert(!text('i686').includes('error:'));
 console.log(JSON.stringify({integrity:'pass',source:e.source,scope:e.scope}));

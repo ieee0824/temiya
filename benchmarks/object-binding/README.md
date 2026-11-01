@@ -109,3 +109,18 @@ profiles are retained under allocation diagnostics: abrupt-coercion drops2.26%
 relative to aa77879, while the other five rise0.27–0.42%. This is mixed
 diagnostic evidence, not native performance or complete security qualification.
 Replay with `node benchmarks/object-binding/single-catch-correctness-v1/verify.mjs`.
+
+`security-direct-get-v1` retains all19 successful jobs from run41254034829
+at1807734. Independent replay verifies163 unique exact strict Miri tests
+and948 ASan passes. This is preceding-source safety evidence; it does not
+qualify name-visitor, fresh-array or single-catch changes, nor native speed.
+
+`full-direct-get-v1` retains all eight shards from run41254032628 at1807734:
+100211 variants,37919pass53705fail18skip8569timeout,0missing. Its verifier
+replays candidate, fe67 previous object and7a154b1 array archives, preserving
+all37919 and33565 preceding passes respectively, with zero regressions.
+This source precedes later optimizations and cannot qualify their behavior.
+Replay with `node benchmarks/object-binding/full-direct-get-v1/verify.mjs`.
+
+The single-catch local correctness capture additionally retains45 MSRV
+integration passes (one ignored) and a successful i686 all-target check.

@@ -1909,7 +1909,7 @@ mod static_assignment_execution_tests {
     use super::*;
     #[test]
     fn prepared_static_targets_are_used_across_observable_source_reads() {
-        let source = "function run(){let obj={},old=obj,answer;let source={get x(){obj={};return 42;}};({x:obj.value}=source);({x:answer}=source);return old.value===42&&answer===42;}run();";
+        let source = "function run(){let obj={},old=obj,answer;let source={get x(){obj={};return 42;}};({x:obj.value}=source);({x:answer}=source);({outer:{x:answer}}={outer:source});return old.value===42&&answer===42;}run();";
         let code = BytecodeCompiler::compile(source).unwrap();
         let body = code
             .bytecode()
@@ -1931,7 +1931,7 @@ mod static_assignment_execution_tests {
                 .iter()
                 .filter(|plan| plan.is_some())
                 .count(),
-            2
+            3
         );
         assert!(matches!(
             VirtualMachine::execute(&code).unwrap(),

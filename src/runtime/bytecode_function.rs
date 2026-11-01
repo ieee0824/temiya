@@ -56,7 +56,14 @@ impl StaticObjectBindingPlan {
 
 // Prepared syntax only: static names never retain a Realm, value or Reference.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct StaticObjectAssignmentPlan(Box<[(super::PropertyKey, StaticAssignmentTarget)]>);
+pub(crate) struct StaticObjectAssignmentPlan(
+    Box<[(super::PropertyKey, StaticAssignmentEntryTarget)]>,
+);
+#[derive(Clone, Debug, PartialEq)]
+enum StaticAssignmentEntryTarget {
+    Reference(StaticAssignmentTarget),
+    Object(StaticObjectAssignmentPlan),
+}
 #[derive(Clone, Debug, PartialEq)]
 enum StaticAssignmentTarget {
     Identifier(super::JsString),
@@ -130,7 +137,14 @@ impl StaticObjectAssignmentPlan {
             }
             entries.push((
                 static_assignment_key(&property.key)?,
-                StaticAssignmentTarget::prepare(property.value.as_ref().unwrap_or(&property.key))?,
+                match property.value.as_ref().unwrap_or(&property.key) {
+                    expression if matches!(expression.kind, crate::ast::ExprKind::Object(_)) => {
+                        StaticAssignmentEntryTarget::Object(Self::prepare(expression)?)
+                    }
+                    expression => StaticAssignmentEntryTarget::Reference(
+                        StaticAssignmentTarget::prepare(expression)?,
+                    ),
+                },
             ));
         }
         Some(Self(entries.into_boxed_slice()))
@@ -149,7 +163,12 @@ impl StaticObjectAssignmentPlan {
         for (key, target) in &self.0 {
             // Retain the actual Reference across GetV: a getter may replace the
             // target binding, mutate its property descriptor, or collect GC.
-            let reference = target.resolve(realm, environment, strict)?;
+            let reference = match target {
+                StaticAssignmentEntryTarget::Reference(target) => {
+                    Some(target.resolve(realm, environment, strict)?)
+                }
+                StaticAssignmentEntryTarget::Object(_) => None,
+            };
             let value = match source {
                 Value::Object(object) => object.get_with_receiver(key, source.clone())?,
                 _ => super::Reference::property_in_realm(
@@ -160,7 +179,16 @@ impl StaticObjectAssignmentPlan {
                 )
                 .get_value()?,
             };
-            reference.put_value(value)?;
+            match target {
+                StaticAssignmentEntryTarget::Reference(_) => reference
+                    .expect("prepared leaf reference")
+                    .put_value(value)?,
+                // Parent GetV must precede all nested target evaluation, and
+                // each nested object performs its own nullish check.
+                StaticAssignmentEntryTarget::Object(plan) => {
+                    plan.assign(realm, environment, &value, strict)?
+                }
+            }
         }
         Ok(())
     }

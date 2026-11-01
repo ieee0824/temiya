@@ -110,6 +110,8 @@ case "${1:-}" in
     node benchmarks/object-binding/security-pinned-context-v1/verify.mjs benchmarks/object-binding/security-pinned-context-v1 2c09b52f7b9692ea4781932bc923ecf0ff60a3c9
     node benchmarks/object-binding/full-pinned-context-v1/verify.mjs
     node benchmarks/object-binding/full-function-name-v1/verify.mjs
+    node benchmarks/object-binding/full-prepared-guards-v1/verify.mjs
+    node benchmarks/object-binding/security-prepared-guards-v1/verify.mjs benchmarks/object-binding/security-prepared-guards-v1 ab8997d839263eae34315dc232f79b7bdbf65a36
     node benchmarks/object-binding/security-function-name-v1/verify.mjs benchmarks/object-binding/security-function-name-v1 dc9bd56ca7ff473774b62218d0cbb4b8de5aeaf9
     node benchmarks/object-binding/nayuta-allocation-review-v1/verify.mjs
     node benchmarks/object-binding/nullish-message-correctness-v1/verify.mjs

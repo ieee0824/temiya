@@ -397,3 +397,29 @@ Exact clock-roots source gates are native41292124102 (two unfiltered jobs),
 full41292126001 (all8 shards) and security41292127687 (complete workflow).
 All source inputs, controls and noise thresholds remain fixed. Earlierab8997d
 runs remain independently live and are not canceled or attributed to this source.
+
+The strict-stack experiment (`86b5063`) reuses shared strict-equality semantics
+in verified operand slots, avoiding generic Realm/string dispatch. Number fast
+paths stay in their existing position. AST/VM tests cover proxy identity,
+throwing coercion hooks, symbols, BigInts, lone surrogates, NaN and signed zero;
+transient comparison operands survive reentrant GC. All1000 native tests
+(26 ignored), Clippy, release workers and2 focused strict Miri tests pass.
+Againstd060829, the six instruction changes are
++0.02263/+0.01002/-0.83114/+0.04826/-0.25143/-0.25857%.
+All adverse values are retained. This experiment stays on the staging branch;
+it does not replace the clock-roots PR source while its actual native gates
+are running, and has no separate native qualification claim.
+The archive has28 valid captures/168 profiles, two rejected stale workers and
+23 later correctness sets. Source-matched prepared-guards full41291044397 has
+also been independently replayed over100211 variants, preserving all37919
+preceding object passes; it does not qualify later sources.
+
+`full-prepared-guards-v1` retains that completeab8997d capture:37919 pass,
+53705 fail,18 skip,8569 timeout,0 missing. Independent replay preserves all
+37919 preceding object and33565 merged array passes, with0 regressions.
+`security-prepared-guards-v1` retains all19 jobs from41291045818, independently
+verifying173 unique exact strict Miri tests and998 ASan tests. The aggregate
+job initially lagged in the default jobs listing; the attempt-one all-jobs
+view and its actual log were verified before recording complete qualification.
+No job count requirement was relaxed. These archives do not qualify the
+clock-roots PR or the strict-stack staging source for native speed or security.

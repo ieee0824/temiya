@@ -15,7 +15,7 @@ const hash = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
 const git = (...args) => execFileSync('git', ['-c', `safe.directory=${repo}`, ...args], {cwd: repo});
 const summaries = [];
 let rejected = 0;
-assert.equal(manifest.stages.length, 29);
+assert.equal(manifest.stages.length, 30);
 for (const stage of manifest.stages) {
   const dir = path.join(root, stage.name);
   assert.deepEqual(fs.readdirSync(dir).sort(), Object.keys(stage.files).sort());
@@ -62,7 +62,7 @@ for (const stage of manifest.stages) {
   summaries.push({source: stage.source, rows: summary.rows});
 }
 assert.equal(rejected, 2);
-assert.equal(summaries.length, 27);
+assert.equal(summaries.length, 28);
 const correctness = path.join(root, 'correctness');
 const evidence = JSON.parse(fs.readFileSync(path.join(correctness, 'evidence.json')));
 assert(summaries.some(stage => stage.source === evidence.source));
@@ -89,7 +89,7 @@ execFileSync(process.execPath, ['scripts/check-bytecode-loop-audit.mjs',
   path.join(correctness, 'loop-audit.json'), '101'], {cwd: repo});
 const laterRoot = path.join(root, 'later-correctness');
 const later = JSON.parse(fs.readFileSync(path.join(laterRoot, 'evidence.json')));
-assert.equal(later.captures.length, 22);
+assert.equal(later.captures.length, 23);
 for (const capture of later.captures) {
   const dir = path.join(laterRoot, capture.name);
   assert.deepEqual(fs.readdirSync(dir).sort(), Object.keys(capture.files).sort());

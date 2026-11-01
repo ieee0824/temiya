@@ -167,3 +167,12 @@ test pass, retained in nullish-message-correctness-v1. All six instruction
 profiles remain: abrupt-coercion drops0.602%, while the other five rise0.036–0.094%.
 This is mixed diagnostic evidence, not native performance qualification.
 Replay with `node benchmarks/object-binding/nullish-message-correctness-v1/verify.mjs`.
+
+At sourcee83240f, full-single-catch-v1 retains run41256651468, all100211
+variants:37919pass53705fail18skip8569timeout,0missing. Independent replay
+preserves all37919 preceding-object and33565 array-parent passes,0regressions.
+security-single-catch-v1 retains all19 successful jobs of run41256654479,
+165 exact strict Miri tests and951ASan passes. These results belong only to
+the recorded source and cannot qualify later rest/message/payload changes.
+Replay with `node benchmarks/object-binding/full-single-catch-v1/verify.mjs`
+and the security verifier/source arguments in the retained-evidence helper.

@@ -102,6 +102,8 @@ case "${1:-}" in
     node benchmarks/array-binding/security-cache32-v1/verify.mjs benchmarks/array-binding/security-cache32-v1 9f84bc5c6416911df51d76cf10b936ad3c3e003f
     ;;
   objects)
+    node benchmarks/object-binding/full-single-catch-v1/verify.mjs
+    node benchmarks/object-binding/security-single-catch-v1/verify.mjs benchmarks/object-binding/security-single-catch-v1 e83240f33e8b2953fe728bfc7fb40842b210367a
     node benchmarks/object-binding/nullish-message-correctness-v1/verify.mjs
     node benchmarks/object-binding/rest-accessor-correctness-v1/verify.mjs
     node benchmarks/object-binding/rest-data-correctness-v1/verify.mjs

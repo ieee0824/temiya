@@ -802,6 +802,24 @@ impl Object {
         Ok(())
     }
 
+    // Only the fresh ordinary object owned by ArrayObject initialization calls
+    // this. The numeric length needs no coercion and contains no managed edge.
+    pub(super) fn initialize_array(&self, length: u32) {
+        let mut state = self.0.state.borrow_mut();
+        debug_assert!(!state.array && state.proxy.is_none() && state.properties.is_empty());
+        state.array = true;
+        state.elements = Some(Box::default());
+        state.properties = vec![PropertyEntry {
+            key: "length".into(),
+            descriptor: StoredDescriptor::Data {
+                value: StoredValue::Number(f64::from(length)),
+                writable: true,
+                enumerable: false,
+                configurable: false,
+            },
+        }];
+    }
+
     // Native exceptions are unpublished ordinary objects with one own data
     // property. Prototype and message are initialized before user code can run.
     pub(super) fn native_error(prototype: Self, message: JsString) -> Self {

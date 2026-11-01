@@ -40,3 +40,17 @@ Computed member targets retain the key value in their Reference; conversion
 to a property key happens at PutValue, after source reads and defaults. The
 reference-order regression also checks that a null base rejects the write
 without converting its key, while closing an unfinished iterator.
+
+The first historical instruction captures for all six unchanged inputs are
+retained in `benchmarks/destructuring-assignment/vm-instructions-v1`. Replay
+with `node benchmarks/destructuring-assignment/vm-instructions-v1/verify.mjs`.
+The comparison includes parent-main integration and VM lowering, so it does
+not isolate either change. All six recorded instruction totals decreased
+(4.8–22.5%); this is not a native timing or Boa speed qualification.
+
+Current-source local VM correctness records are retained separately in
+`benchmarks/destructuring-assignment/vm-correctness-v1`; its verifier replays
+the 1,013-test native result, four dedicated strict Miri tests, Clippy and the
+original 46-variant loop audit, including its ten dependency failures. The
+initial isolated-filesystem Miri rejection is retained alongside the successful
+embedded-input run. Complete security and full-corpus checks remain pending.

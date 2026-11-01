@@ -365,3 +365,20 @@ The archive has26 valid captures/156 profiles, two rejected stale workers and
 21 later correctness captures. New exact-source native41291042940,
 full41291044397 and security41291045818 are running; no speed qualification
 is claimed from instruction counts or earlier source results.
+
+The preceding function-name source (`dc9bd56`) now has complete retained
+hosted/full/security archives as well. Both native jobs fail speed:
+object wins2/3/1/3/3/2 on EPYC7763 and1/1/0/3/3/0 on EPYC9V74; all prior
+feature groups meet two-of-three. Full100211 outcomes preserve37919 object
+and33565 array passes. All19 security jobs independently replay172 strict
+Miri tests and990 ASan tests. These are source-specific historical evidence.
+
+`nayuta-allocation-review-v1` records a fresh three-file review with Nayuta
+v0.3.3, verified as the latest release on2026-11-01. The preserved binary hash
+matches its original source-pinned build; compiler inputs match the release
+tag. Its63 syntax findings are review leads, not runtime complexity proofs.
+Fixed-bound cache loops fall within documented heuristic limitations; no
+Nayuta defect was reproduced. Frozen abrupt-coercion profiles independently
+identify repeated root-cache hits as a concrete cost. A second-chance cache
+experiment keeps capacity32, full object/handle identity checks and collection
+clearing while replacing per-hit linked-list maintenance with a reference bit.

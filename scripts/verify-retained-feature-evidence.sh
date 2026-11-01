@@ -109,6 +109,9 @@ case "${1:-}" in
     node benchmarks/object-binding/security-initial-catch-v1/verify.mjs benchmarks/object-binding/security-initial-catch-v1 d58d4d41e93ce2fcc7fdd220cf5e7ae63e1c540e
     node benchmarks/object-binding/security-pinned-context-v1/verify.mjs benchmarks/object-binding/security-pinned-context-v1 2c09b52f7b9692ea4781932bc923ecf0ff60a3c9
     node benchmarks/object-binding/full-pinned-context-v1/verify.mjs
+    node benchmarks/object-binding/full-function-name-v1/verify.mjs
+    node benchmarks/object-binding/security-function-name-v1/verify.mjs benchmarks/object-binding/security-function-name-v1 dc9bd56ca7ff473774b62218d0cbb4b8de5aeaf9
+    node benchmarks/object-binding/nayuta-allocation-review-v1/verify.mjs
     node benchmarks/object-binding/nullish-message-correctness-v1/verify.mjs
     node benchmarks/object-binding/rest-accessor-correctness-v1/verify.mjs
     node benchmarks/object-binding/rest-data-correctness-v1/verify.mjs

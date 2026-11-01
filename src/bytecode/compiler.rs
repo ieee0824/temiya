@@ -446,6 +446,17 @@ impl Compiler {
                 self.code.push(Instruction::Return);
                 Ok(true)
             }
+            StmtKind::Try {
+                block,
+                handler: Some(handler),
+                finalizer: None,
+            } if self
+                .scopes
+                .iter()
+                .any(|scope| scope.kind == ScopeKind::Function) =>
+            {
+                self.try_catch(block, handler)
+            }
             StmtKind::Try { .. } => {
                 if !supported_try(statement)
                     || !self
@@ -469,6 +480,56 @@ impl Compiler {
             }
             _ => Err(self.unsupported("statement", statement.span)),
         }
+    }
+
+    fn try_catch(
+        &mut self,
+        block: &Stmt,
+        handler: &crate::ast::CatchClause,
+    ) -> Result<bool, CompileError> {
+        let begin = self.emit(Instruction::BeginTryCatch(0));
+        let try_terminal = self.statement(block)?;
+        let skip = (!try_terminal).then(|| self.emit(Instruction::Jump(0)));
+        self.code[begin] = Instruction::BeginTryCatch(self.offset()?);
+        let bindings = handler
+            .param
+            .as_ref()
+            .map(binding_names)
+            .transpose()?
+            .unwrap_or_default()
+            .into_iter()
+            .map(|name| ScopeBinding {
+                name: name.as_str().into(),
+                kind: BindingKind::Let,
+            })
+            .collect();
+        self.enter_scope(ScopeKind::Block, bindings)?;
+        if let Some(parameter) = &handler.param {
+            if let ExprKind::Identifier(name) = &parameter.kind {
+                let (scope, slot, _) = self.binding(name).expect("catch binding");
+                self.code
+                    .push(Instruction::InitializeBinding { scope, slot });
+            } else {
+                let index = self.pool(Constant::BindingPattern {
+                    definition: std::rc::Rc::new(parameter.clone()),
+                    initialize: true,
+                    strict: self.strict,
+                })?;
+                self.code.push(Instruction::InitializePattern(index));
+            }
+        } else {
+            self.code.push(Instruction::Pop);
+        }
+        let catch_terminal = self.statement(&handler.body)?;
+        self.scopes.pop();
+        if !catch_terminal {
+            self.code.push(Instruction::ExitScope);
+        }
+        if let Some(skip) = skip {
+            let end = self.offset()?;
+            self.patch(skip, end);
+        }
+        Ok(try_terminal && catch_terminal)
     }
 
     fn expression(&mut self, expression: &Expr) -> Result<(), CompileError> {

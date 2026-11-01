@@ -176,7 +176,7 @@ fn prepared_parameter_body_preserves_escaped_cells_and_frame_observers() {
 fn try_bridge_preserves_completions_and_enclosing_vm_loop() {
     let source = "function run(n){let total=0;for(let i=1;i<=n;i++){let sentinel={};try{let {x}={get x(){throw sentinel;}};throw 42;}catch(error){if(error!==sentinel)throw error;}try{let {}=null;throw 42;}catch(error){if(!(error instanceof TypeError))throw error;}total+=i;}return total;}run(3)===6;";
     let code = BytecodeCompiler::compile(source).unwrap();
-    assert!(code.bytecode().constants.iter().any(|c|matches!(c,Constant::Scope(scope) if scope.functions.iter().any(|f|f.template.body.bytecode().instructions.iter().any(|op|matches!(op,Instruction::ExecuteTry(_)))))));
+    assert!(code.bytecode().constants.iter().any(|c|matches!(c,Constant::Scope(scope) if scope.functions.iter().any(|f|f.template.body.bytecode().instructions.iter().any(|op|matches!(op,Instruction::ExecuteTry(_) | Instruction::BeginTryCatch(_)))))));
     check(source);
     for source in [
         "function f(){try{return 1;}finally{return 42;}}f()===42;",
@@ -260,4 +260,113 @@ fn bytecode_try_callbacks_survive_gc_and_release_everything() {
         ));
     }
     assert_eq!(engine.collect_garbage().unwrap().retained, 0);
+}
+
+#[test]
+fn direct_catches_unwind_calls_references_and_nested_handlers() {
+    for source in [
+        "function id(x){return x;}function f(){let source={get x(){throw 42;}};try{id(source.x);}catch(e){return id(e);}}f()===42;",
+        "function id(x){return x;}function f(){let target={set x(v){throw 42;}};try{target.x=id(1);}catch(e){return id(e);}}f()===42;",
+        "function f(){try{try{throw 20;}catch(e){throw e+22;}}catch(e){return e;}}f()===42;",
+        "function f(){try{try{throw {};}catch({a=b,b=1}){return 0;}}catch(e){return e instanceof ReferenceError;}}f();",
+        "function f(){let n=0;outer:for(let i=0;i<4;i++){try{if(i===0)continue outer;if(i===2)break outer;n+=40;}catch(e){throw e;}}return n+2;}f()===42;",
+        "function f(){try{throw 1;}catch(e){var e=2;}return typeof e==='undefined';}f();",
+        "function f(){try{throw {a:20,b:22};}catch({a,...rest}){return a+rest.b;}}f()===42;",
+    ] {
+        check(source);
+    }
+}
+
+#[test]
+fn direct_handler_verifier_rejects_entry_jumps_and_lost_frames() {
+    let code =
+        BytecodeCompiler::compile("function f(){try{throw 1;}catch{return 2;}}f();").unwrap();
+    let body = code
+        .bytecode()
+        .constants
+        .iter()
+        .find_map(|c| match c {
+            Constant::Scope(scope) => scope
+                .functions
+                .first()
+                .map(|f| f.template.body.bytecode().clone()),
+            _ => None,
+        })
+        .unwrap();
+    let begin = body
+        .instructions
+        .iter()
+        .position(|op| matches!(op, Instruction::BeginTryCatch(_)))
+        .unwrap();
+    for replacement in [
+        Instruction::ExitScope,
+        Instruction::Jump((begin + 2) as u32),
+    ] {
+        let mut invalid = body.clone();
+        invalid.instructions.insert(begin, replacement);
+        for op in &mut invalid.instructions {
+            if let Instruction::BeginTryCatch(target) = op {
+                *target += 1;
+            }
+        }
+        if matches!(replacement, Instruction::ExitScope) {
+            invalid.instructions.swap(begin, begin + 1);
+        }
+        assert_eq!(
+            invalid.verify().unwrap_err().kind(),
+            VerifyErrorKind::ScopeMismatch
+        );
+    }
+}
+
+#[test]
+fn bytecode_direct_catch_callbacks_survive_gc_and_release_everything() {
+    let engine = Engine::builder()
+        .script_backend(ScriptBackend::Bytecode)
+        .build();
+    {
+        let realm = engine.create_realm();
+        let gc =
+            Object::native_function_with_context(engine.allocation_context(), |context, _, _| {
+                context.collect_garbage()?;
+                Ok(Value::Undefined)
+            });
+        engine
+            .set_global(
+                &realm,
+                "gcNow",
+                engine.value(&realm, Value::Object(gc)).unwrap(),
+            )
+            .unwrap();
+        let script=engine.compile(&realm,"function run(){try{throw {get answer(){gcNow();return 42;}};}catch({answer}){gcNow();return answer;}}run()===42;").unwrap();
+        assert_eq!(script.backend(), ScriptBackend::Bytecode);
+        assert!(matches!(
+            engine.evaluate(&script).unwrap().value(),
+            Value::Boolean(true)
+        ));
+    }
+    assert_eq!(engine.collect_garbage().unwrap().retained, 0);
+}
+
+#[test]
+fn direct_catches_do_not_swallow_internal_host_failures() {
+    let context = temiya::runtime::AllocationContext::new();
+    let realm = Realm::ordinary_in(&context);
+    realm
+        .global_object()
+        .create_data_property(
+            "hostFail".into(),
+            Value::Object(Object::native_function_in(&context, |_, _| {
+                Err(temiya::runtime::RuntimeError::internal_error(
+                    "host invariant",
+                ))
+            })),
+        )
+        .unwrap();
+    let code =
+        BytecodeCompiler::compile("function run(){try{hostFail();}catch(e){return 42;}}run();")
+            .unwrap();
+    let error = VirtualMachine::execute_in_realm(&code, &realm).unwrap_err();
+    assert_eq!(error.kind(), RuntimeErrorKind::InternalError);
+    assert_eq!(error.message(), "host invariant");
 }

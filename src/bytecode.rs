@@ -370,6 +370,8 @@ pub enum Instruction {
     InitializePattern(u32),
     /// Evaluate a verified try statement in the current function frame (0).
     ExecuteTry(u32),
+    /// Catch JS abrupt completions in the following region up to `target`.
+    BeginTryCatch(u32),
     /// Push the initialized super receiver and its owning function before the key.
     LoadSuperBinding,
     /// Consume receiver, owning function and key; retain a super property Reference.
@@ -419,7 +421,7 @@ pub enum Instruction {
 impl Instruction {
     fn required_stack(self) -> usize {
         match self {
-            Self::ExecuteTry(_) => 0,
+            Self::ExecuteTry(_) | Self::BeginTryCatch(_) => 0,
             Self::LoadSuperBinding => 0,
             Self::ResolveSuperProperty { .. } => 3,
             Self::CreateObject | Self::CreateObjectReserved(_) => 0,
@@ -483,7 +485,7 @@ impl Instruction {
 
     fn stack_delta(self) -> isize {
         match self {
-            Self::ExecuteTry(_) => 0,
+            Self::ExecuteTry(_) | Self::BeginTryCatch(_) => 0,
             Self::LoadSuperBinding => 2,
             Self::ResolveSuperProperty { .. } => -3,
             Self::CreateObject | Self::CreateObjectReserved(_) => 1,
@@ -737,6 +739,7 @@ impl std::error::Error for VerifyError {}
 
 #[derive(Clone, Debug, PartialEq)]
 struct FlowState {
+    handlers: Vec<(usize, usize, usize)>,
     depth: usize,
     scopes: Vec<(u32, u32)>,
     references: Vec<u32>,
@@ -850,7 +853,9 @@ fn loop_bindings_are_unobserved(code: &Bytecode, states: &[Option<FlowState>]) -
             Instruction::CreateFunction(_)
             | Instruction::LoadSuperBinding
             | Instruction::ResolveSuperProperty { .. } => false,
-            Instruction::InitializePattern(_) | Instruction::ExecuteTry(_) => false,
+            Instruction::InitializePattern(_)
+            | Instruction::ExecuteTry(_)
+            | Instruction::BeginTryCatch(_) => false,
             Instruction::CreateObjectLiteral(index) => {
                 let Constant::ObjectLiteral { definition, .. } = &code.constants[index as usize]
                 else {
@@ -964,10 +969,20 @@ fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
             }
         }
     }
+    let handler_regions = bytecode
+        .instructions
+        .iter()
+        .enumerate()
+        .filter_map(|(entry, instruction)| match instruction {
+            Instruction::BeginTryCatch(target) => Some((entry + 1, *target as usize)),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
     let mut states: Vec<Option<FlowState>> = vec![None; length];
     let mut work = VecDeque::from([(
         0_usize,
         FlowState {
+            handlers: vec![],
             depth: 0,
             scopes: vec![],
             references: vec![],
@@ -976,11 +991,40 @@ fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
     )]);
     let mut max_stack = 0;
     while let Some((offset, mut state)) = work.pop_front() {
+        while state
+            .handlers
+            .last()
+            .is_some_and(|(start, end, _)| offset < *start || offset >= *end)
+        {
+            state.handlers.pop();
+        }
+        let expected = handler_regions
+            .iter()
+            .copied()
+            .filter(|(start, end)| *start <= offset && offset < *end)
+            .collect::<Vec<_>>();
+        let actual = state
+            .handlers
+            .iter()
+            .map(|(start, end, _)| (*start, *end))
+            .collect::<Vec<_>>();
+        if actual != expected {
+            return Err(VerifyError::at(VerifyErrorKind::ScopeMismatch, offset));
+        }
+        for (start, end, depth) in &state.handlers {
+            if state.scopes.len() < *depth
+                && !matches!(bytecode.instructions[offset], Instruction::ExitScope)
+                && !matches!(bytecode.instructions[offset], Instruction::Jump(target) if (target as usize)<*start || (target as usize)>=*end)
+            {
+                return Err(VerifyError::at(VerifyErrorKind::ScopeMismatch, offset));
+            }
+        }
         if let Some(previous) = &states[offset] {
             if previous.depth != state.depth {
                 return Err(VerifyError::at(VerifyErrorKind::StackDepthMismatch, offset));
             }
-            if previous.scopes != state.scopes
+            if previous.handlers != state.handlers
+                || previous.scopes != state.scopes
                 || previous.references != state.references
                 || previous.calls != state.calls
             {
@@ -998,6 +1042,18 @@ fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
                 .ok_or_else(|| error(VerifyErrorKind::ConstantOutOfBounds))
         };
         match instruction {
+            Instruction::BeginTryCatch(target) => {
+                if target as usize <= offset + 1 || target as usize >= length {
+                    return Err(error(VerifyErrorKind::JumpOutOfBounds));
+                }
+                if state.depth != 0 || !state.references.is_empty() || !state.calls.is_empty() || !state.scopes.iter().any(|(_, index)| matches!(&bytecode.constants[*index as usize], Constant::Scope(plan) if plan.kind == ScopeKind::Function)) { return Err(error(VerifyErrorKind::ScopeMismatch)); }
+                let mut caught = state.clone();
+                caught.depth = 1;
+                work.push_back((target as usize, caught));
+                state
+                    .handlers
+                    .push((offset + 1, target as usize, state.scopes.len()));
+            }
             Instruction::EnterScope(index) => {
                 let Constant::Scope(plan) = constant(index)? else {
                     return Err(error(VerifyErrorKind::InvalidConstantKind));

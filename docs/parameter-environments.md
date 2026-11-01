@@ -56,3 +56,13 @@ body function declarations shadowing a parameter without changing its closure.
 The integrated source passes 1,022 all-target/all-feature tests (26 ignored)
 and Clippy locally. Its eight parameter tests are undergoing fresh strict
 Miri validation; earlier-source captures above remain historical evidence.
+
+`reference-diagnostics-v1` isolates the fixed reference engine using a bare
+`boa_engine::Context` from the same clean, pinned vendored source. All eight
+original inputs remain unchanged: three validate and five fail without browser
+embedding. Four minimal programs isolate a parameter initializer plus a body
+var redeclaration; the three redeclaration cases fail through both reference
+entry points, while the control without a body var succeeds. All four validate
+in the current Temiya build. Full inputs, exits, diagnostics, adapter source and
+lockfile are retained with hashes. This diagnoses reference correctness and
+does not qualify speed or claim the same failure in other Boa versions.

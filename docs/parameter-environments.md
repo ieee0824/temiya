@@ -54,8 +54,8 @@ The context regression covers assignment defaults using this/new.target and
 body function declarations shadowing a parameter without changing its closure.
 
 The integrated source passes 1,022 all-target/all-feature tests (26 ignored)
-and Clippy locally. Its eight parameter tests are undergoing fresh strict
-Miri validation; earlier-source captures above remain historical evidence.
+and Clippy locally. All eight parameter tests pass fresh strict Miri; earlier-source captures
+above remain historical evidence.
 
 `reference-diagnostics-v1` isolates the fixed reference engine using a bare
 `boa_engine::Context` from the same clean, pinned vendored source. All eight
@@ -66,3 +66,9 @@ entry points, while the control without a body var succeeds. All four validate
 in the current Temiya build. Full inputs, exits, diagnostics, adapter source and
 lockfile are retained with hashes. This diagnoses reference correctness and
 does not qualify speed or claim the same failure in other Boa versions.
+
+`integrated-correctness-v1` retains the integrated source identity, all
+1,022 native test results, eight exact strict Miri results, Clippy and the
+first validation of all eight unchanged10,000-iteration inputs. Its verifier
+checks every compiler-input hash and each input/result pair. This source still
+requires its own complete corpus, security and valid native Boa comparison.

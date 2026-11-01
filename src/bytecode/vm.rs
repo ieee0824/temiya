@@ -651,6 +651,25 @@ impl VirtualMachine {
                     let invocation = calls.pop().expect("verified call frame");
                     stack.push(invocation.invoke()?);
                 }
+                Instruction::InitializePattern(index) => {
+                    let Constant::BindingPattern {
+                        definition,
+                        initialize,
+                        strict,
+                    } = &body.constants[index as usize]
+                    else {
+                        unreachable!("verified binding pattern")
+                    };
+                    let value = pop(&mut stack)?;
+                    definition_context.initialize_pattern(
+                        definition,
+                        value,
+                        *initialize,
+                        *strict,
+                        realm.expect("verified pattern Realm"),
+                        &scopes.last().expect("verified pattern scope").environment,
+                    )?;
+                }
                 Instruction::CreateObjectLiteral(index) => {
                     let Constant::ObjectLiteral { definition, strict } =
                         &body.constants[index as usize]
@@ -850,7 +869,8 @@ pub(super) fn constant(constant: &Constant) -> Value {
         Constant::Scope(_)
         | Constant::Function(_)
         | Constant::Class { .. }
-        | Constant::ObjectLiteral { .. } => {
+        | Constant::ObjectLiteral { .. }
+        | Constant::BindingPattern { .. } => {
             unreachable!("verifier rejects metadata values")
         }
         Constant::BigInt(value) => Value::BigInt(value.clone()),

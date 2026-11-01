@@ -113,6 +113,15 @@ pub enum Constant {
         /// Strictness of the containing code.
         strict: bool,
     },
+    /// Binding syntax for the shared initializer; never a runtime value.
+    BindingPattern {
+        /// Parsed binding pattern, containing no runtime values.
+        definition: Rc<crate::ast::Expr>,
+        /// Initialize lexical bindings rather than assign var references.
+        initialize: bool,
+        /// Strictness of the containing code.
+        strict: bool,
+    },
     /// Immutable class source for the shared class evaluator.
     Class {
         /// Parsed definition, containing no runtime values.
@@ -350,6 +359,8 @@ pub enum Instruction {
     CreateClass(u32),
     /// Evaluate a fresh object initializer in the current environment.
     CreateObjectLiteral(u32),
+    /// Pop a value and initialize a pattern through the shared runtime (`-1`).
+    InitializePattern(u32),
     /// Push the initialized super receiver and its owning function before the key.
     LoadSuperBinding,
     /// Consume receiver, owning function and key; retain a super property Reference.
@@ -438,7 +449,10 @@ impl Instruction {
             | Self::LoadBinding { .. }
             | Self::GetName { .. }
             | Self::LoadName(_) => 0,
-            Self::InitializeBinding { .. } | Self::StoreBinding { .. } | Self::StoreReference => 1,
+            Self::InitializePattern(_)
+            | Self::InitializeBinding { .. }
+            | Self::StoreBinding { .. }
+            | Self::StoreReference => 1,
             Self::LoadConstant(_) | Self::LoadLocal(_) | Self::Jump(_) => 0,
             Self::StoreLocal(_)
             | Self::Duplicate
@@ -502,7 +516,10 @@ impl Instruction {
             | Self::UpdateBinding { .. }
             | Self::LoadName(_)
             | Self::GetName { .. } => 1,
-            Self::InitializeBinding { .. } | Self::StoreBinding { .. } | Self::StoreReference => -1,
+            Self::InitializePattern(_)
+            | Self::InitializeBinding { .. }
+            | Self::StoreBinding { .. }
+            | Self::StoreReference => -1,
             Self::LoadConstant(_) | Self::LoadLocal(_) | Self::Duplicate => 1,
             Self::StoreLocal(_)
             | Self::Pop
@@ -822,6 +839,7 @@ fn loop_bindings_are_unobserved(code: &Bytecode, states: &[Option<FlowState>]) -
             Instruction::CreateFunction(_)
             | Instruction::LoadSuperBinding
             | Instruction::ResolveSuperProperty { .. } => false,
+            Instruction::InitializePattern(_) => false,
             Instruction::CreateObjectLiteral(index) => {
                 let Constant::ObjectLiteral { definition, .. } = &code.constants[index as usize]
                 else {
@@ -1115,6 +1133,37 @@ fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
                     );
                 }
             }
+            Instruction::InitializePattern(index) => {
+                let Constant::BindingPattern {
+                    definition,
+                    initialize,
+                    ..
+                } = constant(index)?
+                else {
+                    return Err(error(VerifyErrorKind::InvalidConstantKind));
+                };
+                if state.scopes.is_empty() {
+                    return Err(error(VerifyErrorKind::ScopeMismatch));
+                }
+                if !matches!(
+                    definition.kind,
+                    crate::ast::ExprKind::Array { .. } | crate::ast::ExprKind::Object(_)
+                ) {
+                    return Err(error(VerifyErrorKind::InvalidConstantKind));
+                }
+                let names = compiler::binding_names(definition)
+                    .map_err(|_| error(VerifyErrorKind::InvalidConstantKind))?;
+                for name in names {
+                    let scopes = if *initialize {
+                        &state.scopes[state.scopes.len() - 1..]
+                    } else {
+                        &state.scopes[..]
+                    };
+                    if !scopes.iter().any(|(_, index)| matches!(&bytecode.constants[*index as usize], Constant::Scope(plan) if plan.bindings.iter().any(|binding| binding.name == name.as_str().into() && (!*initialize || binding.kind != BindingKind::Var)))) {
+                        return Err(error(VerifyErrorKind::BindingOutOfBounds));
+                    }
+                }
+            }
             Instruction::CreateObjectLiteral(index) => {
                 if !matches!(constant(index)?, Constant::ObjectLiteral { definition, .. } if matches!(definition.kind, crate::ast::ExprKind::Object(_)))
                 {
@@ -1230,6 +1279,7 @@ fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
                         | Constant::Function(_)
                         | Constant::Class { .. }
                         | Constant::ObjectLiteral { .. }
+                        | Constant::BindingPattern { .. }
                 ) {
                     return Err(error(VerifyErrorKind::InvalidConstantKind));
                 }
@@ -1314,7 +1364,9 @@ fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
         .any(|op| {
             matches!(
                 op,
-                Instruction::CreateObjectLiteral(_) | Instruction::CreateClass(_)
+                Instruction::CreateObjectLiteral(_)
+                    | Instruction::CreateClass(_)
+                    | Instruction::InitializePattern(_)
             )
         })
         .then(Default::default);

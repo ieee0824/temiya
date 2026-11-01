@@ -15,7 +15,9 @@ pub(super) fn proven(code: &Bytecode) -> bool {
             Constant::Scope(scope) if !scope.bindings.is_empty() || !scope.functions.is_empty() => {
                 return false;
             }
-            Constant::Class { .. } | Constant::Function(_) => return false,
+            Constant::Class { .. } | Constant::Function(_) | Constant::BindingPattern { .. } => {
+                return false;
+            }
             Constant::ObjectLiteral { definition, .. } => {
                 let mut observable = false;
                 definition.visit(&mut |expression| {

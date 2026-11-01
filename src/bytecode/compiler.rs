@@ -325,7 +325,19 @@ impl Compiler {
             StmtKind::Variable { kind, declarations } => {
                 for declaration in declarations {
                     let ExprKind::Identifier(name) = &declaration.binding.kind else {
-                        return Err(self.unsupported("binding pattern", declaration.binding.span));
+                        let Some(init) = &declaration.init else {
+                            return Err(
+                                self.unsupported("pattern without initializer", declaration.span)
+                            );
+                        };
+                        self.expression(init)?;
+                        let index = self.pool(Constant::BindingPattern {
+                            definition: std::rc::Rc::new(declaration.binding.clone()),
+                            initialize: *kind != VariableKind::Var,
+                            strict: self.strict,
+                        })?;
+                        self.code.push(Instruction::InitializePattern(index));
+                        continue;
                     };
                     let (scope, slot, _) = self
                         .binding(name)
@@ -1363,19 +1375,46 @@ impl Compiler {
 
 // Validate the supported statement tree even after terminal statements: var
 // declarations are instantiated before any reachable code executes.
+pub(super) fn binding_names(binding: &Expr) -> Result<Vec<String>, CompileError> {
+    fn collect(binding: &Expr, names: &mut Vec<String>) -> Result<(), CompileError> {
+        match &binding.kind {
+            ExprKind::Identifier(name) => names.push(name.clone()),
+            ExprKind::Assignment { target, .. } | ExprKind::Spread(target) => {
+                collect(target, names)?
+            }
+            ExprKind::Array { elements, .. } => {
+                for element in elements.iter().flatten() {
+                    collect(element, names)?;
+                }
+            }
+            ExprKind::Object(properties) => {
+                for property in properties {
+                    collect(property.value.as_ref().unwrap_or(&property.key), names)?;
+                }
+            }
+            _ => {
+                return Err(CompileError::new(
+                    "invalid binding pattern",
+                    Some(binding.span),
+                ));
+            }
+        }
+        Ok(())
+    }
+    let mut names = Vec::new();
+    collect(binding, &mut names)?;
+    Ok(names)
+}
+
 fn collect_vars(statements: &[Stmt], vars: &mut Vec<String>) -> Result<(), CompileError> {
     for statement in statements {
         match &statement.kind {
             StmtKind::Variable { kind, declarations } => {
                 for declaration in declarations {
-                    let ExprKind::Identifier(name) = &declaration.binding.kind else {
-                        return Err(CompileError::new(
-                            "unsupported binding pattern",
-                            Some(declaration.binding.span),
-                        ));
-                    };
-                    if *kind == VariableKind::Var && !vars.contains(name) {
-                        vars.push(name.clone());
+                    for name in binding_names(&declaration.binding)? {
+                        if *kind == VariableKind::Var && !vars.contains(&name) {
+                            vars.push(name);
+                        }
                     }
                 }
             }
@@ -1396,14 +1435,10 @@ fn collect_vars(statements: &[Stmt], vars: &mut Vec<String>) -> Result<(), Compi
             StmtKind::For { init, body, .. } => {
                 if let Some(ForInit::Variable { kind, declarations }) = init {
                     for declaration in declarations {
-                        let ExprKind::Identifier(name) = &declaration.binding.kind else {
-                            return Err(CompileError::new(
-                                "unsupported binding pattern",
-                                Some(declaration.binding.span),
-                            ));
-                        };
-                        if *kind == VariableKind::Var && !vars.contains(name) {
-                            vars.push(name.clone());
+                        for name in binding_names(&declaration.binding)? {
+                            if *kind == VariableKind::Var && !vars.contains(&name) {
+                                vars.push(name);
+                            }
                         }
                     }
                 }
@@ -1490,23 +1525,23 @@ fn scope_bindings(
                 continue;
             }
             for declaration in declarations {
-                let ExprKind::Identifier(name) = &declaration.binding.kind else {
-                    unreachable!("collect_vars checked patterns")
-                };
-                if vars.contains(name) || lexical.iter().any(|(previous, _)| previous == name) {
-                    return Err(CompileError::new(
-                        "duplicate lexical binding",
-                        Some(declaration.span),
+                for name in binding_names(&declaration.binding)? {
+                    if vars.contains(&name) || lexical.iter().any(|(previous, _)| previous == &name)
+                    {
+                        return Err(CompileError::new(
+                            "duplicate lexical binding",
+                            Some(declaration.span),
+                        ));
+                    }
+                    lexical.push((
+                        name,
+                        if *kind == VariableKind::Let {
+                            BindingKind::Let
+                        } else {
+                            BindingKind::Const
+                        },
                     ));
                 }
-                lexical.push((
-                    name.clone(),
-                    if *kind == VariableKind::Let {
-                        BindingKind::Let
-                    } else {
-                        BindingKind::Const
-                    },
-                ));
             }
         }
     }
@@ -1542,7 +1577,8 @@ fn bytecode_may_observe_arguments(body: &VerifiedBytecode) -> bool {
                     || name.code_units().iter().copied().eq("eval".encode_utf16())
             }
             Constant::Class { .. } => true,
-            Constant::ObjectLiteral { definition, .. } => {
+            Constant::ObjectLiteral { definition, .. }
+            | Constant::BindingPattern { definition, .. } => {
                 let mut observed = false;
                 definition.visit(&mut |expression| {
                     if let ExprKind::Identifier(name) = &expression.kind {
@@ -1599,7 +1635,7 @@ fn body_shadows_arguments(function: &Function) -> bool {
     statements.iter().any(|statement| match &statement.kind {
         StmtKind::FunctionDeclaration(function) => matches!(function.name.as_ref().map(|name| &name.kind), Some(ExprKind::Identifier(name)) if name == "arguments"),
         StmtKind::ClassDeclaration(class) => matches!(class.name.as_ref().map(|name| &name.kind), Some(ExprKind::Identifier(name)) if name == "arguments"),
-        StmtKind::Variable { kind, declarations } if *kind != VariableKind::Var => declarations.iter().any(|declaration| matches!(&declaration.binding.kind, ExprKind::Identifier(name) if name == "arguments")),
+        StmtKind::Variable { kind, declarations } if *kind != VariableKind::Var => declarations.iter().any(|declaration| binding_names(&declaration.binding).map(|names| names.iter().any(|name| name == "arguments")).unwrap_or(false)),
         _ => false,
     })
 }

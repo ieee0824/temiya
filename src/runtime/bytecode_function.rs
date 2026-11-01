@@ -60,6 +60,27 @@ impl DefinitionEvaluationContext {
         super::class::evaluate(class, &evaluator, inferred_name)
     }
 
+    pub(crate) fn initialize_pattern(
+        &mut self,
+        pattern: &Rc<crate::ast::Expr>,
+        value: Value,
+        initialize: bool,
+        strict: bool,
+        realm: &Realm,
+        environment: &Environment,
+    ) -> RuntimeResult<()> {
+        super::function::retain_definition(
+            self.cache.get_or_insert_with(Default::default),
+            pattern,
+        );
+        super::binding::initialize(
+            &self.evaluator(realm, environment, strict)?,
+            pattern,
+            value,
+            initialize,
+        )
+    }
+
     pub(crate) fn evaluate_object_literal(
         &mut self,
         expression: &Rc<crate::ast::Expr>,

@@ -423,3 +423,20 @@ job initially lagged in the default jobs listing; the attempt-one all-jobs
 view and its actual log were verified before recording complete qualification.
 No job count requirement was relaxed. These archives do not qualify the
 clock-roots PR or the strict-stack staging source for native speed or security.
+
+The separately staged default-instance experiment (`201bcb8`) skips native
+GetMethod/dispatch only for callable non-Proxy, non-Bound constructors that
+have no own @@hasInstance and directly inherit the same-Realm intrinsic
+Function.prototype. Its immutable default method is proven by construction.
+The existing ordinary algorithm still observes prototype getters/traps;
+context checks, the native call-depth budget and error Realm are preserved.
+The builtin now uses the normal metadata factory: a controlled host fixture
+reproduces missing defining-Realm TypeError materialization in the frozen
+86b5063 release rlib, and passes after this fix. Both snapshots/logs are retained.
+All1003 native tests (26 ignored), Clippy, release and3 strict Miri cases pass.
+The first six fixed-input profiles change approximately
+-0.00064/-0.00040/+0.00346/+0.00509/-0.00149/-3.39571% against86b5063.
+All adverse values remain retained. This staging experiment does not replace
+the already qualifiedab8997d runtime selected for PR549 and has no native
+qualification claim. There are29 valid captures/174 profiles, two rejected
+stale workers and24 later correctness sets.

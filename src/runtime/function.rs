@@ -709,23 +709,37 @@ fn call_function(
     } else {
         ordinary_this(&closure.realm, this_argument)?
     };
-    let environment = Environment::function(
-        Some(closure.environment.clone()),
-        function,
-        new_target.clone(),
-        if lexical {
-            ThisBindingStatus::Lexical
-        } else {
-            ThisBindingStatus::Uninitialized
-        },
-    );
+    let arguments_needed =
+        !lexical && closure.code.may_observe_arguments && !closure.code.parameter_binds_arguments;
+    let status = if lexical {
+        ThisBindingStatus::Lexical
+    } else {
+        ThisBindingStatus::Uninitialized
+    };
+    let environment = if let Some(names) = closure.code.parameter_names.as_deref() {
+        Environment::function_with_uninitialized_parameters(
+            Some(closure.environment.clone()),
+            function,
+            new_target.clone(),
+            status,
+            names,
+            usize::from(arguments_needed),
+        )
+    } else {
+        Environment::function(
+            Some(closure.environment.clone()),
+            function,
+            new_target.clone(),
+            status,
+        )
+    };
     if !lexical {
         environment.bind_this_value(this_value.clone())?;
     }
     // The complete syntax scan includes defaults, nested classes/functions,
     // arrows and direct eval. Retain the actual object whenever any of those
     // can observe arguments; otherwise this implicit binding is unreachable.
-    if !lexical && closure.code.may_observe_arguments && !closure.code.parameter_binds_arguments {
+    if arguments_needed {
         bind_arguments(&closure.realm, &environment, arguments)?;
     }
     let evaluator = ExpressionEvaluator::with_environment(
@@ -737,12 +751,13 @@ fn call_function(
     .with_new_target(new_target.clone())
     .with_this_environment(closure.lexical_this_environment.clone())
     .with_function_cache(closure.code.context());
-    bind_parameters(
+    bind_parameters_impl(
         &evaluator,
         &environment,
         &closure.code.parameters,
         closure.code.parameter_names.as_deref(),
         arguments,
+        closure.code.parameter_names.is_some(),
     )?;
 
     if let Some(body) = &closure.code.compiled_body {
@@ -965,22 +980,43 @@ pub(super) fn bind_parameters(
     prepared_names: Option<&[JsString]>,
     arguments: &[Value],
 ) -> RuntimeResult<()> {
-    if parameters
-        .iter()
-        .any(|parameter| !matches!(parameter.kind, ExprKind::Identifier(_)))
+    bind_parameters_impl(
+        evaluator,
+        environment,
+        parameters,
+        prepared_names,
+        arguments,
+        false,
+    )
+}
+
+fn bind_parameters_impl(
+    evaluator: &ExpressionEvaluator,
+    environment: &Environment,
+    parameters: &[Expr],
+    prepared_names: Option<&[JsString]>,
+    arguments: &[Value],
+    bindings_prepared: bool,
+) -> RuntimeResult<()> {
+    if bindings_prepared
+        || parameters
+            .iter()
+            .any(|parameter| !matches!(parameter.kind, ExprKind::Identifier(_)))
     {
-        let names = if let Some(names) = prepared_names {
-            Cow::Borrowed(names)
-        } else {
-            let mut names = Vec::new();
-            for parameter in parameters {
-                super::binding::names(parameter, &mut names)?;
-            }
-            Cow::Owned(names)
-        };
-        for name in names.iter() {
-            if !environment.has_binding(name)? {
-                environment.create_mutable_binding(name.clone(), false)?;
+        if !bindings_prepared {
+            let names = if let Some(names) = prepared_names {
+                Cow::Borrowed(names)
+            } else {
+                let mut names = Vec::new();
+                for parameter in parameters {
+                    super::binding::names(parameter, &mut names)?;
+                }
+                Cow::Owned(names)
+            };
+            for name in names.iter() {
+                if !environment.has_binding(name)? {
+                    environment.create_mutable_binding(name.clone(), false)?;
+                }
             }
         }
         for (index, parameter) in parameters.iter().enumerate() {

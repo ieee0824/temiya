@@ -603,6 +603,50 @@ impl Environment {
         arguments: &[Value],
         capacity: usize,
     ) -> Self {
+        Self::function_with_parameter_state::<true>(
+            outer,
+            function_object,
+            new_target,
+            this,
+            parameters,
+            arguments,
+            capacity,
+        )
+    }
+
+    pub(crate) fn function_with_uninitialized_parameters(
+        outer: Option<Self>,
+        function_object: Object,
+        new_target: Option<Object>,
+        this_status: ThisBindingStatus,
+        names: &[JsString],
+        extra_bindings: usize,
+    ) -> Self {
+        let this = match this_status {
+            ThisBindingStatus::Lexical => FunctionThis::Lexical,
+            ThisBindingStatus::Uninitialized => FunctionThis::Uninitialized,
+            ThisBindingStatus::Initialized => FunctionThis::Initialized(Value::Undefined),
+        };
+        Self::function_with_parameter_state::<false>(
+            outer,
+            function_object,
+            new_target,
+            this,
+            names,
+            &[],
+            names.len().saturating_add(extra_bindings),
+        )
+    }
+
+    fn function_with_parameter_state<const INITIALIZED: bool>(
+        outer: Option<Self>,
+        function_object: Object,
+        new_target: Option<Object>,
+        this: FunctionThis,
+        parameters: &[JsString],
+        arguments: &[Value],
+        capacity: usize,
+    ) -> Self {
         let runtime = function_object.0.runtime().cloned();
         let stored_new_target = new_target
             .as_ref()
@@ -624,19 +668,25 @@ impl Environment {
         };
         let mut bindings: Vec<Binding> = Vec::with_capacity(capacity.max(parameters.len()));
         for (index, name) in parameters.iter().enumerate() {
-            let value = StoredValue::initial(
-                runtime.as_ref(),
-                arguments.get(index).unwrap_or(&Value::Undefined),
-            )
-            .expect("parameter allocation context");
+            let value = if INITIALIZED {
+                Some(
+                    StoredValue::initial(
+                        runtime.as_ref(),
+                        arguments.get(index).unwrap_or(&Value::Undefined),
+                    )
+                    .expect("parameter allocation context"),
+                )
+            } else {
+                None
+            };
             if let Some(binding) = bindings.iter_mut().find(|binding| binding.name == *name) {
                 // Sloppy duplicate parameters retain the last supplied value,
                 // including undefined when that occurrence has no argument.
-                binding.value = Some(value);
+                binding.value = value;
             } else {
                 bindings.push(Binding {
                     name: name.clone(),
-                    value: Some(value),
+                    value,
                     mutable: true,
                     strict: false,
                     deletable: false,

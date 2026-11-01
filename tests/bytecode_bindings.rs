@@ -384,3 +384,57 @@ fn pattern_defaults_and_caught_getters_keep_each_iteration_cells() {
         check(source);
     }
 }
+
+#[test]
+fn prepared_parameter_cells_preserve_tdz_arguments_and_default_order() {
+    for backend in [ScriptBackend::Ast, ScriptBackend::Auto] {
+        let engine = Engine::builder().script_backend(backend).build();
+        for source in [
+            "var b=99;function f(a=b,b=42){return a;}function run(){try{f();return false;}catch(e){return e instanceof ReferenceError;}}run();",
+            "function f(a=arguments,arguments=42){return false;}function run(){try{f();return false;}catch(e){return e instanceof ReferenceError;}}run();",
+            "function f({arguments},next=arguments){return next;}f({arguments:42})===42;",
+            "let order='';function f({a=(order+='a',20)},b=(order+='b',22)){return a+b;}f({})===42&&order==='ab';",
+            "function f(a=()=>b,b=42){return a();}f()===42;",
+            "function f({a},...rest){return a+rest[0];}f({a:20},22)===42;",
+        ] {
+            let realm = engine.create_realm();
+            let script = engine.compile(&realm, source).unwrap();
+            assert!(
+                matches!(
+                    engine.evaluate(&script).unwrap().value(),
+                    Value::Boolean(true)
+                ),
+                "{backend:?}: {source}"
+            );
+        }
+        assert_eq!(engine.collect_garbage().unwrap().retained, 0);
+    }
+}
+
+#[test]
+fn prepared_parameter_cells_trace_values_during_getters_and_defaults() {
+    let engine = Engine::builder()
+        .script_backend(ScriptBackend::Auto)
+        .build();
+    {
+        let realm = engine.create_realm();
+        let gc =
+            Object::native_function_with_context(engine.allocation_context(), |context, _, _| {
+                context.collect_garbage()?;
+                Ok(Value::Undefined)
+            });
+        engine
+            .set_global(
+                &realm,
+                "gcNow",
+                engine.value(&realm, Value::Object(gc)).unwrap(),
+            )
+            .unwrap();
+        let script=engine.compile(&realm,"function read({first=(gcNow(),{answer:20}),last},next=(gcNow(),first)){gcNow();return next.answer+last.answer;}read({get first(){gcNow();return undefined;},get last(){gcNow();return {answer:22};}})===42;").unwrap();
+        assert!(matches!(
+            engine.evaluate(&script).unwrap().value(),
+            Value::Boolean(true)
+        ));
+    }
+    assert_eq!(engine.collect_garbage().unwrap().retained, 0);
+}

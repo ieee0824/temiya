@@ -13,11 +13,15 @@ struct Default {
     index: usize,
     // A zero-parameter expression arrow can bypass the parameter environment
     // only when its sole name is absent from the entire parameter list.
-    outer_arrow: Option<(Rc<Expr>, JsString)>,
+    outer_arrow: Option<(Rc<FunctionCode>, JsString)>,
 }
 
 impl Plan {
-    pub(super) fn prepare(function: &Function, kind: FunctionKind) -> Option<Self> {
+    pub(super) fn prepare(
+        function: &Function,
+        kind: FunctionKind,
+        cache: &Option<FunctionCache>,
+    ) -> Option<Self> {
         if kind != FunctionKind::Normal
             || function.asynchronous
             || function.generator
@@ -52,7 +56,10 @@ impl Plan {
                             let ExprKind::Identifier(name) = &target.kind else {
                                 unreachable!()
                             };
-                            Some((Rc::new((**value).clone()), name.as_str().into()))
+                            Some((
+                                prepare_code(arrow, FunctionKind::Arrow, cache),
+                                name.as_str().into(),
+                            ))
                         }
                         _ => None,
                     };
@@ -102,21 +109,19 @@ impl Plan {
                 .get(default.index)
                 .is_none_or(|v| matches!(v, Value::Undefined))
             {
-                let (expression, name) = default
+                let (code, name) = default
                     .outer_arrow
                     .as_ref()
                     .expect("complete parameter guard precedes initialization");
                 // This arrow neither reads nor captures any parameter cell or
-                // lexical call context. Named evaluation preserves its fresh
-                // identity, inferred name, original source and ordinary lookup.
-                let evaluator = ExpressionEvaluator::with_environment(
-                    closure.realm.clone(),
-                    closure.environment.clone(),
-                    Value::Undefined,
-                    closure.code.strict,
-                )
-                .with_function_cache(closure.code.context());
-                let value = evaluator.evaluate_named(expression, name)?;
+                // lexical call context. Its syntax was prepared once; only the
+                // fresh runtime closure and ordinary metadata are made here.
+                let value = Value::Object(create_identifier_arrow(
+                    code.clone(),
+                    &closure.realm,
+                    &closure.environment,
+                    name,
+                )?);
                 let values = passed.to_mut();
                 if values.len() <= default.index {
                     values.resize(default.index + 1, Value::Undefined);
@@ -152,6 +157,11 @@ impl Plan {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn prepare(function: &Function, kind: FunctionKind) -> Option<Plan> {
+        let cache = Rc::new(RefCell::new(CodeCache::default()));
+        Plan::prepare(function, kind, &Some(cache))
+    }
 
     #[test]
     fn real_rest_array_traces_arguments_during_allocation_and_after_return() {
@@ -221,13 +231,13 @@ mod tests {
             *function
         };
         let f = function("function f(a=1,b){var a;return a;}");
-        let plan = Plan::prepare(&f, FunctionKind::Normal).unwrap();
+        let plan = prepare(&f, FunctionKind::Normal).unwrap();
         assert!(plan.for_arguments(&[Value::Null]).is_some());
         assert!(plan.for_arguments(&[Value::Boolean(false)]).is_some());
         assert!(plan.for_arguments(&[Value::Undefined]).is_none());
         let outer = function("function f(read=()=>outer){var outer=0;return read;}");
         assert!(
-            Plan::prepare(&outer, FunctionKind::Normal)
+            prepare(&outer, FunctionKind::Normal)
                 .unwrap()
                 .for_arguments(&[])
                 .is_some()
@@ -240,12 +250,12 @@ mod tests {
             "function f(read=()=>new.target){return read;}",
             "function f(read=()=>outer,other=effect()){return read;}",
         ] {
-            let plan = Plan::prepare(&function(source), FunctionKind::Normal).unwrap();
+            let plan = prepare(&function(source), FunctionKind::Normal).unwrap();
             assert!(plan.for_arguments(&[]).is_none(), "{source}");
         }
         assert!(plan.for_arguments(&[]).is_none());
         let rest = function("function f(a=1,...rest){return rest;}");
-        let plan = Plan::prepare(&rest, FunctionKind::Normal).unwrap();
+        let plan = prepare(&rest, FunctionKind::Normal).unwrap();
         assert!(plan.for_arguments(&[Value::Number(42.0)]).is_some());
         assert!(plan.for_arguments(&[Value::Undefined]).is_none());
         for source in [
@@ -258,7 +268,7 @@ mod tests {
             "async function f(a=1){return a;}",
         ] {
             assert!(
-                Plan::prepare(&function(source), FunctionKind::Normal).is_none(),
+                prepare(&function(source), FunctionKind::Normal).is_none(),
                 "{source}"
             );
         }
@@ -267,19 +277,21 @@ mod tests {
     #[test]
     fn outer_default_arrow_traces_enclosing_cells_through_allocation_and_realm_release() {
         use crate::{Engine, embedding::ScriptBackend};
-        let engine = Engine::builder()
-            .script_backend(ScriptBackend::Auto)
-            .build();
-        let arrow =
-            {
+        for source in [
+            "let outer={answer:42};function f(read=()=>outer){var outer=20;return read;}f;",
+            "function f(value={answer:42},read=()=>value){var value=20;return read;}f;",
+        ] {
+            let engine = Engine::builder()
+                .script_backend(ScriptBackend::Auto)
+                .build();
+            let arrow = {
                 let realm = engine.create_realm();
-                let script = engine.compile(&realm,
-                "let outer={answer:42};function f(read=()=>outer){var outer=20;return read;}f;"
-            ).unwrap();
+                let script = engine.compile(&realm, source).unwrap();
                 let value = engine.evaluate(&script).unwrap();
                 let Value::Object(function) = value.value() else {
                     panic!("function")
                 };
+                drop(script);
                 engine
                     .allocation_context()
                     .set_allocation_collection_interval(1);
@@ -290,22 +302,23 @@ mod tests {
                 assert!(engine.allocation_context().diagnostics().collections > before);
                 arrow
             };
-        engine.collect_garbage().unwrap();
-        let Value::Object(object) = arrow.call(Value::Undefined, &[]).unwrap() else {
-            panic!("outer object")
-        };
-        assert!(
-            object
-                .get(&"answer".into())
-                .unwrap()
-                .same_value(&Value::Number(42.0))
-        );
-        engine
-            .allocation_context()
-            .verify_migration_barriers()
-            .unwrap();
-        drop(object);
-        drop(arrow);
-        assert_eq!(engine.collect_garbage().unwrap().retained, 0);
+            engine.collect_garbage().unwrap();
+            let Value::Object(object) = arrow.call(Value::Undefined, &[]).unwrap() else {
+                panic!("outer object")
+            };
+            assert!(
+                object
+                    .get(&"answer".into())
+                    .unwrap()
+                    .same_value(&Value::Number(42.0))
+            );
+            engine
+                .allocation_context()
+                .verify_migration_barriers()
+                .unwrap();
+            drop(object);
+            drop(arrow);
+            assert_eq!(engine.collect_garbage().unwrap().retained, 0);
+        }
     }
 }

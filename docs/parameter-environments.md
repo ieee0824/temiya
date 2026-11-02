@@ -12,9 +12,9 @@ retain their shared environment path, including rest and plain destructuring.
 The arguments binding used by defaults is kept outside body var redeclarations;
 complete mapped/unmapped arguments semantics remain tracked by #166.
 
-Public Ast/Auto cases live in `tests/parameter_environments.rs`. Full corpus,
-strict Miri, stable/MSRV/target checks and native Boa speed qualification remain
-pending. The implementation does not establish complete eval, generator or
+Public Ast/Auto cases live in `tests/parameter_environments.rs`. Complete corpus,
+whole-library security, hosted toolchain checks and native Boa speed qualification
+remain pending; the eight local integration tests pass strict Miri. The implementation does not establish complete eval, generator or
 async semantics.
 
 Reference: [ECMA-262 2026 FunctionDeclarationInstantiation](https://tc39.es/ecma262/2026/multipage/ordinary-and-exotic-objects-behaviours.html#sec-functiondeclarationinstantiation).
@@ -44,7 +44,7 @@ return 193; instructions decrease from 17,464,899 to 16,834,912 (3.607%).
 This includes setup and is not a native Boa qualification. Replay with
 `node benchmarks/parameter-environments/large-preparation-v1/verify.mjs`.
 
-Integration with the current assignment VM keeps parameter-only names outside
+Integration with the assignment VM keeps parameter-only names outside
 the body var descriptor. Verified body reads resolve those names through the
 parent parameter record; redeclared body vars retain independently copied
 cells. An internal VM entry accepts this prepared Declarative body record
@@ -53,8 +53,8 @@ Pure prepared bodies resolve only proven parameter names through this chain.
 The context regression covers assignment defaults using this/new.target and
 body function declarations shadowing a parameter without changing its closure.
 
-The integrated source passes 1,022 all-target/all-feature tests (26 ignored)
-and Clippy locally. All eight parameter tests pass fresh strict Miri; earlier-source captures
+The earlier integrated source `6263525` passes 1,022 all-target/all-feature tests
+(26 ignored) and Clippy locally. All eight parameter tests pass strict Miri; earlier-source captures
 above remain historical evidence.
 
 `reference-diagnostics-v1` isolates the fixed reference engine using a bare
@@ -63,7 +63,7 @@ original inputs remain unchanged: three validate and five fail without browser
 embedding. Four minimal programs isolate a parameter initializer plus a body
 var redeclaration; the three redeclaration cases fail through both reference
 entry points, while the control without a body var succeeds. All four validate
-in the current Temiya build. Full inputs, exits, diagnostics, adapter source and
+in the recorded Temiya6263525 build. Full inputs, exits, diagnostics, adapter source and
 lockfile are retained with hashes. This diagnoses reference correctness and
 does not qualify speed or claim the same failure in other Boa versions.
 
@@ -72,3 +72,19 @@ does not qualify speed or claim the same failure in other Boa versions.
 first validation of all eight unchanged10,000-iteration inputs. Its verifier
 checks every compiler-input hash and each input/result pair. This source still
 requires its own complete corpus, security and valid native Boa comparison.
+
+After integrating the qualified assignment runtime and merged main, source
+`88dd92e` passes 1,032 all-target/all-feature tests (26 ignored), fmt, Clippy
+and all eight parameter integration tests under strict Miri. All eight unchanged
+10,000-iteration inputs validate twice through its frozen worker. The later merge
+of main at `1dfa282` changes history only and preserves all 84 compiler inputs.
+`current-base-correctness-v1/verify.mjs` replays all logs, the eight inputs and
+all 84 compiler-input hashes. These local results do not qualify whole-corpus,
+whole-library safety or native Boa speed.
+
+The separately retained `upstream-boa-diagnostics-v1` executes the same eight
+inputs and four minimal probes on clean upstream HEAD329e897 (workspace version
+0.22.0). The same five original inputs and three var-copy probes fail; three
+original inputs and the no-body-var control validate. This debug-build correctness
+diagnostic preserves every input and error and does not replace the pinned
+benchmark reference or qualify performance.

@@ -124,6 +124,7 @@ case "${1:-}" in
     ;;
   objects)
     node benchmarks/parameter-environments/integrated-correctness-v1/verify.mjs
+    node benchmarks/parameter-environments/current-base-correctness-v1/verify.mjs
     node benchmarks/parameter-environments/reference-diagnostics-v1/verify.mjs
     node benchmarks/parameter-environments/upstream-boa-diagnostics-v1/verify.mjs
     node benchmarks/parameter-environments/large-preparation-v1/verify.mjs

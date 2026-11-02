@@ -127,6 +127,7 @@ case "${1:-}" in
     node benchmarks/parameter-environments/current-base-correctness-v1/verify.mjs
     node benchmarks/parameter-environments/reference-diagnostics-v1/verify.mjs
     node benchmarks/parameter-environments/upstream-boa-diagnostics-v1/verify.mjs
+    node benchmarks/parameter-environments/reference-patch-diagnostics-v1/verify.mjs
     node benchmarks/parameter-environments/large-preparation-v1/verify.mjs
     node benchmarks/parameter-environments/verify-selection.mjs
     node benchmarks/parameter-environments/oracles-initial-v1/verify.mjs

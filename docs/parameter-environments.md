@@ -88,3 +88,16 @@ inputs and four minimal probes on clean upstream HEAD329e897 (workspace version
 original inputs and the no-body-var control validate. This debug-build correctness
 diagnostic preserves every input and error and does not replace the pinned
 benchmark reference or qualify performance.
+
+The local `reference-patch-diagnostics-v1` experiment keeps the same eight
+inputs and four minimal probes. Correcting the source parameter record lookup
+and removing an unconditional undefined overwrite validates six originals and
+all four probes; two pattern-expression cases still fail. A second local patch
+also detects expressions inside binding patterns while keeping Function.length
+independent of nested expressions. It validates all eight originals, all four
+probes and eight additional controls for lengths, shadowing, nested arrays and
+TDZ. Both attempts, including the two remaining first-attempt failures, are
+retained. The verifier applies each patch to hashed upstream base files and
+checks all input/result pairs. These are debug-build correctness diagnostics,
+not stock-Boa results or native speed qualification; the benchmark reference
+and the original input manifest remain unchanged.

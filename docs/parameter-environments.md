@@ -308,3 +308,33 @@ pairs. Against corrected pinned Boa, var-copy, constructor and async pass all
 three local pairs. Default-closure and nested-default are within noise in all
 three pairs; computed-key, rest and generator still lose all three. This is
 three of eight local gates, not complete two-host native qualification.
+
+Source `18fd732` allows the existing bounded leaf executor to handle a complete
+`AsCallTarget` / `BeginMethodCall` / `Invoke` zero-argument value call. It retains
+the undefined receiver and shared Object call path. The complete body must
+qualify before effects: pending invocations, call arguments, captured local
+cells, arguments/eval and unsupported operations keep the ordinary path. Locals,
+return values and saved References remain rooted across callbacks. The existing
+redacted caller/arguments policy remains unchanged. A unit proves repeated value
+calls allocate no managed activation; differential cases cover Proxy apply,
+exceptions, GC, saved assignment targets, fallback order and value-call super
+getter semantics.
+
+`leaf-calls-arm-v1/verify.mjs` retains 1,063 native passes (26 ignored), three
+public strict Miri tests plus activation-allocation and default-arrow GC Miri
+units, Clippy/release, all source/test hashes and unchanged-input measurements.
+Default-closure whole-process instructions decrease from 340,644,997 to
+265,221,261, and all three native before/after pairs are faster (ratios 0.820–0.829).
+The complete before/after record also retains one slower pair and twenty noisy
+pairs; same-binary has 24 noisy pairs. Default-closure's Boa ratios are 0.888,
+0.895 and 0.933, but all three remain within the recorded noise thresholds.
+Var-copy, constructor and async each pass 3/3 local pairs; the other five cases
+and the complete two-host native requirement remain unqualified.
+
+Historical dispatched head `1666191` / runtime `13524c4` now has complete
+retained checks. `full-default-factory-v1/verify.mjs` independently replays all
+eight corpus gates and every preceding outcome: all 100,211 variants, 38,801 pass,
+52,823 fail, 18 skip and 8,569 timeout, with every preceding pass preserved and no
+new passes/regressions/missing outcomes. `security-default-factory-v1/verify.mjs`
+checks all 19 jobs, 185 exact strict Miri tests matching the independent listing,
+and 1,058 ASan passes. These checks do not qualify later leaf-call code or speed.

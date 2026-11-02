@@ -211,7 +211,11 @@ fn prepare_code(
             .flat_map(crate::semantics::bound_names)
             .map(|binding| JsString::from(binding.name.as_str()))
             .collect::<Vec<_>>();
-        super::bytecode_function::PreparedBodyPlan::prepare(body, &names)
+        super::bytecode_function::PreparedBodyPlan::prepare(
+            body,
+            &names,
+            parameter_environment.is_some(),
+        )
     });
     let prepared = Rc::new(FunctionCode {
         ast: code.clone(),
@@ -1509,7 +1513,7 @@ mod derived_arguments_tests {
 #[cfg(test)]
 mod prepared_body_tests {
     #[test]
-    fn pure_parameter_guards_keep_real_cells_and_reject_observable_body_operations() {
+    fn prepared_parameter_bodies_require_existing_cells_and_complete_operations() {
         for (source, expected) in [
             ("function f({x,y}){if(x!==y)throw x;return y;}", true),
             (
@@ -1520,10 +1524,26 @@ mod prepared_body_tests {
             ("function f({x}){var other;return x;}", false),
             ("function f({x}){{let x=42;return x;}}", false),
             ("function f({x}){return x.value;}", false),
-            ("function f({x}){return x();}", false),
+            ("function f({x}){return x();}", true),
             ("function f({x}){while(x){}return x;}", false),
-            ("function f({x}){x=42;return x;}", false),
+            ("function f({x}){x=42;return x;}", true),
             ("function f({x}){return this;}", false),
+            ("function f(a=()=>outer){var outer=0;return a();}", true),
+            (
+                "function f({value,read=()=>outer}){var outer=0;if(value!==read())throw 42;return value;}",
+                true,
+            ),
+            (
+                "function f({[key]:value}){var key='missing';return value;}",
+                true,
+            ),
+            ("function f({x}){return x(42);}", false),
+            ("function f({x}){x();return ()=>x;}", false),
+            ("function f({x}){return x?.();}", false),
+            (
+                "function f({x},read=()=>x){eval('x');return read();}",
+                false,
+            ),
         ] {
             let expression = crate::parser::parse_expression(source).unwrap();
             let crate::ast::ExprKind::Function(function) = expression.kind else {

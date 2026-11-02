@@ -12,10 +12,12 @@ retain their shared environment path, including rest and plain destructuring.
 The arguments binding used by defaults is kept outside body var redeclarations;
 complete mapped/unmapped arguments semantics remain tracked by #166.
 
-Public Ast/Auto cases live in `tests/parameter_environments.rs`. The recorded
-source passes the full-corpus regression gate, whole-library security and hosted
-toolchain checks; native Boa speed qualification remains pending. The eight local
-integration tests pass strict Miri. The implementation does not establish complete eval, generator or
+Public Ast/Auto cases live in `tests/parameter_environments.rs`. The earlier
+source `88dd92e` passes the full-corpus regression gate, whole-library security
+and hosted toolchain checks. Optimized source `3c437b9` needs its own complete
+qualification; native Boa speed qualification remains pending. The earlier eight
+integration tests pass strict Miri, as do the two new supplied-default tests on
+the optimized source. The implementation does not establish complete eval, generator or
 async semantics.
 
 Reference: [ECMA-262 2026 FunctionDeclarationInstantiation](https://tc39.es/ecma262/2026/multipage/ordinary-and-exotic-objects-behaviours.html#sec-functiondeclarationinstantiation).
@@ -93,6 +95,28 @@ Nayuta v0.3.3 was rechecked as the latest release and scanned the three relevant
 Rust files, reporting 41 syntactic loop candidates without parser errors. These
 candidates include tests and do not measure CPU time. No reproducible Nayuta
 defect was found. Hosted two-machine results remain separate.
+
+The optimized call path retains the original AST and metadata, and prepares a
+verified ordinary template only for normal functions with identifier/default
+parameters and no arguments/eval observers. At call time every defaulted
+parameter must receive a non-undefined argument; otherwise the complete original
+parameter/body-environment path executes. No initializer or parameter-created
+closure executes on an accepted call. Missing plain parameters still receive
+undefined. Patterns, rest, async, generators and methods retain their prior path.
+Tests cover effects, falsy supplied values, missing/undefined defaults, escaping
+closures, arguments, Function.length and constructor new.target.
+
+`supplied-defaults-arm-v1/verify.mjs` retains all eight inputs and their outcomes,
+1,036 successful native tests (26 ignored), Clippy, two exact strict Miri results,
+all 85 compiler-input hashes and all integration-test source hashes. Var-copy and
+constructor each beat the explicitly corrected pinned Boa in all three ARM
+pairs; the other six do not qualify. Relative to the preceding fused-cell source,
+six pairs are faster beyond threshold and 18 remain within noise. A completed
+same-binary control is retained as variability evidence. The fused-cell source
+alone reduced var-copy whole-process instructions from 246,701,156 to 232,268,442,
+while all its native before/after pairs remained within noise. These local results
+do not qualify all eight inputs, the inherited 70 cases, whole-corpus regression
+preservation or whole-library security for the optimized source.
 
 The same runtime at recorded commit `3ac5a5f` completes all 100,211 Test262
 variants: 38,801 pass, 52,823 fail, 18 skip and 8,569 timeout, with no missing

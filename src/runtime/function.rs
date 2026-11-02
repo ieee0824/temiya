@@ -777,21 +777,26 @@ fn call_function(
     // parameter-created closures. With arguments/eval excluded, the ordinary
     // verified template owns equivalent body cells. Guard before any effects;
     // every other call retains full parameter/body environment instantiation.
-    let template = closure.code.compiled.clone().or_else(|| {
-        closure
-            .code
-            .supplied_defaults
-            .as_ref()
-            .and_then(|plan| plan.for_arguments(arguments))
-    });
-    if let Some(template) = template {
+    let invocation = if let Some(template) = &closure.code.compiled {
+        Some((template.clone(), Cow::Borrowed(arguments)))
+    } else if let Some(plan) = &closure.code.supplied_defaults {
+        plan.for_arguments(arguments)
+            .map(|template| {
+                plan.arguments(&closure.realm, arguments)
+                    .map(|args| (template, args))
+            })
+            .transpose()?
+    } else {
+        None
+    };
+    if let Some((template, passed)) = invocation {
         return super::bytecode_function::execute_template(
             template,
             closure.realm.clone(),
             closure.environment.clone(),
             function,
             this_argument,
-            arguments,
+            &passed,
             new_target,
         );
     }

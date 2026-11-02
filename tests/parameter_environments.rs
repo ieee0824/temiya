@@ -7,7 +7,10 @@ fn check(source: &str) {
         let script = engine.compile(&realm, source).unwrap();
         assert!(
             matches!(
-                engine.evaluate(&script).unwrap().value(),
+                engine
+                    .evaluate(&script)
+                    .unwrap_or_else(|error| panic!("{backend:?}: {source}: {error:?}"))
+                    .value(),
                 Value::Boolean(true)
             ),
             "{backend:?}: {source}"
@@ -157,4 +160,21 @@ fn prepared_body_keeps_function_context_and_parameter_closures() {
     ] {
         check(source);
     }
+}
+
+#[test]
+fn rest_arrays_preserve_special_values_and_descriptor_transitions() {
+    check(
+        "function f(...items){return items;}let o={},s=Symbol('s');let a=f(-0,NaN,Infinity,-Infinity);let b=f(undefined,null,true,'text',s,123n,o);1/a[0]===-Infinity&&Number.isNaN(a[1])&&a[2]===Infinity&&a[3]===-Infinity&&b.length===7&&b[0]===undefined&&b[1]===null&&b[2]===true&&b[3]==='text'&&b[4]===s&&b[5]===123n&&b[6]===o&&Object.getPrototypeOf(b)===Array.prototype;",
+    );
+    check(
+        "function f(...items){return items;}let a=f(1,2,3);let d=Object.getOwnPropertyDescriptor(a,'0'),l=Object.getOwnPropertyDescriptor(a,'length');let initial=d.value===1&&d.writable&&d.enumerable&&d.configurable&&l.value===3&&l.writable&&!l.enumerable&&!l.configurable;a[1]={value:42};delete a[0];Object.defineProperty(a,'2',{get(){return 20;},configurable:false});a.length=0;let keys=Reflect.ownKeys(a);initial&&a.length===3&&!(0 in a)&&a[1].value===42&&a[2]===20&&keys.length===3&&keys[0]==='1'&&keys[1]==='2'&&keys[2]==='length';",
+    );
+}
+
+#[test]
+fn rest_materialization_is_shared_by_fallback_arrows_and_generators() {
+    check(
+        "let arrow=(...items)=>items;function f(value=1,...items){return [arguments[0],items];}function* g(...items){yield items;}let a=arrow(1,2),b=f(undefined,3,4),c=g(5,6).next().value;Array.isArray(a)&&a.length===2&&a[1]===2&&b[0]===undefined&&b[1].length===2&&b[1][0]===3&&c.length===2&&c[1]===6&&arrow()!==arrow();",
+    );
 }

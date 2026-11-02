@@ -14,8 +14,9 @@ complete mapped/unmapped arguments semantics remain tracked by #166.
 
 Public Ast/Auto cases live in `tests/parameter_environments.rs`. The earlier
 source `88dd92e` passes the full-corpus regression gate, whole-library security
-and hosted toolchain checks. Optimized source `3c437b9` needs its own complete
-qualification; native Boa speed qualification remains pending. The earlier eight
+and hosted toolchain checks. Source `3c437b9` also preserves every preceding
+pass in the complete corpus. Current lexical-read source `c12c6f7` needs its own
+complete qualification; native Boa speed qualification remains pending. The earlier eight
 integration tests pass strict Miri, as do the two new supplied-default tests on
 the optimized source. The implementation does not establish complete eval, generator or
 async semantics.
@@ -117,6 +118,37 @@ alone reduced var-copy whole-process instructions from 246,701,156 to 232,268,44
 while all its native before/after pairs remained within noise. These local results
 do not qualify all eight inputs, the inherited 70 cases, whole-corpus regression
 preservation or whole-library security for the optimized source.
+
+`full-supplied-defaults-v1` independently replays all 100,211 outcomes on source
+`1c4e26f` (identical compiler inputs to `3c437b9`). All 38,801 preceding passes
+remain passes with zero regressions or new passes. Its completed security run is
+retained in `security-supplied-defaults-v1`: all 179 enumerated strict Miri tests
+pass, while ASan aborts after 991 successful tests on a finite harness-ordering
+test's 200 ms timeout. The security capture remains unqualified. The finite test
+now uses the same 1,500 ms budget as existing instrumented completion tests,
+retaining its exact completion/HarnessError assertions. The separate 200 ms
+incomplete/nonreturning deadline tests are unchanged. `asan-lexical-read-v1`
+replays the subsequent complete 1,039-test ASan-only success on `e4362bb`.
+
+`hosted-pre-optimization-v1` retains all 84 comparison reports from both
+unfiltered hosted jobs on source `be9edc6`. Both hosts fail the eight new
+parameter workload gates; copy 1 also fails inherited object-binding-parameters.
+These adverse observations are integrity-checked and cannot qualify later code.
+
+For zero-parameter, synchronous expression arrows returning an identifier,
+source `c12c6f7` resolves the captured environment afresh on every call. It adds
+no activation bindings or this value. Live updates, object-environment getters,
+outer arguments, TDZ/missing-name errors and captured objects across GC retain
+their ordinary lookup behavior. Tests prove repeated primitive reads allocate
+no empty managed activation records. `lexical-read-arm-v1` retains 1,040 native
+passes (26 ignored), Clippy, three public strict Miri tests and the strict Miri
+allocation test. The same default-closure whole-process Callgrind input decreases
+from 538,234,647 to 494,523,211 instructions in one capture per source. Native
+before/after has one faster pair and 23 noise outcomes; identical-binary control
+has 24 noise outcomes. Var-copy qualifies two of three local Boa pairs and
+constructor three; the other six still do not qualify. Every unfavorable pair is
+preserved. Complete current-library Miri, current corpus and both-host native
+qualification remain required before merging.
 
 The same runtime at recorded commit `3ac5a5f` completes all 100,211 Test262
 variants: 38,801 pass, 52,823 fail, 18 skip and 8,569 timeout, with no missing

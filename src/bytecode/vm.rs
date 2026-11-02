@@ -50,6 +50,31 @@ impl VirtualMachine {
         Self::run::<false>(bytecode, Some(realm), Some(frame), false)
     }
 
+    // Parameter expressions retain their Function environment, while body var
+    // declarations use a separate Declarative child. The internal prepared-body
+    // compiler may execute in either record; public function-frame execution
+    // continues to require a Function record. Both paths retain real cells and
+    // disable private-activation optimizations.
+    pub(crate) fn execute_in_prepared_body(
+        bytecode: &VerifiedBytecode,
+        realm: &Realm,
+        frame: &Environment,
+    ) -> RuntimeResult<Completion> {
+        if frame.kind() == EnvironmentKind::Function {
+            return Self::execute_in_function(bytecode, realm, frame);
+        }
+        if frame.kind() != EnvironmentKind::Declarative
+            || !frame
+                .outer()
+                .is_some_and(|outer| outer.kind() == EnvironmentKind::Function)
+        {
+            return Err(RuntimeError::type_error(
+                "prepared body requires its parameter frame",
+            ));
+        }
+        Self::run::<false>(bytecode, Some(realm), Some(frame), false)
+    }
+
     // This entry never treats the captured outer environment as a private
     // activation: scalar-local clearing and loop-cell reuse remain disabled.
     pub(crate) fn execute_without_own_frame(

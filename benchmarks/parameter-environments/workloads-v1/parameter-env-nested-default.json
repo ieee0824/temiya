@@ -1,0 +1,7 @@
+{
+  "name": "parameter-env-nested-default",
+  "setup": "let outer=0;function read({value,read=()=>outer}){var outer=0;if(value!==read())throw 42;return value;}function bench(n){let total=0;for(let i=1;i<=n;i++){outer=i;total+=read({value:i});}return total;}",
+  "invocation": "bench(10000);",
+  "iterations": 10000,
+  "expected": 50005000
+}

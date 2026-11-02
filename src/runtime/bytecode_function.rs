@@ -258,6 +258,15 @@ impl PreparedBodyPlan {
                 Instruction::LoadBinding { scope: 0, slot } => {
                     PreparedBodyOp::Read(root.bindings.get(slot as usize)?.name.clone())
                 }
+                Instruction::LoadName(index) | Instruction::GetName { name: index, .. } => {
+                    let Constant::String(name) = &body.constants[index as usize] else {
+                        return None;
+                    };
+                    if !parameters.contains(name) {
+                        return None;
+                    }
+                    PreparedBodyOp::Read(name.clone())
+                }
                 Instruction::LoadConstant(index) => {
                     let value = match &body.constants[index as usize] {
                         Constant::Undefined => Value::Undefined,
@@ -308,7 +317,7 @@ impl PreparedBodyPlan {
             match operation {
                 PreparedBodyOp::Scope => {}
                 PreparedBodyOp::Read(name) => {
-                    values[len] = frame.get_binding_value(name, true)?;
+                    values[len] = frame.get_identifier_value(name, true)?;
                     len += 1;
                 }
                 PreparedBodyOp::Primitive(value) => {

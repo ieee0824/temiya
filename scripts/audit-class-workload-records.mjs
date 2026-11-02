@@ -1,3 +1,4 @@
+import {verifyParameterCorrectionReceipt} from './omoikane-parameter-correction.mjs';
 // Integrity checks preserve slow/noisy results; they do not establish speedup.
 import fs from 'node:fs';
 import assert from 'node:assert/strict';
@@ -14,9 +15,10 @@ const privateElements = args[0] === '--elements';
 const iterators = args[0] === '--iterators';
 const arrayBindings = args[0] === '--bindings';
 const assignments = args[0] === '--assignments';
+const parameters = args[0] === '--parameters';
 const objectBindings = args[0] === '--object-bindings';
-if (derived || superProperties || instanceFields || staticElements || privateFields || privateElements || iterators || arrayBindings || objectBindings || assignments) args.shift();
-const {classFixtureVersion, classManifestSha256, classReferenceRevision, classWorkloads} = assignments ? await import('./assignment-benchmark-reference.mjs') : objectBindings ? await import('./object-binding-benchmark-reference.mjs') : arrayBindings ? await import('./array-binding-benchmark-reference.mjs') : iterators ? await import('./iterator-benchmark-reference.mjs') : privateElements ? await import('./private-element-benchmark-reference.mjs') : privateFields ? await import('./private-field-benchmark-reference.mjs') : staticElements ? await import('./static-class-benchmark-reference.mjs') : instanceFields ? await import('./instance-field-benchmark-reference.mjs') : superProperties ? await import('./super-property-benchmark-reference.mjs') : derived
+if (derived || superProperties || instanceFields || staticElements || privateFields || privateElements || iterators || arrayBindings || objectBindings || assignments || parameters) args.shift();
+const {classFixtureVersion, classManifestSha256, classReferenceRevision, classWorkloads} = parameters ? await import('./parameter-benchmark-reference.mjs') : assignments ? await import('./assignment-benchmark-reference.mjs') : objectBindings ? await import('./object-binding-benchmark-reference.mjs') : arrayBindings ? await import('./array-binding-benchmark-reference.mjs') : iterators ? await import('./iterator-benchmark-reference.mjs') : privateElements ? await import('./private-element-benchmark-reference.mjs') : privateFields ? await import('./private-field-benchmark-reference.mjs') : staticElements ? await import('./static-class-benchmark-reference.mjs') : instanceFields ? await import('./instance-field-benchmark-reference.mjs') : superProperties ? await import('./super-property-benchmark-reference.mjs') : derived
   ? await import('./derived-class-benchmark-reference.mjs') : baseClassSuite;
 assert(args.length > 0, 'provide authored class comparison reports');
 const sha = b => createHash('sha256').update(b).digest('hex');
@@ -26,9 +28,9 @@ const reports = [];
 for (const file of args) {
   const bytes = fs.readFileSync(file), r = JSON.parse(bytes);
   const before = r.comparison_kind === 'Temiya class before/after or control';
-  assert(before || r.comparison_kind === 'Temiya class versus actual Boa');
+  assert(before || r.comparison_kind === (parameters ? 'Temiya parameters versus corrected pinned Boa' : 'Temiya class versus actual Boa'));
   assert.equal(sha(JSON.stringify(r.manifest, null, 2) + '\n'), classManifestSha256);
-  assert.equal(r.manifest.fixture_kind, assignments ? 'authored-destructuring-assignment' : objectBindings ? 'authored-object-binding' : arrayBindings ? 'authored-array-binding' : iterators ? 'authored-sync-iterator-operations' : privateElements ? 'authored-private-class-elements' : privateFields ? 'authored-private-instance-fields' : staticElements ? 'authored-static-class-elements' : instanceFields ? 'authored-instance-fields' : superProperties ? 'authored-super-properties' : derived ? 'authored-derived-classes' : 'authored-base-classes');
+  assert.equal(r.manifest.fixture_kind, parameters ? 'authored-parameter-environments' : assignments ? 'authored-destructuring-assignment' : objectBindings ? 'authored-object-binding' : arrayBindings ? 'authored-array-binding' : iterators ? 'authored-sync-iterator-operations' : privateElements ? 'authored-private-class-elements' : privateFields ? 'authored-private-instance-fields' : staticElements ? 'authored-static-class-elements' : instanceFields ? 'authored-instance-fields' : superProperties ? 'authored-super-properties' : derived ? 'authored-derived-classes' : 'authored-base-classes');
   assert.equal(r.manifest.fixture_version, classFixtureVersion);
   assert.equal(r.manifest.reference_engine_revision, classReferenceRevision);
   assert.deepEqual(r.capture_errors, []);
@@ -46,7 +48,7 @@ for (const file of args) {
   for (const worker of r.workers) {
     const info = worker.build ?? worker;
     assert.equal(identities.get(worker.executable), info.executable_sha256);
-    if (worker.build) {assert.equal(info.omoikane_revision, classReferenceRevision); assert.equal(info.checkout_clean, true);}
+    if (worker.build) {assert.equal(info.omoikane_revision, classReferenceRevision); if(parameters) verifyParameterCorrectionReceipt(info); else assert.equal(info.checkout_clean, true);}
   }
   const counts = {};
   for (const [index, expected] of classWorkloads.entries()) {

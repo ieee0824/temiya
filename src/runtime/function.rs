@@ -1,8 +1,10 @@
 //! ECMAScript function objects, calls, constructors, and parameter binding.
 
 mod constructor_assignments;
+mod parameter_environment;
 mod private_expression;
 mod super_call;
+mod supplied_defaults;
 
 use super::{
     environment::StoredEnvironment,
@@ -112,8 +114,10 @@ pub(super) struct FunctionCode {
     ast: Function,
     kind: FunctionKind,
     compiled: Option<Rc<FunctionTemplate>>,
+    supplied_defaults: Option<supplied_defaults::Plan>,
     compiled_body: Option<crate::bytecode::VerifiedBytecode>,
     prepared_body: Option<super::bytecode_function::PreparedBodyPlan>,
+    lexical_name: Option<JsString>,
     lexical_property: Option<PropertyKey>,
     private_expression: Option<private_expression::Plan>,
     constructor_assignments: Option<constructor_assignments::Plan>,
@@ -121,6 +125,7 @@ pub(super) struct FunctionCode {
     may_observe_new_target: bool,
     parameter_binds_arguments: bool,
     parameter_names: Option<Box<[JsString]>>,
+    parameter_environment: Option<parameter_environment::Plan>,
     delegated_parameters: Option<Box<[usize]>>,
     super_call: Option<super_call::Plan>,
     auto_functions: bool,
@@ -133,6 +138,17 @@ impl Deref for FunctionCode {
     }
 }
 impl FunctionCode {
+    pub(super) fn body_environment(&self, parameters: Environment) -> RuntimeResult<Environment> {
+        match &self.parameter_environment {
+            Some(plan) => plan.instantiate(&parameters),
+            None => Ok(parameters),
+        }
+    }
+
+    pub(super) fn needs_arguments_binding(&self) -> bool {
+        self.may_observe_arguments && !self.parameter_binds_arguments
+    }
+
     fn context(&self) -> Option<FunctionCache> {
         self.auto_functions
             .then(|| self.cache.upgrade().unwrap_or_default())
@@ -182,8 +198,9 @@ fn prepare_code(
     } else {
         None
     };
+    let parameter_environment = parameter_environment::Plan::prepare(code);
     let compiled_body = if cache.is_some() && compiled.is_none() && kind != FunctionKind::Arrow {
-        BytecodeCompiler::compile_prepared_function_body(code).ok()
+        BytecodeCompiler::compile_prepared_function_body(code, parameter_environment.is_some()).ok()
     } else {
         None
     };
@@ -199,9 +216,19 @@ fn prepare_code(
     let prepared = Rc::new(FunctionCode {
         ast: code.clone(),
         kind,
+        supplied_defaults: if cache.is_some() && compiled.is_none() {
+            supplied_defaults::Plan::prepare(code, kind)
+        } else {
+            None
+        },
         compiled_body,
         prepared_body,
         compiled,
+        lexical_name: if cache.is_some() {
+            lexical_name(code, kind)
+        } else {
+            None
+        },
         private_expression: cache
             .as_ref()
             .and_then(|_| private_expression::prepare(code, kind)),
@@ -215,6 +242,7 @@ fn prepare_code(
         } else {
             None
         },
+        parameter_environment,
         may_observe_arguments: may_observe_arguments(code),
         may_observe_new_target: kind == FunctionKind::Arrow && may_observe_new_target(code),
         parameter_binds_arguments: code.parameters.iter().any(|parameter| {
@@ -286,6 +314,23 @@ fn lexical_property(code: &Function, kind: FunctionKind) -> Option<PropertyKey> 
         return None;
     };
     matches!(object.kind, ExprKind::This).then(|| PropertyKey::from(name.as_str()))
+}
+
+fn lexical_name(code: &Function, kind: FunctionKind) -> Option<JsString> {
+    if kind != FunctionKind::Arrow
+        || code.asynchronous
+        || code.generator
+        || !code.parameters.is_empty()
+    {
+        return None;
+    }
+    let FunctionBody::Expression(expression) = &code.body else {
+        return None;
+    };
+    let ExprKind::Identifier(name) = &expression.kind else {
+        return None;
+    };
+    Some(name.as_str().into())
 }
 
 // A sole super(p, q, ...) with simple parameters cannot observe or retain its
@@ -486,6 +531,17 @@ impl StoredFunctionClosure {
                     .map_err(|error| realm.bind_exception(error));
             }
             // Primitive/null/undefined receivers retain normal coercion/errors.
+        }
+        if let Some(name) = &self.code.lexical_name {
+            let realm = self.realm.load(owner)?;
+            // An empty lexical activation adds no bindings or this value.
+            // Resolve afresh through the captured environment on every call:
+            // live cells, with/getters, TDZ and errors keep their ordinary path.
+            return self
+                .environment
+                .load(owner)
+                .and_then(|environment| environment.get_identifier_value(name, self.code.strict))
+                .map_err(|error| realm.bind_exception(error));
         }
         if let Some(template) = &self.code.compiled {
             return super::bytecode_function::execute_stored_template(
@@ -717,9 +773,20 @@ fn call_function(
     arguments: &[Value],
     new_target: Option<Object>,
 ) -> RuntimeResult<Value> {
-    if let Some(template) = &closure.code.compiled {
+    // Supplied non-undefined defaults have no parameter-expression effects or
+    // parameter-created closures. With arguments/eval excluded, the ordinary
+    // verified template owns equivalent body cells. Guard before any effects;
+    // every other call retains full parameter/body environment instantiation.
+    let template = closure.code.compiled.clone().or_else(|| {
+        closure
+            .code
+            .supplied_defaults
+            .as_ref()
+            .and_then(|plan| plan.for_arguments(arguments))
+    });
+    if let Some(template) = template {
         return super::bytecode_function::execute_template(
-            template.clone(),
+            template,
             closure.realm.clone(),
             closure.environment.clone(),
             function,
@@ -801,11 +868,12 @@ fn call_function(
         closure.code.parameter_names.is_some(),
     )?;
 
+    let environment = closure.code.body_environment(environment)?;
     if let Some(body) = &closure.code.prepared_body {
         return body.execute(&closure.realm, &environment);
     }
     if let Some(body) = &closure.code.compiled_body {
-        return match crate::bytecode::VirtualMachine::execute_in_function(
+        return match crate::bytecode::VirtualMachine::execute_in_prepared_body(
             body,
             &closure.realm,
             &environment,
@@ -943,6 +1011,7 @@ fn construct_derived(
         closure.code.parameter_names.as_deref(),
         arguments,
     )?;
+    let body_environment = closure.code.body_environment(environment.clone())?;
     let FunctionBody::Block(body) = &closure.code.body else {
         return Err(RuntimeError::internal_error(
             "derived constructor requires a block body",
@@ -950,8 +1019,8 @@ fn construct_derived(
     };
     let statements = StatementEvaluator::with_environments(
         closure.realm.clone(),
-        environment.clone(),
-        environment.clone(),
+        body_environment.clone(),
+        body_environment,
         Value::Undefined,
         true,
     )
@@ -1481,5 +1550,45 @@ mod prepared_body_tests {
         );
         assert!(code.compiled.is_none());
         assert!(code.compiled_body.is_some());
+    }
+}
+
+#[cfg(test)]
+mod lexical_read_tests {
+    use crate::{Engine, embedding::ScriptBackend, runtime::Value};
+    #[test]
+    fn prepared_lexical_reads_do_not_allocate_empty_activations() {
+        let engine = Engine::builder()
+            .script_backend(ScriptBackend::Auto)
+            .build();
+        let realm = engine.create_realm();
+        let script = engine
+            .compile(
+                &realm,
+                "let answer=42;function make(read=()=>answer){return read;}make();",
+            )
+            .unwrap();
+        let value = engine.evaluate(&script).unwrap();
+        let Value::Object(function) = value.value() else {
+            panic!("arrow")
+        };
+        engine
+            .allocation_context()
+            .set_allocation_collection_interval(usize::MAX);
+        let before = engine.allocation_context().diagnostics();
+        for _ in 0..8 {
+            assert!(
+                function
+                    .call(Value::Undefined, &[])
+                    .unwrap()
+                    .same_value(&Value::Number(42.0))
+            );
+        }
+        let after = engine.allocation_context().diagnostics();
+        assert_eq!(after.collections, before.collections);
+        assert_eq!(
+            after.live, before.live,
+            "zero-binding lexical activations are unobservable"
+        );
     }
 }

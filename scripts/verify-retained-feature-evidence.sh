@@ -123,6 +123,25 @@ case "${1:-}" in
     node benchmarks/destructuring-assignment/verify-oracles.mjs
     ;;
   objects)
+    node benchmarks/parameter-environments/lexical-read-arm-v1/verify.mjs
+    node benchmarks/parameter-environments/asan-lexical-read-v1/verify.mjs
+    node benchmarks/parameter-environments/security-supplied-defaults-v1/verify.mjs
+    node benchmarks/parameter-environments/full-supplied-defaults-v1/verify.mjs
+    node benchmarks/parameter-environments/hosted-pre-optimization-v1/verify.mjs
+    node benchmarks/parameter-environments/supplied-defaults-arm-v1/verify.mjs
+    node benchmarks/parameter-environments/corrected-reference-arm-initial-v1/verify.mjs
+    node benchmarks/parameter-environments/reference-correction-v1/verify.mjs
+    node benchmarks/parameter-environments/security-current-main-v1/verify.mjs
+    node benchmarks/parameter-environments/full-current-main-v1/verify.mjs
+    node benchmarks/parameter-environments/integrated-correctness-v1/verify.mjs
+    node benchmarks/parameter-environments/current-base-correctness-v1/verify.mjs
+    node benchmarks/parameter-environments/reference-diagnostics-v1/verify.mjs
+    node benchmarks/parameter-environments/upstream-boa-diagnostics-v1/verify.mjs
+    node benchmarks/parameter-environments/reference-patch-diagnostics-v1/verify.mjs
+    node benchmarks/parameter-environments/large-preparation-v1/verify.mjs
+    node benchmarks/parameter-environments/verify-selection.mjs
+    node benchmarks/parameter-environments/oracles-initial-v1/verify.mjs
+    node benchmarks/parameter-environments/correctness-v1/verify.mjs
     node benchmarks/object-binding/verify-qualified.mjs
     node benchmarks/object-binding/verify-bytecode-experiments.mjs
     node benchmarks/object-binding/full-single-catch-v1/verify.mjs

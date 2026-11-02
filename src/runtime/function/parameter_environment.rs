@@ -57,6 +57,22 @@ impl Plan {
         })
     }
     pub(super) fn instantiate(&self, parameters: &Environment) -> RuntimeResult<Environment> {
+        // Declaration preparation proves the name is unique. Publish its
+        // copied value with the new record, tracing the initial edge at
+        // allocation instead of creating and then mutating an empty record.
+        if let [(name, copy)] = &*self.vars {
+            let value = if *copy && parameters.has_binding(name)? {
+                parameters.get_binding_value(name, false)?
+            } else {
+                Value::Undefined
+            };
+            return Environment::declarative_with_verified_initial_value(
+                parameters.clone(),
+                name.clone(),
+                true,
+                value,
+            );
+        }
         let body = Environment::declarative(parameters.clone());
         for (name, copy) in &self.vars {
             let value = if *copy && parameters.has_binding(name)? {
@@ -79,5 +95,52 @@ fn contains_expression(binding: &Expr) -> bool {
             .iter()
             .any(|p| p.computed || contains_expression(p.value.as_ref().unwrap_or(&p.key))),
         _ => false,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::runtime::{Object, Runtime};
+
+    #[test]
+    fn copied_single_body_cell_survives_allocation_collection_and_stays_independent() {
+        let runtime = Runtime::new();
+        let parameters = Environment::declarative_in(&runtime);
+        let name = JsString::from("value");
+        let object = Object::new_in(&runtime);
+        let weak = object.downgrade();
+        parameters
+            .create_mutable_binding(name.clone(), false)
+            .unwrap();
+        parameters
+            .initialize_binding(&name, Value::Object(object))
+            .unwrap();
+        let plan = Plan {
+            vars: vec![(name.clone(), true)].into_boxed_slice(),
+        };
+        runtime.set_allocation_collection_interval(1);
+        let body = plan.instantiate(&parameters).unwrap();
+        runtime.collect_garbage().unwrap();
+        assert!(matches!(
+            body.get_binding_value(&name, false).unwrap(),
+            Value::Object(_)
+        ));
+        body.set_mutable_binding(&name, Value::Number(42.0), false)
+            .unwrap();
+        assert!(matches!(
+            parameters.get_binding_value(&name, false).unwrap(),
+            Value::Object(_)
+        ));
+        assert!(
+            body.get_binding_value(&name, false)
+                .unwrap()
+                .same_value(&Value::Number(42.0))
+        );
+        runtime.verify_migration_barriers().unwrap();
+        drop(body);
+        drop(parameters);
+        assert_eq!(runtime.collect_garbage().unwrap().retained, 0);
+        assert!(weak.upgrade().is_none());
     }
 }

@@ -4,6 +4,7 @@ mod constructor_assignments;
 mod parameter_environment;
 mod private_expression;
 mod super_call;
+mod supplied_defaults;
 
 use super::{
     environment::StoredEnvironment,
@@ -113,6 +114,7 @@ pub(super) struct FunctionCode {
     ast: Function,
     kind: FunctionKind,
     compiled: Option<Rc<FunctionTemplate>>,
+    supplied_defaults: Option<supplied_defaults::Plan>,
     compiled_body: Option<crate::bytecode::VerifiedBytecode>,
     prepared_body: Option<super::bytecode_function::PreparedBodyPlan>,
     lexical_property: Option<PropertyKey>,
@@ -213,6 +215,11 @@ fn prepare_code(
     let prepared = Rc::new(FunctionCode {
         ast: code.clone(),
         kind,
+        supplied_defaults: if cache.is_some() && compiled.is_none() {
+            supplied_defaults::Plan::prepare(code, kind)
+        } else {
+            None
+        },
         compiled_body,
         prepared_body,
         compiled,
@@ -732,9 +739,20 @@ fn call_function(
     arguments: &[Value],
     new_target: Option<Object>,
 ) -> RuntimeResult<Value> {
-    if let Some(template) = &closure.code.compiled {
+    // Supplied non-undefined defaults have no parameter-expression effects or
+    // parameter-created closures. With arguments/eval excluded, the ordinary
+    // verified template owns equivalent body cells. Guard before any effects;
+    // every other call retains full parameter/body environment instantiation.
+    let template = closure.code.compiled.clone().or_else(|| {
+        closure
+            .code
+            .supplied_defaults
+            .as_ref()
+            .and_then(|plan| plan.for_arguments(arguments))
+    });
+    if let Some(template) = template {
         return super::bytecode_function::execute_template(
-            template.clone(),
+            template,
             closure.realm.clone(),
             closure.environment.clone(),
             function,

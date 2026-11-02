@@ -21,6 +21,24 @@ fn defaults_do_not_capture_body_vars_and_redeclared_parameters_are_copied() {
         "let x=42;function f(a=()=>x){var x=1;return a();}function g(a=1,b=()=>a){var a=42;return b();}f()===42&&g()===1;",
     );
 }
+
+#[test]
+fn supplied_defaults_skip_effects_but_undefined_and_missing_arguments_run_them() {
+    check(
+        "let calls=0;function f(value=++calls){var value;return value;}f(20)===20&&calls===0&&f(undefined)===1&&f()===2&&f(null)===null&&f(false)===false&&f('')===''&&calls===2&&f.length===0;",
+    );
+    check(
+        "function f(value=1,get=()=>value){var value=42;return get();}function g(value=1){var value;return ()=>value;}f(20,()=>22)===22&&f(20)===20&&f(undefined)===1&&g(42)()===42;",
+    );
+}
+
+#[test]
+fn supplied_defaults_keep_arguments_and_constructor_context() {
+    check("function f(value=1){var value=42;return arguments[0];}f(20)===20&&f()===undefined;");
+    check(
+        "let calls=0;function Item(value=++calls){var value;this.value=value;this.target=new.target;}let a=new Item(20);let b=new Item(undefined);a.value===20&&a.target===Item&&b.value===1&&b.target===Item&&calls===1&&Item.length===0;",
+    );
+}
 #[test]
 fn arguments_in_default_closures_survive_body_redeclaration() {
     check("function f(a,b=()=>arguments[0]){var arguments={0:42};return b();}f(20)===20;");

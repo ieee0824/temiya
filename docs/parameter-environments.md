@@ -244,3 +244,23 @@ pairs and one slower pair. Neither establishes a native improvement claim.
 Against explicitly corrected pinned Boa, var-copy and constructor pass all three
 local pairs; rest loses all three at ratios 1.186, 1.212 and 1.212. The six other
 workloads remain unqualified, as does the complete two-host native requirement.
+
+Source `b01f8d1` extends prepared-body execution to real-cell stores and complete
+zero-argument calls. New body-var bindings are accepted only when the separate
+parameter/body instantiation plan has already created them; otherwise only
+existing parameter cells qualify. Calls use the ordinary undefined receiver and
+shared Object call path, preserving Proxy apply, errors and GC roots. A complete
+four-instruction call is proved before effects, retains its original PC layout,
+and rejects any branch entering its interior. Unsupported operations anywhere
+still select the full VM before execution.
+
+`body-calls-arm-v1/verify.mjs` retains 1,054 native passes (26 ignored), three
+public strict Miri passes, Clippy/release and complete source/test hashes. It
+covers independent copied cells, callback mutation, default closures, receiver
+and Proxy behavior, exceptions, fallback order and GC during calls. The fixed
+computed-key input drops from 335,808,224 to 318,888,177 whole-process instructions.
+Native before/after has 22 noisy pairs, one faster pair and one slower pair;
+same-binary has 24 noisy pairs. Against corrected pinned Boa, var-copy qualifies
+locally in two pairs and constructor in three, with all other six still failing.
+All adverse/noisy results remain recorded. No complete native speed qualification
+or current-source full-corpus/security qualification is claimed.

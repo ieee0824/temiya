@@ -12,9 +12,10 @@ retain their shared environment path, including rest and plain destructuring.
 The arguments binding used by defaults is kept outside body var redeclarations;
 complete mapped/unmapped arguments semantics remain tracked by #166.
 
-Public Ast/Auto cases live in `tests/parameter_environments.rs`. Complete corpus,
-whole-library security, hosted toolchain checks and native Boa speed qualification
-remain pending; the eight local integration tests pass strict Miri. The implementation does not establish complete eval, generator or
+Public Ast/Auto cases live in `tests/parameter_environments.rs`. The recorded
+source passes the full-corpus regression gate, whole-library security and hosted
+toolchain checks; native Boa speed qualification remains pending. The eight local
+integration tests pass strict Miri. The implementation does not establish complete eval, generator or
 async semantics.
 
 Reference: [ECMA-262 2026 FunctionDeclarationInstantiation](https://tc39.es/ecma262/2026/multipage/ordinary-and-exotic-objects-behaviours.html#sec-functiondeclarationinstantiation).
@@ -79,8 +80,18 @@ and all eight parameter integration tests under strict Miri. All eight unchanged
 10,000-iteration inputs validate twice through its frozen worker. The later merge
 of main at `1dfa282` changes history only and preserves all 84 compiler inputs.
 `current-base-correctness-v1/verify.mjs` replays all logs, the eight inputs and
-all 84 compiler-input hashes. These local results do not qualify whole-corpus,
+all 84 compiler-input hashes. These local results alone do not qualify whole-corpus,
 whole-library safety or native Boa speed.
+
+The same runtime at recorded commit `3ac5a5f` completes all 100,211 Test262
+variants: 38,801 pass, 52,823 fail, 18 skip and 8,569 timeout, with no missing
+results. All 38,759 preceding passes remain passes and 42 additional variants
+pass. `full-current-main-v1/verify.mjs` independently replays both complete
+captures and compares every outcome. This establishes regression preservation,
+not complete language conformance. `security-current-main-v1/verify.mjs` checks
+all 19 hosted jobs, all 177 exact strict Miri library tests against the complete
+Miri enumeration, and 1,031 successful ASan tests. These records do not qualify
+native Boa speed.
 
 The separately retained `upstream-boa-diagnostics-v1` executes the same eight
 inputs and four minimal probes on clean upstream HEAD329e897 (workspace version

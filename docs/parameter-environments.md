@@ -285,3 +285,26 @@ within noise, and it still loses all three pairs against corrected pinned Boa
 (ratios 1.463, 1.482, 1.469). Across the full suite, before/after has 23 noisy
 pairs and one faster pair; same-binary has 24 noisy pairs. Native speed and
 current-source full-corpus/security qualification remain incomplete.
+
+Source `13524c4` retains a syntax-only child-code cache after its defining Script
+is released. Previously the expired weak cache made a fresh cache on each call;
+long-lived functions now reuse their own child definitions. Children keep weak
+back-pointers, and the owner is never inserted into its own child cache. A unit
+checks reuse and complete parent/cache/child release. No Realm, environment or
+runtime object is cached. Independent default arrows retain prepared child code
+directly, and named identifier-only arrows share fresh closure/metadata creation.
+Name/length flags, own-key order, prototype, fresh identity, call/bind behavior and
+nonconstructability remain covered against the ordinary Ast backend.
+
+`default-factory-arm-v1/verify.mjs` retains 1,059 native passes (26 ignored),
+Clippy/release, three public strict Miri passes plus five exact Miri tests for
+forced GC, cache release, suspended generator cells and async/default behavior,
+and every source/test hash. Fixed whole-process instruction counts decrease
+from 457,084,275 to 340,644,997 for default-closure and from 591,799,727 to
+488,304,350 for nested-default. Native before/after has nine faster pairs
+(default-closure, nested-default and async each 3/3), fourteen noisy pairs and
+one slower var-copy pair, which remains in the record. Same-binary has 24 noisy
+pairs. Against corrected pinned Boa, var-copy, constructor and async pass all
+three local pairs. Default-closure and nested-default are within noise in all
+three pairs; computed-key, rest and generator still lose all three. This is
+three of eight local gates, not complete two-host native qualification.

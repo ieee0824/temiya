@@ -197,3 +197,22 @@ within noise. It still loses all three corrected pinned Boa pairs. The remaining
 whole-process rest-copy Callgrind capture per source decreases from 374,319,709
 to 316,014,322 instructions. These results do not qualify the remaining six new
 inputs or the complete current-source 78-input comparison/corpus/security gates.
+
+Verified throw guards can now use the activation-free leaf executor when the
+complete body is one forward `if (...) throw ...` followed by `return`.
+All three expression fragments must qualify before any effect executes. Local
+writes, captures, `arguments`, `eval`, additional branches and unsupported calls
+retain the ordinary execution path. Literal string and unsigned integer property
+keys can use named-property reads within a fragment; dynamic coercions fall back.
+Getter/Proxy order, selected-tail exceptions and GC roots are covered by public
+Ast/Auto tests and four strict Miri tests. Native tests pass 1,048 cases (26 ignored).
+
+Source `e1e9000` diagnostics are retained in
+`benchmarks/parameter-environments/guarded-leaf-arm-v1`; replay its `verify.mjs`.
+The fixed rest input's whole-process Callgrind count fell from 316,014,322 to
+273,475,107 instructions. Local native comparisons do not establish a speed
+qualification: the rest before/after comparison has one faster pair and two noisy
+pairs, and the same-binary control also has one faster pair. Rest remains slower
+than corrected pinned Boa in two pairs and within noise in the third. All eight
+original inputs and unfavorable measurements remain in the record. Current-source
+full-corpus, complete security and two-host native qualification remain pending.

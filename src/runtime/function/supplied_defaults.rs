@@ -1,11 +1,19 @@
-//! A call-time guard proving that no parameter expression will execute.
+//! Guarded template entry when parameter cells cannot be observed.
 use super::*;
 
 #[derive(Debug)]
 pub(super) struct Plan {
     template: Rc<FunctionTemplate>,
-    defaults: Box<[usize]>,
+    defaults: Box<[Default]>,
     rest: Option<usize>,
+}
+
+#[derive(Debug)]
+struct Default {
+    index: usize,
+    // A zero-parameter expression arrow can bypass the parameter environment
+    // only when its sole name is absent from the entire parameter list.
+    outer_arrow: Option<(Rc<Expr>, JsString)>,
 }
 
 impl Plan {
@@ -18,17 +26,38 @@ impl Plan {
             return None;
         }
         let mut lowered = function.clone();
+        let names = function
+            .parameters
+            .iter()
+            .flat_map(crate::semantics::bound_names)
+            .map(|name| JsString::from(name.name.as_str()))
+            .collect::<Vec<_>>();
         let mut defaults = Vec::new();
         let mut rest = None;
         let parameter_count = lowered.parameters.len();
         for (index, parameter) in lowered.parameters.iter_mut().enumerate() {
             match &parameter.kind {
                 ExprKind::Identifier(_) => {}
-                ExprKind::Assignment { target, .. }
+                ExprKind::Assignment { target, value, .. }
                     if matches!(target.kind, ExprKind::Identifier(_)) =>
                 {
+                    let outer_arrow = match &value.kind {
+                        ExprKind::Arrow(arrow)
+                            if lexical_name(arrow, FunctionKind::Arrow).is_some_and(|name| {
+                                !names.contains(&name)
+                                    && name != JsString::from("arguments")
+                                    && name != JsString::from("eval")
+                            }) =>
+                        {
+                            let ExprKind::Identifier(name) = &target.kind else {
+                                unreachable!()
+                            };
+                            Some((Rc::new((**value).clone()), name.as_str().into()))
+                        }
+                        _ => None,
+                    };
                     *parameter = (**target).clone();
-                    defaults.push(index);
+                    defaults.push(Default { index, outer_arrow });
                 }
                 ExprKind::Spread(target)
                     if index + 1 == parameter_count
@@ -56,31 +85,65 @@ impl Plan {
 
     pub(super) fn arguments<'a>(
         &self,
-        realm: &Realm,
+        closure: &FunctionClosure,
         arguments: &'a [Value],
     ) -> RuntimeResult<Cow<'a, [Value]>> {
-        let Some(start) = self.rest else {
-            return Ok(Cow::Borrowed(arguments));
+        let mut passed = if let Some(start) = self.rest {
+            let mut values = Vec::with_capacity(start + 1);
+            values.extend(
+                (0..start).map(|index| arguments.get(index).cloned().unwrap_or(Value::Undefined)),
+            );
+            Cow::Owned(values)
+        } else {
+            Cow::Borrowed(arguments)
         };
-        // No parameter expression ran on an accepted call. Preserve the real,
-        // fresh rest-array identity and receiving Realm's intrinsic prototype.
-        let array = super::super::array_literal::from_values(
-            realm,
-            arguments.get(start..).unwrap_or_default(),
-        )?;
-        let mut passed = Vec::with_capacity(start + 1);
-        passed.extend((0..start).map(|i| arguments.get(i).cloned().unwrap_or(Value::Undefined)));
-        passed.push(Value::Object(array));
-        Ok(Cow::Owned(passed))
+        for default in &self.defaults {
+            if arguments
+                .get(default.index)
+                .is_none_or(|v| matches!(v, Value::Undefined))
+            {
+                let (expression, name) = default
+                    .outer_arrow
+                    .as_ref()
+                    .expect("complete parameter guard precedes initialization");
+                // This arrow neither reads nor captures any parameter cell or
+                // lexical call context. Named evaluation preserves its fresh
+                // identity, inferred name, original source and ordinary lookup.
+                let evaluator = ExpressionEvaluator::with_environment(
+                    closure.realm.clone(),
+                    closure.environment.clone(),
+                    Value::Undefined,
+                    closure.code.strict,
+                )
+                .with_function_cache(closure.code.context());
+                let value = evaluator.evaluate_named(expression, name)?;
+                let values = passed.to_mut();
+                if values.len() <= default.index {
+                    values.resize(default.index + 1, Value::Undefined);
+                }
+                values[default.index] = value;
+            }
+        }
+        if let Some(start) = self.rest {
+            let array = super::super::array_literal::from_values(
+                &closure.realm,
+                arguments.get(start..).unwrap_or_default(),
+            )?;
+            let values = passed.to_mut();
+            values.resize(start + 1, Value::Undefined);
+            values[start] = Value::Object(array);
+        }
+        Ok(passed)
     }
 
     pub(super) fn for_arguments(&self, arguments: &[Value]) -> Option<Rc<FunctionTemplate>> {
         self.defaults
             .iter()
-            .all(|&i| {
+            .all(|default| {
                 arguments
-                    .get(i)
+                    .get(default.index)
                     .is_some_and(|v| !matches!(v, Value::Undefined))
+                    || default.outer_arrow.is_some()
             })
             .then(|| self.template.clone())
     }
@@ -162,6 +225,24 @@ mod tests {
         assert!(plan.for_arguments(&[Value::Null]).is_some());
         assert!(plan.for_arguments(&[Value::Boolean(false)]).is_some());
         assert!(plan.for_arguments(&[Value::Undefined]).is_none());
+        let outer = function("function f(read=()=>outer){var outer=0;return read;}");
+        assert!(
+            Plan::prepare(&outer, FunctionKind::Normal)
+                .unwrap()
+                .for_arguments(&[])
+                .is_some()
+        );
+        for source in [
+            "function f(read=()=>read){return read;}",
+            "function f(read=()=>later,later=1){return read;}",
+            "function f(read=()=>rest,...rest){return read;}",
+            "function f(read=()=>this){return read;}",
+            "function f(read=()=>new.target){return read;}",
+            "function f(read=()=>outer,other=effect()){return read;}",
+        ] {
+            let plan = Plan::prepare(&function(source), FunctionKind::Normal).unwrap();
+            assert!(plan.for_arguments(&[]).is_none(), "{source}");
+        }
         assert!(plan.for_arguments(&[]).is_none());
         let rest = function("function f(a=1,...rest){return rest;}");
         let plan = Plan::prepare(&rest, FunctionKind::Normal).unwrap();
@@ -181,5 +262,50 @@ mod tests {
                 "{source}"
             );
         }
+    }
+
+    #[test]
+    fn outer_default_arrow_traces_enclosing_cells_through_allocation_and_realm_release() {
+        use crate::{Engine, embedding::ScriptBackend};
+        let engine = Engine::builder()
+            .script_backend(ScriptBackend::Auto)
+            .build();
+        let arrow =
+            {
+                let realm = engine.create_realm();
+                let script = engine.compile(&realm,
+                "let outer={answer:42};function f(read=()=>outer){var outer=20;return read;}f;"
+            ).unwrap();
+                let value = engine.evaluate(&script).unwrap();
+                let Value::Object(function) = value.value() else {
+                    panic!("function")
+                };
+                engine
+                    .allocation_context()
+                    .set_allocation_collection_interval(1);
+                let before = engine.allocation_context().diagnostics().collections;
+                let Value::Object(arrow) = function.call(Value::Undefined, &[]).unwrap() else {
+                    panic!("arrow")
+                };
+                assert!(engine.allocation_context().diagnostics().collections > before);
+                arrow
+            };
+        engine.collect_garbage().unwrap();
+        let Value::Object(object) = arrow.call(Value::Undefined, &[]).unwrap() else {
+            panic!("outer object")
+        };
+        assert!(
+            object
+                .get(&"answer".into())
+                .unwrap()
+                .same_value(&Value::Number(42.0))
+        );
+        engine
+            .allocation_context()
+            .verify_migration_barriers()
+            .unwrap();
+        drop(object);
+        drop(arrow);
+        assert_eq!(engine.collect_garbage().unwrap().retained, 0);
     }
 }

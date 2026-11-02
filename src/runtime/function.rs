@@ -777,16 +777,16 @@ fn call_function(
     arguments: &[Value],
     new_target: Option<Object>,
 ) -> RuntimeResult<Value> {
-    // Supplied non-undefined defaults have no parameter-expression effects or
-    // parameter-created closures. With arguments/eval excluded, the ordinary
-    // verified template owns equivalent body cells. Guard before any effects;
-    // every other call retains full parameter/body environment instantiation.
+    // Guard the complete header before effects. Supplied defaults are skipped;
+    // arrows whose only name is outside the complete parameter list can capture
+    // the enclosing environment directly. All other missing defaults retain full
+    // parameter/body environment instantiation and its real captured cells.
     let invocation = if let Some(template) = &closure.code.compiled {
         Some((template.clone(), Cow::Borrowed(arguments)))
     } else if let Some(plan) = &closure.code.supplied_defaults {
         plan.for_arguments(arguments)
             .map(|template| {
-                plan.arguments(&closure.realm, arguments)
+                plan.arguments(closure, arguments)
                     .map(|args| (template, args))
             })
             .transpose()?

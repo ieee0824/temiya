@@ -1,0 +1,24 @@
+import fs from 'node:fs';
+import cp from 'node:child_process';
+import crypto from 'node:crypto';
+import zlib from 'node:zlib';
+import assert from 'node:assert/strict';
+const dir=new URL('./',import.meta.url);
+const c=JSON.parse(fs.readFileSync(new URL('capture.json',dir)));
+const source=cp.execFileSync('git',['show',c.source+':tests/destructuring_assignment.rs'],{encoding:'utf8'});
+const names=[...source.matchAll(/#\[test\]\s*fn (\w+)/g)].map(m=>m[1]).sort();
+assert.equal(names.length,10);assert.deepEqual(c.tests,names);
+assert.equal(cp.execFileSync('git',['diff',c.initialSource,c.source,'--','src','Cargo.toml','Cargo.lock','build.rs'],{encoding:'utf8'}),'');
+const logs={};for(const [name,r] of Object.entries(c.logs)){const raw=zlib.gunzipSync(fs.readFileSync(new URL(r.file,dir)));assert.equal(crypto.createHash('sha256').update(raw).digest('hex'),r.sha256);logs[name]=raw.toString();}
+const passed=log=>[...log.matchAll(/^test (\w+) \.\.\. ok$/gm)].map(m=>m[1]);
+assert.deepEqual(passed(logs['miri-eight']+'\n'+logs['miri-gc']+'\n'+logs['miri-key']).sort(),names);
+assert.deepEqual(passed(logs['nine-tests']+'\n'+logs['native-key']).sort(),names);
+assert.match(logs['miri-eight'],/test result: ok\. 8 passed; 0 failed; 0 ignored/);
+assert.match(logs['miri-gc'],/test result: ok\. 1 passed; 0 failed; 0 ignored/);
+assert.match(logs['nine-tests'],/test result: ok\. 9 passed; 0 failed; 0 ignored/);
+const results=[...logs['all-targets-initial'].matchAll(/test result: ok\. (\d+) passed; (\d+) failed; (\d+) ignored/g)];
+assert.equal(results.reduce((n,m)=>n+Number(m[1]),0),952);
+assert.ok(results.every(m=>m[2]==='0'));
+for(const name of ['clippy','i686'])assert.match(logs[name],/Finished/);
+assert.match(logs['msrv-eight'],/test result: ok\. 8 passed; 0 failed/);
+console.log(JSON.stringify({source:c.source,initialAllTargetPasses:952,assignmentTests:10,strictMiriTests:10,scope:c.scope}));

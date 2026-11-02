@@ -300,12 +300,8 @@ impl Compiler {
         let has_functions = statements
             .iter()
             .any(|statement| matches!(statement.kind, StmtKind::FunctionDeclaration(_)));
-        if block_functions && has_functions && !self.strict {
-            return Err(CompileError::new(
-                "unsupported sloppy block function Annex B semantics",
-                None,
-            ));
-        }
+        // Match the shared interpreter: block declarations are lexical in
+        // both modes. Optional Annex B var aliases remain tracked in #174.
         let bindings = scope_bindings(statements, false, true, block_functions)?;
         if bindings.is_empty() && !has_functions {
             return self.statements(statements);
@@ -666,6 +662,16 @@ impl Compiler {
                 value,
             } if operator == "=" => {
                 let target = unparenthesized(target);
+                if matches!(target.kind, ExprKind::Array { .. } | ExprKind::Object(_)) {
+                    self.expression(value)?;
+                    self.code.push(Instruction::Duplicate);
+                    let index = self.pool(Constant::AssignmentPattern {
+                        definition: std::rc::Rc::new(target.clone()),
+                        strict: self.strict,
+                    })?;
+                    self.code.push(Instruction::InitializePattern(index));
+                    return Ok(());
+                }
                 let binding = match &target.kind {
                     ExprKind::Identifier(name) => {
                         let binding = self.local_binding(name);
@@ -1844,7 +1850,8 @@ fn bytecode_may_observe_arguments(body: &VerifiedBytecode) -> bool {
             }
             Constant::Class { .. } => true,
             Constant::ObjectLiteral { definition, .. }
-            | Constant::BindingPattern { definition, .. } => {
+            | Constant::BindingPattern { definition, .. }
+            | Constant::AssignmentPattern { definition, .. } => {
                 let mut observed = false;
                 definition.visit(&mut |expression| {
                     if let ExprKind::Identifier(name) = &expression.kind {

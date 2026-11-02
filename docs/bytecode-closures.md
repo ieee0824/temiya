@@ -29,7 +29,7 @@ overflow recovery and wrapper prototypes. Existing Rust-stack call depth 32 and
 argument count 65,536 limits remain in effect. Keeping captured records alive is
 not a claim that reference cycles are collected; tracing/GC remains unfinished.
 
-#292 remains open. Sloppy block/Annex B declarations, for-let per-iteration
+#292 remains open. Optional Annex B var aliases (#174), for-let per-iteration
 records, default/rest/destructuring parameters, mapped sloppy arguments and the
 full arguments descriptor/prototype contract, async/generators, inferred names,
 original pinned Test262 results, latest CI/security and performance validation
@@ -57,9 +57,10 @@ mutable bindings belong to the Function var record. The caller-prepared legacy
 body API preserves its existing separate body-lexical-record contract. Both paths
 create TDZ bindings before function objects. Declaration templates have names
 without expression-private self bindings, so a saved declaration observes later
-reassignment of its declared binding. Strict block functions initialize their
-lexical bindings on block entry; sloppy block/if function forms remain explicit
-compile errors pending the Annex B implementation. Parameters or direct body
+reassignment of its declared binding. Block functions initialize their
+lexical bindings on block entry in both strict and sloppy code, matching the
+shared interpreter. Optional Annex B var aliases remain incomplete (#174);
+sloppy if-function forms remain explicit compile errors. Parameters or direct body
 lexical/function declarations named arguments suppress the implicit arguments
 object, following the simple-parameter instantiation rules.
 

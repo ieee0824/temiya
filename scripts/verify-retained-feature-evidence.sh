@@ -101,6 +101,27 @@ case "${1:-}" in
     node benchmarks/array-binding/security-inline-thrown-v1/verify.mjs benchmarks/array-binding/security-inline-thrown-v1 7a154b17dd6982913047b364e7bf4c293103798a
     node benchmarks/array-binding/security-cache32-v1/verify.mjs benchmarks/array-binding/security-cache32-v1 9f84bc5c6416911df51d76cf10b936ad3c3e003f
     ;;
+  assignments)
+    node benchmarks/destructuring-assignment/verify-qualified.mjs
+    node benchmarks/destructuring-assignment/security-nested-assignment-v1/verify.mjs
+    node benchmarks/destructuring-assignment/full-nested-assignment-v1/verify.mjs
+    node benchmarks/destructuring-assignment/full-comparisons-v1/verify.mjs
+    node benchmarks/object-binding/security-prepared-guards-v1/verify.mjs benchmarks/destructuring-assignment/security-comparisons-v1 a151aedc4b75cfb5812f881f3644fc0d529fcb4e
+    node benchmarks/destructuring-assignment/nested-assignment-correctness-v1/verify.mjs
+    node benchmarks/destructuring-assignment/nested-assignment-instructions-v1/verify.mjs
+    node benchmarks/destructuring-assignment/static-assignment-correctness-v1/verify.mjs
+    node benchmarks/destructuring-assignment/static-assignment-instructions-v1/verify.mjs
+    node benchmarks/destructuring-assignment/comparisons-correctness-v1/verify.mjs
+    node benchmarks/destructuring-assignment/verify-hosted.mjs
+    node benchmarks/object-binding/security-prepared-guards-v1/verify.mjs benchmarks/destructuring-assignment/security-vm-v1 eb29c4169c0fdfd9246546f76b5874097a53ef62
+    node benchmarks/destructuring-assignment/full-vm-v1/verify.mjs
+    node benchmarks/destructuring-assignment/correctness-v1/verify.mjs
+    node benchmarks/destructuring-assignment/vm-correctness-v1/verify.mjs
+    node benchmarks/destructuring-assignment/vm-gc-correctness-v1/verify.mjs
+    node benchmarks/destructuring-assignment/vm-instructions-v1/verify.mjs
+    node benchmarks/destructuring-assignment/verify-selection.mjs
+    node benchmarks/destructuring-assignment/verify-oracles.mjs
+    ;;
   objects)
     node benchmarks/object-binding/verify-qualified.mjs
     node benchmarks/object-binding/verify-bytecode-experiments.mjs
@@ -133,7 +154,7 @@ case "${1:-}" in
     node benchmarks/object-binding/security-current-integrated-v1/verify.mjs benchmarks/object-binding/security-current-integrated-v1 010ac60ddeb68ce702e1f3b2a4cfdd87345f2568
     ;;
   *)
-    echo "usage: $0 {classes|fields|private|iterators|bindings|objects}" >&2
+    echo "usage: $0 {classes|fields|private|iterators|bindings|objects|assignments}" >&2
     exit 2
     ;;
 esac

@@ -471,6 +471,22 @@ jobs:
         if: inputs.include_controls && steps.hardware.outputs.matches == 'true' && hashFiles('temiya/benchmarks/object-binding/workloads-v1/manifest.json') != ''
         run: |
           node scripts/audit-class-workload-records.mjs --object-bindings "$RUNNER_TEMP/comparison-output/object-bindings-boa.json" "$RUNNER_TEMP/comparison-output/object-bindings-same-binary.json" > "$RUNNER_TEMP/comparison-output/object-bindings-independent-audit.json"
+      - name: Measure frozen destructuring assignment workloads against actual Boa
+        if: inputs.include_controls && steps.hardware.outputs.matches == 'true' && hashFiles('temiya/benchmarks/destructuring-assignment/workloads-v1/manifest.json') != ''
+        run: |
+          export TEMIYA_REVISION="$(cat "$RUNNER_TEMP/comparison-output/measured-revision.txt")"
+          export BENCH_NOTES='Six destructuring assignment inputs frozen before performance observations; unchanged15 samples/3pairs, noise, watchdog and limits. Baseline predates binding support, so no successful baseline comparison is claimed. Preserve every outcome; job success is not a speed pass.'
+          node scripts/compare-class-workloads.mjs --assignments benchmarks/destructuring-assignment/workloads-v1 "$RUNNER_TEMP/temiya-current-target/release/examples/measure_workload" "$RUNNER_TEMP/comparison-output/boa-build-info.json" 15 3 > "$RUNNER_TEMP/comparison-output/assignments-boa.json" 2> "$RUNNER_TEMP/comparison-output/assignments-boa.progress"
+      - name: Measure identical candidate destructuring assignment control
+        if: inputs.include_controls && steps.hardware.outputs.matches == 'true' && hashFiles('temiya/benchmarks/destructuring-assignment/workloads-v1/manifest.json') != ''
+        run: |
+          export TEMIYA_REVISION="$(cat "$RUNNER_TEMP/comparison-output/measured-revision.txt")"
+          export BENCH_NOTES='Identical executable destructuring assignment control; labels do not indicate a source change. Retain slow and noisy outcomes.'
+          node scripts/compare-class-workloads.mjs --assignments --temiya-baseline benchmarks/destructuring-assignment/workloads-v1 "$RUNNER_TEMP/temiya-current-target/release/examples/measure_workload" "$RUNNER_TEMP/comparison-output/same-binary-build-info.json" 15 3 > "$RUNNER_TEMP/comparison-output/assignments-same-binary.json" 2> "$RUNNER_TEMP/comparison-output/assignments-same-binary.progress"
+      - name: Independently reconstruct destructuring assignment measurement records
+        if: inputs.include_controls && steps.hardware.outputs.matches == 'true' && hashFiles('temiya/benchmarks/destructuring-assignment/workloads-v1/manifest.json') != ''
+        run: |
+          node scripts/audit-class-workload-records.mjs --assignments "$RUNNER_TEMP/comparison-output/assignments-boa.json" "$RUNNER_TEMP/comparison-output/assignments-same-binary.json" > "$RUNNER_TEMP/comparison-output/assignments-independent-audit.json"
       - name: Summarize validity and speed gates separately
         if: always()
         run: |
@@ -482,6 +498,14 @@ jobs:
           if (!availability.target_available) {
             fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,'Requested CPU unavailable. Measurements were not run and do not count as a correctness or speed pass.\n');
             process.exit(0);
+          }
+          if (process.env.INCLUDE_CONTROLS === 'true' && fs.existsSync('benchmarks/destructuring-assignment/workloads-v1/manifest.json')) {
+            for (const name of ['assignments-boa', 'assignments-same-binary']) {
+              try {
+                const r = JSON.parse(fs.readFileSync(path.join(process.env.RUNNER_TEMP, 'comparison-output', name + '.json')));
+                lines.push('- ' + name + ': correct outputs = ' + r.all_workloads_valid + '; all-assignment speed gate = ' + r.all_class_workloads_faster_beyond_threshold);
+              } catch { lines.push('- ' + name + ': no complete measurement report.'); }
+            }
           }
           const names = ['beforeafter','boa',...(process.env.INCLUDE_CONTROLS === 'true' ? ['baseline-boa','same-binary-control'] : [])];
           for (const name of names) {

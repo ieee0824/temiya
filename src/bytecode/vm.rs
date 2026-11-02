@@ -735,14 +735,18 @@ impl VirtualMachine {
                             }
                         }
                         Instruction::InitializePattern(index) => {
-                            let Constant::BindingPattern {
-                                definition,
-                                initialize,
-                                strict,
-                            } = &body.constants[index as usize]
-                            else {
-                                unreachable!("verified binding pattern")
-                            };
+                            let (definition, initialize, strict) =
+                                match &body.constants[index as usize] {
+                                    Constant::BindingPattern {
+                                        definition,
+                                        initialize,
+                                        strict,
+                                    } => (definition, *initialize, *strict),
+                                    Constant::AssignmentPattern { definition, strict } => {
+                                        (definition, false, *strict)
+                                    }
+                                    _ => unreachable!("verified shared pattern"),
+                                };
                             let value = pop(&mut stack)?;
                             if let (Some(plan), Value::Object(source)) =
                                 (&bytecode.static_object_patterns[index as usize], &value)
@@ -753,11 +757,24 @@ impl VirtualMachine {
                                 )?;
                                 continue;
                             }
+                            if let Some(plan) = &bytecode.static_object_assignments[index as usize]
+                            {
+                                plan.assign(
+                                    realm.expect("verified assignment Realm"),
+                                    &scopes
+                                        .last()
+                                        .expect("verified assignment scope")
+                                        .environment,
+                                    &value,
+                                    strict,
+                                )?;
+                                continue;
+                            }
                             definition_context.initialize_pattern(
                                 definition,
                                 value,
-                                *initialize,
-                                *strict,
+                                initialize,
+                                strict,
                                 realm.expect("verified pattern Realm"),
                                 &scopes.last().expect("verified pattern scope").environment,
                             )?;
@@ -992,6 +1009,7 @@ pub(super) fn constant(constant: &Constant) -> Value {
         | Constant::Class { .. }
         | Constant::ObjectLiteral { .. }
         | Constant::BindingPattern { .. }
+        | Constant::AssignmentPattern { .. }
         | Constant::TryStatement { .. } => {
             unreachable!("verifier rejects metadata values")
         }
@@ -1047,6 +1065,19 @@ fn binary(
             stack[result_slot] = value;
             return Ok(());
         }
+    }
+    // Strict equality never coerces or invokes user code, even for proxies.
+    // Keep the shared semantics, but avoid string-based/Realm dispatch and
+    // pop/pop/push for nonnumeric operands too.
+    if matches!(
+        operator,
+        BinaryOperator::StrictEqual | BinaryOperator::StrictNotEqual
+    ) {
+        let left = stack.len() - 2;
+        let equal = crate::runtime::strict_equal(&stack[left], &stack[left + 1]);
+        stack.truncate(left + 1);
+        stack[left] = Value::Boolean(equal == (operator == BinaryOperator::StrictEqual));
+        return Ok(());
     }
     let right = pop(stack)?;
     let left = pop(stack)?;

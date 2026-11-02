@@ -1,0 +1,26 @@
+import fs from 'node:fs';
+import cp from 'node:child_process';
+import crypto from 'node:crypto';
+import zlib from 'node:zlib';
+import assert from 'node:assert/strict';
+const root=new URL('./',import.meta.url),c=JSON.parse(fs.readFileSync(new URL('capture.json',root)));
+assert.deepEqual(c.miriFlags,['-Zmiri-strict-provenance','-Zmiri-symbolic-alignment-check']);
+const hash=b=>crypto.createHash('sha256').update(b).digest('hex');
+const info=JSON.parse(fs.readFileSync(new URL('build-info.json',root)));
+assert.equal(info.source_revision,c.source);assert.equal(info.source_inputs.length,83);
+for(const f of info.source_inputs)assert.equal(hash(cp.execFileSync('git',['show',c.source+':'+f.path],{maxBuffer:8*1024*1024})),f.sha256);
+const logs={};for(const [k,r]of Object.entries(c.logs)){const b=zlib.gunzipSync(fs.readFileSync(new URL(r.file,root)));assert.equal(hash(b),r.sha256);logs[k]=b.toString();}
+const source=cp.execFileSync('git',['show',c.source+':tests/bytecode_assignments.rs'],{encoding:'utf8'});
+const names=[...source.matchAll(/#\[test\]\s*fn (\w+)/g)].map(m=>m[1]).sort();assert.equal(names.length,4);
+assert.deepEqual([...logs.miri.matchAll(/^test (\w+) \.\.\. ok$/gm)].map(m=>m[1]).sort(),names);
+assert.match(logs.miri,/test result: ok\. 4 passed; 0 failed; 0 ignored;/);
+const assignmentSource=cp.execFileSync('git',['show',c.source+':tests/destructuring_assignment.rs'],{encoding:'utf8'});
+const assignmentNames=[...assignmentSource.matchAll(/#\[test\]\s*fn (\w+)/g)].map(m=>m[1]).sort();assert.equal(assignmentNames.length,10);
+assert.deepEqual([...logs['assignment-miri'].matchAll(/^test (\w+) \.\.\. ok$/gm)].map(m=>m[1]).sort(),assignmentNames);
+assert.match(logs['assignment-miri'],/test result: ok\. 10 passed; 0 failed; 0 ignored;/);
+assert.match(logs['miri-isolation-rejection'],/unsupported operation: `open` not available when isolation is enabled/);
+const rows=[...logs.native.matchAll(/test result: ok\. (\d+) passed; (\d+) failed; (\d+) ignored;/g)];assert(rows.length>0);assert(rows.every(m=>m[2]==='0'));
+assert.equal(rows.reduce((n,m)=>n+ +m[1],0),1013);assert.equal(rows.reduce((n,m)=>n+ +m[3],0),26);
+assert.match(logs.clippy,/Finished `dev` profile/);
+cp.execFileSync(process.execPath,['scripts/check-bytecode-loop-audit.mjs',new URL('loop-audit.json',root).pathname,'101'],{stdio:'inherit'});
+console.log(JSON.stringify({source:c.source,native:1013,ignored:26,strictMiri:14,scope:c.scope}));

@@ -871,10 +871,18 @@ impl StatementEvaluator {
 
     fn assign_for_init(&self, init: &ForInit, value: Value) -> RuntimeResult<()> {
         match init {
-            ForInit::Expression(expression) => self
-                .expression
-                .evaluate_reference(expression)?
-                .put_value(value),
+            ForInit::Expression(expression) => {
+                if matches!(
+                    expression.kind,
+                    ExprKind::Array { .. } | ExprKind::Object(_)
+                ) {
+                    super::binding::initialize(&self.expression, expression, value, false)
+                } else {
+                    self.expression
+                        .evaluate_reference(expression)?
+                        .put_value(value)
+                }
+            }
             ForInit::Variable { kind, declarations } => {
                 let Some(declaration) = declarations.first() else {
                     return Err(RuntimeError::syntax_error("missing for-each binding"));

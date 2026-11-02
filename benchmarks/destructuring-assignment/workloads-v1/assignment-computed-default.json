@@ -1,0 +1,7 @@
+{
+  "name": "assignment-computed-default",
+  "setup": "function bench(n){let total=0;for(let i=1;i<=n;i++){let trace='',obj={};function target(){trace+='T';return obj;}let source={get value(){trace+='G';return undefined;}};({[(trace+='K','value')]:target().value=(trace+='D',i)}=source);if(trace!=='KTGD'||obj.value!==i)throw 42;total+=obj.value;}return total;}",
+  "invocation": "bench(10000);",
+  "iterations": 10000,
+  "expected": 50005000
+}

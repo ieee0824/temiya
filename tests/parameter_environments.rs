@@ -39,6 +39,38 @@ fn supplied_defaults_keep_arguments_and_constructor_context() {
         "let calls=0;function Item(value=++calls){var value;this.value=value;this.target=new.target;}let a=new Item(20);let b=new Item(undefined);a.value===20&&a.target===Item&&b.value===1&&b.target===Item&&calls===1&&Item.length===0;",
     );
 }
+
+#[test]
+fn supplied_rest_keeps_arrays_defaults_and_body_cells() {
+    check(
+        "function Item(value=1,...items){this.value=value;this.items=items;this.target=new.target;}let a=new Item(20,42),b=new Item(30,22);a.value===20&&a.items[0]===42&&a.target===Item&&a.items!==b.items&&b.items[0]===22&&Item.length===0;",
+    );
+    check(
+        "function f(value=1,...items){var value,items;return items;}let a=f(20,42),b=f(20,42);a!==b&&Array.isArray(a)&&a.length===1&&a[0]===42&&b[0]===42&&f(20).length===0&&f.length===0;",
+    );
+    check(
+        "function f(a,b,...items){return [a,b,items];}let x=f();x[0]===undefined&&x[1]===undefined&&Array.isArray(x[2])&&x[2].length===0&&f.length===2;",
+    );
+    check(
+        "let effects=0;function f(value=++effects,...items){var value;return value+items.length;}f(20,1,2)===22&&effects===0&&f(undefined,1)===2&&effects===1&&f()===2&&effects===2;",
+    );
+    check(
+        "function f(value=1,read=()=>value,...items){var value=99;return read();}f(20,()=>22,3)===22&&f(20,undefined,3)===20;",
+    );
+}
+
+#[test]
+fn supplied_rest_uses_intrinsics_without_iterator_or_prototype_setters() {
+    check(
+        "let proto=Array.prototype;function f(...items){return items;}let a=f(20);Array=function(){throw 99;};let b=f(42);a!==b&&Object.getPrototypeOf(b)===proto&&b[0]===42;",
+    );
+    check(
+        "let hits=0;Object.defineProperty(Array.prototype,'0',{set:function(){hits++;},configurable:true});Array.prototype[Symbol.iterator]=function(){throw 99;};function f(value=1,...items){var value;return items[0];}f(20,42)===42&&hits===0;",
+    );
+    check(
+        "let order='';function source(){order+='a';return 42;}function f(value=1,...items){order+='b';return items[0];}f(source(),source())===42&&order==='aab';",
+    );
+}
 #[test]
 fn arguments_in_default_closures_survive_body_redeclaration() {
     check("function f(a,b=()=>arguments[0]){var arguments={0:42};return b();}f(20)===20;");

@@ -61,12 +61,15 @@ and closing integration. They remain failures. Metadata tags alone cover 141
 files and 217 variants; the additional text match is an untagged duplicate
 `__proto__` test. No outcome-based selection is applied.
 
-Current-source hosted security run 41362296996 and two-runner native measurement
-41362299598 are still pending. Local Miri, passing CI and corpus results do not
-replace either gate. CI run 41362630287 passed all 11 jobs, including stable,
+Current-source security run 41362296996 passes all 19 jobs: 177 unique exact
+library Miri tests, 1,023 ASan tests, dependency audit and the Miri aggregate.
+The exact Miri names match all 177 enumerated library tests. Complete logs and
+the source-specific verifier are retained in `security-nested-assignment-v1`.
+Two-runner native measurement 41362299598 is still pending. Local correctness,
+passing CI, full-corpus and security results do not replace the native speed gate. CI run 41362630287 passed all 11 jobs, including stable,
 MSRV, C ABI and all seven evidence suites; all 83 compiler inputs at its data-only
-head match eb7f054d. Issue #164 remains open until source-specific safety and
-native speed qualification are complete.
+head match eb7f054d. Issue #164 remains open until source-specific native speed qualification is
+complete.
 
 All six unchanged instruction captures are retained in
 `nested-assignment-instructions-v1`. The nested object case uses approximately

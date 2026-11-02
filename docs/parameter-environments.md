@@ -226,3 +226,21 @@ regressions. `security-rest-entry-v1/verify.mjs` checks all 19 security jobs,
 including the complete 181-test exact Miri partition and 1,042 ASan passes.
 These records qualify only that historical runtime's recorded checks; they do
 not establish speed or qualify the later guarded-leaf or bulk-rest changes.
+
+Source `77e343a` initializes a fresh real rest Array's prototype, length and
+packed elements in the unpublished record before its managed allocation.
+Initial object edges are checked against the receiving heap and traced at the
+allocation safepoint. Numeric-only inputs use packed numeric storage; mixed
+inputs retain complete ordinary writable/enumerable/configurable descriptors.
+Both guarded template entry and ordinary parameter binding use this construction;
+Array identity, intrinsic prototypes and the full fallback paths remain intact.
+
+`bulk-rest-arm-v1/verify.mjs` retains 1,051 native passes (26 ignored), Clippy,
+release, five public strict Miri tests, forced-allocation-GC and cross-heap Miri
+units, all 86 compiler-input hashes and all integration-test hashes. The fixed
+rest whole-process instruction count drops from 273,475,107 to 253,985,731.
+Native before/after has 24 noisy pairs; the same-binary control has 23 noisy
+pairs and one slower pair. Neither establishes a native improvement claim.
+Against explicitly corrected pinned Boa, var-copy and constructor pass all three
+local pairs; rest loses all three at ratios 1.186, 1.212 and 1.212. The six other
+workloads remain unqualified, as does the complete two-host native requirement.

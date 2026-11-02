@@ -254,6 +254,18 @@ impl<'a> PropertyReferenceContext<'a> {
 }
 
 impl Reference {
+    pub(crate) fn resolve_in_environment(
+        realm: &Realm,
+        environment: &Environment,
+        name: JsString,
+        strict: bool,
+    ) -> RuntimeResult<Self> {
+        Ok(match environment.resolve_binding_with_hint(&name)? {
+            Some((environment, hint)) => Self::function_binding(environment, name, strict, hint),
+            None => Self::unresolvable(realm.global_object(), name, strict),
+        })
+    }
+
     pub(super) fn private(base: Value, name: super::private_fields::Name) -> Self {
         Self {
             base: ReferenceBase::Property(base),
@@ -812,13 +824,7 @@ impl ExpressionEvaluator {
     }
 
     fn identifier(&self, name: &str) -> RuntimeResult<Reference> {
-        let name = JsString::from(name);
-        Ok(match self.environment.resolve_binding_with_hint(&name)? {
-            Some((environment, hint)) => {
-                Reference::function_binding(environment, name, self.strict, hint)
-            }
-            None => Reference::unresolvable(self.realm.global_object(), name, self.strict),
-        })
+        Reference::resolve_in_environment(&self.realm, &self.environment, name.into(), self.strict)
     }
 
     fn member(
@@ -1489,7 +1495,7 @@ fn bigint_shift(value: &BigInt) -> RuntimeResult<u32> {
         .map_err(|_| RuntimeError::range_error("BigInt exponent or shift count is too large"))
 }
 
-pub(super) fn strict_equal(left: &Value, right: &Value) -> bool {
+pub(crate) fn strict_equal(left: &Value, right: &Value) -> bool {
     match (left, right) {
         (Value::Number(a), Value::Number(b)) => !a.is_nan() && !b.is_nan() && a == b,
         _ => left.same_value(right),

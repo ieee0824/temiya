@@ -782,6 +782,19 @@ impl VirtualMachine {
                                 )?;
                                 continue;
                             }
+                            if let Some(plan) = &bytecode.static_object_assignments[index as usize]
+                            {
+                                plan.assign(
+                                    realm.expect("verified assignment Realm"),
+                                    &scopes
+                                        .last()
+                                        .expect("verified assignment scope")
+                                        .environment,
+                                    &value,
+                                    strict,
+                                )?;
+                                continue;
+                            }
                             definition_context.initialize_pattern(
                                 definition,
                                 value,
@@ -1077,6 +1090,19 @@ fn binary(
             stack[result_slot] = value;
             return Ok(());
         }
+    }
+    // Strict equality never coerces or invokes user code, even for proxies.
+    // Keep the shared semantics, but avoid string-based/Realm dispatch and
+    // pop/pop/push for nonnumeric operands too.
+    if matches!(
+        operator,
+        BinaryOperator::StrictEqual | BinaryOperator::StrictNotEqual
+    ) {
+        let left = stack.len() - 2;
+        let equal = crate::runtime::strict_equal(&stack[left], &stack[left + 1]);
+        stack.truncate(left + 1);
+        stack[left] = Value::Boolean(equal == (operator == BinaryOperator::StrictEqual));
+        return Ok(());
     }
     let right = pop(stack)?;
     let left = pop(stack)?;

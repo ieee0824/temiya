@@ -208,3 +208,30 @@ fn lexical_block_functions_match_ast_without_claiming_annex_b_aliases() {
         Completion::Normal(Some(Value::Boolean(true)))
     ));
 }
+
+#[test]
+fn static_assignment_references_precede_getters_and_preserve_abrupt_order() {
+    for source in [
+        "function run(){let target={},old=target,other=0;let source={get x(){target={};return 42;},get y(){return 1;}};let result=({x:target.value,y:other}=source);return result===source&&old.value===42&&target.value===undefined&&other===1;}run();",
+        "function run(){'use strict';let first=0,after=0,reads='',caught=false;const last=1;try{({a:first,b:last,c:after}={get a(){reads+='A';return 42;},get b(){reads+='B';return 99;},get c(){reads+='C';return 1;}});}catch(e){caught=e instanceof TypeError;}return first===42&&last===1&&after===0&&reads==='AB'&&caught;}run();",
+        "function run(){'use strict';let calls=0,caught=false;try{({x:missing}={get x(){calls++;return 42;}});}catch(e){caught=e instanceof ReferenceError;}return calls===1&&caught;}run();",
+        "function run(){let calls=0,caught=false;try{({x:missing.value}={get x(){calls++;return 42;}});}catch(e){caught=e instanceof ReferenceError;}return calls===0&&caught;}run();",
+        "function run(){let caught=false;try{({x:missing.value}=null);}catch(e){caught=e instanceof TypeError;}return caught;}run();",
+        "function run(){let caught=false;try{({}=undefined);}catch(e){caught=e instanceof TypeError;}return caught;}run();",
+        "function run(){Object.defineProperty(Number.prototype,'answer',{get:function(){'use strict';return typeof this==='number'&&this===20?42:0;},configurable:true});let result;({answer:result}=20);return result===42;}run();",
+    ] {
+        check(source);
+    }
+}
+
+#[test]
+fn nested_static_assignment_reads_parent_before_resolving_children() {
+    for source in [
+        "function run(){let obj={},old=obj,selected;let source={get outer(){selected=obj={};return {get inner(){obj={};return 42;}};}};let result=({outer:{inner:obj.value}}=source);return result===source&&old.value===undefined&&selected.value===42&&obj.value===undefined;}run();",
+        "function run(){let caught=false,calls=0;try{({outer:{inner:missing.value}}={get outer(){calls++;return null;}});}catch(e){caught=e instanceof TypeError;}return caught&&calls===1;}run();",
+        "function run(){let caught=false,calls=0;try{({outer:{inner:missing.value}}={get outer(){calls++;return {get inner(){calls+=100;return 42;}};}});}catch(e){caught=e instanceof ReferenceError;}return caught&&calls===1;}run();",
+        "function run(){'use strict';let first=0,after=0,reads='',caught=false;const last=1;try{({outer:{a:first,b:last},c:after}={get outer(){reads+='O';return {get a(){reads+='A';return 42;},get b(){reads+='B';return 99;}};},get c(){reads+='C';return 1;}});}catch(e){caught=e instanceof TypeError;}return first===42&&last===1&&after===0&&reads==='OAB'&&caught;}run();",
+    ] {
+        check(source);
+    }
+}

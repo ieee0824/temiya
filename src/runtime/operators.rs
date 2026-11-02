@@ -60,12 +60,15 @@ pub(super) fn object_binary(
             let key = primitive(Some(realm), left, PrimitiveHint::String)?.to_property_key()?;
             object.has_property(&key).map(Value::Boolean)
         }
-        "instanceof" => instance_of(
-            left,
-            right,
-            Some(realm.well_known_symbol(WellKnownSymbol::HasInstance).into()),
-        )
-        .map(Value::Boolean),
+        "instanceof" => {
+            let key = realm.well_known_symbol(WellKnownSymbol::HasInstance).into();
+            if let Value::Object(constructor) = &right {
+                if let Some(result) = constructor.try_default_instance_of(realm, &left, &key) {
+                    return result.map(Value::Boolean);
+                }
+            }
+            instance_of(left, right, Some(key)).map(Value::Boolean)
+        }
         _ => super::interpreter::binary_values(operator, left, right),
     }
 }

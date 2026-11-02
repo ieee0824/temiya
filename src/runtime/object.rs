@@ -1652,6 +1652,56 @@ impl Object {
             || state.proxy.as_ref().is_some_and(|proxy| proxy.callable)
     }
 
+    // Same-Realm shortcut for the immutable inherited default method only.
+    pub(super) fn try_default_instance_of(
+        &self,
+        realm: &super::Realm,
+        left: &Value,
+        key: &PropertyKey,
+    ) -> Option<RuntimeResult<bool>> {
+        let function_prototype = realm.intrinsic(super::IntrinsicId::FunctionPrototype);
+        {
+            let state = self.0.state.borrow();
+            // Function.prototype owns the installed, nonwritable and
+            // nonconfigurable @@hasInstance. Only direct ordinary inheritance
+            // with no own override can bypass GetMethod and native dispatch.
+            if state.proxy.is_some()
+                || state.prototype.as_ref()?.0 != function_prototype.0.handle()?
+                || state.properties.iter().any(|entry| entry.key == *key)
+                || state
+                    .managed_callable
+                    .as_ref()
+                    .is_some_and(|call| matches!(call.body, ManagedCallable::Bound(_)))
+                || !(state.callable.is_some()
+                    || state
+                        .managed_callable
+                        .as_ref()
+                        .is_some_and(|call| call.is_callable()))
+            {
+                return None;
+            }
+        }
+        Some((|| {
+            // Preserve the skipped native call's context checks and depth
+            // budget, including when a prototype trap reenters the engine.
+            StoredObject::check_context(&function_prototype, self)?;
+            if let Value::Object(object) = left {
+                StoredObject::check_context(&function_prototype, object)?;
+            }
+            let _depth = CallDepthGuard::enter()?;
+            let result = super::operators::ordinary_has_instance(
+                Value::Object(self.clone()),
+                left.clone(),
+                key,
+            )
+            .map_err(|error| realm.bind_exception(error));
+            if let Err(error) = &result {
+                self.check_abrupt_context(error)?;
+            }
+            result
+        })())
+    }
+
     /// Invokes this object's `[[Call]]` internal method.
     ///
     /// Calls and construction share a per-thread nesting limit of 32. Exceeding
@@ -3277,5 +3327,148 @@ mod ordinary_rest_copy_tests {
         drop(rest);
         assert_eq!(context.collect_garbage().unwrap().retained, 0);
         assert!(weak.upgrade().is_none());
+    }
+}
+
+#[cfg(test)]
+mod default_instance_tests {
+    use super::*;
+    use crate::runtime::{
+        AllocationContext, IntrinsicId, Realm, RuntimeErrorKind, WellKnownSymbol,
+    };
+
+    #[test]
+    fn default_instance_shortcut_keeps_overrides_context_and_call_budget() {
+        let context = AllocationContext::new();
+        let realm = Realm::ordinary_in(&context);
+        let constructor = realm.intrinsic(IntrinsicId::TypeError);
+        let key = realm.well_known_symbol(WellKnownSymbol::HasInstance).into();
+        let value = Value::Object(Object::native_error(
+            realm.intrinsic(IntrinsicId::TypeErrorPrototype),
+            "probe".into(),
+        ));
+        assert!(
+            constructor
+                .try_default_instance_of(&realm, &value, &key)
+                .unwrap()
+                .unwrap()
+        );
+        let Value::Object(method) = realm
+            .intrinsic(IntrinsicId::FunctionPrototype)
+            .get(&key)
+            .unwrap()
+        else {
+            panic!("builtin")
+        };
+        let foreign = Value::Object(Object::new_in(&AllocationContext::new()));
+        let direct = method
+            .call(
+                Value::Object(constructor.clone()),
+                std::slice::from_ref(&foreign),
+            )
+            .unwrap_err();
+        let shortcut = constructor
+            .try_default_instance_of(&realm, &foreign, &key)
+            .unwrap()
+            .unwrap_err();
+        assert_eq!(direct.kind(), shortcut.kind());
+        assert!(direct.thrown_value().is_none() && shortcut.thrown_value().is_none());
+        let guards = (0..MAX_CALL_DEPTH)
+            .map(|_| CallDepthGuard::enter().unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            method
+                .call(
+                    Value::Object(constructor.clone()),
+                    std::slice::from_ref(&value)
+                )
+                .unwrap_err()
+                .kind(),
+            RuntimeErrorKind::RangeError
+        );
+        assert_eq!(
+            constructor
+                .try_default_instance_of(&realm, &value, &key)
+                .unwrap()
+                .unwrap_err()
+                .kind(),
+            RuntimeErrorKind::RangeError
+        );
+        drop(guards);
+        assert!(
+            constructor
+                .try_default_instance_of(&realm, &value, &key)
+                .unwrap()
+                .unwrap()
+        );
+        constructor
+            .create_data_property(key.clone(), Value::Undefined)
+            .unwrap();
+        assert!(
+            constructor
+                .try_default_instance_of(&realm, &value, &key)
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn default_instance_direct_and_shortcut_errors_keep_the_defining_realm() {
+        let context = AllocationContext::new();
+        let first = Realm::ordinary_in(&context);
+        let second = Realm::ordinary_in(&context);
+        let prototype = second.intrinsic(IntrinsicId::FunctionPrototype);
+        let constructor =
+            Object::native_function_with_metadata(&prototype, "C", 0, |_, _| Ok(Value::Undefined));
+        constructor
+            .create_data_property("prototype".into(), Value::Number(0.0))
+            .unwrap();
+        let key = second
+            .well_known_symbol(WellKnownSymbol::HasInstance)
+            .into();
+        let value = Value::Object(Object::new_in(&context));
+        let Value::Object(method) = prototype.get(&key).unwrap() else {
+            panic!("builtin")
+        };
+        let direct = method
+            .call(
+                Value::Object(constructor.clone()),
+                std::slice::from_ref(&value),
+            )
+            .unwrap_err();
+        let shortcut = constructor
+            .try_default_instance_of(&second, &value, &key)
+            .unwrap()
+            .unwrap_err();
+        assert!(
+            constructor
+                .try_default_instance_of(&first, &value, &key)
+                .is_none()
+        );
+        // Realm symbol registries are currently distinct. Explicitly expose
+        // the foreign builtin under the caller's key to test its error Realm
+        // independently of that existing symbol-identity limitation.
+        constructor
+            .create_data_property(
+                first.well_known_symbol(WellKnownSymbol::HasInstance).into(),
+                Value::Object(method.clone()),
+            )
+            .unwrap();
+        let crossing = crate::runtime::operators::object_binary(
+            &first,
+            "instanceof",
+            value,
+            Value::Object(constructor),
+        )
+        .unwrap_err();
+        for (index, error) in [direct, shortcut, crossing].into_iter().enumerate() {
+            assert_eq!(error.kind(), RuntimeErrorKind::TypeError);
+            let Some(Value::Object(exception)) = error.thrown_value() else {
+                panic!("defining Realm TypeError case {index}")
+            };
+            assert_eq!(
+                exception.try_prototype().unwrap(),
+                Some(second.intrinsic(IntrinsicId::TypeErrorPrototype))
+            );
+        }
     }
 }

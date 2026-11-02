@@ -34,6 +34,7 @@ enum Step {
     Not,
     Pop,
     Duplicate,
+    CallZero,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -161,8 +162,24 @@ impl LeafFunctionPlan {
         let mut steps = Vec::new();
         let mut depth = 0_usize;
         let mut references = 0_usize;
+        let mut skip = 0;
         for (offset, instruction) in code.instructions.iter().enumerate().skip(1) {
+            if skip != 0 {
+                skip -= 1;
+                continue;
+            }
             let step = match *instruction {
+                Instruction::AsCallTarget
+                    if code.instructions.get(offset + 1..offset + 3)
+                        == Some(&[Instruction::BeginMethodCall, Instruction::Invoke]) =>
+                {
+                    // Value calls have an undefined receiver and no argument
+                    // effects. The entire straight-line body must still pass
+                    // validation before any callback can execute.
+                    depth.checked_sub(1)?;
+                    skip = 2;
+                    Step::CallZero
+                }
                 Instruction::EnterScope(index) => {
                     let Constant::Scope(block) = code.constants.get(index as usize)? else {
                         return None;
@@ -315,7 +332,7 @@ impl LeafFunctionPlan {
                         needs_environment,
                     });
                 }
-                // No calls, closures, branches, new.target,
+                // No pending invocations, closures, branches, new.target,
                 // arguments object or other operation may expose this activation.
                 _ => return None,
             };
@@ -525,6 +542,12 @@ impl LeafFunctionPlan {
                     None
                 }
                 Step::Duplicate => Some(stack[depth - 1].clone()),
+                Step::CallZero => {
+                    let Value::Object(function) = pop(&mut stack, &mut depth) else {
+                        return Err(RuntimeError::type_error("value is not callable"));
+                    };
+                    Some(function.call(Value::Undefined, &[])?)
+                }
             };
             if let Some(value) = pushed {
                 stack[depth] = value;
@@ -546,8 +569,55 @@ mod tests {
     };
 
     #[test]
+    fn zero_argument_value_calls_allocate_no_managed_activation() {
+        let engine = crate::Engine::builder()
+            .script_backend(crate::embedding::ScriptBackend::Auto)
+            .build();
+        {
+            let realm = engine.create_realm();
+            let script = engine
+                .compile(&realm, "function f(call){var unused=0;return call();}f;")
+                .unwrap();
+            let value = engine.evaluate(&script).unwrap();
+            let Value::Object(function) = value.value() else {
+                panic!("function")
+            };
+            let callback =
+                Object::native_function_with_context(engine.allocation_context(), |_, _, _| {
+                    Ok(Value::Number(42.0))
+                });
+            engine
+                .allocation_context()
+                .set_allocation_collection_interval(usize::MAX);
+            let before = engine.allocation_context().diagnostics();
+            for _ in 0..8 {
+                assert!(
+                    function
+                        .call(Value::Undefined, &[Value::Object(callback.clone())])
+                        .unwrap()
+                        .same_value(&Value::Number(42.0))
+                );
+            }
+            let after = engine.allocation_context().diagnostics();
+            assert_eq!(after.collections, before.collections);
+            assert_eq!(
+                after.live, before.live,
+                "unobservable activations must not allocate"
+            );
+        }
+        assert_eq!(engine.collect_garbage().unwrap().retained, 0);
+    }
+
+    #[test]
     fn eligibility_requires_the_entire_body_to_hide_its_activation() {
         for (source, eligible) in [
+            ("function f(call){var unused=0;return call();}", true),
+            ("function f(call){let value=call();return value;}", true),
+            ("function f(call){return call()();}", true),
+            ("function f(call){return call(42);}", false),
+            ("function f(call){call();return ()=>call;}", false),
+            ("function f(call){call();return arguments;}", false),
+            ("function f(call){return call.value();}", false),
             (
                 "function f(x){'use strict';this.value=x;return this.value;}",
                 true,
@@ -586,6 +656,7 @@ mod tests {
     #[test]
     fn super_leaf_eligibility_covers_complete_local_and_capture_operations() {
         for (body, eligible) in [
+            ("return (0,super.read)();", true),
             ("let next=super.value+1;super.value=next;return next;", true),
             ("return ++super[(calls++,'value')];", true),
             ("let value=super.value;return ()=>value;", false),

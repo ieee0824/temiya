@@ -264,3 +264,24 @@ same-binary has 24 noisy pairs. Against corrected pinned Boa, var-copy qualifies
 locally in two pairs and constructor in three, with all other six still failing.
 All adverse/noisy results remain recorded. No complete native speed qualification
 or current-source full-corpus/security qualification is claimed.
+
+Source `a5d583e` permits an omitted default arrow to enter the ordinary template
+when it has no parameters and its complete body is one identifier absent from
+the entire enclosing parameter list. The complete header guard runs before any
+initialization. Such an arrow is freshly constructed by ordinary named evaluation
+in the enclosing environment, preserving inferred name, source, live lookup and
+receiving Realm. Reads of any parameter (including later/rest names), arguments,
+eval, this/new.target, async arrows and other missing initializer expressions
+retain full instantiation. Provided non-undefined defaults still skip evaluation.
+
+`outer-default-arm-v1/verify.mjs` retains 1,057 native passes (26 ignored), two
+public strict Miri passes and two forced-allocation-GC Miri units, Clippy/release,
+all source/test hashes, all unchanged native inputs and control measurements.
+Public checks cover fresh identity/metadata, named functions, live outer/with
+bindings, TDZ timing, parameter capture, lexical contexts and mixed initializer
+ordering. The fixed default-closure whole-process instruction count decreases
+from 466,579,851 to 457,084,275. All three default-closure before/after pairs are
+within noise, and it still loses all three pairs against corrected pinned Boa
+(ratios 1.463, 1.482, 1.469). Across the full suite, before/after has 23 noisy
+pairs and one faster pair; same-binary has 24 noisy pairs. Native speed and
+current-source full-corpus/security qualification remain incomplete.

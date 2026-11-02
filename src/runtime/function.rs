@@ -13,7 +13,7 @@ use super::{
 };
 use std::{
     borrow::Cow,
-    cell::RefCell,
+    cell::{OnceCell, RefCell},
     collections::HashMap,
     ops::Deref,
     rc::{Rc, Weak},
@@ -130,6 +130,9 @@ pub(super) struct FunctionCode {
     super_call: Option<super_call::Plan>,
     auto_functions: bool,
     cache: Weak<RefCell<CodeCache>>,
+    // After the defining Script is gone, only child definitions enter this
+    // cache. Their back pointers remain weak, so the owner cannot form a cycle.
+    owned_context: OnceCell<FunctionCache>,
 }
 impl Deref for FunctionCode {
     type Target = Function;
@@ -150,8 +153,13 @@ impl FunctionCode {
     }
 
     fn context(&self) -> Option<FunctionCache> {
-        self.auto_functions
-            .then(|| self.cache.upgrade().unwrap_or_default())
+        self.auto_functions.then(|| {
+            self.cache.upgrade().unwrap_or_else(|| {
+                self.owned_context
+                    .get_or_init(FunctionCache::default)
+                    .clone()
+            })
+        })
     }
 }
 
@@ -221,7 +229,7 @@ fn prepare_code(
         ast: code.clone(),
         kind,
         supplied_defaults: if cache.is_some() && compiled.is_none() {
-            supplied_defaults::Plan::prepare(code, kind)
+            supplied_defaults::Plan::prepare(code, kind, cache)
         } else {
             None
         },
@@ -278,6 +286,7 @@ fn prepare_code(
         super_call: super_call::Plan::prepare(code, kind),
         auto_functions: cache.is_some(),
         cache: cache.as_ref().map_or_else(Weak::new, Rc::downgrade),
+        owned_context: OnceCell::new(),
     });
     if let Some(cache) = cache {
         let mut cache = cache.borrow_mut();
@@ -648,6 +657,51 @@ pub(super) fn create_function(
         None,
         None,
     )
+}
+
+// Identifier-only arrows cannot observe lexical this/new.target, private
+// identities or a home object. Their actual enclosing environment is retained.
+fn create_identifier_arrow(
+    code: Rc<FunctionCode>,
+    realm: &Realm,
+    environment: &Environment,
+    name: &JsString,
+) -> RuntimeResult<Object> {
+    debug_assert!(code.lexical_name.is_some());
+    let function =
+        Object::new_with_prototype(realm.intrinsic(super::IntrinsicId::FunctionPrototype));
+    let closure = StoredFunctionClosure {
+        code,
+        private_bindings: None,
+        kind: FunctionKind::Arrow,
+        realm: StoredRealm::store(&function, realm)?,
+        environment: StoredEnvironment::store(&function, environment)?,
+        lexical_this: StoredValue::Undefined,
+        lexical_this_environment: None,
+        constructor_kind: ConstructorKind::Base,
+        home_object: None,
+        immutable_class_prototype: false,
+    };
+    function.set_managed_callable(super::object::ManagedCallable::Ast(closure));
+    function.initialize_function_properties(0, name.clone(), None)?;
+    Ok(function)
+}
+
+pub(super) fn create_named_arrow(
+    code: &Function,
+    evaluator: &ExpressionEvaluator,
+    name: &JsString,
+) -> RuntimeResult<Object> {
+    if evaluator.function_cache.is_some() && lexical_name(code, FunctionKind::Arrow).is_some() {
+        let prepared = prepare_code(code, FunctionKind::Arrow, &evaluator.function_cache);
+        return create_identifier_arrow(prepared, &evaluator.realm, &evaluator.environment, name);
+    }
+    let function = create_function(code, FunctionKind::Arrow, evaluator, None)?;
+    function.define_own_property(
+        "name".into(),
+        super::PropertyDescriptor::data(Value::String(name.clone()), false, false, true),
+    )?;
+    Ok(function)
 }
 
 pub(super) fn create_function_with_constructor(
@@ -1613,5 +1667,46 @@ mod lexical_read_tests {
             after.live, before.live,
             "zero-binding lexical activations are unobservable"
         );
+    }
+}
+
+#[cfg(test)]
+mod owned_context_tests {
+    use super::*;
+
+    #[test]
+    fn child_code_cache_survives_script_release_without_owning_its_parent() {
+        let expression =
+            crate::parser::parse_expression("function f({x},read=()=>x){return read;}").unwrap();
+        let ExprKind::Function(function) = expression.kind else {
+            panic!("function")
+        };
+        let cache: FunctionCache = Default::default();
+        let code = prepare_code(&function, FunctionKind::Normal, &Some(cache.clone()));
+        drop(cache);
+        let first = code.context().unwrap();
+        let second = code.context().unwrap();
+        assert!(Rc::ptr_eq(&first, &second));
+        let ExprKind::Assignment { value, .. } = &code.parameters[1].kind else {
+            panic!("default")
+        };
+        let ExprKind::Arrow(arrow) = &value.kind else {
+            panic!("arrow")
+        };
+        let child = prepare_code(arrow, FunctionKind::Arrow, &Some(first.clone()));
+        assert!(Rc::ptr_eq(
+            &child,
+            &prepare_code(arrow, FunctionKind::Arrow, &Some(second.clone()))
+        ));
+        let weak_parent = Rc::downgrade(&code);
+        let weak_cache = Rc::downgrade(&first);
+        let weak_child = Rc::downgrade(&child);
+        drop(child);
+        drop(first);
+        drop(second);
+        drop(code);
+        assert!(weak_parent.upgrade().is_none());
+        assert!(weak_cache.upgrade().is_none());
+        assert!(weak_child.upgrade().is_none());
     }
 }

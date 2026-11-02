@@ -37,3 +37,13 @@ fn parameter_and_lexical_context_arrows_keep_the_full_header_path() {
         "let outer=41,hits=0;function mixed(read=()=>outer,b=++hits){var outer=0;return read()+b;}mixed()===42&&hits===1&&mixed(undefined,20)===61&&hits===1&&mixed(undefined,undefined)===43&&hits===2;",
     );
 }
+
+#[test]
+fn prepared_named_arrows_preserve_function_descriptors_and_nonconstructability() {
+    check(
+        "let outer=42;function f(read=()=>outer){return read;}let a=f(),b=f();let name=Object.getOwnPropertyDescriptor(a,'name'),length=Object.getOwnPropertyDescriptor(a,'length'),keys=Reflect.ownKeys(a);let rejected=false;try{new a();}catch(e){rejected=e instanceof TypeError;}name.value==='read'&&!name.writable&&!name.enumerable&&name.configurable&&length.value===0&&!length.writable&&!length.enumerable&&length.configurable&&keys.length===2&&keys[0]==='length'&&keys[1]==='name'&&Object.getOwnPropertyDescriptor(a,'prototype')===undefined&&Object.getPrototypeOf(a)===Function.prototype&&rejected&&a!==b&&a.call({})===42&&a.bind({})()===42;",
+    );
+    check(
+        "function f(value=42,read=()=>value){return read;}let a=f();Object.defineProperty(a,'name',{value:'changed'});let value=20,read=()=>value;let d=Object.getOwnPropertyDescriptor(read,'name');a.name==='changed'&&a()===42&&read()===20&&d.value==='read'&&!d.writable&&!d.enumerable&&d.configurable;",
+    );
+}

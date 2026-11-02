@@ -157,10 +157,13 @@ fn original_done_harness_precedes_includes_and_setup_cannot_complete_test() {
         "assert.sameValue(typeof $DONE,'function');var included=42;",
     );
     fixture.write("test/case.js","/*---\nflags: [async, noStrict]\nincludes: [check.js]\n---*/\nassert.sameValue(included,42);$DONE();");
-    let (o, r, _) = fixture.cli(&[]);
+    // This checks finite harness ordering and exact failure classification.
+    // Match the instrumented completion tests' budget; the separate deadline
+    // test retains the 200 ms incomplete/nonreturning worker assertions.
+    let (o, r, _) = fixture.cli(&["--timeout-ms", "1500"]);
     expect(&o, &r, 0, "complete");
     fixture.write("harness/check.js", "$DONE();");
-    let (o, r, _) = fixture.cli(&[]);
+    let (o, r, _) = fixture.cli(&["--timeout-ms", "1500"]);
     assert_eq!(o.status.code(), Some(1), "{r}");
     assert_eq!(r["results"][0]["observed_failure"]["type"], "HarnessError");
 }

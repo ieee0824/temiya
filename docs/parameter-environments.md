@@ -15,7 +15,7 @@ complete mapped/unmapped arguments semantics remain tracked by #166.
 Public Ast/Auto cases live in `tests/parameter_environments.rs`. The earlier
 source `88dd92e` passes the full-corpus regression gate, whole-library security
 and hosted toolchain checks. Source `3c437b9` also preserves every preceding
-pass in the complete corpus. Current lexical-read source `c12c6f7` needs its own
+pass in the complete corpus. Current rest-entry source `c4781cc` needs its own
 complete qualification; native Boa speed qualification remains pending. The earlier eight
 integration tests pass strict Miri, as do the two new supplied-default tests on
 the optimized source. The implementation does not establish complete eval, generator or
@@ -103,7 +103,9 @@ parameters and no arguments/eval observers. At call time every defaulted
 parameter must receive a non-undefined argument; otherwise the complete original
 parameter/body-environment path executes. No initializer or parameter-created
 closure executes on an accepted call. Missing plain parameters still receive
-undefined. Patterns, rest, async, generators and methods retain their prior path.
+undefined. A final identifier rest binding uses a fresh intrinsic Array before
+ordinary template entry, including rest-only functions. Patterns, async,
+generators and methods retain their prior path.
 Tests cover effects, falsy supplied values, missing/undefined defaults, escaping
 closures, arguments, Function.length and constructor new.target.
 
@@ -179,3 +181,19 @@ retained. The verifier applies each patch to hashed upstream base files and
 checks all input/result pairs. These are debug-build correctness diagnostics,
 not stock-Boa results or native speed qualification; the benchmark reference
 and the original input manifest remain unchanged.
+
+`rest-entry-arm-v1` retains source `c4781cc`: accepted normal rest calls create
+fresh real Arrays with the receiving Realm's intrinsic prototype, preserve
+extra/missing arguments and original Function.length, and use ordinary verified
+body cells. Undefined/missing defaults, arguments/eval observers and rest binding
+patterns keep their prior path. Constructor context, array identity, prototype
+setters, poisoned iterators, evaluation order and fallback default closures are
+tested. Native tests pass 1,043 cases (26 ignored); Clippy, both new public strict
+Miri tests and a forced-allocation-GC rest-array test pass. All 85 compiler inputs
+and integration-test source hashes are retained. Rest-copy is faster than the
+preceding implementation in two pairs (ratios about 0.817); the third pair is
+within noise. It still loses all three corrected pinned Boa pairs. The remaining
+22 before/after pairs and all 24 identical-binary pairs are within noise. A
+whole-process rest-copy Callgrind capture per source decreases from 374,319,709
+to 316,014,322 instructions. These results do not qualify the remaining six new
+inputs or the complete current-source 78-input comparison/corpus/security gates.

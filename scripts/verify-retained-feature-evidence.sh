@@ -123,6 +123,7 @@ case "${1:-}" in
     node benchmarks/destructuring-assignment/verify-oracles.mjs
     ;;
   objects)
+    node benchmarks/parameter-environments/rest-entry-arm-v1/verify.mjs
     node benchmarks/parameter-environments/lexical-read-arm-v1/verify.mjs
     node benchmarks/parameter-environments/asan-lexical-read-v1/verify.mjs
     node benchmarks/parameter-environments/security-supplied-defaults-v1/verify.mjs

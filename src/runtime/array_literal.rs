@@ -8,6 +8,10 @@ pub(crate) fn create(realm: &Realm) -> RuntimeResult<Object> {
     object.initialize_prototype(Some(realm.intrinsic(IntrinsicId::ArrayPrototype)));
     Ok(object)
 }
+
+pub(crate) fn from_values(realm: &Realm, values: &[Value]) -> RuntimeResult<Object> {
+    Object::array_from_values(realm.intrinsic(IntrinsicId::ArrayPrototype), values)
+}
 // An unpublished AST literal has no identity observer until a value is stored
 // or the finished array escapes. Keep yielded values rooted while materializing
 // the array, and keep the shared iterator consumer's abrupt-close behavior.
@@ -83,6 +87,32 @@ pub(crate) fn finish(object: &Object, next: u64) -> RuntimeResult<()> {
 mod tests {
     use super::*;
     use crate::runtime::{AllocationContext, RuntimeErrorKind};
+
+    #[test]
+    fn initial_array_edges_reject_foreign_allocation_contexts() {
+        let context = AllocationContext::new();
+        let foreign = AllocationContext::new();
+        let prototype = Object::new_in(&context);
+        let foreign_value = Object::new_in(&foreign);
+        let error = Object::array_from_values(
+            prototype.clone(),
+            &[Value::Number(1.0), Value::Object(foreign_value)],
+        )
+        .unwrap_err();
+        assert_eq!(error.kind(), RuntimeErrorKind::TypeError);
+        let value = Object::new_in(&context);
+        let array =
+            Object::array_from_values(prototype, &[Value::Object(value.clone()), Value::Undefined])
+                .unwrap();
+        assert!(
+            array
+                .get(&"0".into())
+                .unwrap()
+                .same_value(&Value::Object(value))
+        );
+        assert!(array.get_own_property(&"1".into()).is_some());
+        assert_eq!(array.array_length(), 2);
+    }
 
     #[test]
     fn finishing_preserves_readonly_lengths_holes_and_overflow_errors() {

@@ -1139,12 +1139,10 @@ fn bind_parameters_impl(
         }
         for (index, parameter) in parameters.iter().enumerate() {
             if let ExprKind::Spread(binding) = &parameter.kind {
-                let array = super::array_literal::create(&evaluator.realm)?;
-                let mut next = 0;
-                for value in arguments.get(index..).unwrap_or_default() {
-                    super::array_literal::append(&array, &mut next, value.clone())?;
-                }
-                super::array_literal::finish(&array, next)?;
+                let array = super::array_literal::from_values(
+                    &evaluator.realm,
+                    arguments.get(index..).unwrap_or_default(),
+                )?;
                 super::binding::initialize(evaluator, binding, Value::Object(array), true)?;
                 break;
             }

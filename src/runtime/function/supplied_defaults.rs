@@ -64,12 +64,10 @@ impl Plan {
         };
         // No parameter expression ran on an accepted call. Preserve the real,
         // fresh rest-array identity and receiving Realm's intrinsic prototype.
-        let array = super::super::array_literal::create(realm)?;
-        let mut next = 0;
-        for value in arguments.get(start..).unwrap_or_default() {
-            super::super::array_literal::append(&array, &mut next, value.clone())?;
-        }
-        super::super::array_literal::finish(&array, next)?;
+        let array = super::super::array_literal::from_values(
+            realm,
+            arguments.get(start..).unwrap_or_default(),
+        )?;
         let mut passed = Vec::with_capacity(start + 1);
         passed.extend((0..start).map(|i| arguments.get(i).cloned().unwrap_or(Value::Undefined)));
         passed.push(Value::Object(array));

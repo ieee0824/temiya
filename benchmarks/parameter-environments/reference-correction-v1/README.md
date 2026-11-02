@@ -31,6 +31,7 @@ controls use the ordinary before/after route. The hosted workflow builds both
 reference variants before timing, retains their separate receipts, and measures
 the inherited 70 cases against the original reference.
 
-Release correctness and speed measurements for this corrected pinned fork are
-pending. The upstream debug experiments in `../reference-patch-diagnostics-v1`
+Release correctness is retained in `release-validation`: all eight original
+inputs validate twice. Replay with `node benchmarks/parameter-environments/reference-correction-v1/verify.mjs`.
+Hosted native speed measurements for this corrected pinned fork are pending. The upstream debug experiments in `../reference-patch-diagnostics-v1`
 are separate correctness evidence and do not establish native speed.

@@ -123,6 +123,7 @@ case "${1:-}" in
     node benchmarks/destructuring-assignment/verify-oracles.mjs
     ;;
   objects)
+    node benchmarks/parameter-environments/reference-correction-v1/verify.mjs
     node benchmarks/parameter-environments/security-current-main-v1/verify.mjs
     node benchmarks/parameter-environments/full-current-main-v1/verify.mjs
     node benchmarks/parameter-environments/integrated-correctness-v1/verify.mjs

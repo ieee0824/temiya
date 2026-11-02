@@ -216,3 +216,13 @@ pairs, and the same-binary control also has one faster pair. Rest remains slower
 than corrected pinned Boa in two pairs and within noise in the third. All eight
 original inputs and unfavorable measurements remain in the record. Current-source
 full-corpus, complete security and two-host native qualification remain pending.
+
+Historical rest-entry runtime `c4781cc`, dispatched at `9b6d8ee`, now has
+complete retained hosted results. `full-rest-entry-v1/verify.mjs` extracts and
+independently replays all eight full-corpus gates and compares every variant to
+the preceding capture: 100,211 outcomes, 38,801 pass, 52,823 fail, 18 skip and
+8,569 timeout, with all 38,801 preceding passes preserved and no new passes or
+regressions. `security-rest-entry-v1/verify.mjs` checks all 19 security jobs,
+including the complete 181-test exact Miri partition and 1,042 ASan passes.
+These records qualify only that historical runtime's recorded checks; they do
+not establish speed or qualify the later guarded-leaf or bulk-rest changes.

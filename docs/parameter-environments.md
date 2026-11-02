@@ -83,6 +83,17 @@ of main at `1dfa282` changes history only and preserves all 84 compiler inputs.
 all 84 compiler-input hashes. These local results alone do not qualify whole-corpus,
 whole-library safety or native Boa speed.
 
+`corrected-reference-arm-initial-v1` retains the first native comparison against
+the explicitly corrected pinned reference on the local ARM host. All outputs
+validate, but 20 of 24 pairs are slower beyond the unchanged threshold and four
+are within noise. This is adverse evidence, not speed qualification. Its
+whole-process var-copy Callgrind diagnostic records 246,701,156 instructions;
+environment creation, parameter binding and binding reads merit investigation.
+Nayuta v0.3.3 was rechecked as the latest release and scanned the three relevant
+Rust files, reporting 41 syntactic loop candidates without parser errors. These
+candidates include tests and do not measure CPU time. No reproducible Nayuta
+defect was found. Hosted two-machine results remain separate.
+
 The same runtime at recorded commit `3ac5a5f` completes all 100,211 Test262
 variants: 38,801 pass, 52,823 fail, 18 skip and 8,569 timeout, with no missing
 results. All 38,759 preceding passes remain passes and 42 additional variants

@@ -1,126 +1,97 @@
 # Destructuring assignment
 
-The interpreter evaluates array and object assignment patterns through the
-existing iterator and property-copy machinery. Identifier and member targets
-produce References; writes use PutValue rather than declaration initialization.
-The assignment expression returns its original right-hand value. Supported
-for-in/of expression targets use the same path.
+Array and object assignment patterns write through References and PutValue,
+rather than declaration initialization. The assignment expression returns its
+original right-hand value. Ast and Auto expose this behavior through Engine;
+eligible Scripts and ordinary function bodies also execute through verified
+bytecode. This does not establish complete for-of or generator support.
 
-Target references are evaluated before the corresponding iterator step or
-property get, followed by default evaluation and the write. Earlier writes
-remain observable if a later target throws. IteratorClose preserves the original
-throw completion. Object rest resolves its target before copying properties.
+Target references precede the corresponding iterator step or source property
+get. Defaults run after that read and before the write. Earlier writes remain
+observable if a later target throws. IteratorClose preserves the original throw
+completion. Object rest resolves its target before copying properties. Computed
+member target keys remain in their Reference until PutValue, including across
+source getters, defaults and reentrant collection.
 
-Verified bytecode lowers assignment patterns to `AssignmentPattern` metadata
-consumed by `InitializePattern`. It preserves the RHS on the operand stack and
-uses the same Reference writer as the interpreter. Assignment metadata permits
-member targets without weakening declaration binding validation, cannot be
-loaded as a runtime value, and participates in argument observation and
-per-iteration environment analysis. `tests/bytecode_assignments.rs` checks
-these contracts and that all six frozen benchmark functions compile to VM bodies.
-Mapped sloppy arguments (#166), AST for-let closure capture (#173), and
-optional Annex B var aliases (#174) remain separate work.
+Verified bytecode retains `AssignmentPattern` metadata consumed by
+`InitializePattern`, while preserving the original RHS on the operand stack.
+Assignment metadata allows member targets without weakening declaration binding
+validation and cannot be loaded as a runtime value. It participates in argument
+observation and per-iteration capture analysis. Complex patterns use the shared
+runtime evaluator and Reference writer.
 
-Public Engine tests exercise Ast and Auto in
-`tests/destructuring_assignment.rs`. The implementation is pending fixed
-Test262, safety, toolchain, and native Boa performance qualification. It does
-not establish complete for-of or generator support. Issues #162 and #163 have landed; #164 still requires qualification
-of its current runtime source.
+Static object assignment plans cache immutable names and target syntax only.
+They retain no Realm, runtime Value or Reference. Each object level checks for
+null or undefined before evaluating its targets. A nested object's parent read
+precedes all child target evaluation. A leaf target retains its actual Reference
+before its source read, so a getter that replaces a target binding still writes
+to the previously resolved object. Primitive source reads preserve their receiver.
+Computed keys, defaults, rest and unsupported static target shapes retain the
+shared path.
 
-Specification: [ECMA-262 destructuring assignment](https://tc39.es/ecma262/2026/multipage/ecmascript-language-expressions.html#sec-destructuring-assignment).
+A separate loop proof permits header-cell reuse around hoisted leaf functions
+only when verified names cannot observe cloned header names or eval. Nested
+closures, metadata bridges, calls and unlisted instructions remain conservative.
+Body environments, functions and prototypes retain distinct identities. Public
+prepared-frame execution does not opt into this reuse.
 
-Local correctness evidence is retained in
-`benchmarks/destructuring-assignment/correctness-v1`. Replay with
-`node benchmarks/destructuring-assignment/correctness-v1/verify.mjs`.
-It includes the initial 952-test all-target run and all ten final assignment
-tests under strict Miri. Earlier MSRV results cover eight tests. These records
-do not establish native speed or complete Test262 qualification.
+`tests/destructuring_assignment.rs`, `tests/bytecode_assignments.rs` and
+`tests/bytecode_assignment_gc.rs` cover public execution, metadata validation,
+evaluation order, partial writes and reentrant GC. The current nested-plan source
+is `eb7f054d7db7256c3d228849a424758fac45f04e`. Its local all-target/all-feature
+run passes 1,024 tests with 26 ignored; fmt and Clippy pass. Three focused strict
+Miri tests cover prepared plan use, nested evaluation order and collection across
+parent reads and child references. Complete logs and all 83 compiler-input hashes
+are retained in `benchmarks/destructuring-assignment/nested-assignment-correctness-v1`.
+Run its `verify.mjs` to replay the evidence.
 
-Computed member targets retain the key value in their Reference; conversion
-to a property key happens at PutValue, after source reads and defaults. The
-reference-order regression also checks that a null base rejects the write
-without converting its key, while closing an unfinished iterator.
+Full Test262 run 41362294489 covers all 52,133 files and 100,211 variants:
+38,759 pass, 52,865 fail, 18 skip and 8,569 timeout. No variants are missing or
+unreported. It preserves all 38,759 passes of source a151aedc, with no regressions
+or additional passes. `full-nested-assignment-v1/verify.mjs` independently checks
+every shard, replays the known-pass gates, compares every variant with the preceding
+source and reconstructs the feature selection. These results do not establish
+complete ECMAScript conformance.
 
-The first historical instruction captures for all six unchanged inputs are
-retained in `benchmarks/destructuring-assignment/vm-instructions-v1`. Replay
-with `node benchmarks/destructuring-assignment/vm-instructions-v1/verify.mjs`.
-The comparison includes parent-main integration and VM lowering, so it does
-not isolate either change. All six recorded instruction totals decreased
-(4.8–22.5%); this is not a native timing or Boa speed qualification.
+The unchanged 8,813-file selection contains 17,424 variants: 10,245 pass,
+2,748 fail and 4,431 timeout. Its 142 text-matched assignment files contain
+219 variants: 217 pass and 2 fail. Both failures are the Sloppy/Strict variants
+of `for-of/body-dstr-assign-error.js`, tracked by #171 for Iterator protocol
+and closing integration. They remain failures. Metadata tags alone cover 141
+files and 217 variants; the additional text match is an untagged duplicate
+`__proto__` test. No outcome-based selection is applied.
 
-Current-source local VM correctness records are retained separately in
-`benchmarks/destructuring-assignment/vm-correctness-v1`; its verifier replays
-the 1,013-test native result, four dedicated strict Miri tests, Clippy and the
-original 46-variant loop audit, including its ten dependency failures. The
-initial isolated-filesystem Miri rejection is retained alongside the successful
-embedded-input run. Complete security and full-corpus checks remain pending.
+Current-source hosted security run 41362296996 and two-runner native measurement
+41362299598 are still pending. Local Miri, passing CI and corpus results do not
+replace either gate. CI run 41362630287 passed all 11 jobs, including stable,
+MSRV, C ABI and all seven evidence suites; all 83 compiler inputs at its data-only
+head match eb7f054d. Issue #164 remains open until source-specific safety and
+native speed qualification are complete.
 
-`vm-gc-correctness-v1` adds one explicit Bytecode-backend test of ephemeral
-assignment targets across reentrant collection from setters, getters, defaults
-and rest writes. Native execution and strict Miri both pass, and the final
-collection retains zero allocations. Its verifier proves that compiler inputs
-match the measured runtime source; it supplements the four VM tests above.
+All six unchanged instruction captures are retained in
+`nested-assignment-instructions-v1`. The nested object case uses approximately
+9.6% fewer instructions than source 79df851; the other five did not improve.
+The preceding source's six adverse captures remain in
+`static-assignment-instructions-v1`. Instruction counts are not native timings
+or a Boa speed qualification.
 
-All ten AST/Auto assignment regressions also pass strict Miri on the current
-VM runtime; their exact test names and complete log are replayed by
-`vm-correctness-v1/verify.mjs` alongside the four dedicated VM tests.
+Earlier native captures remain in `hosted-initial-v1` (run 41245424047),
+`hosted-vm-v1` (41303412892) and `hosted-comparisons-v1` (41307560987).
+Each retains all 80 reports from both original unfiltered jobs, with unchanged
+inputs, 15 samples, three alternating pairs, controls and thresholds. Each fails
+at least one required two-of-three speed gate. `verify-hosted.mjs` accepts these
+adverse observations for integrity replay and does not turn them into speed passes.
+Source a151aedc's full-corpus and security records are retained separately in
+`full-comparisons-v1` and `security-comparisons-v1`: all 100,211 variants,
+175 exact library Miri tests, 1,017 ASan tests and all 19 security jobs.
+These qualify only that recorded source for their stated checks.
 
-The complete current-VM Test262 run (41303173669, source eb29c416) covers all
-52,133 original files and 100,211 variants: 38,759 pass, 52,865 fail, 18 skip
-and 8,569 timeout, with no missing or unreported variants. It preserves all
-38,758 prior assignment-source passes and all 37,919 qualified main/object
-passes, with zero regressions and one additional assignment-source pass.
-`full-initial-v1` and `full-vm-v1` retain the complete prior/current captures;
-`full-vm-v1/verify.mjs` independently replays all eight shards for both sources
-and qualified main, then reconstructs the per-variant comparisons. The
-remaining failures and timeouts are retained and do not establish complete
-ECMAScript conformance or native speed.
+Earlier local and corpus records remain in `correctness-v1`, `vm-correctness-v1`,
+`vm-gc-correctness-v1`, `comparisons-correctness-v1`, `full-initial-v1` and
+`full-vm-v1`. Their verifiers preserve original failures, skips and timeouts;
+their results are historical rather than transferred to a changed runtime.
 
-Current-runtime security run 41303175895 passes all 19 jobs. Its sixteen
-strict Miri shards execute 173 unique exact library tests; ASan executes
-1,012 tests, with the dependency audit and Miri aggregate both successful.
-`security-vm-v1` retains every job log and the exact test list. Replay with
-`node benchmarks/object-binding/security-prepared-guards-v1/verify.mjs
-benchmarks/destructuring-assignment/security-vm-v1
-eb29c4169c0fdfd9246546f76b5874097a53ef62` on a single command line. These
-results qualify the recorded runtime source for the stated checks only;
-native Boa speed remains pending.
-
-The frozen142 text-matched assignment files contain219 variants:217 pass
-and2 fail. Both failures are the strict/sloppy variants of
-`for-of/body-dstr-assign-error.js`, whose custom iterator is not consumed by
-the legacy for-of path; Iterator protocol and closing integration remain #171.
-They remain failures in the complete capture. The inherited8,813-file selection
-contains17,424 variants:10,245 pass,2,748 fail and4,431 timeout.
-`selection-summary.json` preserves this full breakdown. The142 text matches
-include one untagged duplicate-__proto__ case; actual assignment metadata tags
-cover141 files and217 variants. No outcome-based selection is applied.
-
-Both complete earlier native captures are retained by `verify-hosted.mjs`.
-`hosted-initial-v1` preserves all80 reports from run41245424047;
-`hosted-vm-v1` preserves all80 from run41303412892. The latter qualifies
-most groups but fails the required two-of-three gate for object-binding abrupt
-coercion on copy1 (one win) and assignment computed-default on copy2 (one win).
-All inputs,15 samples,3 alternating pairs, thresholds and both original
-unfiltered machines remain recorded. Integrity replay is not a speed pass.
-
-The next source integrates direct verified VM strict comparisons and guarded
-standard instanceof dispatch, including builtin defining-Realm error handling.
-Its native, corpus, safety and speed results require fresh validation; results
-above remain specific to their recorded sources. Assignment evidence has its
-own CI shard, preserving every existing check and the20-minute job timeout.
-
-Source a151aed passes1,018 all-target/all-feature native tests (26 ignored),
-Clippy, and19 local strict Miri tests: two standard-instance guards, strict
-equality hooks, operand GC storage, and all15 assignment/VM/GC regressions.
-`comparisons-correctness-v1` retains complete logs and all83 compiler-input
-hashes. This changed source has its own fresh hosted native/full/security
-runs; the preceding successful corpus/security records remain historical.
-
-A subsequent verifier proof permits header-cell reuse around hoisted leaf-like
-functions only when their verified names cannot observe any cloned header name
-or eval. Nested closures, metadata bridges, calls and unlisted instructions
-remain conservative. Function bodies may retain their own fresh body variables;
-body environments and function/prototype identities remain distinct. The
-regression executes both eligible fresh-body captures and ineligible direct or
-nested header captures, and passes native execution and strict Miri.
+Mapped sloppy arguments (#166), complete for-of integration (#171), AST for-let
+closure capture (#173) and optional Annex B var aliases (#174) remain separate
+work. Issues #162 and #163 have landed. Specification:
+[ECMA-262 destructuring assignment](https://tc39.es/ecma262/2026/multipage/ecmascript-language-expressions.html#sec-destructuring-assignment).

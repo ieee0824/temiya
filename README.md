@@ -46,15 +46,18 @@ The execution paths currently have different capabilities:
 | --- | --- | --- |
 | Parser | `parser::parse_script` / `parse_module` | Produces owned syntax; does not execute it. Base and derived class expressions execute through the AST path; parsing fields does not establish runtime support. |
 | AST interpreter | `Engine::compile` then `Engine::evaluate` | Executes arithmetic, variables, loops, ordinary functions, and supported object operations. Select it explicitly with ScriptBackend::Ast. Auto uses AST for unsupported Scripts and can independently compile eligible ordinary/class function bodies to verified bytecode before calling them. Base/derived constructors and ordinary/static methods execute. Super-property get/set/call in object and class methods execute through AST. Public instance fields initialize during construction; public static fields and static blocks evaluate in declaration order. Private instance field reads/writes, synchronous private methods/accessors, static private elements and brand checks execute through AST. Dynamic import remains incomplete; see [class execution](docs/classes.md). |
-| Bytecode interpreter | `BytecodeCompiler::compile` then `VirtualMachine::execute` | The default Engine uses Auto to select this whole-Script subset when supported: primitive operations, global/function/block bindings, TDZ/const, property references, calls/construct and simple-parameter functions, conditionals, while/for/do-while, break/continue and labels. Use `execute_in_realm` for persistent globals; standalone function-body execution requires a caller-prepared frame. Array literals, holes, iterable spread, data object literals, computed keys, object spread and prototype setters are supported; object literals with methods/accessors inside eligible function bodies use the shared evaluator through verified metadata; top-level object methods and for-in/of remain unsupported. `Engine::builder().script_backend(ScriptBackend::Bytecode)` selects this backend and reports unsupported syntax during compilation; `Auto` falls back to AST before executing an unsupported Script and never retries a runtime error. |
+| Bytecode interpreter | `BytecodeCompiler::compile` then `VirtualMachine::execute` | The default Engine uses Auto to select this whole-Script subset when supported: primitive operations, global/function/block bindings, TDZ/const, property references, destructuring assignment, calls/construct and simple-parameter functions, conditionals, while/for/do-while, break/continue and labels. Use `execute_in_realm` for persistent globals; standalone function-body execution requires a caller-prepared frame. Array literals, holes, iterable spread, data object literals, computed keys, object spread and prototype setters are supported; object literals with methods/accessors inside eligible function bodies use the shared evaluator through verified metadata; top-level object methods and for-in/of remain unsupported. `Engine::builder().script_backend(ScriptBackend::Bytecode)` selects this backend and reports unsupported syntax during compilation; `Auto` falls back to AST before executing an unsupported Script and never retries a runtime error. |
 | Experimental JIT | `BaselineJit::compile` with `--features jit` | Separate straight-line numeric backend on x86-64 Unix. For example, `40 + 2;` is supported, but `1 === 1;` is rejected. Other platforms, including ARM64, return `UnsupportedPlatform`. Enabling the feature does not make `Engine` use JIT execution. |
 
 Array and object binding patterns execute through Ast/Auto for declarations,
 ordinary function parameters, catch parameters and supported loop declarations.
 Computed keys, defaults and object rest preserve property access order and key
-exclusions. Destructuring assignment and complete for-of iteration remain separate
-work. See [array binding](docs/array-binding.md) and [object binding](docs/object-binding.md)
-for behavior and pending corpus/performance qualification.
+exclusions. Destructuring assignment writes identifier/member References through
+Ast/Auto and eligible verified bytecode, with nested patterns, defaults, rest and
+iterator closing; see [destructuring assignment](docs/destructuring-assignment.md).
+Complete for-of iteration remains separate work. See
+[array binding](docs/array-binding.md) and [object binding](docs/object-binding.md)
+for their behavior and recorded corpus/performance qualification.
 
 Run `cargo run --example backend_scope --all-features` to check these examples
 through the public APIs, including the unsupported cases. See
@@ -75,6 +78,10 @@ incomplete. Debugger and optimizing-tier contracts are development components.
 Separate async, RegExp, component and pinned SpiderMonkey results are recorded
 in the [benchmark coverage matrix](docs/benchmark-suite-coverage.md).
 Broader application performance and SpiderMonkey superiority remain unverified.
+The destructuring-assignment source also passes the unchanged two-of-three Boa
+comparison gate for all 70 frozen authored workloads in 12 groups on each of two
+unfiltered hosted jobs. All 80 reports and the two within-noise paired outcomes
+are retained in the [assignment qualification](docs/destructuring-assignment.md).
 
 An initial lexer is available as `temiya::lexer::tokenize`; its supported subset
 and next steps are documented in [docs/lexer.md](docs/lexer.md).

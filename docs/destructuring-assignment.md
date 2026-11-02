@@ -65,11 +65,23 @@ Current-source security run 41362296996 passes all 19 jobs: 177 unique exact
 library Miri tests, 1,023 ASan tests, dependency audit and the Miri aggregate.
 The exact Miri names match all 177 enumerated library tests. Complete logs and
 the source-specific verifier are retained in `security-nested-assignment-v1`.
-Two-runner native measurement 41362299598 is still pending. Local correctness,
-passing CI, full-corpus and security results do not replace the native speed gate. CI run 41362630287 passed all 11 jobs, including stable,
+Native run 41362299598 passes the unchanged two-of-three speed gate for all
+70 authored workloads in all 12 groups on each of two unfiltered hosted jobs.
+Both jobs report AMD EPYC 7763. Of 420 paired Temiya/Boa decisions, 418 are
+faster beyond threshold and two remain within noise: derived-definition on
+copy 1 and object-binding-computed-default on copy 2. Each still has two wins.
+All 80 reports, baseline/same-binary controls, original inputs, 15 samples and
+three alternating pairs remain in `hosted-nested-assignment-v1`.
+`verify-qualified.mjs` requires every recorded gate to pass; its optional
+`--current-source` flag also compares all 83 compiler inputs with HEAD and
+the working tree. This qualifies the recorded source and workloads against
+the pinned omoikane vendored Boa interpreter; broader application speed and
+SpiderMonkey superiority remain unverified.
+
+CI run 41362630287 passed all 11 jobs, including stable,
 MSRV, C ABI and all seven evidence suites; all 83 compiler inputs at its data-only
-head match eb7f054d. Issue #164 remains open until source-specific native speed qualification is
-complete.
+head match eb7f054d. These recorded-source checks are complete; later runtime
+changes require their own qualification.
 
 All six unchanged instruction captures are retained in
 `nested-assignment-instructions-v1`. The nested object case uses approximately

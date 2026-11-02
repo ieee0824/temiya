@@ -6,6 +6,7 @@ use crate::runtime::JsString;
 
 mod compiler;
 mod empty_frame;
+mod guarded_leaf;
 mod leaf_function;
 mod numeric_return;
 mod short_function;
@@ -592,6 +593,7 @@ pub struct VerifiedBytecode {
     reuse_loop_bindings: bool,
     numeric_return: Option<numeric_return::NumericReturnPlan>,
     leaf_function: Option<leaf_function::LeafFunctionPlan>,
+    guarded_leaf: Option<guarded_leaf::GuardedLeafPlan>,
     definition_cache: Option<crate::runtime::bytecode_function::DefinitionCodeCache>,
     empty_function_frame: bool,
     short_function: bool,
@@ -614,13 +616,17 @@ impl VerifiedBytecode {
         )
     }
     pub(crate) fn has_leaf_function(&self) -> bool {
-        self.leaf_function.is_some()
+        self.leaf_function.is_some() || self.guarded_leaf.is_some()
     }
 
     pub(crate) fn leaf_needs_environment(&self) -> bool {
         self.leaf_function
             .as_ref()
             .is_some_and(|plan| plan.needs_environment())
+            || self
+                .guarded_leaf
+                .as_ref()
+                .is_some_and(|plan| plan.needs_environment())
     }
 
     pub(crate) fn try_leaf_function(
@@ -632,6 +638,9 @@ impl VerifiedBytecode {
         function: &crate::runtime::Object,
         environment: Option<&crate::runtime::Environment>,
     ) -> Option<crate::runtime::RuntimeResult<crate::runtime::Value>> {
+        if let Some(plan) = &self.guarded_leaf {
+            return Some(plan.execute(parameters, arguments, this, realm, function, environment));
+        }
         Some(self.leaf_function.as_ref()?.execute(
             parameters,
             arguments,
@@ -1679,6 +1688,11 @@ fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
     let numeric_return = numeric_return::NumericReturnPlan::compile(&bytecode, max_stack);
     let reuse_loop_bindings = loop_bindings_are_unobserved(&bytecode, &states);
     let leaf_function = leaf_function::LeafFunctionPlan::compile(&bytecode, max_stack);
+    let guarded_leaf = if leaf_function.is_none() {
+        guarded_leaf::GuardedLeafPlan::compile(&bytecode, max_stack)
+    } else {
+        None
+    };
     let definition_cache = bytecode
         .instructions
         .iter()
@@ -1748,6 +1762,7 @@ fn verify(bytecode: Bytecode) -> Result<VerifiedBytecode, VerifyError> {
         definition_cache,
         reuse_loop_bindings,
         leaf_function,
+        guarded_leaf,
         bytecode,
         max_stack,
         has_backedge,

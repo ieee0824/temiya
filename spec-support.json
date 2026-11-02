@@ -14,6 +14,28 @@
   },
   "features": [
     {
+      "id": "runtime.parameter-environments",
+      "area": "ECMA-262 core",
+      "status": "partial",
+      "reference": "FunctionDeclarationInstantiation / parameter expressions (#165)",
+      "tests": [
+        "tests/parameter_environments.rs",
+        "docs/parameter-environments.md"
+      ],
+      "rationale": "Prepared parameter-expression plans separate parameter and body var cells across ordinary calls, derived constructors, supported generators and async calls. Public Ast/Auto regressions cover default closures, copied parameter values, arguments redeclarations, later TDZ and collection. Full corpus, native speed and broader function/eval behavior remain unqualified; complete arguments mapping belongs to #166.",
+      "kind": "group",
+      "issues": [
+        165,
+        162,
+        163,
+        166
+      ],
+      "test262": {
+        "status": "not-run",
+        "rationale": "No fixed upstream candidate capture has yet been recorded for this implementation."
+      }
+    },
+    {
       "id": "runtime.destructuring-assignment",
       "area": "ECMA-262 core",
       "status": "partial",

@@ -1,0 +1,7 @@
+{
+  "name": "parameter-env-computed-key",
+  "setup": "let key='answer';function read({[key]:value}){var key='missing';return value;}function bench(n){let total=0;for(let i=1;i<=n;i++){total+=read({answer:i});}return total;}",
+  "invocation": "bench(10000);",
+  "iterations": 10000,
+  "expected": 50005000
+}

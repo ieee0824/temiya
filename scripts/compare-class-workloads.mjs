@@ -6,6 +6,7 @@ import {join} from 'node:path';
 import os from 'node:os';
 import {fileURLToPath} from 'node:url';
 import * as baseClassSuite from './class-benchmark-reference.mjs';
+import {verifyParameterCorrectionReceipt} from './omoikane-parameter-correction.mjs';
 
 const args = process.argv.slice(2);
 const derived = args[0] === '--derived';
@@ -17,18 +18,19 @@ const privateElements = args[0] === '--elements';
 const iterators = args[0] === '--iterators';
 const arrayBindings = args[0] === '--bindings';
 const assignments = args[0] === '--assignments';
+const parameters = args[0] === '--parameters';
 const objectBindings = args[0] === '--object-bindings';
-if (derived || superProperties || instanceFields || staticElements || privateFields || privateElements || iterators || arrayBindings || objectBindings || assignments) args.shift();
-const {classFixtureVersion, classManifestSha256, classReferenceRevision, classWorkloads} = assignments ? await import('./assignment-benchmark-reference.mjs') : objectBindings ? await import('./object-binding-benchmark-reference.mjs') : arrayBindings ? await import('./array-binding-benchmark-reference.mjs') : iterators ? await import('./iterator-benchmark-reference.mjs') : privateElements ? await import('./private-element-benchmark-reference.mjs') : privateFields ? await import('./private-field-benchmark-reference.mjs') : staticElements ? await import('./static-class-benchmark-reference.mjs') : instanceFields ? await import('./instance-field-benchmark-reference.mjs') : superProperties ? await import('./super-property-benchmark-reference.mjs') : derived
+if (derived || superProperties || instanceFields || staticElements || privateFields || privateElements || iterators || arrayBindings || objectBindings || assignments || parameters) args.shift();
+const {classFixtureVersion, classManifestSha256, classReferenceRevision, classWorkloads} = parameters ? await import('./parameter-benchmark-reference.mjs') : assignments ? await import('./assignment-benchmark-reference.mjs') : objectBindings ? await import('./object-binding-benchmark-reference.mjs') : arrayBindings ? await import('./array-binding-benchmark-reference.mjs') : iterators ? await import('./iterator-benchmark-reference.mjs') : privateElements ? await import('./private-element-benchmark-reference.mjs') : privateFields ? await import('./private-field-benchmark-reference.mjs') : staticElements ? await import('./static-class-benchmark-reference.mjs') : instanceFields ? await import('./instance-field-benchmark-reference.mjs') : superProperties ? await import('./super-property-benchmark-reference.mjs') : derived
   ? await import('./derived-class-benchmark-reference.mjs') : baseClassSuite;
-const fixtureKind = assignments ? 'authored-destructuring-assignment' : objectBindings ? 'authored-object-binding' : arrayBindings ? 'authored-array-binding' : iterators ? 'authored-sync-iterator-operations' : privateElements ? 'authored-private-class-elements' : privateFields ? 'authored-private-instance-fields' : staticElements ? 'authored-static-class-elements' : instanceFields ? 'authored-instance-fields' : superProperties ? 'authored-super-properties' : derived ? 'authored-derived-classes' : 'authored-base-classes';
+const fixtureKind = parameters ? 'authored-parameter-environments' : assignments ? 'authored-destructuring-assignment' : objectBindings ? 'authored-object-binding' : arrayBindings ? 'authored-array-binding' : iterators ? 'authored-sync-iterator-operations' : privateElements ? 'authored-private-class-elements' : privateFields ? 'authored-private-instance-fields' : staticElements ? 'authored-static-class-elements' : instanceFields ? 'authored-instance-fields' : superProperties ? 'authored-super-properties' : derived ? 'authored-derived-classes' : 'authored-base-classes';
 const beforeAfter = args[0] === '--temiya-baseline';
 if (beforeAfter) args.shift();
 const [directory, temiya, referenceFile, samplesText = '15', pairsText = '3'] = args;
 const samples = Number(samplesText), pairs = Number(pairsText), spiderMonkey = false;
 if (args.length < 3 || args.length > 5 || !Number.isInteger(samples) || samples < 1 || samples > 1000 ||
     !Number.isInteger(pairs) || pairs < 1 || pairs > 10 || !/^[a-f0-9]{40}$/.test(process.env.TEMIYA_REVISION ?? ''))
-  throw Error('set TEMIYA_REVISION; usage: compare-class-workloads.mjs [--derived|--super|--fields|--static|--private|--elements|--iterators|--bindings|--object-bindings|--assignments] [--temiya-baseline] WORKLOAD_DIR TEMIYA_WORKER REFERENCE_INFO [SAMPLES=15] [PAIRS=3]');
+  throw Error('set TEMIYA_REVISION; usage: compare-class-workloads.mjs [--derived|--super|--fields|--static|--private|--elements|--iterators|--bindings|--object-bindings|--assignments|--parameters] [--temiya-baseline] WORKLOAD_DIR TEMIYA_WORKER REFERENCE_INFO [SAMPLES=15] [PAIRS=3]');
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 if (os.platform() !== 'linux') throw Error('Linux /proc watchdog required');
 const manifestPath = join(directory, 'manifest.json'), manifestBytes = readFileSync(manifestPath);
@@ -42,6 +44,8 @@ if (boa.rustc !== rustc || boa.executable_sha256 !== hash(readFileSync(boa.execu
 if (beforeAfter) {
   if (boa.name !== 'Temiya' || boa.mode !== 'Auto Script' || boa.profile !== 'release' ||
       !Array.isArray(boa.features) || boa.features.length !== 0) throw Error('release Temiya reference required');
+} else if (parameters) {
+  verifyParameterCorrectionReceipt(boa);
 } else if (boa.omoikane_revision !== classReferenceRevision || !boa.checkout_clean || boa.profile !== 'release') {
   throw Error('pinned actual Boa reference required');
 }
@@ -50,7 +54,7 @@ const workers = [
     revision: process.env.TEMIYA_REVISION, mode: 'Auto Script', profile: 'release', features: [],
     executable_sha256: hash(readFileSync(temiya))},
   beforeAfter ? {...boa, name: 'Temiya before', engine: 'Temiya'} :
-    {name: 'omoikane vendored Boa', executable: boa.executable, revision: boa.omoikane_revision,
+    {name: parameters ? 'omoikane vendored Boa (parameter correction v1)' : 'omoikane vendored Boa', engine: 'omoikane vendored Boa', executable: boa.executable, revision: boa.omoikane_revision,
       mode: 'interpreter', build: boa},
 ];
 const workloads = manifest.workloads.map((entry, index) => {
@@ -59,7 +63,7 @@ const workloads = manifest.workloads.map((entry, index) => {
       entry.iterations !== fixed.iterations || entry.expected !== fixed.expected || entry.oracle !== fixed.oracle)
     throw Error('class input identity/oracle changed');
   const workload = JSON.parse(bytes);
-  const expected = (instanceFields || staticElements || privateFields || privateElements || iterators || arrayBindings || objectBindings || assignments) ? fixed.iterations * (fixed.iterations + 1) / 2 : superProperties
+  const expected = (instanceFields || staticElements || privateFields || privateElements || iterators || arrayBindings || objectBindings || assignments || parameters) ? fixed.iterations * (fixed.iterations + 1) / 2 : superProperties
     ? fixed.oracle === 'half-n-times42-plus-half-n-times84'
       ? (fixed.iterations / 2) * 42 + (fixed.iterations / 2) * 84
       : fixed.iterations * (fixed.iterations + 1) / 2
@@ -71,9 +75,11 @@ const workloads = manifest.workloads.map((entry, index) => {
 });
 const timeout_ms = 180000, rss_limit_kib = 512 * 1024;
 const identities = [manifestPath, ...workloads.map(row => row.path), ...workers.map(row => row.executable),
-  fileURLToPath(import.meta.url), fileURLToPath(new URL(assignments ? './assignment-benchmark-reference.mjs' : objectBindings ? './object-binding-benchmark-reference.mjs' : arrayBindings ? './array-binding-benchmark-reference.mjs' : iterators ? './iterator-benchmark-reference.mjs' : privateElements ? './private-element-benchmark-reference.mjs' : privateFields ? './private-field-benchmark-reference.mjs' : staticElements ? './static-class-benchmark-reference.mjs' : instanceFields ? './instance-field-benchmark-reference.mjs' : superProperties ? './super-property-benchmark-reference.mjs' : './class-benchmark-reference.mjs', import.meta.url))]
+  ...(parameters ? [fileURLToPath(new URL('./omoikane-parameter-correction.mjs', import.meta.url)),
+    fileURLToPath(new URL('../benchmarks/parameter-environments/reference-correction-v1/correction.patch', import.meta.url))] : []),
+  fileURLToPath(import.meta.url), fileURLToPath(new URL(parameters ? './parameter-benchmark-reference.mjs' : assignments ? './assignment-benchmark-reference.mjs' : objectBindings ? './object-binding-benchmark-reference.mjs' : arrayBindings ? './array-binding-benchmark-reference.mjs' : iterators ? './iterator-benchmark-reference.mjs' : privateElements ? './private-element-benchmark-reference.mjs' : privateFields ? './private-field-benchmark-reference.mjs' : staticElements ? './static-class-benchmark-reference.mjs' : instanceFields ? './instance-field-benchmark-reference.mjs' : superProperties ? './super-property-benchmark-reference.mjs' : './class-benchmark-reference.mjs', import.meta.url))]
   .map(file => ({file, sha256: hash(readFileSync(file))}));
-const report = {comparison_kind: beforeAfter ? 'Temiya class before/after or control' : 'Temiya class versus actual Boa',
+const report = {comparison_kind: beforeAfter ? 'Temiya class before/after or control' : parameters ? 'Temiya parameters versus corrected pinned Boa' : 'Temiya class versus actual Boa',
   recorded_at: new Date().toISOString(), rustc, manifest, workers, samples, pairs, identities,
   measurement_scope: 'Function/shared setup once per process; each timed pass parses and evaluates the same invocation; startup/setup/warmup excluded from samples',
   qualification: samples >= 15 && pairs >= 3 ? 'repeated comparison' : 'diagnostic only; insufficient samples/pairs for performance acceptance',

@@ -975,6 +975,57 @@ impl Object {
         Some(runtime.allocate_object(data))
     }
 
+    // The complete fresh Array is traced at its allocation safepoint. Incoming
+    // values stay rooted while initial edges are checked; no JavaScript or
+    // inherited setter runs when defining these own data elements.
+    pub(super) fn array_from_values(prototype: Self, values: &[Value]) -> RuntimeResult<Self> {
+        let length = u32::try_from(values.len())
+            .map_err(|_| RuntimeError::range_error("invalid array length"))?;
+        let runtime = prototype.allocation_context().clone();
+        let elements = if values.iter().all(|value| matches!(value, Value::Number(_))) {
+            super::elements::Elements::PackedNumbers(
+                values
+                    .iter()
+                    .map(|value| {
+                        let Value::Number(number) = value else {
+                            unreachable!()
+                        };
+                        *number
+                    })
+                    .collect(),
+            )
+        } else {
+            super::elements::Elements::Packed(
+                values
+                    .iter()
+                    .map(|value| {
+                        Ok(StoredDescriptor::Data {
+                            value: StoredValue::initial(Some(&runtime), value)?,
+                            writable: true,
+                            enumerable: true,
+                            configurable: true,
+                        })
+                    })
+                    .collect::<RuntimeResult<Vec<_>>>()?,
+            )
+        };
+        let mut data = super::ObjectData::ordinary();
+        let state = data.state.get_mut();
+        state.array = true;
+        state.prototype = Some(StoredObject::initial(Some(&runtime), &prototype)?);
+        state.elements = Some(Box::new(elements));
+        state.properties = vec![PropertyEntry {
+            key: "length".into(),
+            descriptor: StoredDescriptor::Data {
+                value: StoredValue::Number(f64::from(length)),
+                writable: true,
+                enumerable: false,
+                configurable: false,
+            },
+        }];
+        Ok(runtime.allocate_object(data))
+    }
+
     pub(super) fn new_with_prototype(prototype: Self) -> Self {
         let runtime = prototype.allocation_context().clone();
         let mut data = super::ObjectData::ordinary();

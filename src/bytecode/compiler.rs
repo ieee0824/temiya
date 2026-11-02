@@ -43,13 +43,14 @@ impl BytecodeCompiler {
                 Some(function.span),
             ));
         }
-        Self::compile_prepared_function_body(function)
+        Self::compile_prepared_function_body(function, false)
     }
 
     // Parameters are already initialized in a real Function environment. This
     // private path never enables scalar locals or activation elision.
     pub(crate) fn compile_prepared_function_body(
         function: &Function,
+        separate_parameter_environment: bool,
     ) -> Result<VerifiedBytecode, CompileError> {
         if function.asynchronous || function.generator {
             return Err(CompileError::new(
@@ -81,7 +82,10 @@ impl BytecodeCompiler {
                     ));
                 };
                 let mut vars = scope_bindings(statements, true, false, true)?;
-                for name in &parameters {
+                for name in parameters
+                    .iter()
+                    .filter(|_| !separate_parameter_environment)
+                {
                     if !vars.iter().any(|binding| &binding.name == name) {
                         vars.push(ScopeBinding {
                             name: name.clone(),

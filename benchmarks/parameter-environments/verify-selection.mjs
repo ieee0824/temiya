@@ -1,0 +1,17 @@
+import fs from 'node:fs';
+import crypto from 'node:crypto';
+import assert from 'node:assert/strict';
+const dir=new URL('./',import.meta.url);
+const bytes=fs.readFileSync(new URL('selection.json',dir));
+const selected=JSON.parse(bytes);
+const freeze=JSON.parse(fs.readFileSync(new URL('selection-freeze.json',dir)));
+assert.equal(crypto.createHash('sha256').update(bytes).digest('hex'),freeze.sha256);
+assert.equal(selected.length,freeze.files);
+assert.deepEqual(selected,[...new Set(selected)].sort());
+assert.ok(selected.every(p=>p.startsWith('test/')&&p.endsWith('.js')&&!p.endsWith('_FIXTURE.js')&&!p.startsWith('test/staging/')&&!p.split('/').includes('..')));
+const inherited=JSON.parse(fs.readFileSync(new URL('../destructuring-assignment/selection.json',dir)));
+assert.equal(inherited.length,freeze.inherited_files);
+const set=new Set(selected);
+assert.ok(inherited.every(p=>set.has(p)));
+assert.equal(freeze.corpus_revision,'d53ebc8b1931d9f1541e43d59650776e4b766248');
+console.log(JSON.stringify({files:selected.length,inherited:inherited.length,corpus:freeze.corpus_revision,executed:false}));

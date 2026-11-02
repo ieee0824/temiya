@@ -204,6 +204,8 @@ pub(super) struct PreparedBodyPlan(Box<[PreparedBodyOp]>);
 enum PreparedBodyOp {
     Scope,
     Read(super::JsString),
+    Write(super::JsString, bool),
+    CallZero(super::JsString),
     Primitive(Value),
     Duplicate,
     Pop,
@@ -218,6 +220,7 @@ impl PreparedBodyPlan {
     pub(super) fn prepare(
         code: &crate::bytecode::VerifiedBytecode,
         parameters: &[super::JsString],
+        body_vars_instantiated: bool,
     ) -> Option<Self> {
         use crate::bytecode::{BinaryOperator, BindingKind, ScopeKind};
         let body = code.bytecode();
@@ -233,13 +236,68 @@ impl PreparedBodyPlan {
         if root.kind != ScopeKind::Function
             || !root.functions.is_empty()
             || root.bindings.iter().any(|binding| {
-                binding.kind != BindingKind::Var || !parameters.contains(&binding.name)
+                binding.kind != BindingKind::Var
+                    || (!body_vars_instantiated && !parameters.contains(&binding.name))
             })
         {
             return None;
         }
         let mut operations = Vec::with_capacity(body.instructions.len());
+        let known = |name: &super::JsString| {
+            name != &super::JsString::from("eval")
+                && name != &super::JsString::from("arguments")
+                && (parameters.contains(name)
+                    || root.bindings.iter().any(|binding| &binding.name == name))
+        };
+        let mut skip = 0;
         for (pc, instruction) in body.instructions.iter().enumerate() {
+            if skip != 0 {
+                skip -= 1;
+                operations.push(PreparedBodyOp::Scope);
+                continue;
+            }
+            // Only a complete zero-argument call may be fused. Keeping a no-op
+            // for each consumed instruction preserves all verified PC targets;
+            // no branch may enter the interior of the fused sequence.
+            let call_name = match *instruction {
+                Instruction::LoadBinding { scope: 0, slot }
+                    if body.instructions.get(pc + 1..pc + 4)
+                        == Some(&[
+                            Instruction::AsCallTarget,
+                            Instruction::BeginMethodCall,
+                            Instruction::Invoke,
+                        ]) =>
+                {
+                    Some(root.bindings.get(slot as usize)?.name.clone())
+                }
+                Instruction::ResolveName { name, .. }
+                    if body.instructions.get(pc + 1..pc + 4)
+                        == Some(&[
+                            Instruction::LoadReferenceCallTarget,
+                            Instruction::BeginMethodCall,
+                            Instruction::Invoke,
+                        ]) =>
+                {
+                    let Constant::String(name) = body.constants.get(name as usize)? else {
+                        return None;
+                    };
+                    Some(name.clone())
+                }
+                _ => None,
+            };
+            if let Some(name) = call_name {
+                if !known(&name)
+                    || body.instructions.iter().any(|op| {
+                        matches!(op, Instruction::Jump(target) | Instruction::JumpIfFalse(target)
+                        if (*target as usize > pc) && (*target as usize <= pc + 3))
+                    })
+                {
+                    return None;
+                }
+                operations.push(PreparedBodyOp::CallZero(name));
+                skip = 3;
+                continue;
+            }
             operations.push(match *instruction {
                 Instruction::EnterScope(index) => {
                     let Constant::Scope(scope) = &body.constants[index as usize] else {
@@ -257,6 +315,19 @@ impl PreparedBodyPlan {
                 Instruction::ExitScope => PreparedBodyOp::Scope,
                 Instruction::LoadBinding { scope: 0, slot } => {
                     PreparedBodyOp::Read(root.bindings.get(slot as usize)?.name.clone())
+                }
+                Instruction::StoreBinding { scope: 0, slot } => PreparedBodyOp::Write(
+                    root.bindings.get(slot as usize)?.name.clone(),
+                    root.strict,
+                ),
+                Instruction::LoadName(index) | Instruction::GetName { name: index, .. } => {
+                    let Constant::String(name) = &body.constants[index as usize] else {
+                        return None;
+                    };
+                    if !known(name) {
+                        return None;
+                    }
+                    PreparedBodyOp::Read(name.clone())
                 }
                 Instruction::LoadConstant(index) => {
                     let value = match &body.constants[index as usize] {
@@ -301,14 +372,27 @@ impl PreparedBodyPlan {
         let mut len = 0;
         let mut pc = 0;
         // Ordinary verification proves every stack depth, live scope and
-        // target. Preparation additionally excludes backedges and user calls.
+        // target. Preparation excludes backedges and pending invocations;
+        // complete zero-argument calls keep all real cells and rooted values.
         loop {
             let operation = &self.0[pc];
             pc += 1;
             match operation {
                 PreparedBodyOp::Scope => {}
                 PreparedBodyOp::Read(name) => {
-                    values[len] = frame.get_binding_value(name, true)?;
+                    values[len] = frame.get_identifier_value(name, true)?;
+                    len += 1;
+                }
+                PreparedBodyOp::Write(name, strict) => {
+                    len -= 1;
+                    let value = std::mem::replace(&mut values[len], Value::Undefined);
+                    frame.set_mutable_binding(name, value, *strict)?;
+                }
+                PreparedBodyOp::CallZero(name) => {
+                    let Value::Object(function) = frame.get_identifier_value(name, true)? else {
+                        return Err(RuntimeError::type_error("value is not callable"));
+                    };
+                    values[len] = function.call(Value::Undefined, &[])?;
                     len += 1;
                 }
                 PreparedBodyOp::Primitive(value) => {

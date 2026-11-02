@@ -1,0 +1,2821 @@
+{
+  "comparison_kind": "Temiya parameters versus corrected pinned Boa",
+  "recorded_at": "2026-11-02T05:40:35.564Z",
+  "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)\nbinary: rustc\ncommit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67\ncommit-date: 2026-10-13\nhost: aarch64-unknown-linux-gnu\nrelease: 1.99.1\nLLVM version: 23.1.1",
+  "manifest": {
+    "schema": 1,
+    "fixture_kind": "authored-parameter-environments",
+    "fixture_version": 1,
+    "reference_engine_revision": "007556adccb8fb4329236932ca8175f8e8d119d2",
+    "scope": "Eight workloads frozen before parameter-environment performance observations. Cover default closures, copied vars, nested defaults, computed keys, rest, ordinary constructors, generators and async bodies. No native qualification claim.",
+    "workloads": [
+      {
+        "name": "parameter-env-default-closure",
+        "file": "parameter-env-default-closure.json",
+        "iterations": 10000,
+        "expected": 50005000,
+        "oracle": "sum-one-to-n-and-per-case-invariants",
+        "sha256": "1ca1722872b75f3d16a0fdf4d890484573c3d0cab23527c6450baf002881d07a",
+        "setup_sha256": "091f47c811c32c1c7cc563323a086f2364c96d34910af365ddf8fa992770c31f",
+        "invocation_sha256": "d0e3efdf9851dbde2f1f5c032f78b8ac15e066d907d82e7745927914215538b7"
+      },
+      {
+        "name": "parameter-env-var-copy",
+        "file": "parameter-env-var-copy.json",
+        "iterations": 10000,
+        "expected": 50005000,
+        "oracle": "sum-one-to-n-and-per-case-invariants",
+        "sha256": "a91470ba964718b601cfb0f8320fd04123d90e7d30c64db4d61409a2e42f8725",
+        "setup_sha256": "c25530c1a63090e52f1770f625da907db250fa18ca496f99cd87ebd2f4f58ad7",
+        "invocation_sha256": "d0e3efdf9851dbde2f1f5c032f78b8ac15e066d907d82e7745927914215538b7"
+      },
+      {
+        "name": "parameter-env-nested-default",
+        "file": "parameter-env-nested-default.json",
+        "iterations": 10000,
+        "expected": 50005000,
+        "oracle": "sum-one-to-n-and-per-case-invariants",
+        "sha256": "bbd4256617a85f4df3865831c3114c4e84ba3b710eac2532b5e25a0b0e8e513f",
+        "setup_sha256": "4cb870b57db0bd26f90afe9a8e0b88c6e45bbf65369a8c0b8481fd487dc168b0",
+        "invocation_sha256": "d0e3efdf9851dbde2f1f5c032f78b8ac15e066d907d82e7745927914215538b7"
+      },
+      {
+        "name": "parameter-env-computed-key",
+        "file": "parameter-env-computed-key.json",
+        "iterations": 10000,
+        "expected": 50005000,
+        "oracle": "sum-one-to-n-and-per-case-invariants",
+        "sha256": "e09c76f48179f04d8b4d93c9ee2bb8a03c7a133df18132e3dff94ac46d9ecb7c",
+        "setup_sha256": "819006043ff688556fbff0f01b4a374e649159160cac3aa791164f623643a685",
+        "invocation_sha256": "d0e3efdf9851dbde2f1f5c032f78b8ac15e066d907d82e7745927914215538b7"
+      },
+      {
+        "name": "parameter-env-rest-copy",
+        "file": "parameter-env-rest-copy.json",
+        "iterations": 10000,
+        "expected": 50005000,
+        "oracle": "sum-one-to-n-and-per-case-invariants",
+        "sha256": "cc6954d9d433a0eb63e1201541b04d80ad0ce7b52500ac3f49b2ada374707a7b",
+        "setup_sha256": "f281d756ad69fb3931c009fc58a11b7ffb3935641cf809e3e8bf764cbe7c8c23",
+        "invocation_sha256": "d0e3efdf9851dbde2f1f5c032f78b8ac15e066d907d82e7745927914215538b7"
+      },
+      {
+        "name": "parameter-env-constructor",
+        "file": "parameter-env-constructor.json",
+        "iterations": 10000,
+        "expected": 50005000,
+        "oracle": "sum-one-to-n-and-per-case-invariants",
+        "sha256": "22f252ab7d47793ddbb7c1a7dea2f46dab067bf3250e00b463c945b8fcd07d60",
+        "setup_sha256": "c7b2f47440c67757c251e5130a976c379cf71ccb82450e75b6354dd2d9d92b8a",
+        "invocation_sha256": "d0e3efdf9851dbde2f1f5c032f78b8ac15e066d907d82e7745927914215538b7"
+      },
+      {
+        "name": "parameter-env-generator",
+        "file": "parameter-env-generator.json",
+        "iterations": 10000,
+        "expected": 50005000,
+        "oracle": "sum-one-to-n-and-per-case-invariants",
+        "sha256": "2b96f07718eaf65c18544a82af3b74fab0371263f9a9356f17add9df495746c9",
+        "setup_sha256": "e036f99ff93ea34ec9f529cc3efc7264e0420910121fd82d85b087104020f568",
+        "invocation_sha256": "d0e3efdf9851dbde2f1f5c032f78b8ac15e066d907d82e7745927914215538b7"
+      },
+      {
+        "name": "parameter-env-async",
+        "file": "parameter-env-async.json",
+        "iterations": 10000,
+        "expected": 50005000,
+        "oracle": "sum-one-to-n-and-per-case-invariants",
+        "sha256": "c124da4ad805c15c09b087c068fa78906e6ed3ea2995300f7e1eab6b20cdd579",
+        "setup_sha256": "92c7862b577d02f4a2b5184738f65f20b1cdf5baa77a74cbe5434ff3e55c770c",
+        "invocation_sha256": "d0e3efdf9851dbde2f1f5c032f78b8ac15e066d907d82e7745927914215538b7"
+      }
+    ]
+  },
+  "workers": [
+    {
+      "name": "Temiya",
+      "engine": "Temiya",
+      "executable": "/tmp/temiya-165-body-calls-v1/worker",
+      "revision": "b01f8d15db7f9743f51a5f0a6047665d6cd6c3e7",
+      "mode": "Auto Script",
+      "profile": "release",
+      "features": [],
+      "executable_sha256": "53e78fc18a572f6141fecf144e4f3feeb426f0be96797a24a3ab3bd9cdb3b533"
+    },
+    {
+      "name": "omoikane vendored Boa (parameter correction v1)",
+      "engine": "omoikane vendored Boa",
+      "executable": "/tmp/temiya-165-pinned-corrected-reference-v1/worker",
+      "revision": "007556adccb8fb4329236932ca8175f8e8d119d2",
+      "mode": "interpreter",
+      "build": {
+        "recorded_at": "2026-11-02T01:52:46.902Z",
+        "workload_kind": "sync-parameter-corrected",
+        "omoikane_revision": "007556adccb8fb4329236932ca8175f8e8d119d2",
+        "checkout_clean": false,
+        "reference_correction": {
+          "id": "parameter-correctness-v1",
+          "patch_sha256": "2f857c116ef1550028070d8564b3d0e6c380e6b093d2ea70b6e2a56c7c2d526d",
+          "files": [
+            "engine/boa/core/ast/src/function/parameters.rs",
+            "engine/boa/core/engine/src/bytecompiler/declarations.rs"
+          ],
+          "scope": "corrected pinned vendored Boa; not the unmodified reference or stock Boa"
+        },
+        "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)\nbinary: rustc\ncommit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67\ncommit-date: 2026-10-13\nhost: aarch64-unknown-linux-gnu\nrelease: 1.99.1\nLLVM version: 23.1.1",
+        "cargo": "cargo 1.99.1 (5f94df478 2026-08-27)",
+        "profile": "release",
+        "cargo_args": [
+          "build",
+          "--locked",
+          "--release"
+        ],
+        "rustflags": "",
+        "features": {
+          "omoikane": [],
+          "boa_engine": [
+            "annex-b",
+            "default",
+            "experimental",
+            "float16",
+            "intl",
+            "intl_bundled",
+            "temporal",
+            "xsum"
+          ],
+          "regress": [
+            "backend-pikevm",
+            "default",
+            "std",
+            "utf16"
+          ]
+        },
+        "original_lock_sha256": "f3988c4d9b0ecc28560df18df1cae7760c7c55a016318ea3e31f3ebbfcaea211",
+        "adapter_lock_sha256": "6b4debb1e4368b52de4586b7b30c3d4b6b8882a1bd4ee87d78aa488a252517e7",
+        "worker_source_sha256": "efba2d69a8c594a14c508ee3c9bf97a1799de98a438f14d449fe9be07f351a06",
+        "executable": "/tmp/temiya-165-pinned-corrected-reference-v1/worker",
+        "executable_sha256": "dacc230df12949df4aeee87bd7ddf2798b7e67af034cc6a63cd127421e5ef81b",
+        "execution_mode": "interpreter; baseline-jit feature absent"
+      }
+    }
+  ],
+  "samples": 15,
+  "pairs": 3,
+  "identities": [
+    {
+      "file": "benchmarks/parameter-environments/workloads-v1/manifest.json",
+      "sha256": "007499fc9cc80883b80009b16897af45480f86d7e8145416bd9ed6258c7e034e"
+    },
+    {
+      "file": "benchmarks/parameter-environments/workloads-v1/parameter-env-default-closure.json",
+      "sha256": "1ca1722872b75f3d16a0fdf4d890484573c3d0cab23527c6450baf002881d07a"
+    },
+    {
+      "file": "benchmarks/parameter-environments/workloads-v1/parameter-env-var-copy.json",
+      "sha256": "a91470ba964718b601cfb0f8320fd04123d90e7d30c64db4d61409a2e42f8725"
+    },
+    {
+      "file": "benchmarks/parameter-environments/workloads-v1/parameter-env-nested-default.json",
+      "sha256": "bbd4256617a85f4df3865831c3114c4e84ba3b710eac2532b5e25a0b0e8e513f"
+    },
+    {
+      "file": "benchmarks/parameter-environments/workloads-v1/parameter-env-computed-key.json",
+      "sha256": "e09c76f48179f04d8b4d93c9ee2bb8a03c7a133df18132e3dff94ac46d9ecb7c"
+    },
+    {
+      "file": "benchmarks/parameter-environments/workloads-v1/parameter-env-rest-copy.json",
+      "sha256": "cc6954d9d433a0eb63e1201541b04d80ad0ce7b52500ac3f49b2ada374707a7b"
+    },
+    {
+      "file": "benchmarks/parameter-environments/workloads-v1/parameter-env-constructor.json",
+      "sha256": "22f252ab7d47793ddbb7c1a7dea2f46dab067bf3250e00b463c945b8fcd07d60"
+    },
+    {
+      "file": "benchmarks/parameter-environments/workloads-v1/parameter-env-generator.json",
+      "sha256": "2b96f07718eaf65c18544a82af3b74fab0371263f9a9356f17add9df495746c9"
+    },
+    {
+      "file": "benchmarks/parameter-environments/workloads-v1/parameter-env-async.json",
+      "sha256": "c124da4ad805c15c09b087c068fa78906e6ed3ea2995300f7e1eab6b20cdd579"
+    },
+    {
+      "file": "/tmp/temiya-165-body-calls-v1/worker",
+      "sha256": "53e78fc18a572f6141fecf144e4f3feeb426f0be96797a24a3ab3bd9cdb3b533"
+    },
+    {
+      "file": "/tmp/temiya-165-pinned-corrected-reference-v1/worker",
+      "sha256": "dacc230df12949df4aeee87bd7ddf2798b7e67af034cc6a63cd127421e5ef81b"
+    },
+    {
+      "file": "/tmp/temiya-parameter-environments/scripts/omoikane-parameter-correction.mjs",
+      "sha256": "39c4612d7e84d2d02c792af3cbbb04edfc944ae94b530eb4faed776aaa8c8b8c"
+    },
+    {
+      "file": "/tmp/temiya-parameter-environments/benchmarks/parameter-environments/reference-correction-v1/correction.patch",
+      "sha256": "2f857c116ef1550028070d8564b3d0e6c380e6b093d2ea70b6e2a56c7c2d526d"
+    },
+    {
+      "file": "/tmp/temiya-parameter-environments/scripts/compare-class-workloads.mjs",
+      "sha256": "3d862a1836a7fc172184acbc6eb8030fc320f854c3e3625f2db871fbd6291127"
+    },
+    {
+      "file": "/tmp/temiya-parameter-environments/scripts/parameter-benchmark-reference.mjs",
+      "sha256": "173e1f397b4ecd86c7e2ba004de42f3dcd367a6b79875391d639d428b0ba2001"
+    }
+  ],
+  "measurement_scope": "Function/shared setup once per process; each timed pass parses and evaluates the same invocation; startup/setup/warmup excluded from samples",
+  "qualification": "repeated comparison",
+  "notes": "",
+  "machine": {
+    "platform": "linux",
+    "release": "6.8.0-100-generic",
+    "architecture": "arm64",
+    "cpu_models": [
+      "unknown"
+    ],
+    "logical_cpus": 4,
+    "cpu_affinity": "0-3"
+  },
+  "limits": {
+    "timeout_ms": 180000,
+    "rss_limit_kib": 524288,
+    "proc_poll_ms": 25,
+    "note": "Same external watchdog for both workers; RSS may overshoot between polls. Actual Boa retains its recorded application sandbox."
+  },
+  "runs": [
+    {
+      "workload": "parameter-env-default-closure",
+      "worker": "Temiya",
+      "pair": 0,
+      "order": 0,
+      "status": "pass",
+      "sampled_peak_hwm_kib": 9376,
+      "last_observed_rss_kib": 9376,
+      "exit": {
+        "code": 0,
+        "signal": null
+      },
+      "measurement": {
+        "architecture": "aarch64",
+        "engine": "Temiya",
+        "expected": 50005000,
+        "invocation_backend": "Bytecode",
+        "mode": "Auto Script",
+        "profile": "release",
+        "samples_ns": [
+          16176205,
+          16676425,
+          16141953,
+          16069243,
+          16172829,
+          16547754,
+          16178746,
+          16171705,
+          16462086,
+          16191830,
+          16358876,
+          16718967,
+          17385191,
+          17745158,
+          18581259
+        ],
+        "sandbox": null,
+        "scope": "parse+evaluate invocation; function setup excluded",
+        "setup_backend": "Ast",
+        "setup_ns": 186505,
+        "startup_ns": 245464,
+        "validated_passes": 16,
+        "warmup_ns": 17126643,
+        "median_ns": 16358876,
+        "mad_ns": 188878
+      },
+      "stdout": "{\"architecture\":\"aarch64\",\"engine\":\"Temiya\",\"expected\":50005000.0,\"invocation_backend\":\"Bytecode\",\"mode\":\"Auto Script\",\"profile\":\"release\",\"samples_ns\":[16176205,16676425,16141953,16069243,16172829,16547754,16178746,16171705,16462086,16191830,16358876,16718967,17385191,17745158,18581259],\"sandbox\":null,\"scope\":\"parse+evaluate invocation; function setup excluded\",\"setup_backend\":\"Ast\",\"setup_ns\":186505,\"startup_ns\":245464,\"validated_passes\":16,\"warmup_ns\":17126643}\n",
+      "stderr": ""
+    },
+    {
+      "workload": "parameter-env-default-closure",
+      "worker": "omoikane vendored Boa (parameter correction v1)",
+      "pair": 0,
+      "order": 1,
+      "status": "pass",
+      "sampled_peak_hwm_kib": 81756,
+      "last_observed_rss_kib": 81132,
+      "exit": {
+        "code": 0,
+        "signal": null
+      },
+      "measurement": {
+        "architecture": "aarch64",
+        "engine": "omoikane vendored Boa",
+        "expected": 50005000,
+        "mode": "interpreter",
+        "profile": "release",
+        "samples_ns": [
+          15079471,
+          11068004,
+          13384183,
+          13804442,
+          10651286,
+          12847962,
+          10470033,
+          13446892,
+          12887296,
+          10546617,
+          12693999,
+          10675245,
+          13290722,
+          12645332,
+          10565951
+        ],
+        "sandbox": {
+          "max_loop_iterations": 100000000,
+          "timeout_seconds": 60
+        },
+        "scope": "parse+evaluate invocation; function setup excluded",
+        "setup_ns": 131003,
+        "startup_ns": 195650698,
+        "validated_passes": 16,
+        "warmup_ns": 20182421,
+        "median_ns": 12693999,
+        "mad_ns": 1110443
+      },
+      "stdout": "{\"architecture\":\"aarch64\",\"engine\":\"omoikane vendored Boa\",\"expected\":50005000.0,\"mode\":\"interpreter\",\"profile\":\"release\",\"samples_ns\":[15079471,11068004,13384183,13804442,10651286,12847962,10470033,13446892,12887296,10546617,12693999,10675245,13290722,12645332,10565951],\"sandbox\":{\"max_loop_iterations\":100000000,\"timeout_seconds\":60},\"scope\":\"parse+evaluate invocation; function setup excluded\",\"setup_ns\":131003,\"startup_ns\":195650698,\"validated_passes\":16,\"warmup_ns\":20182421}\n",
+      "stderr": ""
+    },
+    {
+      "workload": "parameter-env-default-closure",
+      "worker": "omoikane vendored Boa (parameter correction v1)",
+      "pair": 1,
+      "order": 0,
+      "status": "pass",
+      "sampled_peak_hwm_kib": 81760,
+      "last_observed_rss_kib": 81136,
+      "exit": {
+        "code": 0,
+        "signal": null
+      },
+      "measurement": {
+        "architecture": "aarch64",
+        "engine": "omoikane vendored Boa",
+        "expected": 50005000,
+        "mode": "interpreter",
+        "profile": "release",
+        "samples_ns": [
+          13052842,
+          10458990,
+          12944589,
+          12155862,
+          9936686,
+          11676768,
+          10021855,
+          11896023,
+          11856814,
+          9964729,
+          12682708,
+          13873652,
+          14995386,
+          12518829,
+          10694162
+        ],
+        "sandbox": {
+          "max_loop_iterations": 100000000,
+          "timeout_seconds": 60
+        },
+        "scope": "parse+evaluate invocation; function setup excluded",
+        "setup_ns": 124795,
+        "startup_ns": 178643394,
+        "validated_passes": 16,
+        "warmup_ns": 17566445,
+        "median_ns": 11896023,
+        "mad_ns": 1156819
+      },
+      "stdout": "{\"architecture\":\"aarch64\",\"engine\":\"omoikane vendored Boa\",\"expected\":50005000.0,\"mode\":\"interpreter\",\"profile\":\"release\",\"samples_ns\":[13052842,10458990,12944589,12155862,9936686,11676768,10021855,11896023,11856814,9964729,12682708,13873652,14995386,12518829,10694162],\"sandbox\":{\"max_loop_iterations\":100000000,\"timeout_seconds\":60},\"scope\":\"parse+evaluate invocation; function setup excluded\",\"setup_ns\":124795,\"startup_ns\":178643394,\"validated_passes\":16,\"warmup_ns\":17566445}\n",
+      "stderr": ""
+    },
+    {
+      "workload": "parameter-env-default-closure",
+      "worker": "Temiya",
+      "pair": 1,
+      "order": 1,
+      "status": "pass",
+      "sampled_peak_hwm_kib": 9368,
+      "last_observed_rss_kib": 9368,
+      "exit": {
+        "code": 0,
+        "signal": null
+      },
+      "measurement": {
+        "architecture": "aarch64",
+        "engine": "Temiya",
+        "expected": 50005000,
+        "invocation_backend": "Bytecode",
+        "mode": "Auto Script",
+        "profile": "release",
+        "samples_ns": [
+          18289628,
+          18887059,
+          18962019,
+          18859183,
+          18776139,
+          19049896,
+          19818913,
+          18981853,
+          18915976,
+          18633344,
+          18551968,
+          19120731,
+          18567718,
+          18488591,
+          19007644
+        ],
+        "sandbox": null,
+        "scope": "parse+evaluate invocation; function setup excluded",
+        "setup_backend": "Ast",
+        "setup_ns": 148003,
+        "startup_ns": 148962,
+        "validated_passes": 16,
+        "warmup_ns": 19266984,
+        "median_ns": 18887059,
+        "mad_ns": 162837
+      },
+      "stdout": "{\"architecture\":\"aarch64\",\"engine\":\"Temiya\",\"expected\":50005000.0,\"invocation_backend\":\"Bytecode\",\"mode\":\"Auto Script\",\"profile\":\"release\",\"samples_ns\":[18289628,18887059,18962019,18859183,18776139,19049896,19818913,18981853,18915976,18633344,18551968,19120731,18567718,18488591,19007644],\"sandbox\":null,\"scope\":\"parse+evaluate invocation; function setup excluded\",\"setup_backend\":\"Ast\",\"setup_ns\":148003,\"startup_ns\":148962,\"validated_passes\":16,\"warmup_ns\":19266984}\n",
+      "stderr": ""
+    },
+    {
+      "workload": "parameter-env-default-closure",
+      "worker": "Temiya",
+      "pair": 2,
+      "order": 0,
+      "status": "pass",
+      "sampled_peak_hwm_kib": 9368,
+      "last_observed_rss_kib": 9000,
+      "exit": {
+        "code": 0,
+        "signal": null
+      },
+      "measurement": {
+        "architecture": "aarch64",
+        "engine": "Temiya",
+        "expected": 50005000,
+        "invocation_backend": "Bytecode",
+        "mode": "Auto Script",
+        "profile": "release",
+        "samples_ns": [
+          17675864,
+          18148375,
+          17732325,
+          18411715,
+          18747347,
+          19123981,
+          18870642,
+          18634262,
+          19658243,
+          18824350,
+          19014521,
+          21015108,
+          20161963,
+          19795705,
+          20187131
+        ],
+        "sandbox": null,
+        "scope": "parse+evaluate invocation; function setup excluded",
+        "setup_backend": "Ast",
+        "setup_ns": 142962,
+        "startup_ns": 143420,
+        "validated_passes": 16,
+        "warmup_ns": 18301836,
+        "median_ns": 18870642,
+        "mad_ns": 722267
+      },
+      "stdout": "{\"architecture\":\"aarch64\",\"engine\":\"Temiya\",\"expected\":50005000.0,\"invocation_backend\":\"Bytecode\",\"mode\":\"Auto Script\",\"profile\":\"release\",\"samples_ns\":[17675864,18148375,17732325,18411715,18747347,19123981,18870642,18634262,19658243,18824350,19014521,21015108,20161963,19795705,20187131],\"sandbox\":null,\"scope\":\"parse+evaluate invocation; function setup excluded\",\"setup_backend\":\"Ast\",\"setup_ns\":142962,\"startup_ns\":143420,\"validated_passes\":16,\"warmup_ns\":18301836}\n",
+      "stderr": ""
+    },
+    {
+      "workload": "parameter-env-default-closure",
+      "worker": "omoikane vendored Boa (parameter correction v1)",
+      "pair": 2,
+      "order": 1,
+      "status": "pass",
+      "sampled_peak_hwm_kib": 81764,
+      "last_observed_rss_kib": 81140,
+      "exit": {
+        "code": 0,
+        "signal": null
+      },
+      "measurement": {
+        "architecture": "aarch64",
+        "engine": "omoikane vendored Boa",
+        "expected": 50005000,
+        "mode": "interpreter",
+        "profile": "release",
+        "samples_ns": [
+          13754524,
+          10835541,
+          12523788,
+          12255156,
+          10328738,
+          11821897,
+          10367322,
+          11932441,
+          11786729,
+          10299112,
+          11859564,
+          10333696,
+          12107987,
+          12602831,
+          11144798
+        ],
+        "sandbox": {
+          "max_loop_iterations": 100000000,
+          "timeout_seconds": 60
+        },
+        "scope": "parse+evaluate invocation; function setup excluded",
+        "setup_ns": 150461,
+        "startup_ns": 190425794,
+        "validated_passes": 16,
+        "warmup_ns": 18729847,
+        "median_ns": 11821897,
+        "mad_ns": 701891
+      },
+      "stdout": "{\"architecture\":\"aarch64\",\"engine\":\"omoikane vendored Boa\",\"expected\":50005000.0,\"mode\":\"interpreter\",\"profile\":\"release\",\"samples_ns\":[13754524,10835541,12523788,12255156,10328738,11821897,10367322,11932441,11786729,10299112,11859564,10333696,12107987,12602831,11144798],\"sandbox\":{\"max_loop_iterations\":100000000,\"timeout_seconds\":60},\"scope\":\"parse+evaluate invocation; function setup excluded\",\"setup_ns\":150461,\"startup_ns\":190425794,\"validated_passes\":16,\"warmup_ns\":18729847}\n",
+      "stderr": ""
+    },
+    {
+      "workload": "parameter-env-var-copy",
+      "worker": "Temiya",
+      "pair": 0,
+      "order": 0,
+      "status": "pass",
+      "sampled_peak_hwm_kib": 4456,
+      "last_observed_rss_kib": 4456,
+      "exit": {
+        "code": 0,
+        "signal": null
+      },
+      "measurement": {
+        "architecture": "aarch64",
+        "engine": "Temiya",
+        "expected": 50005000,
+        "invocation_backend": "Bytecode",
+        "mode": "Auto Script",
+        "profile": "release",
+        "samples_ns": [
+          4546646,
+          4499936,
+          4475395,
+          4490644,
+          4464186,
+          4446310,
+          4534812,
+          4474811,
+          4495937,
+          4482728,
+          4460311,
+          4437727,
+          4464102,
+          4489020,
+          4456977
+        ],
+        "sandbox": null,
+        "scope": "parse+evaluate invocation; function setup excluded",
+        "setup_backend": "Ast",
+        "setup_ns": 148462,
+        "startup_ns": 204254,
+        "validated_passes": 16,
+        "warmup_ns": 4548438,
+        "median_ns": 4475395,
+        "mad_ns": 15249
+      },
+      "stdout": "{\"architecture\":\"aarch64\",\"engine\":\"Temiya\",\"expected\":50005000.0,\"invocation_backend\":\"Bytecode\",\"mode\":\"Auto Script\",\"profile\":\"release\",\"samples_ns\":[4546646,4499936,4475395,4490644,4464186,4446310,4534812,4474811,4495937,4482728,4460311,4437727,4464102,4489020,4456977],\"sandbox\":null,\"scope\":\"parse+evaluate invocation; function setup excluded\",\"setup_backend\":\"Ast\",\"setup_ns\":148462,\"startup_ns\":204254,\"validated_passes\":16,\"warmup_ns\":4548438}\n",
+      "stderr": ""
+    },
+    {
+      "workload": "parameter-env-var-copy",
+      "worker": "omoikane vendored Boa (parameter correction v1)",
+      "pair": 0,
+      "order": 1,
+      "status": "pass",
+      "sampled_peak_hwm_kib": 81492,
+      "last_observed_rss_kib": 75924,
+      "exit": {
+        "code": 0,
+        "signal": null
+      },
+      "measurement": {
+        "architecture": "aarch64",
+        "engine": "omoikane vendored Boa",
+        "expected": 50005000,
+        "mode": "interpreter",
+        "profile": "release",
+        "samples_ns": [
+          5419625,
+          5407833,
+          5381207,
+          5378332,
+          5381665,
+          5373666,
+          5398541,
+          5393540,
+          5506627,
+          5787883,
+          5511127,
+          5918761,
+          5815008,
+          5415333,
+          5404082
+        ],
+        "sandbox": {
+          "max_loop_iterations": 100000000,
+          "timeout_seconds": 60
+        },
+        "scope": "parse+evaluate invocation; function setup excluded",
+        "setup_ns": 105627,
+        "startup_ns": 185667684,
+        "validated_passes": 16,
+        "warmup_ns": 5406083,
+        "median_ns": 5407833,
+        "mad_ns": 26626
+      },
+      "stdout": "{\"architecture\":\"aarch64\",\"engine\":\"omoikane vendored Boa\",\"expected\":50005000.0,\"mode\":\"interpreter\",\"profile\":\"release\",\"samples_ns\":[5419625,5407833,5381207,5378332,5381665,5373666,5398541,5393540,5506627,5787883,5511127,5918761,5815008,5415333,5404082],\"sandbox\":{\"max_loop_iterations\":100000000,\"timeout_seconds\":60},\"scope\":\"parse+evaluate invocation; function setup excluded\",\"setup_ns\":105627,\"startup_ns\":185667684,\"validated_passes\":16,\"warmup_ns\":5406083}\n",
+      "stderr": ""
+    },
+    {
+      "workload": "parameter-env-var-copy",
+      "worker": "omoikane vendored Boa (parameter correction v1)",
+      "pair": 1,
+      "order": 0,
+      "status": "pass",
+      "sampled_peak_hwm_kib": 81372,
+      "last_observed_rss_kib": 80724,
+      "exit": {
+        "code": 0,
+        "signal": null
+      },
+      "measurement": {
+        "architecture": "aarch64",
+        "engine": "omoikane vendored Boa",
+        "expected": 50005000,
+        "mode": "interpreter",
+        "profile": "release",
+        "samples_ns": [
+          5851052,
+          5902511,
+          5801384,
+          5793759,
+          5776341,
+          5818384,
+          5934844,
+          5858885,
+          5851593,
+          5794634,
+          5801592,
+          5970137,
+          5879344,
+          5855884,
+          5867135
+        ],
+        "sandbox": {
+          "max_loop_iterations": 100000000,
+          "timeout_seconds": 60
+        },
+        "scope": "parse+evaluate invocation; function setup excluded",
+        "setup_ns": 167504,
+        "startup_ns": 179449629,
+        "validated_passes": 16,
+        "warmup_ns": 5503794,
+        "median_ns": 5851593,
+        "mad_ns": 50001
+      },
+      "stdout": "{\"architecture\":\"aarch64\",\"engine\":\"omoikane vendored Boa\",\"expected\":50005000.0,\"mode\":\"interpreter\",\"profile\":\"release\",\"samples_ns\":[5851052,5902511,5801384,5793759,5776341,5818384,5934844,5858885,5851593,5794634,5801592,5970137,5879344,5855884,5867135],\"sandbox\":{\"max_loop_iterations\":100000000,\"timeout_seconds\":60},\"scope\":\"parse+evaluate invocation; function setup excluded\",\"setup_ns\":167504,\"startup_ns\":179449629,\"validated_passes\":16,\"warmup_ns\":5503794}\n",
+      "stderr": ""
+    },
+    {
+      "workload": "parameter-env-var-copy",
+      "worker": "Temiya",
+      "pair": 1,
+      "order": 1,
+      "status": "pass",
+      "sampled_peak_hwm_kib": 4456,
+      "last_observed_rss_kib": 4456,
+      "exit": {
+        "code": 0,
+        "signal": null
+      },
+      "measurement": {
+        "architecture": "aarch64",
+        "engine": "Temiya",
+        "expected": 50005000,
+        "invocation_backend": "Bytecode",
+        "mode": "Auto Script",
+        "profile": "release",
+        "samples_ns": [
+          4552522,
+          4556438,
+          4570688,
+          4563980,
+          4513188,
+          4509853,
+          4484645,
+          4524313,
+          4500937,
+          4472519,
+          4491145,
+          4485478,
+          4457311,
+          4466562,
+          4463228
+        ],
+        "sandbox": null,
+        "scope": "parse+evaluate invocation; function setup excluded",
+        "setup_backend": "Ast",
+        "setup_ns": 134753,
+        "startup_ns": 157962,
+        "validated_passes": 16,
+        "warmup_ns": 4613773,
+        "median_ns": 4500937,
+        "mad_ns": 28418
+      },
+      "stdout": "{\"architecture\":\"aarch64\",\"engine\":\"Temiya\",\"expected\":50005000.0,\"invocation_backend\":\"Bytecode\",\"mode\":\"Auto Script\",\"profile\":\"release\",\"samples_ns\":[4552522,4556438,4570688,4563980,4513188,4509853,4484645,4524313,4500937,4472519,4491145,4485478,4457311,4466562,4463228],\"sandbox\":null,\"scope\":\"parse+evaluate invocation; function setup excluded\",\"setup_backend\":\"Ast\",\"setup_ns\":134753,\"startup_ns\":157962,\"validated_passes\":16,\"warmup_ns\":4613773}\n",
+      "stderr": ""
+    },
+    {
+      "workload": "parameter-env-var-copy",
+      "worker": "Temiya",
+      "pair": 2,
+      "order": 0,
+      "status": "pass",
+      "sampled_peak_hwm_kib": 4440,
+      "last_observed_rss_kib": 4440,
+      "exit": {
+        "code": 0,
+        "signal": null
+      },
+      "measurement": {
+        "architecture": "aarch64",
+        "engine": "Temiya",
+        "expected": 50005000,
+        "invocation_backend": "Bytecode",
+        "mode": "Auto Script",
+        "profile": "release",
+        "samples_ns": [
+          4763735,
+          4738692,
+          4719859,
+          4709317,
+          4688691,
+          4702275,
+          4702649,
+          4707983,
+          4792027,
+          4812736,
+          4734984,
+          4711233,
+          4705109,
+          4710525,
+          4570647
+        ],
+        "sandbox": null,
+        "scope": "parse+evaluate invocation; function setup excluded",
+        "setup_backend": "Ast",
+        "setup_ns": 116336,
+        "startup_ns": 137504,
+        "validated_passes": 16,
+        "warmup_ns": 4710900,
+        "median_ns": 4710525,
+        "mad_ns": 9334
+      },
+      "stdout": "{\"architecture\":\"aarch64\",\"engine\":\"Temiya\",\"expected\":50005000.0,\"invocation_backend\":\"Bytecode\",\"mode\":\"Auto Script\",\"profile\":\"release\",\"samples_ns\":[4763735,4738692,4719859,4709317,4688691,4702275,4702649,4707983,4792027,4812736,4734984,4711233,4705109,4710525,4570647],\"sandbox\":null,\"scope\":\"parse+evaluate invocation; function setup excluded\",\"setup_backend\":\"Ast\",\"setup_ns\":116336,\"startup_ns\":137504,\"validated_passes\":16,\"warmup_ns\":4710900}\n",
+      "stderr": ""
+    },
+    {
+      "workload": "parameter-env-var-copy",
+      "worker": "omoikane vendored Boa (parameter correction v1)",
+      "pair": 2,
+      "order": 1,
+      "status": "pass",
+      "sampled_peak_hwm_kib": 81368,
+      "last_observed_rss_kib": 79784,
+      "exit": {
+        "code": 0,
+        "signal": null
+      },
+      "measurement": {
+        "architecture": "aarch64",
+        "engine": "omoikane vendored Boa",
+        "expected": 50005000,
+        "mode": "interpreter",
+        "profile": "release",
+        "samples_ns": [
+          5154660,
+          5168536,
+          5142994,
+          5165744,
+          5212453,
+          5195662,
+          5168202,
+          5156619,
+          5188286,
+          5209995,
+          5234287,
+          5256912,
+          5195786,
+          5197536,
+          5202037
+        ],
+        "sandbox": {
+          "max_loop_iterations": 100000000,
+          "timeout_seconds": 60
+        },
+        "scope": "parse+evaluate invocation; function setup excluded",
+        "setup_ns": 110503,
+        "startup_ns": 168663756,
+        "validated_passes": 16,
+        "warmup_ns": 5164119,
+        "median_ns": 5195662,
+        "mad_ns": 27126
+      },
+      "stdout": "{\"architecture\":\"aarch64\",\"engine\":\"omoikane vendored Boa\",\"expected\":50005000.0,\"mode\":\"interpreter\",\"profile\":\"release\",\"samples_ns\":[5154660,5168536,5142994,5165744,5212453,5195662,5168202,5156619,5188286,5209995,5234287,5256912,5195786,5197536,5202037],\"sandbox\":{\"max_loop_iterations\":100000000,\"timeout_seconds\":60},\"scope\":\"parse+evaluate invocation; function setup excluded\",\"setup_ns\":110503,\"startup_ns\":168663756,\"validated_passes\":16,\"warmup_ns\":5164119}\n",
+      "stderr": ""
+    },
+    {
+      "workload": "parameter-env-nested-default",
+      "worker": "Temiya",
+      "pair": 0,
+      "order": 0,
+      "status": "pass",
+      "sampled_peak_hwm_kib": 9016,
+      "last_observed_rss_kib": 9016,
+      "exit": {
+        "code": 0,
+        "signal": null
+      },
+      "measurement": {
+        "architecture": "aarch64",
+        "engine": "Temiya",
+        "expected": 50005000,
+        "invocation_backend": "Bytecode",
+        "mode": "Auto Script",
+        "profile": "release",
+        "samples_ns": [
+          23921592,
+          24620358,
+          23245327,
+          22782566,
+          22912235,
+          22949528,
+          22759523,
+          22467475,
+          22735440,
+          22747940,
+          22745107,
+          22474267,
+          23011822,
+          22991321,
+          22940529
+        ],
+        "sandbox": null,
+        "scope": "parse+evaluate invocation; function setup excluded",
+        "setup_backend": "Ast",
+        "setup_ns": 161754,
+        "startup_ns": 141754,
+        "validated_passes": 16,
+        "warmup_ns": 24033136,
+        "median_ns": 22912235,
+        "mad_ns": 164295
+      },
+      "stdout": "{\"architecture\":\"aarch64\",\"engine\":\"Temiya\",\"expected\":50005000.0,\"invocation_backend\":\"Bytecode\",\"mode\":\"Auto Script\",\"profile\":\"release\",\"samples_ns\":[23921592,24620358,23245327,22782566,22912235,22949528,22759523,22467475,22735440,22747940,22745107,22474267,23011822,22991321,22940529],\"sandbox\":null,\"scope\":\"parse+evaluate invocation; function setup excluded\",\"setup_backend\":\"Ast\",\"setup_ns\":161754,\"startup_ns\":141754,\"validated_passes\":16,\"warmup_ns\":24033136}\n",
+      "stderr": ""
+    },
+    {
+      "workload": "parameter-env-nested-default",
+      "worker": "omoikane vendored Boa (parameter correction v1)",
+      "pair": 0,
+      "order": 1,
+      "status": "pass",
+      "sampled_peak_hwm_kib": 81492,
+      "last_observed_rss_kib": 80888,
+      "exit": {
+        "code": 0,
+        "signal": null
+      },
+      "measurement": {
+        "architecture": "aarch64",
+        "engine": "omoikane vendored Boa",
+        "expected": 50005000,
+        "mode": "interpreter",
+        "profile": "release",
+        "samples_ns": [
+          17790285,
+          17187354,
+          17229688,
+          17747950,
+          17081269,
+          17214104,
+          18783016,
+          24329602,
+          22115134,
+          23478874,
+          25133495,
+          25084494,
+          26062475,
+          26629072,
+          24269309
+        ],
+        "sandbox": {
+          "max_loop_iterations": 100000000,
+          "timeout_seconds": 60
+        },
+        "scope": "parse+evaluate invocation; function setup excluded",
+        "setup_ns": 146045,
+        "startup_ns": 175462540,
+        "validated_passes": 16,
+        "warmup_ns": 23877008,
+        "median_ns": 22115134,
+        "mad_ns": 3947341
+      },
+      "stdout": "{\"architecture\":\"aarch64\",\"engine\":\"omoikane vendored Boa\",\"expected\":50005000.0,\"mode\":\"interpreter\",\"profile\":\"release\",\"samples_ns\":[17790285,17187354,17229688,17747950,17081269,17214104,18783016,24329602,22115134,23478874,25133495,25084494,26062475,26629072,24269309],\"sandbox\":{\"max_loop_iterations\":100000000,\"timeout_seconds\":60},\"scope\":\"parse+evaluate invocation; function setup excluded\",\"setup_ns\":146045,\"startup_ns\":175462540,\"validated_passes\":16,\"warmup_ns\":23877008}\n",
+      "stderr": ""
+    },
+    {
+      "workload": "parameter-env-nested-default",
+      "worker": "omoikane vendored Boa (parameter correction v1)",
+      "pair": 1,
+      "order": 0,
+      "status": "pass",
+      "sampled_peak_hwm_kib": 81488,
+      "last_observed_rss_kib": 80896,
+      "exit": {
+        "code": 0,
+        "signal": null
+      },
+      "measurement": {
+        "architecture": "aarch64",
+        "engine": "omoikane vendored Boa",
+        "expected": 50005000,
+        "mode": "interpreter",
+        "profile": "release",
+        "samples_ns": [
+          23498250,
+          22305722,
+          21749751,
+          21965964,
+          21849629,
+          20923274,
+          19017479,
+          18860934,
+          19562410,
+          19310612,
+          19585952,
+          19416698,
+          20176298,
+          18905894,
+          19906876
+        ],
+        "sandbox": {
+          "max_loop_iterations": 100000000,
+          "timeout_seconds": 60
+        },
+        "scope": "parse+evaluate invocation; function setup excluded",
+        "setup_ns": 177379,
+        "startup_ns": 214976868,
+        "validated_passes": 16,
+        "warmup_ns": 33120138,
+        "median_ns": 19906876,
+        "mad_ns": 1000982
+      },
+      "stdout": "{\"architecture\":\"aarch64\",\"engine\":\"omoikane vendored Boa\",\"expected\":50005000.0,\"mode\":\"interpreter\",\"profile\":\"release\",\"samples_ns\":[23498250,22305722,21749751,21965964,21849629,20923274,19017479,18860934,19562410,19310612,19585952,19416698,20176298,18905894,19906876],\"sandbox\":{\"max_loop_iterations\":100000000,\"timeout_seconds\":60},\"scope\":\"parse+evaluate invocation; function setup excluded\",\"setup_ns\":177379,\"startup_ns\":214976868,\"validated_passes\":16,\"warmup_ns\":33120138}\n",
+      "stderr": ""
+    },
+    {
+      "workload": "parameter-env-nested-default",
+      "worker": "Temiya",
+      "pair": 1,
+      "order": 1,
+      "status": "pass",
+      "sampled_peak_hwm_kib": 9012,
+      "last_observed_rss_kib": 9012,
+      "exit": {
+        "code": 0,
+        "signal": null
+      },
+      "measurement": {
+        "architecture": "aarch64",
+        "engine": "Temiya",
+        "expected": 50005000,
+        "invocation_backend": "Bytecode",
+        "mode": "Auto Script",
+        "profile": "release",
+        "samples_ns": [
+          28109231,
+          25413169,
+          31665730,
+          24830698,
+          25253248,
+          25705342,
+          26497902,
+          26424151,
+          26660948,
+          26652197,
+          24481856,
+          24367936,
+          24396063,
+          24982284,
+          25822720
+        ],
+        "sandbox": null,
+        "scope": "parse+evaluate invocation; function setup excluded",
+        "setup_backend": "Ast",
+        "setup_ns": 231881,
+        "startup_ns": 303216,
+        "validated_passes": 16,
+        "warmup_ns": 25092246,
+        "median_ns": 25705342,
+        "mad_ns": 874644
+      },
+      "stdout": "{\"architecture\":\"aarch64\",\"engine\":\"Temiya\",\"expected\":50005000.0,\"invocation_backend\":\"Bytecode\",\"mode\":\"Auto Script\",\"profile\":\"release\",\"samples_ns\":[28109231,25413169,31665730,24830698,25253248,25705342,26497902,26424151,26660948,26652197,24481856,24367936,24396063,24982284,25822720],\"sandbox\":null,\"scope\":\"parse+evaluate invocation; function setup excluded\",\"setup_backend\":\"Ast\",\"setup_ns\":231881,\"startup_ns\":303216,\"validated_passes\":16,\"warmup_ns\":25092246}\n",
+      "stderr": ""
+    },
+    {
+      "workload": "parameter-env-nested-default",
+      "worker": "Temiya",
+      "pair": 2,
+      "order": 0,
+      "status": "pass",
+      "sampled_peak_hwm_kib": 9016,
+      "last_observed_rss_kib": 9016,
+      "exit": {
+        "code": 0,
+        "signal": null
+      },
+      "measurement": {
+        "architecture": "aarch64",
+        "engine": "Temiya",
+        "expected": 50005000,
+        "invocation_backend": "Bytecode",
+        "mode": "Auto Script",
+        "profile": "release",
+        "samples_ns": [
+          29695685,
+          28077772,
+          26699199,
+          27841142,
+          26025975,
+          26654739,
+          26224980,
+          26219354,
+          28234318,
+          26755450,
+          27034665,
+          30239197,
+          30004233,
+          28331278,
+          26094268
+        ],
+        "sandbox": null,
+        "scope": "parse+evaluate invocation; function setup excluded",
+        "setup_backend": "Ast",
+        "setup_ns": 180629,
+        "startup_ns": 169504,
+        "validated_passes": 16,
+        "warmup_ns": 30080819,
+        "median_ns": 27034665,
+        "mad_ns": 940397
+      },
+      "stdout": "{\"architecture\":\"aarch64\",\"engine\":\"Temiya\",\"expected\":50005000.0,\"invocation_backend\":\"Bytecode\",\"mode\":\"Auto Script\",\"profile\":\"release\",\"samples_ns\":[29695685,28077772,26699199,27841142,26025975,26654739,26224980,26219354,28234318,26755450,27034665,30239197,30004233,28331278,26094268],\"sandbox\":null,\"scope\":\"parse+evaluate invocation; function setup excluded\",\"setup_backend\":\"Ast\",\"setup_ns\":180629,\"startup_ns\":169504,\"validated_passes\":16,\"warmup_ns\":30080819}\n",
+      "stderr": ""
+    },
+    {
+      "workload": "parameter-env-nested-default",
+      "worker": "omoikane vendored Boa (parameter correction v1)",
+      "pair": 2,
+      "order": 1,
+      "status": "pass",
+      "sampled_peak_hwm_kib": 81500,
+      "last_observed_rss_kib": 80884,
+      "exit": {
+        "code": 0,
+        "signal": null
+      },
+      "measurement": {
+        "architecture": "aarch64",
+        "engine": "omoikane vendored Boa",
+        "expected": 50005000,
+        "mode": "interpreter",
+        "profile": "release",
+        "samples_ns": [
+          19087815,
+          18024499,
+          18733807,
+          19742206,
+          19870375,
+          19341530,
+          18747433,
+          18024041,
+          17707367,
+          18470801,
+          17890330,
+          17633740,
+          17666200,
+          17534863,
+          17671866
+        ],
+        "sandbox": {
+          "max_loop_iterations": 100000000,
+          "timeout_seconds": 60
+        },
+        "scope": "parse+evaluate invocation; function setup excluded",
+        "setup_ns": 136253,
+        "startup_ns": 195415550,
+        "validated_passes": 16,
+        "warmup_ns": 24551275,
+        "median_ns": 18024499,
+        "mad_ns": 446302
+      },
+      "stdout": "{\"architecture\":\"aarch64\",\"engine\":\"omoikane vendored Boa\",\"expected\":50005000.0,\"mode\":\"interpreter\",\"profile\":\"release\",\"samples_ns\":[19087815,18024499,18733807,19742206,19870375,19341530,18747433,18024041,17707367,18470801,17890330,17633740,17666200,17534863,17671866],\"sandbox\":{\"max_loop_iterations\":100000000,\"timeout_seconds\":60},\"scope\":\"parse+evaluate invocation; function setup excluded\",\"setup_ns\":136253,\"startup_ns\":195415550,\"validated_passes\":16,\"warmup_ns\":24551275}\n",
+      "stderr": ""
+    },
+    {
+      "workload": "parameter-env-computed-key",
+      "worker": "Temiya",
+      "pair": 0,
+      "order": 0,
+      "status": "pass",
+      "sampled_peak_hwm_kib": 7032,
+      "last_observed_rss_kib": 7032,
+      "exit": {
+        "code": 0,
+        "signal": null
+      },
+      "measurement": {
+        "architecture": "aarch64",
+        "engine": "Temiya",
+        "expected": 50005000,
+        "invocation_backend": "Bytecode",
+        "mode": "Auto Script",
+        "profile": "release",
+        "samples_ns": [
+          12217032,
+          12488371,
+          12269616,
+          12176864,
+          12008444,
+          12350535,
+          11975818,
+          11943400,
+          12566081,
+          12406828,
+          12003235,
+          12231282,
+          12003360,
+          11948943,
+          12518164
+        ],
+        "sandbox": null,
+        "scope": "parse+evaluate invocation; function setup excluded",
+        "setup_backend": "Ast",
+        "setup_ns": 141545,
+        "startup_ns": 144212,
+        "validated_passes": 16,
+        "warmup_ns": 12956591,
+        "median_ns": 12217032,
+        "mad_ns": 213672
+      },
+      "stdout": "{\"architecture\":\"aarch64\",\"engine\":\"Temiya\",\"expected\":50005000.0,\"invocation_backend\":\"Bytecode\",\"mode\":\"Auto Script\",\"profile\":\"release\",\"samples_ns\":[12217032,12488371,12269616,12176864,12008444,12350535,11975818,11943400,12566081,12406828,12003235,12231282,12003360,11948943,12518164],\"sandbox\":null,\"scope\":\"parse+evaluate invocation; function setup excluded\",\"setup_backend\":\"Ast\",\"setup_ns\":141545,\"startup_ns\":144212,\"validated_passes\":16,\"warmup_ns\":12956591}\n",
+      "stderr": ""
+    },
+    {
+      "workload": "parameter-env-computed-key",
+      "worker": "omoikane vendored Boa (parameter correction v1)",
+      "pair": 0,
+      "order": 1,
+      "status": "pass",
+      "sampled_peak_hwm_kib": 81248,
+      "last_observed_rss_kib": 80780,
+      "exit": {
+        "code": 0,
+        "signal": null
+      },
+      "measurement": {
+        "architecture": "aarch64",
+        "engine": "omoikane vendored Boa",
+        "expected": 50005000,
+        "mode": "interpreter",
+        "profile": "release",
+        "samples_ns": [
+          9542679,
+          12509247,
+          9640389,
+          9203629,
+          11430722,
+          9210337,
+          9250839,
+          11488141,
+          9280881,
+          9239046,
+          12102779,
+          9276589,
+          9309757,
+          12495789,
+          9570471
+        ],
+        "sandbox": {
+          "max_loop_iterations": 100000000,
+          "timeout_seconds": 60
+        },
+        "scope": "parse+evaluate invocation; function setup excluded",
+        "setup_ns": 131295,
+        "startup_ns": 183291729,
+        "validated_passes": 16,
+        "warmup_ns": 16311251,
+        "median_ns": 9542679,
+        "mad_ns": 303633
+      },
+      "stdout": "{\"architecture\":\"aarch64\",\"engine\":\"omoikane vendored Boa\",\"expected\":50005000.0,\"mode\":\"interpreter\",\"profile\":\"release\",\"samples_ns\":[9542679,12509247,9640389,9203629,11430722,9210337,9250839,11488141,9280881,9239046,12102779,9276589,9309757,12495789,9570471],\"sandbox\":{\"max_loop_iterations\":100000000,\"timeout_seconds\":60},\"scope\":\"parse+evaluate invocation; function setup excluded\",\"setup_ns\":131295,\"startup_ns\":183291729,\"validated_passes\":16,\"warmup_ns\":16311251}\n",
+      "stderr": ""
+    },
+    {
+      "workload": "parameter-env-computed-key",
+      "worker": "omoikane vendored Boa (parameter correction v1)",
+      "pair": 1,
+      "order": 0,
+      "status": "pass",
+      "sampled_peak_hwm_kib": 81480,
+      "last_observed_rss_kib": 81228,
+      "exit": {
+        "code": 0,
+        "signal": null
+      },
+      "measurement": {
+        "architecture": "aarch64",
+        "engine": "omoikane vendored Boa",
+        "expected": 50005000,
+        "mode": "interpreter",
+        "profile": "release",
+        "samples_ns": [
+          9444135,
+          12840297,
+          9354257,
+          9754058,
+          12365410,
+          9300881,
+          9273215,
+          11829190,
+          9197754,
+          9372133,
+          12554123,
+          9636764,
+          9706308,
+          12635750,
+          9778768
+        ],
+        "sandbox": {
+          "max_loop_iterations": 100000000,
+          "timeout_seconds": 60
+        },
+        "scope": "parse+evaluate invocation; function setup excluded",
+        "setup_ns": 128878,
+        "startup_ns": 178598791,
+        "validated_passes": 16,
+        "warmup_ns": 16067329,
+        "median_ns": 9706308,
+        "mad_ns": 405427
+      },
+      "stdout": "{\"architecture\":\"aarch64\",\"engine\":\"omoikane vendored Boa\",\"expected\":50005000.0,\"mode\":\"interpreter\",\"profile\":\"release\",\"samples_ns\":[9444135,12840297,9354257,9754058,12365410,9300881,9273215,11829190,9197754,9372133,12554123,9636764,9706308,12635750,9778768],\"sandbox\":{\"max_loop_iterations\":100000000,\"timeout_seconds\":60},\"scope\":\"parse+evaluate invocation; function setup excluded\",\"setup_ns\":128878,\"startup_ns\":178598791,\"validated_passes\":16,\"warmup_ns\":16067329}\n",
+      "stderr": ""
+    },
+    {
+      "workload": "parameter-env-computed-key",
+      "worker": "Temiya",
+      "pair": 1,
+      "order": 1,
+      "status": "pass",
+      "sampled_peak_hwm_kib": 7032,
+      "last_observed_rss_kib": 7032,
+      "exit": {
+        "code": 0,
+        "signal": null
+      },
+      "measurement": {
+        "architecture": "aarch64",
+        "engine": "Temiya",
+        "expected": 50005000,
+        "invocation_backend": "Bytecode",
+        "mode": "Auto Script",
+        "profile": "release",
+        "samples_ns": [
+          12104488,
+          11980152,
+          11683353,
+          11601852,
+          11730646,
+          11877941,
+          11677186,
+          11562558,
+          11763064,
+          11943734,
+          12041653,
+          12290159,
+          12034028,
+          11756313,
+          12256408
+        ],
+        "sandbox": null,
+        "scope": "parse+evaluate invocation; function setup excluded",
+        "setup_backend": "Ast",
+        "setup_ns": 140295,
+        "startup_ns": 144129,
+        "validated_passes": 16,
+        "warmup_ns": 12869005,
+        "median_ns": 11877941,
+        "mad_ns": 163712
+      },
+      "stdout": "{\"architecture\":\"aarch64\",\"engine\":\"Temiya\",\"expected\":50005000.0,\"invocation_backend\":\"Bytecode\",\"mode\":\"Auto Script\",\"profile\":\"release\",\"samples_ns\":[12104488,11980152,11683353,11601852,11730646,11877941,11677186,11562558,11763064,11943734,12041653,12290159,12034028,11756313,12256408],\"sandbox\":null,\"scope\":\"parse+evaluate invocation; function setup excluded\",\"setup_backend\":\"Ast\",\"setup_ns\":140295,\"startup_ns\":144129,\"validated_passes\":16,\"warmup_ns\":12869005}\n",
+      "stderr": ""
+    },
+    {
+      "workload": "parameter-env-computed-key",
+      "worker": "Temiya",
+      "pair": 2,
+      "order": 0,
+      "status": "pass",
+      "sampled_peak_hwm_kib": 7028,
+      "last_observed_rss_kib": 7028,
+      "exit": {
+        "code": 0,
+        "signal": null
+      },
+      "measurement": {
+        "architecture": "aarch64",
+        "engine": "Temiya",
+        "expected": 50005000,
+        "invocation_backend": "Bytecode",
+        "mode": "Auto Script",
+        "profile": "release",
+        "samples_ns": [
+          11421014,
+          11734146,
+          11541308,
+          11420805,
+          11426806,
+          11744813,
+          11416305,
+          11371554,
+          11669602,
+          11443723,
+          11403513,
+          11765980,
+          12333785,
+          11532225,
+          12210199
+        ],
+        "sandbox": null,
+        "scope": "parse+evaluate invocation; function setup excluded",
+        "setup_backend": "Ast",
+        "setup_ns": 122753,
+        "startup_ns": 130503,
+        "validated_passes": 16,
+        "warmup_ns": 12380744,
+        "median_ns": 11532225,
+        "mad_ns": 128712
+      },
+      "stdout": "{\"architecture\":\"aarch64\",\"engine\":\"Temiya\",\"expected\":50005000.0,\"invocation_backend\":\"Bytecode\",\"mode\":\"Auto Script\",\"profile\":\"release\",\"samples_ns\":[11421014,11734146,11541308,11420805,11426806,11744813,11416305,11371554,11669602,11443723,11403513,11765980,12333785,11532225,12210199],\"sandbox\":null,\"scope\":\"parse+evaluate invocation; function setup excluded\",\"setup_backend\":\"Ast\",\"setup_ns\":122753,\"startup_ns\":130503,\"validated_passes\":16,\"warmup_ns\":12380744}\n",
+      "stderr": ""
+    },
+    {
+      "workload": "parameter-env-computed-key",
+      "worker": "omoikane vendored Boa (parameter correction v1)",
+      "pair": 2,
+      "order": 1,
+      "status": "pass",
+      "sampled_peak_hwm_kib": 81232,
+      "last_observed_rss_kib": 79804,
+      "exit": {
+        "code": 0,
+        "signal": null
+      },
+      "measurement": {
+        "architecture": "aarch64",
+        "engine": "omoikane vendored Boa",
+        "expected": 50005000,
+        "mode": "interpreter",
+        "profile": "release",
+        "samples_ns": [
+          9797060,
+          12467455,
+          9607139,
+          9563763,
+          11698437,
+          9233005,
+          9198671,
+          11602602,
+          9210296,
+          9247797,
+          11386472,
+          9277339,
+          9207671,
+          11476348,
+          9272256
+        ],
+        "sandbox": {
+          "max_loop_iterations": 100000000,
+          "timeout_seconds": 60
+        },
+        "scope": "parse+evaluate invocation; function setup excluded",
+        "setup_ns": 144337,
+        "startup_ns": 182756221,
+        "validated_passes": 16,
+        "warmup_ns": 17088604,
+        "median_ns": 9563763,
+        "mad_ns": 353467
+      },
+      "stdout": "{\"architecture\":\"aarch64\",\"engine\":\"omoikane vendored Boa\",\"expected\":50005000.0,\"mode\":\"interpreter\",\"profile\":\"release\",\"samples_ns\":[9797060,12467455,9607139,9563763,11698437,9233005,9198671,11602602,9210296,9247797,11386472,9277339,9207671,11476348,9272256],\"sandbox\":{\"max_loop_iterations\":100000000,\"timeout_seconds\":60},\"scope\":\"parse+evaluate invocation; function setup excluded\",\"setup_ns\":144337,\"startup_ns\":182756221,\"validated_passes\":16,\"warmup_ns\":17088604}\n",
+      "stderr": ""
+    },
+    {
+      "workload": "parameter-env-rest-copy",
+      "worker": "Temiya",
+      "pair": 0,
+      "order": 0,
+      "status": "pass",
+      "sampled_peak_hwm_kib": 7904,
+      "last_observed_rss_kib": 7904,
+      "exit": {
+        "code": 0,
+        "signal": null
+      },
+      "measurement": {
+        "architecture": "aarch64",
+        "engine": "Temiya",
+        "expected": 50005000,
+        "invocation_backend": "Bytecode",
+        "mode": "Auto Script",
+        "profile": "release",
+        "samples_ns": [
+          9337549,
+          9640931,
+          9255506,
+          9657223,
+          9335799,
+          9918229,
+          9334174,
+          9797768,
+          9314424,
+          9191504,
+          9695266,
+          9284756,
+          9644556,
+          9308298,
+          9753226
+        ],
+        "sandbox": null,
+        "scope": "parse+evaluate invocation; function setup excluded",
+        "setup_backend": "Ast",
+        "setup_ns": 152629,
+        "startup_ns": 140878,
+        "validated_passes": 16,
+        "warmup_ns": 9923396,
+        "median_ns": 9337549,
+        "mad_ns": 146045
+      },
+      "stdout": "{\"architecture\":\"aarch64\",\"engine\":\"Temiya\",\"expected\":50005000.0,\"invocation_backend\":\"Bytecode\",\"mode\":\"Auto Script\",\"profile\":\"release\",\"samples_ns\":[9337549,9640931,9255506,9657223,9335799,9918229,9334174,9797768,9314424,9191504,9695266,9284756,9644556,9308298,9753226],\"sandbox\":null,\"scope\":\"parse+evaluate invocation; function setup excluded\",\"setup_backend\":\"Ast\",\"setup_ns\":152629,\"startup_ns\":140878,\"validated_passes\":16,\"warmup_ns\":9923396}\n",
+      "stderr": ""
+    },
+    {
+      "workload": "parameter-env-rest-copy",
+      "worker": "omoikane vendored Boa (parameter correction v1)",
+      "pair": 0,
+      "order": 1,
+      "status": "pass",
+      "sampled_peak_hwm_kib": 81760,
+      "last_observed_rss_kib": 81204,
+      "exit": {
+        "code": 0,
+        "signal": null
+      },
+      "measurement": {
+        "architecture": "aarch64",
+        "engine": "omoikane vendored Boa",
+        "expected": 50005000,
+        "mode": "interpreter",
+        "profile": "release",
+        "samples_ns": [
+          7858724,
+          11040671,
+          7789514,
+          7823514,
+          10695789,
+          7829431,
+          7789097,
+          10727248,
+          7818180,
+          7758888,
+          10417615,
+          7716720,
+          7726637,
+          10551244,
+          7946267
+        ],
+        "sandbox": {
+          "max_loop_iterations": 100000000,
+          "timeout_seconds": 60
+        },
+        "scope": "parse+evaluate invocation; function setup excluded",
+        "setup_ns": 147420,
+        "startup_ns": 174706289,
+        "validated_passes": 16,
+        "warmup_ns": 15582860,
+        "median_ns": 7829431,
+        "mad_ns": 102794
+      },
+      "stdout": "{\"architecture\":\"aarch64\",\"engine\":\"omoikane vendored Boa\",\"expected\":50005000.0,\"mode\":\"interpreter\",\"profile\":\"release\",\"samples_ns\":[7858724,11040671,7789514,7823514,10695789,7829431,7789097,10727248,7818180,7758888,10417615,7716720,7726637,10551244,7946267],\"sandbox\":{\"max_loop_iterations\":100000000,\"timeout_seconds\":60},\"scope\":\"parse+evaluate invocation; function setup excluded\",\"setup_ns\":147420,\"startup_ns\":174706289,\"validated_passes\":16,\"warmup_ns\":15582860}\n",
+      "stderr": ""
+    },
+    {
+      "workload": "parameter-env-rest-copy",
+      "worker": "omoikane vendored Boa (parameter correction v1)",
+      "pair": 1,
+      "order": 0,
+      "status": "pass",
+      "sampled_peak_hwm_kib": 81760,
+      "last_observed_rss_kib": 81212,
+      "exit": {
+        "code": 0,
+        "signal": null
+      },
+      "measurement": {
+        "architecture": "aarch64",
+        "engine": "omoikane vendored Boa",
+        "expected": 50005000,
+        "mode": "interpreter",
+        "profile": "release",
+        "samples_ns": [
+          7638052,
+          10852750,
+          7620885,
+          7748429,
+          11720855,
+          7771472,
+          7917100,
+          11735647,
+          7969142,
+          7978768,
+          11751480,
+          7858265,
+          7827930,
+          10833042,
+          8028102
+        ],
+        "sandbox": {
+          "max_loop_iterations": 100000000,
+          "timeout_seconds": 60
+        },
+        "scope": "parse+evaluate invocation; function setup excluded",
+        "setup_ns": 109003,
+        "startup_ns": 161225810,
+        "validated_passes": 16,
+        "warmup_ns": 14728632,
+        "median_ns": 7969142,
+        "mad_ns": 220713
+      },
+      "stdout": "{\"architecture\":\"aarch64\",\"engine\":\"omoikane vendored Boa\",\"expected\":50005000.0,\"mode\":\"interpreter\",\"profile\":\"release\",\"samples_ns\":[7638052,10852750,7620885,7748429,11720855,7771472,7917100,11735647,7969142,7978768,11751480,7858265,7827930,10833042,8028102],\"sandbox\":{\"max_loop_iterations\":100000000,\"timeout_seconds\":60},\"scope\":\"parse+evaluate invocation; function setup excluded\",\"setup_ns\":109003,\"startup_ns\":161225810,\"validated_passes\":16,\"warmup_ns\":14728632}\n",
+      "stderr": ""
+    },
+    {
+      "workload": "parameter-env-rest-copy",
+      "worker": "Temiya",
+      "pair": 1,
+      "order": 1,
+      "status": "pass",
+      "sampled_peak_hwm_kib": 7856,
+      "last_observed_rss_kib": 7856,
+      "exit": {
+        "code": 0,
+        "signal": null
+      },
+      "measurement": {
+        "architecture": "aarch64",
+        "engine": "Temiya",
+        "expected": 50005000,
+        "invocation_backend": "Bytecode",
+        "mode": "Auto Script",
+        "profile": "release",
+        "samples_ns": [
+          9417760,
+          9797060,
+          9391801,
+          10016565,
+          9320965,
+          10094817,
+          9784143,
+          10149402,
+          9739100,
+          9761268,
+          10109609,
+          9660015,
+          10012815,
+          9268548,
+          9641849
+        ],
+        "sandbox": null,
+        "scope": "parse+evaluate invocation; function setup excluded",
+        "setup_backend": "Ast",
+        "setup_ns": 148461,
+        "startup_ns": 179421,
+        "validated_passes": 16,
+        "warmup_ns": 10515952,
+        "median_ns": 9761268,
+        "mad_ns": 255297
+      },
+      "stdout": "{\"architecture\":\"aarch64\",\"engine\":\"Temiya\",\"expected\":50005000.0,\"invocation_backend\":\"Bytecode\",\"mode\":\"Auto Script\",\"profile\":\"release\",\"samples_ns\":[9417760,9797060,9391801,10016565,9320965,10094817,9784143,10149402,9739100,9761268,10109609,9660015,10012815,9268548,9641849],\"sandbox\":null,\"scope\":\"parse+evaluate invocation; function setup excluded\",\"setup_backend\":\"Ast\",\"setup_ns\":148461,\"startup_ns\":179421,\"validated_passes\":16,\"warmup_ns\":10515952}\n",
+      "stderr": ""
+    },
+    {
+      "workload": "parameter-env-rest-copy",
+      "worker": "Temiya",
+      "pair": 2,
+      "order": 0,
+      "status": "pass",
+      "sampled_peak_hwm_kib": 7884,
+      "last_observed_rss_kib": 7852,
+      "exit": {
+        "code": 0,
+        "signal": null
+      },
+      "measurement": {
+        "architecture": "aarch64",
+        "engine": "Temiya",
+        "expected": 50005000,
+        "invocation_backend": "Bytecode",
+        "mode": "Auto Script",
+        "profile": "release",
+        "samples_ns": [
+          9168462,
+          9538304,
+          9108836,
+          9598931,
+          9217297,
+          9835227,
+          9542554,
+          10079983,
+          9512470,
+          9271714,
+          9537637,
+          9123378,
+          9563097,
+          9186046,
+          9580721
+        ],
+        "sandbox": null,
+        "scope": "parse+evaluate invocation; function setup excluded",
+        "setup_backend": "Ast",
+        "setup_ns": 134753,
+        "startup_ns": 136503,
+        "validated_passes": 16,
+        "warmup_ns": 10071650,
+        "median_ns": 9537637,
+        "mad_ns": 265923
+      },
+      "stdout": "{\"architecture\":\"aarch64\",\"engine\":\"Temiya\",\"expected\":50005000.0,\"invocation_backend\":\"Bytecode\",\"mode\":\"Auto Script\",\"profile\":\"release\",\"samples_ns\":[9168462,9538304,9108836,9598931,9217297,9835227,9542554,10079983,9512470,9271714,9537637,9123378,9563097,9186046,9580721],\"sandbox\":null,\"scope\":\"parse+evaluate invocation; function setup excluded\",\"setup_backend\":\"Ast\",\"setup_ns\":134753,\"startup_ns\":136503,\"validated_passes\":16,\"warmup_ns\":10071650}\n",
+      "stderr": ""
+    },
+    {
+      "workload": "parameter-env-rest-copy",
+      "worker": "omoikane vendored Boa (parameter correction v1)",
+      "pair": 2,
+      "order": 1,
+      "status": "pass",
+      "sampled_peak_hwm_kib": 81756,
+      "last_observed_rss_kib": 81204,
+      "exit": {
+        "code": 0,
+        "signal": null
+      },
+      "measurement": {
+        "architecture": "aarch64",
+        "engine": "omoikane vendored Boa",
+        "expected": 50005000,
+        "mode": "interpreter",
+        "profile": "release",
+        "samples_ns": [
+          7849348,
+          11374472,
+          7902975,
+          7918559,
+          11822815,
+          8223941,
+          7915099,
+          12019779,
+          8002935,
+          7878933,
+          11244177,
+          7850014,
+          7953142,
+          12009112,
+          8262816
+        ],
+        "sandbox": {
+          "max_loop_iterations": 100000000,
+          "timeout_seconds": 60
+        },
+        "scope": "parse+evaluate invocation; function setup excluded",
+        "setup_ns": 127919,
+        "startup_ns": 167391581,
+        "validated_passes": 16,
+        "warmup_ns": 14685714,
+        "median_ns": 8002935,
+        "mad_ns": 153587
+      },
+      "stdout": "{\"architecture\":\"aarch64\",\"engine\":\"omoikane vendored Boa\",\"expected\":50005000.0,\"mode\":\"interpreter\",\"profile\":\"release\",\"samples_ns\":[7849348,11374472,7902975,7918559,11822815,8223941,7915099,12019779,8002935,7878933,11244177,7850014,7953142,12009112,8262816],\"sandbox\":{\"max_loop_iterations\":100000000,\"timeout_seconds\":60},\"scope\":\"parse+evaluate invocation; function setup excluded\",\"setup_ns\":127919,\"startup_ns\":167391581,\"validated_passes\":16,\"warmup_ns\":14685714}\n",
+      "stderr": ""
+    },
+    {
+      "workload": "parameter-env-constructor",
+      "worker": "Temiya",
+      "pair": 0,
+      "order": 0,
+      "status": "pass",
+      "sampled_peak_hwm_kib": 8612,
+      "last_observed_rss_kib": 8612,
+      "exit": {
+        "code": 0,
+        "signal": null
+      },
+      "measurement": {
+        "architecture": "aarch64",
+        "engine": "Temiya",
+        "expected": 50005000,
+        "invocation_backend": "Bytecode",
+        "mode": "Auto Script",
+        "profile": "release",
+        "samples_ns": [
+          8925082,
+          9312674,
+          8658158,
+          8916331,
+          8616741,
+          8914290,
+          8615741,
+          8884914,
+          8240941,
+          8258025,
+          8696035,
+          8276442,
+          8539198,
+          8285942,
+          8547031
+        ],
+        "sandbox": null,
+        "scope": "parse+evaluate invocation; function setup excluded",
+        "setup_backend": "Ast",
+        "setup_ns": 154045,
+        "startup_ns": 151295,
+        "validated_passes": 16,
+        "warmup_ns": 9812685,
+        "median_ns": 8616741,
+        "mad_ns": 297549
+      },
+      "stdout": "{\"architecture\":\"aarch64\",\"engine\":\"Temiya\",\"expected\":50005000.0,\"invocation_backend\":\"Bytecode\",\"mode\":\"Auto Script\",\"profile\":\"release\",\"samples_ns\":[8925082,9312674,8658158,8916331,8616741,8914290,8615741,8884914,8240941,8258025,8696035,8276442,8539198,8285942,8547031],\"sandbox\":null,\"scope\":\"parse+evaluate invocation; function setup excluded\",\"setup_backend\":\"Ast\",\"setup_ns\":154045,\"startup_ns\":151295,\"validated_passes\":16,\"warmup_ns\":9812685}\n",
+      "stderr": ""
+    },
+    {
+      "workload": "parameter-env-constructor",
+      "worker": "omoikane vendored Boa (parameter correction v1)",
+      "pair": 0,
+      "order": 1,
+      "status": "pass",
+      "sampled_peak_hwm_kib": 81756,
+      "last_observed_rss_kib": 81208,
+      "exit": {
+        "code": 0,
+        "signal": null
+      },
+      "measurement": {
+        "architecture": "aarch64",
+        "engine": "omoikane vendored Boa",
+        "expected": 50005000,
+        "mode": "interpreter",
+        "profile": "release",
+        "samples_ns": [
+          12330161,
+          15477233,
+          12135865,
+          12041737,
+          14678590,
+          11955069,
+          12052737,
+          15797575,
+          12753087,
+          12661709,
+          15433816,
+          12459872,
+          12104197,
+          14478169,
+          11829732
+        ],
+        "sandbox": {
+          "max_loop_iterations": 100000000,
+          "timeout_seconds": 60
+        },
+        "scope": "parse+evaluate invocation; function setup excluded",
+        "setup_ns": 121837,
+        "startup_ns": 174422702,
+        "validated_passes": 16,
+        "warmup_ns": 19710956,
+        "median_ns": 12459872,
+        "mad_ns": 418135
+      },
+      "stdout": "{\"architecture\":\"aarch64\",\"engine\":\"omoikane vendored Boa\",\"expected\":50005000.0,\"mode\":\"interpreter\",\"profile\":\"release\",\"samples_ns\":[12330161,15477233,12135865,12041737,14678590,11955069,12052737,15797575,12753087,12661709,15433816,12459872,12104197,14478169,11829732],\"sandbox\":{\"max_loop_iterations\":100000000,\"timeout_seconds\":60},\"scope\":\"parse+evaluate invocation; function setup excluded\",\"setup_ns\":121837,\"startup_ns\":174422702,\"validated_passes\":16,\"warmup_ns\":19710956}\n",
+      "stderr": ""
+    },
+    {
+      "workload": "parameter-env-constructor",
+      "worker": "omoikane vendored Boa (parameter correction v1)",
+      "pair": 1,
+      "order": 0,
+      "status": "pass",
+      "sampled_peak_hwm_kib": 81768,
+      "last_observed_rss_kib": 81212,
+      "exit": {
+        "code": 0,
+        "signal": null
+      },
+      "measurement": {
+        "architecture": "aarch64",
+        "engine": "omoikane vendored Boa",
+        "expected": 50005000,
+        "mode": "interpreter",
+        "profile": "release",
+        "samples_ns": [
+          12027945,
+          14929429,
+          11452932,
+          11411723,
+          13619149,
+          11399347,
+          11133008,
+          12972592,
+          10952004,
+          10944836,
+          13191639,
+          10996963,
+          10926878,
+          13078553,
+          11000338
+        ],
+        "sandbox": {
+          "max_loop_iterations": 100000000,
+          "timeout_seconds": 60
+        },
+        "scope": "parse+evaluate invocation; function setup excluded",
+        "setup_ns": 103169,
+        "startup_ns": 185969264,
+        "validated_passes": 16,
+        "warmup_ns": 18964564,
+        "median_ns": 11411723,
+        "mad_ns": 466887
+      },
+      "stdout": "{\"architecture\":\"aarch64\",\"engine\":\"omoikane vendored Boa\",\"expected\":50005000.0,\"mode\":\"interpreter\",\"profile\":\"release\",\"samples_ns\":[12027945,14929429,11452932,11411723,13619149,11399347,11133008,12972592,10952004,10944836,13191639,10996963,10926878,13078553,11000338],\"sandbox\":{\"max_loop_iterations\":100000000,\"timeout_seconds\":60},\"scope\":\"parse+evaluate invocation; function setup excluded\",\"setup_ns\":103169,\"startup_ns\":185969264,\"validated_passes\":16,\"warmup_ns\":18964564}\n",
+      "stderr": ""
+    },
+    {
+      "workload": "parameter-env-constructor",
+      "worker": "Temiya",
+      "pair": 1,
+      "order": 1,
+      "status": "pass",
+      "sampled_peak_hwm_kib": 8620,
+      "last_observed_rss_kib": 8620,
+      "exit": {
+        "code": 0,
+        "signal": null
+      },
+      "measurement": {
+        "architecture": "aarch64",
+        "engine": "Temiya",
+        "expected": 50005000,
+        "invocation_backend": "Bytecode",
+        "mode": "Auto Script",
+        "profile": "release",
+        "samples_ns": [
+          8561449,
+          8981375,
+          8657617,
+          8657868,
+          8569990,
+          9079710,
+          8605616,
+          8929998,
+          8555698,
+          8857039,
+          9207963,
+          8760578,
+          8997291,
+          8766703,
+          9190838
+        ],
+        "sandbox": null,
+        "scope": "parse+evaluate invocation; function setup excluded",
+        "setup_backend": "Ast",
+        "setup_ns": 132628,
+        "startup_ns": 144128,
+        "validated_passes": 16,
+        "warmup_ns": 9343758,
+        "median_ns": 8766703,
+        "mad_ns": 196713
+      },
+      "stdout": "{\"architecture\":\"aarch64\",\"engine\":\"Temiya\",\"expected\":50005000.0,\"invocation_backend\":\"Bytecode\",\"mode\":\"Auto Script\",\"profile\":\"release\",\"samples_ns\":[8561449,8981375,8657617,8657868,8569990,9079710,8605616,8929998,8555698,8857039,9207963,8760578,8997291,8766703,9190838],\"sandbox\":null,\"scope\":\"parse+evaluate invocation; function setup excluded\",\"setup_backend\":\"Ast\",\"setup_ns\":132628,\"startup_ns\":144128,\"validated_passes\":16,\"warmup_ns\":9343758}\n",
+      "stderr": ""
+    },
+    {
+      "workload": "parameter-env-constructor",
+      "worker": "Temiya",
+      "pair": 2,
+      "order": 0,
+      "status": "pass",
+      "sampled_peak_hwm_kib": 8652,
+      "last_observed_rss_kib": 8540,
+      "exit": {
+        "code": 0,
+        "signal": null
+      },
+      "measurement": {
+        "architecture": "aarch64",
+        "engine": "Temiya",
+        "expected": 50005000,
+        "invocation_backend": "Bytecode",
+        "mode": "Auto Script",
+        "profile": "release",
+        "samples_ns": [
+          12245033,
+          9199505,
+          8796037,
+          9063835,
+          9025250,
+          9593472,
+          8913582,
+          9292257,
+          9097377,
+          9369092,
+          9509304,
+          9148045,
+          9531762,
+          9118461,
+          9570763
+        ],
+        "sandbox": null,
+        "scope": "parse+evaluate invocation; function setup excluded",
+        "setup_backend": "Ast",
+        "setup_ns": 141795,
+        "startup_ns": 155504,
+        "validated_passes": 16,
+        "warmup_ns": 9861936,
+        "median_ns": 9199505,
+        "mad_ns": 174255
+      },
+      "stdout": "{\"architecture\":\"aarch64\",\"engine\":\"Temiya\",\"expected\":50005000.0,\"invocation_backend\":\"Bytecode\",\"mode\":\"Auto Script\",\"profile\":\"release\",\"samples_ns\":[12245033,9199505,8796037,9063835,9025250,9593472,8913582,9292257,9097377,9369092,9509304,9148045,9531762,9118461,9570763],\"sandbox\":null,\"scope\":\"parse+evaluate invocation; function setup excluded\",\"setup_backend\":\"Ast\",\"setup_ns\":141795,\"startup_ns\":155504,\"validated_passes\":16,\"warmup_ns\":9861936}\n",
+      "stderr": ""
+    },
+    {
+      "workload": "parameter-env-constructor",
+      "worker": "omoikane vendored Boa (parameter correction v1)",
+      "pair": 2,
+      "order": 1,
+      "status": "pass",
+      "sampled_peak_hwm_kib": 81240,
+      "last_observed_rss_kib": 75972,
+      "exit": {
+        "code": 0,
+        "signal": null
+      },
+      "measurement": {
+        "architecture": "aarch64",
+        "engine": "omoikane vendored Boa",
+        "expected": 50005000,
+        "mode": "interpreter",
+        "profile": "release",
+        "samples_ns": [
+          11829357,
+          14853552,
+          11459224,
+          11543392,
+          14646631,
+          11708438,
+          11547268,
+          14707007,
+          11473516,
+          11386348,
+          13871863,
+          11397972,
+          11369931,
+          13208139,
+          10919294
+        ],
+        "sandbox": {
+          "max_loop_iterations": 100000000,
+          "timeout_seconds": 60
+        },
+        "scope": "parse+evaluate invocation; function setup excluded",
+        "setup_ns": 107877,
+        "startup_ns": 179060231,
+        "validated_passes": 16,
+        "warmup_ns": 18653057,
+        "median_ns": 11547268,
+        "mad_ns": 177337
+      },
+      "stdout": "{\"architecture\":\"aarch64\",\"engine\":\"omoikane vendored Boa\",\"expected\":50005000.0,\"mode\":\"interpreter\",\"profile\":\"release\",\"samples_ns\":[11829357,14853552,11459224,11543392,14646631,11708438,11547268,14707007,11473516,11386348,13871863,11397972,11369931,13208139,10919294],\"sandbox\":{\"max_loop_iterations\":100000000,\"timeout_seconds\":60},\"scope\":\"parse+evaluate invocation; function setup excluded\",\"setup_ns\":107877,\"startup_ns\":179060231,\"validated_passes\":16,\"warmup_ns\":18653057}\n",
+      "stderr": ""
+    },
+    {
+      "workload": "parameter-env-generator",
+      "worker": "Temiya",
+      "pair": 0,
+      "order": 0,
+      "status": "pass",
+      "sampled_peak_hwm_kib": 8936,
+      "last_observed_rss_kib": 8936,
+      "exit": {
+        "code": 0,
+        "signal": null
+      },
+      "measurement": {
+        "architecture": "aarch64",
+        "engine": "Temiya",
+        "expected": 50005000,
+        "invocation_backend": "Bytecode",
+        "mode": "Auto Script",
+        "profile": "release",
+        "samples_ns": [
+          54151964,
+          53819372,
+          53798039,
+          52658846,
+          51686365,
+          51734574,
+          53659993,
+          55105319,
+          54878314,
+          57284661,
+          57516416,
+          56310597,
+          54602808,
+          52672638,
+          52808434
+        ],
+        "sandbox": null,
+        "scope": "parse+evaluate invocation; function setup excluded",
+        "setup_backend": "Ast",
+        "setup_ns": 160921,
+        "startup_ns": 149253,
+        "validated_passes": 16,
+        "warmup_ns": 55354075,
+        "median_ns": 53819372,
+        "mad_ns": 1146734
+      },
+      "stdout": "{\"architecture\":\"aarch64\",\"engine\":\"Temiya\",\"expected\":50005000.0,\"invocation_backend\":\"Bytecode\",\"mode\":\"Auto Script\",\"profile\":\"release\",\"samples_ns\":[54151964,53819372,53798039,52658846,51686365,51734574,53659993,55105319,54878314,57284661,57516416,56310597,54602808,52672638,52808434],\"sandbox\":null,\"scope\":\"parse+evaluate invocation; function setup excluded\",\"setup_backend\":\"Ast\",\"setup_ns\":160921,\"startup_ns\":149253,\"validated_passes\":16,\"warmup_ns\":55354075}\n",
+      "stderr": ""
+    },
+    {
+      "workload": "parameter-env-generator",
+      "worker": "omoikane vendored Boa (parameter correction v1)",
+      "pair": 0,
+      "order": 1,
+      "status": "pass",
+      "sampled_peak_hwm_kib": 81212,
+      "last_observed_rss_kib": 81212,
+      "exit": {
+        "code": 0,
+        "signal": null
+      },
+      "measurement": {
+        "architecture": "aarch64",
+        "engine": "omoikane vendored Boa",
+        "expected": 50005000,
+        "mode": "interpreter",
+        "profile": "release",
+        "samples_ns": [
+          32954806,
+          32510379,
+          31896282,
+          32222998,
+          32186330,
+          33338273,
+          33061684,
+          31945408,
+          31043720,
+          33286064,
+          32009410,
+          32639590,
+          32532505,
+          31091305,
+          30587502
+        ],
+        "sandbox": {
+          "max_loop_iterations": 100000000,
+          "timeout_seconds": 60
+        },
+        "scope": "parse+evaluate invocation; function setup excluded",
+        "setup_ns": 184545,
+        "startup_ns": 177187902,
+        "validated_passes": 16,
+        "warmup_ns": 42216271,
+        "median_ns": 32222998,
+        "mad_ns": 416592
+      },
+      "stdout": "{\"architecture\":\"aarch64\",\"engine\":\"omoikane vendored Boa\",\"expected\":50005000.0,\"mode\":\"interpreter\",\"profile\":\"release\",\"samples_ns\":[32954806,32510379,31896282,32222998,32186330,33338273,33061684,31945408,31043720,33286064,32009410,32639590,32532505,31091305,30587502],\"sandbox\":{\"max_loop_iterations\":100000000,\"timeout_seconds\":60},\"scope\":\"parse+evaluate invocation; function setup excluded\",\"setup_ns\":184545,\"startup_ns\":177187902,\"validated_passes\":16,\"warmup_ns\":42216271}\n",
+      "stderr": ""
+    },
+    {
+      "workload": "parameter-env-generator",
+      "worker": "omoikane vendored Boa (parameter correction v1)",
+      "pair": 1,
+      "order": 0,
+      "status": "pass",
+      "sampled_peak_hwm_kib": 81488,
+      "last_observed_rss_kib": 80884,
+      "exit": {
+        "code": 0,
+        "signal": null
+      },
+      "measurement": {
+        "architecture": "aarch64",
+        "engine": "omoikane vendored Boa",
+        "expected": 50005000,
+        "mode": "interpreter",
+        "profile": "release",
+        "samples_ns": [
+          31772738,
+          32094287,
+          31103222,
+          32843221,
+          31097180,
+          30845758,
+          30804173,
+          30846800,
+          30784715,
+          33399317,
+          33597405,
+          34458967,
+          34188294,
+          34099042,
+          32191039
+        ],
+        "sandbox": {
+          "max_loop_iterations": 100000000,
+          "timeout_seconds": 60
+        },
+        "scope": "parse+evaluate invocation; function setup excluded",
+        "setup_ns": 138961,
+        "startup_ns": 177945254,
+        "validated_passes": 16,
+        "warmup_ns": 39746964,
+        "median_ns": 32094287,
+        "mad_ns": 1248529
+      },
+      "stdout": "{\"architecture\":\"aarch64\",\"engine\":\"omoikane vendored Boa\",\"expected\":50005000.0,\"mode\":\"interpreter\",\"profile\":\"release\",\"samples_ns\":[31772738,32094287,31103222,32843221,31097180,30845758,30804173,30846800,30784715,33399317,33597405,34458967,34188294,34099042,32191039],\"sandbox\":{\"max_loop_iterations\":100000000,\"timeout_seconds\":60},\"scope\":\"parse+evaluate invocation; function setup excluded\",\"setup_ns\":138961,\"startup_ns\":177945254,\"validated_passes\":16,\"warmup_ns\":39746964}\n",
+      "stderr": ""
+    },
+    {
+      "workload": "parameter-env-generator",
+      "worker": "Temiya",
+      "pair": 1,
+      "order": 1,
+      "status": "pass",
+      "sampled_peak_hwm_kib": 8936,
+      "last_observed_rss_kib": 8936,
+      "exit": {
+        "code": 0,
+        "signal": null
+      },
+      "measurement": {
+        "architecture": "aarch64",
+        "engine": "Temiya",
+        "expected": 50005000,
+        "invocation_backend": "Bytecode",
+        "mode": "Auto Script",
+        "profile": "release",
+        "samples_ns": [
+          56105386,
+          56954864,
+          57657713,
+          56160346,
+          55002611,
+          54915150,
+          55036654,
+          54963902,
+          56562856,
+          56423352,
+          64470915,
+          67023057,
+          59061414,
+          59671262,
+          58217395
+        ],
+        "sandbox": null,
+        "scope": "parse+evaluate invocation; function setup excluded",
+        "setup_backend": "Ast",
+        "setup_ns": 156753,
+        "startup_ns": 146962,
+        "validated_passes": 16,
+        "warmup_ns": 55898964,
+        "median_ns": 56562856,
+        "mad_ns": 1560245
+      },
+      "stdout": "{\"architecture\":\"aarch64\",\"engine\":\"Temiya\",\"expected\":50005000.0,\"invocation_backend\":\"Bytecode\",\"mode\":\"Auto Script\",\"profile\":\"release\",\"samples_ns\":[56105386,56954864,57657713,56160346,55002611,54915150,55036654,54963902,56562856,56423352,64470915,67023057,59061414,59671262,58217395],\"sandbox\":null,\"scope\":\"parse+evaluate invocation; function setup excluded\",\"setup_backend\":\"Ast\",\"setup_ns\":156753,\"startup_ns\":146962,\"validated_passes\":16,\"warmup_ns\":55898964}\n",
+      "stderr": ""
+    },
+    {
+      "workload": "parameter-env-generator",
+      "worker": "Temiya",
+      "pair": 2,
+      "order": 0,
+      "status": "pass",
+      "sampled_peak_hwm_kib": 8936,
+      "last_observed_rss_kib": 8936,
+      "exit": {
+        "code": 0,
+        "signal": null
+      },
+      "measurement": {
+        "architecture": "aarch64",
+        "engine": "Temiya",
+        "expected": 50005000,
+        "invocation_backend": "Bytecode",
+        "mode": "Auto Script",
+        "profile": "release",
+        "samples_ns": [
+          56769403,
+          56966657,
+          54245969,
+          56127388,
+          60882957,
+          58006307,
+          56466437,
+          56562815,
+          56758778,
+          56940366,
+          56984242,
+          60242609,
+          60911833,
+          59940769,
+          56670860
+        ],
+        "sandbox": null,
+        "scope": "parse+evaluate invocation; function setup excluded",
+        "setup_backend": "Ast",
+        "setup_ns": 157754,
+        "startup_ns": 161670,
+        "validated_passes": 16,
+        "warmup_ns": 60949667,
+        "median_ns": 56940366,
+        "mad_ns": 473929
+      },
+      "stdout": "{\"architecture\":\"aarch64\",\"engine\":\"Temiya\",\"expected\":50005000.0,\"invocation_backend\":\"Bytecode\",\"mode\":\"Auto Script\",\"profile\":\"release\",\"samples_ns\":[56769403,56966657,54245969,56127388,60882957,58006307,56466437,56562815,56758778,56940366,56984242,60242609,60911833,59940769,56670860],\"sandbox\":null,\"scope\":\"parse+evaluate invocation; function setup excluded\",\"setup_backend\":\"Ast\",\"setup_ns\":157754,\"startup_ns\":161670,\"validated_passes\":16,\"warmup_ns\":60949667}\n",
+      "stderr": ""
+    },
+    {
+      "workload": "parameter-env-generator",
+      "worker": "omoikane vendored Boa (parameter correction v1)",
+      "pair": 2,
+      "order": 1,
+      "status": "pass",
+      "sampled_peak_hwm_kib": 81484,
+      "last_observed_rss_kib": 80884,
+      "exit": {
+        "code": 0,
+        "signal": null
+      },
+      "measurement": {
+        "architecture": "aarch64",
+        "engine": "omoikane vendored Boa",
+        "expected": 50005000,
+        "mode": "interpreter",
+        "profile": "release",
+        "samples_ns": [
+          33467154,
+          33109104,
+          32161081,
+          34193295,
+          38706150,
+          35811250,
+          36235343,
+          48376500,
+          38589815,
+          37766546,
+          36005588,
+          37033112,
+          35376240,
+          34645640,
+          33484112
+        ],
+        "sandbox": {
+          "max_loop_iterations": 100000000,
+          "timeout_seconds": 60
+        },
+        "scope": "parse+evaluate invocation; function setup excluded",
+        "setup_ns": 178920,
+        "startup_ns": 196582948,
+        "validated_passes": 16,
+        "warmup_ns": 41512424,
+        "median_ns": 35811250,
+        "mad_ns": 1955296
+      },
+      "stdout": "{\"architecture\":\"aarch64\",\"engine\":\"omoikane vendored Boa\",\"expected\":50005000.0,\"mode\":\"interpreter\",\"profile\":\"release\",\"samples_ns\":[33467154,33109104,32161081,34193295,38706150,35811250,36235343,48376500,38589815,37766546,36005588,37033112,35376240,34645640,33484112],\"sandbox\":{\"max_loop_iterations\":100000000,\"timeout_seconds\":60},\"scope\":\"parse+evaluate invocation; function setup excluded\",\"setup_ns\":178920,\"startup_ns\":196582948,\"validated_passes\":16,\"warmup_ns\":41512424}\n",
+      "stderr": ""
+    },
+    {
+      "workload": "parameter-env-async",
+      "worker": "Temiya",
+      "pair": 0,
+      "order": 0,
+      "status": "pass",
+      "sampled_peak_hwm_kib": 9376,
+      "last_observed_rss_kib": 9332,
+      "exit": {
+        "code": 0,
+        "signal": null
+      },
+      "measurement": {
+        "architecture": "aarch64",
+        "engine": "Temiya",
+        "expected": 50005000,
+        "invocation_backend": "Bytecode",
+        "mode": "Auto Script",
+        "profile": "release",
+        "samples_ns": [
+          28702960,
+          28341160,
+          28118029,
+          28399995,
+          28425412,
+          28469996,
+          29353600,
+          29639232,
+          32401796,
+          31183143,
+          30688673,
+          30113951,
+          31729488,
+          29203055,
+          28767128
+        ],
+        "sandbox": null,
+        "scope": "parse+evaluate invocation; function setup excluded",
+        "setup_backend": "Ast",
+        "setup_ns": 143712,
+        "startup_ns": 152504,
+        "validated_passes": 16,
+        "warmup_ns": 30968221,
+        "median_ns": 29203055,
+        "mad_ns": 803060
+      },
+      "stdout": "{\"architecture\":\"aarch64\",\"engine\":\"Temiya\",\"expected\":50005000.0,\"invocation_backend\":\"Bytecode\",\"mode\":\"Auto Script\",\"profile\":\"release\",\"samples_ns\":[28702960,28341160,28118029,28399995,28425412,28469996,29353600,29639232,32401796,31183143,30688673,30113951,31729488,29203055,28767128],\"sandbox\":null,\"scope\":\"parse+evaluate invocation; function setup excluded\",\"setup_backend\":\"Ast\",\"setup_ns\":143712,\"startup_ns\":152504,\"validated_passes\":16,\"warmup_ns\":30968221}\n",
+      "stderr": ""
+    },
+    {
+      "workload": "parameter-env-async",
+      "worker": "omoikane vendored Boa (parameter correction v1)",
+      "pair": 0,
+      "order": 1,
+      "status": "pass",
+      "sampled_peak_hwm_kib": 81968,
+      "last_observed_rss_kib": 81348,
+      "exit": {
+        "code": 0,
+        "signal": null
+      },
+      "measurement": {
+        "architecture": "aarch64",
+        "engine": "omoikane vendored Boa",
+        "expected": 50005000,
+        "mode": "interpreter",
+        "profile": "release",
+        "samples_ns": [
+          30872260,
+          33082270,
+          30234205,
+          31433316,
+          33075395,
+          31539110,
+          30870052,
+          31039807,
+          30991431,
+          30914304,
+          29887863,
+          26928586,
+          29534854,
+          29374309,
+          29248223
+        ],
+        "sandbox": {
+          "max_loop_iterations": 100000000,
+          "timeout_seconds": 60
+        },
+        "scope": "parse+evaluate invocation; function setup excluded",
+        "setup_ns": 133170,
+        "startup_ns": 174850487,
+        "validated_passes": 16,
+        "warmup_ns": 34594222,
+        "median_ns": 30872260,
+        "mad_ns": 666850
+      },
+      "stdout": "{\"architecture\":\"aarch64\",\"engine\":\"omoikane vendored Boa\",\"expected\":50005000.0,\"mode\":\"interpreter\",\"profile\":\"release\",\"samples_ns\":[30872260,33082270,30234205,31433316,33075395,31539110,30870052,31039807,30991431,30914304,29887863,26928586,29534854,29374309,29248223],\"sandbox\":{\"max_loop_iterations\":100000000,\"timeout_seconds\":60},\"scope\":\"parse+evaluate invocation; function setup excluded\",\"setup_ns\":133170,\"startup_ns\":174850487,\"validated_passes\":16,\"warmup_ns\":34594222}\n",
+      "stderr": ""
+    },
+    {
+      "workload": "parameter-env-async",
+      "worker": "omoikane vendored Boa (parameter correction v1)",
+      "pair": 1,
+      "order": 0,
+      "status": "pass",
+      "sampled_peak_hwm_kib": 82040,
+      "last_observed_rss_kib": 80400,
+      "exit": {
+        "code": 0,
+        "signal": null
+      },
+      "measurement": {
+        "architecture": "aarch64",
+        "engine": "omoikane vendored Boa",
+        "expected": 50005000,
+        "mode": "interpreter",
+        "profile": "release",
+        "samples_ns": [
+          31581694,
+          30371958,
+          29162137,
+          30196828,
+          29560688,
+          29764777,
+          29411561,
+          29366184,
+          29295016,
+          29445227,
+          29479812,
+          27630477,
+          31377189,
+          31499235,
+          36681689
+        ],
+        "sandbox": {
+          "max_loop_iterations": 100000000,
+          "timeout_seconds": 60
+        },
+        "scope": "parse+evaluate invocation; function setup excluded",
+        "setup_ns": 185129,
+        "startup_ns": 183180976,
+        "validated_passes": 16,
+        "warmup_ns": 38964991,
+        "median_ns": 29560688,
+        "mad_ns": 398551
+      },
+      "stdout": "{\"architecture\":\"aarch64\",\"engine\":\"omoikane vendored Boa\",\"expected\":50005000.0,\"mode\":\"interpreter\",\"profile\":\"release\",\"samples_ns\":[31581694,30371958,29162137,30196828,29560688,29764777,29411561,29366184,29295016,29445227,29479812,27630477,31377189,31499235,36681689],\"sandbox\":{\"max_loop_iterations\":100000000,\"timeout_seconds\":60},\"scope\":\"parse+evaluate invocation; function setup excluded\",\"setup_ns\":185129,\"startup_ns\":183180976,\"validated_passes\":16,\"warmup_ns\":38964991}\n",
+      "stderr": ""
+    },
+    {
+      "workload": "parameter-env-async",
+      "worker": "Temiya",
+      "pair": 1,
+      "order": 1,
+      "status": "pass",
+      "sampled_peak_hwm_kib": 9376,
+      "last_observed_rss_kib": 9332,
+      "exit": {
+        "code": 0,
+        "signal": null
+      },
+      "measurement": {
+        "architecture": "aarch64",
+        "engine": "Temiya",
+        "expected": 50005000,
+        "invocation_backend": "Bytecode",
+        "mode": "Auto Script",
+        "profile": "release",
+        "samples_ns": [
+          30327082,
+          31615071,
+          32081914,
+          32641678,
+          31278646,
+          30673548,
+          30566962,
+          30358958,
+          30601547,
+          30028991,
+          30134161,
+          30090452,
+          29907531,
+          28947675,
+          28677669
+        ],
+        "sandbox": null,
+        "scope": "parse+evaluate invocation; function setup excluded",
+        "setup_backend": "Ast",
+        "setup_ns": 165296,
+        "startup_ns": 161295,
+        "validated_passes": 16,
+        "warmup_ns": 33205900,
+        "median_ns": 30358958,
+        "mad_ns": 329967
+      },
+      "stdout": "{\"architecture\":\"aarch64\",\"engine\":\"Temiya\",\"expected\":50005000.0,\"invocation_backend\":\"Bytecode\",\"mode\":\"Auto Script\",\"profile\":\"release\",\"samples_ns\":[30327082,31615071,32081914,32641678,31278646,30673548,30566962,30358958,30601547,30028991,30134161,30090452,29907531,28947675,28677669],\"sandbox\":null,\"scope\":\"parse+evaluate invocation; function setup excluded\",\"setup_backend\":\"Ast\",\"setup_ns\":165296,\"startup_ns\":161295,\"validated_passes\":16,\"warmup_ns\":33205900}\n",
+      "stderr": ""
+    },
+    {
+      "workload": "parameter-env-async",
+      "worker": "Temiya",
+      "pair": 2,
+      "order": 0,
+      "status": "pass",
+      "sampled_peak_hwm_kib": 9380,
+      "last_observed_rss_kib": 9380,
+      "exit": {
+        "code": 0,
+        "signal": null
+      },
+      "measurement": {
+        "architecture": "aarch64",
+        "engine": "Temiya",
+        "expected": 50005000,
+        "invocation_backend": "Bytecode",
+        "mode": "Auto Script",
+        "profile": "release",
+        "samples_ns": [
+          28401663,
+          28387162,
+          28227950,
+          28541333,
+          28210825,
+          28391953,
+          28565749,
+          28098155,
+          28424580,
+          28060779,
+          28310368,
+          28214241,
+          28456997,
+          28758462,
+          28241409
+        ],
+        "sandbox": null,
+        "scope": "parse+evaluate invocation; function setup excluded",
+        "setup_backend": "Ast",
+        "setup_ns": 135711,
+        "startup_ns": 146920,
+        "validated_passes": 16,
+        "warmup_ns": 29799320,
+        "median_ns": 28387162,
+        "mad_ns": 154171
+      },
+      "stdout": "{\"architecture\":\"aarch64\",\"engine\":\"Temiya\",\"expected\":50005000.0,\"invocation_backend\":\"Bytecode\",\"mode\":\"Auto Script\",\"profile\":\"release\",\"samples_ns\":[28401663,28387162,28227950,28541333,28210825,28391953,28565749,28098155,28424580,28060779,28310368,28214241,28456997,28758462,28241409],\"sandbox\":null,\"scope\":\"parse+evaluate invocation; function setup excluded\",\"setup_backend\":\"Ast\",\"setup_ns\":135711,\"startup_ns\":146920,\"validated_passes\":16,\"warmup_ns\":29799320}\n",
+      "stderr": ""
+    },
+    {
+      "workload": "parameter-env-async",
+      "worker": "omoikane vendored Boa (parameter correction v1)",
+      "pair": 2,
+      "order": 1,
+      "status": "pass",
+      "sampled_peak_hwm_kib": 82028,
+      "last_observed_rss_kib": 81484,
+      "exit": {
+        "code": 0,
+        "signal": null
+      },
+      "measurement": {
+        "architecture": "aarch64",
+        "engine": "omoikane vendored Boa",
+        "expected": 50005000,
+        "mode": "interpreter",
+        "profile": "release",
+        "samples_ns": [
+          29225932,
+          28792339,
+          29600608,
+          31213270,
+          28961468,
+          28923633,
+          29417354,
+          30956264,
+          31149685,
+          29355851,
+          29321059,
+          26695748,
+          30766759,
+          30491170,
+          28916008
+        ],
+        "sandbox": {
+          "max_loop_iterations": 100000000,
+          "timeout_seconds": 60
+        },
+        "scope": "parse+evaluate invocation; function setup excluded",
+        "setup_ns": 143086,
+        "startup_ns": 171479127,
+        "validated_passes": 16,
+        "warmup_ns": 37174909,
+        "median_ns": 29355851,
+        "mad_ns": 439843
+      },
+      "stdout": "{\"architecture\":\"aarch64\",\"engine\":\"omoikane vendored Boa\",\"expected\":50005000.0,\"mode\":\"interpreter\",\"profile\":\"release\",\"samples_ns\":[29225932,28792339,29600608,31213270,28961468,28923633,29417354,30956264,31149685,29355851,29321059,26695748,30766759,30491170,28916008],\"sandbox\":{\"max_loop_iterations\":100000000,\"timeout_seconds\":60},\"scope\":\"parse+evaluate invocation; function setup excluded\",\"setup_ns\":143086,\"startup_ns\":171479127,\"validated_passes\":16,\"warmup_ns\":37174909}\n",
+      "stderr": ""
+    }
+  ],
+  "comparisons": [
+    {
+      "workload": "parameter-env-default-closure",
+      "pair": 0,
+      "status": "comparable",
+      "temiya_to_boa_ratio": 1.2887094130068861,
+      "noise_threshold": 0.29707108484243155,
+      "outcome": "within noise threshold"
+    },
+    {
+      "workload": "parameter-env-default-closure",
+      "pair": 1,
+      "status": "comparable",
+      "temiya_to_boa_ratio": 1.5876784199223555,
+      "noise_threshold": 0.31759739227629236,
+      "outcome": "Temiya slower beyond threshold"
+    },
+    {
+      "workload": "parameter-env-default-closure",
+      "pair": 2,
+      "status": "comparable",
+      "temiya_to_boa_ratio": 1.5962448327878342,
+      "noise_threshold": 0.2929402532140061,
+      "outcome": "Temiya slower beyond threshold"
+    },
+    {
+      "workload": "parameter-env-var-copy",
+      "pair": 0,
+      "status": "comparable",
+      "temiya_to_boa_ratio": 0.8275764062980495,
+      "noise_threshold": 0.1,
+      "outcome": "Temiya faster beyond threshold"
+    },
+    {
+      "workload": "parameter-env-var-copy",
+      "pair": 1,
+      "status": "comparable",
+      "temiya_to_boa_ratio": 0.7691814861354849,
+      "noise_threshold": 0.1,
+      "outcome": "Temiya faster beyond threshold"
+    },
+    {
+      "workload": "parameter-env-var-copy",
+      "pair": 2,
+      "status": "comparable",
+      "temiya_to_boa_ratio": 0.9066265280535954,
+      "noise_threshold": 0.1,
+      "outcome": "within noise threshold"
+    },
+    {
+      "workload": "parameter-env-nested-default",
+      "pair": 0,
+      "status": "comparable",
+      "temiya_to_boa_ratio": 1.0360432362743088,
+      "noise_threshold": 0.5569833249770177,
+      "outcome": "within noise threshold"
+    },
+    {
+      "workload": "parameter-env-nested-default",
+      "pair": 1,
+      "status": "comparable",
+      "temiya_to_boa_ratio": 1.2912795558680328,
+      "noise_threshold": 0.25292698992978524,
+      "outcome": "Temiya slower beyond threshold"
+    },
+    {
+      "workload": "parameter-env-nested-default",
+      "pair": 2,
+      "status": "comparable",
+      "temiya_to_boa_ratio": 1.4998844073280484,
+      "noise_threshold": 0.17863713984537882,
+      "outcome": "Temiya slower beyond threshold"
+    },
+    {
+      "workload": "parameter-env-computed-key",
+      "pair": 0,
+      "status": "comparable",
+      "temiya_to_boa_ratio": 1.2802518035029786,
+      "noise_threshold": 0.14792431480567947,
+      "outcome": "Temiya slower beyond threshold"
+    },
+    {
+      "workload": "parameter-env-computed-key",
+      "pair": 1,
+      "status": "comparable",
+      "temiya_to_boa_ratio": 1.2237341942992124,
+      "noise_threshold": 0.1666568851938598,
+      "outcome": "Temiya slower beyond threshold"
+    },
+    {
+      "workload": "parameter-env-computed-key",
+      "pair": 2,
+      "status": "comparable",
+      "temiya_to_boa_ratio": 1.2058250502443442,
+      "noise_threshold": 0.14436018106689325,
+      "outcome": "Temiya slower beyond threshold"
+    },
+    {
+      "workload": "parameter-env-rest-copy",
+      "pair": 0,
+      "status": "comparable",
+      "temiya_to_boa_ratio": 1.1926216605012547,
+      "noise_threshold": 0.1,
+      "outcome": "Temiya slower beyond threshold"
+    },
+    {
+      "workload": "parameter-env-rest-copy",
+      "pair": 1,
+      "status": "comparable",
+      "temiya_to_boa_ratio": 1.2248831806485567,
+      "noise_threshold": 0.16155011053394444,
+      "outcome": "Temiya slower beyond threshold"
+    },
+    {
+      "workload": "parameter-env-rest-copy",
+      "pair": 2,
+      "status": "comparable",
+      "temiya_to_boa_ratio": 1.1917673953368357,
+      "noise_threshold": 0.14121830562882565,
+      "outcome": "Temiya slower beyond threshold"
+    },
+    {
+      "workload": "parameter-env-constructor",
+      "pair": 0,
+      "status": "comparable",
+      "temiya_to_boa_ratio": 0.6915593514925354,
+      "noise_threshold": 0.20427009565553772,
+      "outcome": "Temiya faster beyond threshold"
+    },
+    {
+      "workload": "parameter-env-constructor",
+      "pair": 1,
+      "status": "comparable",
+      "temiya_to_boa_ratio": 0.7682190498314759,
+      "noise_threshold": 0.19005474036887127,
+      "outcome": "Temiya faster beyond threshold"
+    },
+    {
+      "workload": "parameter-env-constructor",
+      "pair": 2,
+      "status": "comparable",
+      "temiya_to_boa_ratio": 0.79668238409293,
+      "noise_threshold": 0.1028977963318313,
+      "outcome": "Temiya faster beyond threshold"
+    },
+    {
+      "workload": "parameter-env-generator",
+      "pair": 0,
+      "status": "comparable",
+      "temiya_to_boa_ratio": 1.670216160519887,
+      "noise_threshold": 0.10270647662388001,
+      "outcome": "Temiya slower beyond threshold"
+    },
+    {
+      "workload": "parameter-env-generator",
+      "pair": 1,
+      "status": "comparable",
+      "temiya_to_boa_ratio": 1.7623964040702944,
+      "noise_threshold": 0.19945852910843895,
+      "outcome": "Temiya slower beyond threshold"
+    },
+    {
+      "workload": "parameter-env-generator",
+      "pair": 2,
+      "status": "comparable",
+      "temiya_to_boa_ratio": 1.5900133617229222,
+      "noise_threshold": 0.18876990180165243,
+      "outcome": "Temiya slower beyond threshold"
+    },
+    {
+      "workload": "parameter-env-async",
+      "pair": 0,
+      "status": "comparable",
+      "temiya_to_boa_ratio": 0.9459318818900851,
+      "noise_threshold": 0.14729842567208157,
+      "outcome": "within noise threshold"
+    },
+    {
+      "workload": "parameter-env-async",
+      "pair": 1,
+      "status": "comparable",
+      "temiya_to_boa_ratio": 1.027004445904642,
+      "noise_threshold": 0.1,
+      "outcome": "within noise threshold"
+    },
+    {
+      "workload": "parameter-env-async",
+      "pair": 2,
+      "status": "comparable",
+      "temiya_to_boa_ratio": 0.9670018423243802,
+      "noise_threshold": 0.1,
+      "outcome": "within noise threshold"
+    }
+  ],
+  "capture_errors": [],
+  "all_workloads_valid": true,
+  "all_class_workloads_faster_beyond_threshold": false,
+  "scope_note": "Four fixed authored base class microbenchmarks, separate from the unchanged original eleven; no whole-class, whole-corpus, application or general engine superiority claim."
+}
